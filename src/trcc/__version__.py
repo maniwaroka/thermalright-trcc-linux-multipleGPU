@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "4.1.0"
+__version__ = "4.1.1"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -128,3 +128,6 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          GUI/CLI. Expanded distro support (Solus, Clear Linux, SteamOS, Artix,
 #          PostmarketOS). PM provides fallback for unmapped deps. Uninstall
 #          --yes flag for non-interactive use. 2290 tests.
+# 4.1.1  - Fix pyright error in setup wizard GUI (QLayoutItem.widget() optional
+#          narrowing). Update all docs for v4.1.0: adapters/ layout, setup wizard
+#          commands, current test count (2290), file references. 2290 tests.
