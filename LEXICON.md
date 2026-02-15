@@ -8,9 +8,10 @@ Shared terminology so everyone uses the same names.
 | **SCSI** | USB mass-storage protocol used to send LCD frames (RGB565) |
 | **HID** | USB Human Interface Device protocol — handshake, resolution detection |
 | **LED** | RGB LED control protocol via HID (effects, colors, zones) |
+| **Bulk** | Raw USB vendor-specific bulk transfer protocol (GrandVision/Mjolnir Vision) |
 | **PM** | Product Model byte from HID handshake — identifies device variant |
 | **FBL** | Firmware Byte Layout — maps PM to screen resolution |
-| **PID** | USB Product ID (e.g., `0x5011`, `0x8001`) |
+| **PID** | USB Product ID (e.g., `0x5302`, `0x8001`) |
 | **VID** | USB Vendor ID — Thermalright is `0x0416` |
 
 ## Theme System
@@ -30,9 +31,11 @@ Shared terminology so everyone uses the same names.
 | **UCThemeLocal** | Local themes browser (tab 1) |
 | **UCThemeWeb** | Cloud themes browser (tab 2) |
 | **UCThemeMask** | Cloud masks browser (tab 3) |
-| **UCOverlay** | Overlay grid editor for sensor text placement |
+| **UCThemeSetting** | Overlay editor / display mode panels |
 | **UCDevice** | Device sidebar with detection and selection |
-| **FormLED** | LED RGB control panel (effects, colors, zones) |
+| **UCLedControl** | LED RGB control panel (all LED styles 1-13, inc. HR10) |
+| **UCScreenLED** | LED segment visualization (colored circles) |
+| **UCSevenSegment** | 7-segment display preview (HR10) |
 | **Carousel** | Auto-rotating theme slideshow |
 | **Screencast** | Live screen capture sent to LCD |
 
@@ -57,4 +60,13 @@ Shared terminology so everyone uses the same names.
 |------|---------|
 | **DATA_DIR** | Package data dir (`src/trcc/data/` or site-packages equivalent) |
 | **USER_DATA_DIR** | User writable data (`~/.trcc/data/`) — primary data location, survives pip upgrades |
-| **Config dir** | Per-device config (`~/.trcc/config/{pid}/`) |
+| **Config dir** | Application config (`~/.config/trcc/`) — `config.json` with per-device settings |
+
+## Adapters (Hexagonal Architecture)
+| Term | Meaning |
+|------|---------|
+| **adapters/device/** | USB device protocol handlers (SCSI, HID, LED, Bulk) |
+| **adapters/system/** | System integration (sensors, dashboard config) |
+| **adapters/infra/** | Infrastructure I/O (data repo, fonts, media, themes, doctor) |
+| **services/** | Core hexagon — pure Python business logic, no framework deps |
+| **install/** | Standalone setup wizard (works without trcc installed) |

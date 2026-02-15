@@ -314,6 +314,39 @@ trcc hr10-tempd --unit F                 # Fahrenheit
 
 ---
 
+### `trcc setup`
+
+Interactive setup wizard — checks system dependencies, GPU packages, udev rules, and desktop integration. Offers to install anything missing.
+
+```bash
+trcc setup             # interactive (prompts for each missing dep)
+trcc setup --yes       # auto-accept all (non-interactive)
+```
+
+| Option | Description |
+|--------|-------------|
+| `--yes`, `-y` | Accept all defaults without prompting |
+
+**Steps:**
+1. System dependencies (Python modules + binaries)
+2. GPU detection (NVIDIA/AMD/Intel) and optional sensor packages
+3. USB device permissions (udev rules)
+4. Desktop integration (app menu entry)
+
+---
+
+### `trcc setup-gui`
+
+Launch the setup wizard as a PySide6 GUI. Shows the same checks as `trcc setup` with Install buttons and a terminal output pane.
+
+```bash
+trcc setup-gui
+```
+
+If trcc-linux is not installed, shows a dialog offering to install it via pip. After installing, Re-check reveals the full system checks.
+
+---
+
 ### `trcc doctor`
 
 Check dependencies, libraries, and permissions. Useful for diagnosing installation issues.
@@ -617,33 +650,30 @@ Pack names follow the format `themes-{W}x{H}`. Square resolutions have a shortha
 
 ### `trcc uninstall`
 
-Remove all TRCC configuration, udev rules, and autostart files.
+Remove all TRCC configuration, udev rules, autostart files, and the pip package.
 
 ```bash
-trcc uninstall             # remove user config files
-
-# Also remove udev rules (requires root — run from the repo directory)
-sudo PYTHONPATH=src python3 -m trcc.cli uninstall
+trcc uninstall             # interactive (prompts before pip uninstall)
+trcc uninstall --yes       # skip all prompts (for scripts / GUI)
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--yes`, `-y` | Skip confirmation prompts (non-interactive) |
 
 **Removes:**
 
 | Item | Path |
 |------|------|
 | Config directory | `~/.config/trcc/` |
-| Legacy config | `~/.trcc/` |
-| Autostart entry | `~/.config/autostart/trcc.desktop` |
-| Desktop shortcut | `~/.local/share/applications/trcc.desktop` |
+| Downloaded data | `~/.trcc/` |
+| Autostart entry | `~/.config/autostart/trcc*.desktop` |
+| Desktop shortcut | `~/.local/share/applications/trcc*.desktop` |
 | Udev rules (root) | `/etc/udev/rules.d/99-trcc-lcd.rules` |
 | USB quirks (root) | `/etc/modprobe.d/trcc-lcd.conf` |
+| pip package | `trcc-linux` |
 
-To fully uninstall the Python package as well:
-
-```bash
-trcc uninstall
-sudo PYTHONPATH=src python3 -m trcc.cli uninstall
-pip uninstall trcc-linux
-```
+Auto-elevates with sudo for root files. The `--yes` flag is used by `trcc setup-gui` for non-interactive uninstall via pkexec.
 
 ---
 

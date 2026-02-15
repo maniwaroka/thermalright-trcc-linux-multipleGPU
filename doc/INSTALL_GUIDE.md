@@ -101,12 +101,31 @@ See the **[Device Testing Guide](DEVICE_TESTING.md)** for supported devices and 
 
 ```bash
 pip install trcc-linux
-sudo trcc setup-udev
+trcc setup        # interactive wizard — checks deps, udev, desktop entry
 ```
 
-Then unplug and replug the USB cable and run `trcc gui`.
+Then **unplug and replug the USB cable** and run `trcc gui`.
 
-> **Note:** Some distros need system packages for Qt6 (`python3-pyqt6`) and SCSI (`sg3_utils`). If the GUI won't launch or your device isn't detected, use the full install below.
+> **Note:** Some distros need system packages for Qt6 and SCSI (`sg3_utils`). The setup wizard will detect and offer to install them.
+
+## One-Line Bootstrap
+
+Download and run — installs trcc-linux, then launches the setup wizard (GUI if you have a display, CLI otherwise):
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/stable/setup.sh)
+```
+
+## Setup Wizard
+
+After installing, run the setup wizard to configure everything:
+
+```bash
+trcc setup        # interactive CLI wizard
+trcc setup-gui    # GUI wizard with Install buttons
+```
+
+The wizard checks system dependencies, GPU packages, udev rules, and desktop integration — and offers to install anything missing.
 
 ## Full Install (Recommended)
 
@@ -122,7 +141,7 @@ On PEP 668 distros (Ubuntu 24.04+, Fedora 41+) it auto-falls back to a virtual e
 
 After it finishes: unplug and replug the USB cable, then run `trcc gui`.
 
-To uninstall: `sudo ./install.sh --uninstall`
+To uninstall: `trcc uninstall` (or `sudo ./install.sh --uninstall`)
 
 If you prefer manual steps, continue below.
 
@@ -1152,15 +1171,12 @@ Everything else (themes, overlays, video playback, device communication) works i
 ### Quick uninstall
 
 ```bash
-# Remove config, autostart, desktop files
 trcc uninstall
-
-# Remove udev rules (requires root — run from the repo directory)
-sudo PYTHONPATH=src python3 -m trcc.cli uninstall
-
-# Remove the Python package
-pip uninstall trcc-linux
 ```
+
+This removes config, autostart, desktop files, udev rules (auto-elevates with sudo), and the pip package in one step. Use `--yes` to skip prompts.
+
+You can also use the GUI wizard: `trcc setup-gui` → click Uninstall.
 
 ### Manual removal (if trcc command is unavailable)
 
@@ -1169,7 +1185,9 @@ pip uninstall trcc-linux
 sudo rm /etc/udev/rules.d/99-trcc-lcd.rules
 sudo rm /etc/modprobe.d/trcc-lcd.conf
 sudo udevadm control --reload-rules
-rm -rf ~/.config/trcc
+rm -rf ~/.config/trcc ~/.trcc
+rm -f ~/.config/autostart/trcc*.desktop
+rm -f ~/.local/share/applications/trcc*.desktop
 ```
 
 ---

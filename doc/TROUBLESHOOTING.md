@@ -322,6 +322,17 @@ Then rebuild: `sudo nixos-rebuild switch`
 
 ---
 
+## Quick Diagnostic
+
+Run the setup wizard to check all dependencies at once:
+
+```bash
+trcc setup        # CLI — shows all checks with install prompts
+trcc setup-gui    # GUI — visual check panel with Install buttons
+```
+
+---
+
 ## Still Stuck?
 
 1. Run `trcc report` and copy the full output

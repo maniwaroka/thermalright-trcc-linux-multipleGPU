@@ -2,42 +2,52 @@
 
 ## Hexagonal (Ports & Adapters)
 
-The project follows hexagonal architecture. The **services layer** is the core hexagon containing all business logic (pure Python, no framework deps). Three driving adapters consume the services:
+The project follows hexagonal architecture. The **services layer** is the core hexagon containing all business logic (pure Python, no framework deps). Four driving adapters consume the services:
 
-- **CLI** (`cli.py`) — Typer, 36 commands across 6 command classes
+- **CLI** (`cli.py`) — Typer, 38 commands across 6 command classes
 - **GUI** (`qt_components/`) — PySide6, controllers in `core/` call services
 - **API** (`api.py`) — FastAPI REST adapter (optional `[api]` extra)
+- **Setup GUI** (`install/gui.py`) — Standalone PySide6 setup wizard
 
 ## Project Layout
 
 ```
 src/trcc/
-├── cli.py                       # Typer CLI adapter (36 commands, 6 command classes)
+├── cli.py                       # Typer CLI adapter (38 commands, 6 command classes)
 ├── api.py                       # FastAPI REST adapter (optional [api] extra)
 ├── conf.py                      # Settings singleton + persistence helpers
-├── device_lcd.py                # SCSI RGB565 frame send
-├── device_detector.py           # USB device scan + KNOWN_DEVICES registry
-├── device_implementations.py    # Per-device protocol variants
-├── device_scsi.py               # Low-level SCSI commands
-├── dc_config.py                 # DcConfig class (parse + write config1.dc)
-├── dc_parser.py                 # Parse config1.dc overlay configs
-├── dc_writer.py                 # Write config1.dc files
-├── overlay_renderer.py          # PIL-based text/sensor overlay rendering
-├── media_player.py              # FFmpeg video frame extraction
-├── system_sensors.py            # Hardware sensor discovery
-├── system_config.py             # Dashboard panel config persistence
-├── system_info.py               # CPU/GPU/RAM/disk sensor collection
-├── theme_cloud.py               # Cloud theme HTTP fetch
-├── theme_downloader.py          # Theme pack download manager
-├── binary_reader.py             # Binary data reader (DC parsing helper)
-├── data_repository.py           # XDG paths, ThemeDir, DataManager, on-demand download
-├── device_hid.py                # HID USB transport (PyUSB/HIDAPI)
-├── device_led.py                # LED RGB protocol (effects, packet builder, HID sender)
-├── device_led_hr10.py           # HR10 LED backend
-├── device_factory.py            # Protocol factory (SCSI/HID/LED/Bulk routing by PID)
-├── device_bulk.py               # Raw USB bulk protocol (GrandVision/Mjolnir Vision)
-├── debug_report.py              # Diagnostic report tool
 ├── __version__.py               # Version info
+├── adapters/
+│   ├── device/                  # USB device protocol handlers
+│   │   ├── scsi.py              # SCSI protocol (sg_raw)
+│   │   ├── hid.py               # HID USB transport (PyUSB)
+│   │   ├── led.py               # LED RGB protocol (effects, HID sender)
+│   │   ├── led_hr10.py          # HR10 LED backend
+│   │   ├── led_kvm.py           # KVM LED backend
+│   │   ├── led_segment.py       # Segment display renderer (11 styles)
+│   │   ├── bulk.py              # Raw USB bulk protocol
+│   │   ├── lcd.py               # SCSI RGB565 frame send
+│   │   ├── detector.py          # USB device scan + registries
+│   │   └── factory.py           # Protocol factory (SCSI/HID/LED/Bulk routing)
+│   ├── system/                  # System integration
+│   │   ├── sensors.py           # Hardware sensor discovery + collection
+│   │   ├── info.py              # Dashboard panel config
+│   │   └── config.py            # Dashboard config persistence
+│   └── infra/                   # Infrastructure (I/O, files, network)
+│       ├── data_repository.py   # XDG paths, on-demand download
+│       ├── binary_reader.py     # Binary data reader
+│       ├── dc_parser.py         # Parse config1.dc overlay configs
+│       ├── dc_writer.py         # Write config1.dc files
+│       ├── dc_config.py         # DcConfig class
+│       ├── font_resolver.py     # Cross-distro font discovery
+│       ├── media_player.py      # FFmpeg video frame extraction
+│       ├── theme_cloud.py       # Cloud theme HTTP fetch
+│       ├── theme_downloader.py  # Theme pack download manager
+│       ├── debug_report.py      # Diagnostic report tool
+│       └── doctor.py            # Dependency health check + structured checks
+├── install/                     # Standalone setup wizard (works without trcc installed)
+│   ├── __init__.py
+│   └── gui.py                   # PySide6 setup wizard GUI
 ├── services/                    # Core hexagon — pure Python, no framework deps
 │   ├── __init__.py              # Re-exports all 8 service classes
 │   ├── device.py                # DeviceService — detect, select, send_pil, send_rgb565
@@ -49,7 +59,7 @@ src/trcc/
 │   ├── system.py                # SystemService — system sensor access and monitoring
 │   └── theme.py                 # ThemeService — theme loading/saving/export/import
 ├── core/
-│   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
+│   ├── models.py                # Domain constants, dataclasses, enums, resolution pipeline
 │   └── controllers.py           # LCDDeviceController, LEDDeviceController, MVC controllers
 └── qt_components/               # PySide6 GUI adapter
     ├── qt_app_mvc.py            # Main window (1454x800)
@@ -100,12 +110,11 @@ Each connected LCD is identified by `"{index}:{vid:04x}_{pid:04x}"` (e.g. `"0:87
 
 ### Cross-Distro Compatibility
 
-All platform-specific helpers are centralized in `paths.py`:
+Platform-specific helpers are centralized in `adapters/infra/`:
 
-- **`require_sg_raw()`** — verifies sg_raw availability, provides distro-specific install instructions
-- **`find_scsi_devices()`** — dynamic sysfs scan of `/sys/class/scsi_generic/` (in `device_scsi.py`)
-- **`FONT_SEARCH_DIRS`** — 20+ font directories covering Fedora, Debian/Ubuntu, Arch, Void, Alpine, openSUSE, NixOS, Guix, and more
-- **`FONTS_DIR`** — bundled fonts fallback in `src/assets/fonts/`
+- **`doctor.py`** — dependency health check with structured results, distro-to-PM mapping (25+ distros), PM native "provides" search fallback
+- **`data_repository.py`** — XDG paths, on-demand download, theme/web archive management
+- **`font_resolver.py`** — 20+ font directories covering Fedora, Debian/Ubuntu, Arch, Void, Alpine, openSUSE, NixOS, Guix, and more
 
 ### Device Protocol Routing
 

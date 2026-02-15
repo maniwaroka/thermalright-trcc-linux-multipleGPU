@@ -26,7 +26,7 @@ SCSI devices appear as SCSI Generic (`/dev/sgX`) with vendor "USBLCD".
 
 | VID    | PID    | Protocol | Type | Notes |
 |--------|--------|----------|------|-------|
-| 0x0416 | 0x5302 | LED      | HID 64-byte | RGB LED controller (AX120 DIGITAL) |
+| 0x0416 | 0x8001 | LED      | HID 64-byte | RGB LED controller (AX120 DIGITAL, PA120 DIGITAL, HR10 2280 PRO DIGITAL) |
 
 LED devices are distinguished from LCD HID devices by the `implementation` field (`hid_led`) set during device detection based on the Windows device model registry.
 
@@ -67,11 +67,11 @@ Type 2 HID devices don't report FBL directly. Instead, the PM (product mode) byt
 | 1+sub=48 | 114 | 1600x720 | PM=1 with SUB byte variant |
 | 1+sub=49 | 192 | 1920x462 | PM=1 with SUB byte variant |
 
-Functions: `pm_to_fbl()` and `fbl_to_resolution()` in `device_hid.py`.
+Functions: `pm_to_fbl()` and `fbl_to_resolution()` in `core/models.py`.
 
 ### Theme Directories & Archives
 
-Theme archives for all 15 LCD resolutions are tracked in git. On first use, `ensure_themes_extracted()` in `paths.py`:
+Theme archives for all 15 LCD resolutions are tracked in git. On first use, `ensure_themes_extracted()` in `adapters/infra/data_repository.py`:
 
 1. Checks the package dir (`src/trcc/data/`) for extracted themes
 2. Checks the user dir (`~/.trcc/data/`) for previously extracted themes
@@ -342,36 +342,45 @@ Prefixes: `A0` (startup), `A1` (device images), `A2` (dropdowns), `D0` (device p
 
 ### Linux Port Files
 
-Hexagonal architecture (Ports & Adapters). Services are the core hexagon; CLI, GUI, and API are driving adapters.
+Hexagonal architecture (Ports & Adapters). Services are the core hexagon; CLI, GUI, API, and Setup GUI are driving adapters.
 
 ```
 src/trcc/
-├── cli.py                       # Typer CLI adapter (36 commands, 6 command classes)
+├── cli.py                       # Typer CLI adapter (38 commands, 6 command classes)
 ├── api.py                       # FastAPI REST adapter (optional [api] extra)
 ├── conf.py                      # Settings singleton + persistence helpers
-├── device_lcd.py                # SCSI RGB565 frame send
-├── device_detector.py           # USB device scan + KNOWN_DEVICES registry
-├── device_implementations.py    # Per-device protocol variants
-├── device_scsi.py               # Low-level SCSI commands
-├── dc_config.py                 # DcConfig class (parse + write config1.dc)
-├── dc_parser.py                 # Parse config1.dc overlay configs
-├── dc_writer.py                 # Write config1.dc files
-├── overlay_renderer.py          # PIL-based text/sensor overlay rendering
-├── media_player.py              # FFmpeg video frame extraction
-├── system_sensors.py            # Hardware sensor discovery
-├── system_config.py             # Dashboard panel config persistence
-├── system_info.py               # CPU/GPU/RAM/disk sensor collection
-├── theme_cloud.py               # Cloud theme HTTP fetch
-├── theme_downloader.py          # Theme pack download manager
-├── binary_reader.py             # Binary data reader (DC parsing helper)
-├── data_repository.py           # XDG paths, ThemeDir, DataManager, on-demand download
-├── device_hid.py                # HID USB transport (PyUSB/HIDAPI)
-├── device_led.py                # LED RGB protocol (effects, packets, HID sender)
-├── device_led_hr10.py           # HR10 LED backend
-├── device_bulk.py               # Raw USB bulk protocol (GrandVision/Mjolnir Vision)
-├── device_factory.py            # Protocol factory (SCSI/HID/LED/Bulk routing)
-├── debug_report.py              # Diagnostic report tool
 ├── __version__.py               # Version info
+├── adapters/
+│   ├── device/                  # USB device protocol handlers
+│   │   ├── scsi.py              # SCSI protocol (sg_raw)
+│   │   ├── hid.py               # HID USB transport (PyUSB)
+│   │   ├── led.py               # LED RGB protocol (effects, HID sender)
+│   │   ├── led_hr10.py          # HR10 LED backend
+│   │   ├── led_kvm.py           # KVM LED backend
+│   │   ├── led_segment.py       # Segment display renderer (11 styles)
+│   │   ├── bulk.py              # Raw USB bulk protocol
+│   │   ├── lcd.py               # SCSI RGB565 frame send
+│   │   ├── detector.py          # USB device scan + registries
+│   │   └── factory.py           # Protocol factory (SCSI/HID/LED/Bulk routing)
+│   ├── system/                  # System integration
+│   │   ├── sensors.py           # Hardware sensor discovery + collection
+│   │   ├── info.py              # Dashboard panel config
+│   │   └── config.py            # Dashboard config persistence
+│   └── infra/                   # Infrastructure (I/O, files, network)
+│       ├── data_repository.py   # XDG paths, on-demand download
+│       ├── binary_reader.py     # Binary data reader
+│       ├── dc_parser.py         # Parse config1.dc overlay configs
+│       ├── dc_writer.py         # Write config1.dc files
+│       ├── dc_config.py         # DcConfig class
+│       ├── font_resolver.py     # Cross-distro font discovery
+│       ├── media_player.py      # FFmpeg video frame extraction
+│       ├── theme_cloud.py       # Cloud theme HTTP fetch
+│       ├── theme_downloader.py  # Theme pack download manager
+│       ├── debug_report.py      # Diagnostic report tool
+│       └── doctor.py            # Dependency health check + setup wizard
+├── install/                     # Standalone setup wizard
+│   ├── __init__.py
+│   └── gui.py                   # PySide6 setup wizard GUI
 ├── services/                    # Core hexagon — pure Python, no framework deps
 │   ├── __init__.py              # Re-exports all 8 service classes
 │   ├── device.py                # DeviceService — detect, select, send_pil, send_rgb565
@@ -383,11 +392,11 @@ src/trcc/
 │   ├── system.py                # SystemService — system sensor access and monitoring
 │   └── theme.py                 # ThemeService — theme loading/saving/export/import
 ├── core/
-│   ├── models.py                # ThemeInfo, DeviceInfo, VideoState, OverlayElement
+│   ├── models.py                # Domain constants, dataclasses, enums, resolution pipeline
 │   └── controllers.py           # LCDDeviceController, LEDDeviceController, MVC controllers
 └── qt_components/               # PySide6 GUI adapter
     ├── qt_app_mvc.py            # Main window (1454x800)
-    ├── base.py                  # BasePanel, ImageLabel, pil_to_pixmap
+    ├── base.py                  # BasePanel, BaseThemeBrowser, pil_to_pixmap
     ├── constants.py             # Layout coords, sizes, colors, styles
     ├── assets.py                # Asset loader with lru_cache
     ├── eyedropper.py            # Fullscreen color picker
@@ -494,6 +503,8 @@ Ordinal is 0-based index assigned by sorting detected devices by `/dev/sgX` path
 
 ```bash
 # Setup
+trcc setup                        # interactive setup wizard (deps, udev, desktop)
+trcc setup-gui                    # GUI setup wizard
 trcc setup-udev                   # install udev rules (auto-prompts sudo)
 trcc detect --all                 # list all devices
 
@@ -531,6 +542,10 @@ trcc led-debug --test             # LED diagnostic
 # GUI / API
 trcc gui                          # launch GUI
 trcc serve                        # start REST API server
+
+# Uninstall
+trcc uninstall                    # remove config, udev, desktop, pip package
+trcc uninstall --yes              # non-interactive (for scripts/GUI)
 ```
 
 ## Troubleshooting

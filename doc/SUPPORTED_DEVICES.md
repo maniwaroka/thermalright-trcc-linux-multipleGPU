@@ -112,8 +112,9 @@ The exact product model is identified after a USB handshake. The device responds
 
 If you own any of the untested devices above and run Linux:
 
-1. Install: `pip install trcc-linux`
-2. Set up udev rules: `sudo trcc setup-udev` (then unplug/replug USB cable)
+1. Install: `pip install trcc-linux pyusb`
+2. Run the setup wizard: `trcc setup` (checks deps, installs udev rules, desktop entry)
+3. Unplug/replug USB cable
 4. Run detection: `trcc detect --all`
 5. Try the GUI: `trcc gui` (HID devices are auto-detected)
 6. Report what you see at https://github.com/Lexonight1/thermalright-trcc-linux/issues

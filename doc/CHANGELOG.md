@@ -1,5 +1,37 @@
 # Changelog
 
+## v4.1.0
+
+### Setup Wizard
+- **New**: `trcc setup` — interactive CLI wizard that checks deps, GPU, udev, desktop entry and offers to install anything missing
+- **New**: `trcc setup-gui` — PySide6 GUI wizard with check panel, Install buttons, and embedded terminal output streaming
+- **New**: `setup.sh` bootstrap script — one-liner to install trcc-linux and launch the setup wizard (auto-detects GUI/CLI)
+- **New**: `trcc uninstall --yes` flag for non-interactive use (GUI uses pkexec for graphical auth)
+- Expanded distro support: Solus (eopkg), Clear Linux (swupd), SteamOS, Artix, ArcoLinux, PostmarketOS, Funtoo, Calculate
+- PM native "provides" search fallback (dnf/pacman/zypper/apk/xbps) for unmapped dependencies
+- Structured check functions in doctor.py (`check_system_deps`, `check_gpu`, `check_udev`, `check_desktop_entry`) for programmatic consumers
+- GPU vendor detection via PCI sysfs (NVIDIA, AMD, Intel)
+- libxcb-cursor check for apt-based distros (prevents PySide6 segfault on Ubuntu)
+- 2290 tests across 35 files
+
+## v4.0.0
+
+### Hexagonal Adapters Restructure
+- Moved 24 flat files into `adapters/device/` (10 files), `adapters/system/` (3 files), `adapters/infra/` (11 files)
+- Domain data consolidation: all static mappings centralized in `core/models.py` (LED styles, button images, protocol names, category data)
+- Assets centralization: eliminate 19 duplicate `.png` calls via `Assets` class
+- Language state unified: `settings.lang` singleton replaces 5 widget `self._lang` copies
+- Clean hexagonal boundary: `core/` + `services/` (pure Python) → `adapters/` (device/system/infra I/O)
+- 2290 tests across 35 files
+
+## v3.0.10
+
+### UCScreenLED Rewrite
+- Rewrite UCScreenLED: exact CS paint order (dark fill → decorations → LED rectangles → overlay mask)
+- 12 ledPosition arrays with exact Rectangle(x,y,w,h) coordinates, 460×460 widget
+- Unified device sidebar buttons: remove DeviceButton class, all buttons use `create_image_button` with `setChecked()` toggle
+- 2288 tests across 35 files
+
 ## v3.0.9
 
 ### PA120 Remap Fix & HID Type 2 Disconnect Fix

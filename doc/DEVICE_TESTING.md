@@ -1,6 +1,6 @@
 # Device Testing Guide
 
-All 4 protocols (SCSI, HID, LED, Bulk) are implemented with **2105 automated tests**. Several HID/LED devices have been validated by testers. If you have a device not listed below, please help test.
+All 4 protocols (SCSI, HID, LED, Bulk) are implemented with **2290 automated tests**. Several HID/LED devices have been validated by testers. If you have a device not listed below, please help test.
 
 ## Supported HID Devices
 
@@ -15,58 +15,18 @@ Run `lsusb` and look for your VID:PID:
 
 ## Quick Start
 
-Find your distro, copy the block, paste in terminal. These install TRCC + HID dependencies (libusb, pyusb) in one shot. After it finishes: **unplug and replug the USB cable**, then **open a new terminal**.
-
-> **Already have TRCC installed?** Just run `pip install --break-system-packages pyusb` and then `trcc gui` (HID is auto-detected).
-
-### Fedora / Nobara
+The fastest way to get started:
 
 ```bash
-sudo dnf install sg3_utils python3-pyqt6 ffmpeg libusb1-devel && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
+pip install trcc-linux pyusb
+trcc setup        # interactive wizard — checks all deps, installs udev rules, desktop entry
 ```
 
-### Ubuntu / Debian / Mint / Pop!_OS
+After setup finishes: **unplug and replug the USB cable**, then **open a new terminal**.
 
-```bash
-sudo apt install sg3-utils python3-pyqt6 ffmpeg python3-pip libusb-1.0-0-dev && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
-```
+> **Already have TRCC installed?** Just run `pip install pyusb` and then `trcc gui` (HID is auto-detected).
 
-### Arch / Manjaro / EndeavourOS / CachyOS / Garuda
-
-```bash
-sudo pacman -S sg3_utils python-pyqt6 ffmpeg python-pip libusb && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
-```
-
-### openSUSE
-
-```bash
-sudo zypper install sg3_utils python3-qt6 ffmpeg python3-pip libusb-1_0-devel && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
-```
-
-### Void Linux
-
-```bash
-sudo xbps-install sg3_utils python3-PyQt6 ffmpeg python3-pip libusb-devel && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
-```
-
-### Gentoo
-
-```bash
-sudo emerge --ask sg3_utils dev-python/PyQt6 media-video/ffmpeg dev-python/pip dev-libs/libusb && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
-```
-
-### Alpine
-
-```bash
-sudo apk add sg3_utils py3-pyqt6 ffmpeg py3-pip python3 libusb-dev && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop
-```
-
-### SteamOS (Steam Deck)
-
-Switch to Desktop Mode, open Konsole:
-```bash
-sudo steamos-readonly disable && sudo pacman -S --needed sg3_utils python-pip python-pyqt6 ffmpeg libusb && pip install --break-system-packages trcc-linux pyusb && sudo trcc setup-udev && trcc install-desktop && sudo steamos-readonly enable
-```
+For per-distro manual install commands, see the [Install Guide](INSTALL_GUIDE.md).
 
 ## Step 1: Run Detection
 
@@ -210,8 +170,8 @@ TRCC Linux supports 4 USB protocol types:
 
 The handshake response contains a **PM (Product Mode)** byte that identifies the device model. This maps through two tables:
 
-1. **PM → FBL**: `pm_to_fbl()` in `device_hid.py` converts the product mode to an FBL (Feature Byte Length) code
-2. **FBL → Resolution**: `fbl_to_resolution()` maps FBL to pixel dimensions
+1. **PM → FBL**: `pm_to_fbl()` in `core/models.py` converts the product mode to an FBL (Feature Byte Length) code
+2. **FBL → Resolution**: `fbl_to_resolution()` in `core/models.py` maps FBL to pixel dimensions
 
 | PM | FBL | Resolution | Products |
 |----|-----|------------|----------|

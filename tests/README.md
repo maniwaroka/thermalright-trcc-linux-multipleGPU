@@ -1,135 +1,66 @@
-# TRCC Core Components - Test Suite
+# TRCC Linux — Test Suite
 
 ## Overview
 
-Comprehensive unit tests for all core OOP components following best practices.
+2290 tests across 30 test files covering all 4 protocols (SCSI, HID, LED, Bulk), services, adapters, CLI, API, GUI components, and integration.
 
 ## Running Tests
 
-### Quick Integration Test
 ```bash
-python3 tests/test_integration.py
+# Full suite (recommended)
+PYTHONPATH=src pytest tests/ -x -q
+
+# With coverage
+PYTHONPATH=src pytest tests/ --cov=trcc --cov-report=term-missing
+
+# Single file
+PYTHONPATH=src pytest tests/test_models.py -x -q
+
+# Linting + type checking (run before committing)
+ruff check .
+npx pyright
 ```
 
-### Full Test Suite
-```bash
-python3 tests/run_tests.py
-```
-
-### Individual Test Files
-```bash
-python3 -m unittest tests/test_event_bus.py
-python3 -m unittest tests/test_theme_manager.py
-python3 -m unittest tests/test_display_modes.py
-```
-
-## Test Coverage
-
-### test_event_bus.py (9 tests)
-- ✓ Subscribe and publish
-- ✓ Multiple subscribers
-- ✓ Unsubscribe
-- ✓ Exception handling in callbacks
-- ✓ Clear events
-- ✓ Subscriber count
-- ✓ Duplicate subscription prevention
-
-### test_theme_manager.py (10 tests)
-- ✓ Singleton pattern
-- ✓ Theme dataclass creation
-- ✓ Scan local themes
-- ✓ Load themes
-- ✓ Filter themes by type
-- ✓ Cache management
-
-### test_display_modes.py (12 tests)
-- ✓ ImageMode: set/get image, update
-- ✓ VideoMode: play/pause/stop, frame advancement, looping
-- ✓ ScreenMode: capture area, graceful failure
-
-### test_gif_video.py (24 tests)
-- ✓ GIFAnimator: load, frame navigation, loop, play/pause, reset, speed
-- ✓ GIFThemeLoader: load theme, extract frames
-- ✓ VideoPlayer: load, seek, progress, play/pause/stop, speed, extract
-- ✓ Integration: compatible interfaces between GIF and Video players
-
-### test_integration.py
-- ✓ All components working together
-- ✓ Event bus communication
-- ✓ Theme management integration
-- ✓ Display mode switching
-
-## Test Results
-
-```
-======================================================================
-Tests run: 54
-Successes: 54
-Failures: 0
-Errors: 0
-======================================================================
-```
-
-✓ **All tests passing**
-
-## Test Structure
+## Test Files
 
 ```
 tests/
-├── __init__.py              # Test package marker
-├── README.md                # This file
-├── run_tests.py             # Test runner (runs all tests)
-├── test_integration.py      # Integration test (quick smoke test)
-├── test_event_bus.py        # EventBus unit tests
-├── test_theme_manager.py    # ThemeManager unit tests
-├── test_display_modes.py    # DisplayMode unit tests
-└── test_gif_video.py        # GIF and Video animation tests
-```
-
-## Adding New Tests
-
-### 1. Create test file
-```python
-# tests/test_new_component.py
-import unittest
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core import NewComponent
-
-class TestNewComponent(unittest.TestCase):
-    def test_something(self):
-        component = NewComponent()
-        self.assertTrue(component.works())
-
-if __name__ == '__main__':
-    unittest.main()
-```
-
-### 2. Run test
-```bash
-python3 -m unittest tests/test_new_component.py
-```
-
-### 3. Test will be automatically included in test suite
-```bash
-python3 tests/run_tests.py
+├── test_api.py                  # FastAPI REST adapter
+├── test_architecture.py         # Hexagonal architecture constraints
+├── test_ax120_display.py        # AX120 LED segment display
+├── test_cli.py                  # Typer CLI commands
+├── test_controllers.py          # MVC controllers
+├── test_data_repository.py      # XDG paths, on-demand download
+├── test_dc_parser.py            # config1.dc overlay parsing
+├── test_dc_writer.py            # config1.dc writing
+├── test_debug_report.py         # Diagnostic report tool
+├── test_device_bulk.py          # Bulk USB protocol
+├── test_device_detector.py      # USB device scan + registries
+├── test_device_implementations.py # Per-device protocol variants
+├── test_device_lcd.py           # SCSI RGB565 frame send
+├── test_device_led_kvm.py       # KVM LED backend
+├── test_device_scsi.py          # Low-level SCSI commands
+├── test_doctor.py               # Dependency health check + setup wizard
+├── test_hr10_display.py         # HR10 7-segment display
+├── test_integration.py          # Cross-component integration
+├── test_media_player.py         # FFmpeg video frame extraction
+├── test_models.py               # Domain constants, resolution pipeline
+├── test_overlay_renderer.py     # PIL-based overlay rendering
+├── test_qt_base.py              # BasePanel, BaseThemeBrowser
+├── test_qt_constants.py         # Layout coords, sizes, colors
+├── test_qt_widgets.py           # PySide6 widget tests
+├── test_services.py             # All 8 service classes
+├── test_system_config.py        # Dashboard config persistence
+├── test_system_info.py          # CPU/GPU/RAM/disk sensor collection
+├── test_system_sensors.py       # Hardware sensor discovery
+├── test_theme_cloud.py          # Cloud theme HTTP fetch
+└── test_theme_downloader.py     # Theme pack download manager
 ```
 
 ## Principles
 
-- **Isolation**: Each test is independent
-- **Clarity**: Test names describe what they test
-- **Coverage**: Test both success and failure paths
-- **Fast**: All tests run in < 1 second
-- **No Side Effects**: Tests clean up after themselves
-
-## Future Tests
-
-- [ ] ButtonFactory unit tests
-- [ ] BasePanel unit tests (requires tkinter mocking)
-- [ ] Full GUI integration tests
-- [ ] Device communication tests (mock LCD device)
-- [ ] End-to-end workflow tests
+- **Isolation**: Each test is independent — no shared mutable state
+- **Mocking**: Hardware access (USB, SCSI, HID) is fully mocked
+- **Coverage**: 96%+ line coverage
+- **Fast**: Full suite runs in seconds
+- **CI-safe**: Tests work as root (CI) and regular user (dev)

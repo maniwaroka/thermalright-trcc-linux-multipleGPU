@@ -8,39 +8,38 @@ Thanks for your interest in contributing! This project is a Linux port of the Th
 git clone https://github.com/Lexonight1/thermalright-trcc-linux.git
 cd thermalright-trcc-linux
 pip install -e '.[dev]'
-sudo trcc setup-udev   # install udev rules, then unplug/replug your device
+trcc setup              # interactive wizard — checks deps, udev, desktop entry
 ```
 
-System packages (Fedora/Ubuntu):
+Or manually:
 
 ```bash
-# Fedora
-sudo dnf install sg3_utils python3-pyqt6 ffmpeg
-
-# Ubuntu / Debian
-sudo apt install sg3-utils python3-pyqt6 ffmpeg
+trcc setup-udev         # install udev rules (auto-prompts for sudo)
+# Unplug/replug USB cable after
 ```
 
 ## Running Tests and Linting
 
 ```bash
-pytest -v --tb=short       # run tests
-pytest --cov               # run with coverage
-ruff check .               # lint
-ruff check --fix .         # auto-fix lint issues
+PYTHONPATH=src pytest tests/ -x -q   # run tests
+pytest --cov                         # run with coverage
+ruff check .                         # lint
+npx pyright                          # type check
 ```
 
-All PRs must pass tests and have clean `ruff check` output.
+All PRs must pass tests, `ruff check`, and `pyright` with 0 errors.
 
 ## Branch Strategy
 
-1. Fork the repo and create a branch off `main`
+1. Fork the repo and create a branch off `stable`
 2. Make your changes and ensure tests pass
-3. Open a PR targeting `main`
+3. Open a PR targeting `stable`
+
+> `stable` is the default branch. All development, releases, and user-facing clones happen here.
 
 ## Ways to Contribute
 
 - **Bug fixes** — Reproduce, write a test, fix it
-- **Device support** — Add new Thermalright USB VID:PID mappings to `device_detector.py`
+- **Device support** — Add new Thermalright USB VID:PID mappings to `adapters/device/detector.py`
 - **Hardware testing** — Own a HID device? See [doc/DEVICE_TESTING.md](doc/DEVICE_TESTING.md) for how to help validate support
 - **Documentation** — Install guides, troubleshooting tips, translations

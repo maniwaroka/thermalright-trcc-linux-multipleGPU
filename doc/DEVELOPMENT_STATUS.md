@@ -2,7 +2,7 @@
 
 TRCC Linux is **feature-complete** — all 45 features from the Windows TRCC 2.0.3 have been ported, with full CLI/GUI/API parity via hexagonal architecture.
 
-**Current version:** 3.0.9
+**Current version:** 4.1.0
 **Branch:** `stable`
 **Tests:** 2290 across 35 files
 **PyPI:** [trcc-linux](https://pypi.org/project/trcc-linux/)
@@ -18,7 +18,8 @@ All features are tested and working on the `stable` branch:
 - **HR10 support** — 7-segment display renderer, NVMe temperature daemon, color wheel
 - **Per-device config** — each LCD remembers its theme, brightness, rotation, overlay, and carousel settings
 - **Autostart** — launches minimized to system tray on login, sends last-used theme
-- **CLI** — 36 Typer commands with full service parity (theme, LED, display, overlay, screencast, video, diagnostics)
+- **Setup wizard** — CLI (`trcc setup`) and GUI (`trcc setup-gui`) with bootstrap script (`setup.sh`)
+- **CLI** — 38 Typer commands with full service parity (theme, LED, display, overlay, screencast, video, diagnostics, setup)
 - **REST API** — optional FastAPI adapter for headless/remote control (`trcc serve`)
 - **Services layer** — 8 pure-Python service classes shared by GUI, CLI, and API
 - **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS, SteamOS, Bazzite
@@ -72,8 +73,10 @@ All features are tested and working on the `stable` branch:
 | 15 | CLI Typer refactor | Done — 36 commands |
 | 16 | REST API adapter | Done — FastAPI (`trcc serve`) |
 | 17 | Unified segment display renderer | Done — 11 styles, OOP class hierarchy |
-| 18 | SELinux full audit | Planned |
-| 19 | Type annotation hardening (pyright strict) | Planned |
+| 18 | Hexagonal adapters/ restructure | Done — adapters/device, system, infra |
+| 19 | Setup wizard (CLI + GUI) | Done — `trcc setup` + `trcc setup-gui` + `setup.sh` |
+| 20 | SELinux full audit | Planned |
+| 21 | Type annotation hardening (pyright strict) | Planned |
 
 ## Reporting Issues
 
@@ -88,7 +91,7 @@ If something breaks:
 - [CHANGELOG.md](CHANGELOG.md) — version history
 - [DEVICE_TESTING.md](DEVICE_TESTING.md) — how to help test devices
 - [INSTALL_GUIDE.md](INSTALL_GUIDE.md) — installation for all distros
-- [CLI_REFERENCE.md](CLI_REFERENCE.md) — all 36 commands
+- [CLI_REFERENCE.md](CLI_REFERENCE.md) — all 38 commands
 - [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — SCSI protocol (from USBLCD.exe reverse engineering)
 - [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB bulk protocol (from USBLCDNEW.exe reverse engineering)
 - [USBLED_PROTOCOL.md](USBLED_PROTOCOL.md) — HID LED protocol (from FormLED.cs reverse engineering)
