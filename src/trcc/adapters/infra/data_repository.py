@@ -343,6 +343,36 @@ class DataManager:
         return False
 
     # ------------------------------------------------------------------
+    # Post-extraction helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _unwrap_nested_dir(target_dir: str) -> None:
+        """Flatten a single wrapping subdirectory after extraction.
+
+        Some .7z archives wrap all contents in a subdirectory matching the
+        archive name (e.g. ``1600720.7z`` → ``1600720/a001.png``).  When
+        extracted to ``target_dir`` this creates double nesting.  If
+        ``target_dir`` contains exactly one entry and it's a directory,
+        move its contents up and remove the empty wrapper.
+        """
+        try:
+            entries = os.listdir(target_dir)
+        except OSError:
+            return
+        if len(entries) != 1:
+            return
+        nested = os.path.join(target_dir, entries[0])
+        if not os.path.isdir(nested):
+            return
+        log.debug("Unwrapping nested directory: %s", nested)
+        for item in os.listdir(nested):
+            src = os.path.join(nested, item)
+            dst = os.path.join(target_dir, item)
+            shutil.move(src, dst)
+        os.rmdir(nested)
+
+    # ------------------------------------------------------------------
     # Fetch + extract pipeline
     # ------------------------------------------------------------------
 
@@ -381,6 +411,11 @@ class DataManager:
         os.makedirs(user_dir, exist_ok=True)
         ok = DataManager.extract_7z(archive, user_dir)
         if ok:
+            # Some archives wrap contents in a single subdirectory that matches
+            # the target dir name (e.g. 1600720.7z contains 1600720/a001.png).
+            # This creates double nesting: user_dir/1600720/a001.png instead of
+            # user_dir/a001.png.  Flatten if detected.
+            DataManager._unwrap_nested_dir(user_dir)
             log.info("%s ready at %s", label, user_dir)
         else:
             log.warning("%s: extraction of %s failed", label, archive_name)

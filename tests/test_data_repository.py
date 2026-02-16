@@ -547,6 +547,54 @@ class TestExtract7zCLI(unittest.TestCase):
             self.assertFalse(result)
 
 
+class TestUnwrapNestedDir(unittest.TestCase):
+    """Test DataManager._unwrap_nested_dir."""
+
+    def test_flattens_single_nested_dir(self):
+        """Single subdirectory is unwrapped — contents moved up."""
+        with tempfile.TemporaryDirectory() as d:
+            nested = os.path.join(d, '1600720')
+            os.makedirs(nested)
+            Path(nested, 'a001.png').touch()
+            Path(nested, 'a002.png').touch()
+            DataManager._unwrap_nested_dir(d)
+            self.assertTrue(os.path.exists(os.path.join(d, 'a001.png')))
+            self.assertTrue(os.path.exists(os.path.join(d, 'a002.png')))
+            self.assertFalse(os.path.exists(nested))
+
+    def test_no_op_when_multiple_entries(self):
+        """Multiple top-level entries — no unwrapping (flat archive)."""
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, 'a001.png').touch()
+            Path(d, 'a002.png').touch()
+            DataManager._unwrap_nested_dir(d)
+            self.assertTrue(os.path.exists(os.path.join(d, 'a001.png')))
+            self.assertTrue(os.path.exists(os.path.join(d, 'a002.png')))
+
+    def test_no_op_when_single_file(self):
+        """Single file (not dir) — no unwrapping."""
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, 'only.png').touch()
+            DataManager._unwrap_nested_dir(d)
+            self.assertTrue(os.path.exists(os.path.join(d, 'only.png')))
+
+    def test_no_op_on_missing_dir(self):
+        """Non-existent directory — no crash."""
+        DataManager._unwrap_nested_dir('/nonexistent/path/abc')
+
+    def test_flattens_nested_subdirs(self):
+        """Nested directory with subdirectories (zt mask archives)."""
+        with tempfile.TemporaryDirectory() as d:
+            nested = os.path.join(d, 'zt1600720')
+            mask_a = os.path.join(nested, '000a')
+            os.makedirs(mask_a)
+            Path(mask_a, '01.png').touch()
+            Path(mask_a, 'Theme.png').touch()
+            DataManager._unwrap_nested_dir(d)
+            self.assertTrue(os.path.exists(os.path.join(d, '000a', '01.png')))
+            self.assertFalse(os.path.exists(nested))
+
+
 class TestFindResourceDefault(unittest.TestCase):
     """Cover Resources.find with default search_paths=None."""
 

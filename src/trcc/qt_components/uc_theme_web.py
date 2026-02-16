@@ -153,6 +153,7 @@ class UCThemeWeb(DownloadableThemeBrowser):
             return
         from ..adapters.infra.data_repository import DataManager
         DataManager.extract_7z(str(archive), str(self.web_directory))
+        DataManager._unwrap_nested_dir(str(self.web_directory))
 
     def load_themes(self):
         """Load cloud themes from preview PNGs in Web directory.
