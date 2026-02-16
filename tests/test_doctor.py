@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from trcc.adapters.infra.doctor import (
+    SelinuxResult,
     _check_binary,
     _check_library,
     _check_python_module,
@@ -13,6 +14,7 @@ from trcc.adapters.infra.doctor import (
     _detect_pkg_manager,
     _install_hint,
     _read_os_release,
+    check_selinux,
     run_doctor,
 )
 
@@ -192,6 +194,8 @@ class TestCheckUdevRules(unittest.TestCase):
 class TestRunDoctor(unittest.TestCase):
     """Test run_doctor() return codes."""
 
+    @patch('trcc.adapters.infra.doctor.check_selinux',
+           return_value=SelinuxResult(ok=True, message='not installed'))
     @patch('trcc.adapters.infra.doctor._check_udev_rules', return_value=True)
     @patch('trcc.adapters.infra.doctor._check_library', return_value=True)
     @patch('trcc.adapters.infra.doctor._check_binary', return_value=True)
@@ -202,6 +206,8 @@ class TestRunDoctor(unittest.TestCase):
     def test_all_ok_returns_0(self, *_):
         self.assertEqual(run_doctor(), 0)
 
+    @patch('trcc.adapters.infra.doctor.check_selinux',
+           return_value=SelinuxResult(ok=True, message='not installed'))
     @patch('trcc.adapters.infra.doctor._check_udev_rules', return_value=False)
     @patch('trcc.adapters.infra.doctor._check_library', return_value=True)
     @patch('trcc.adapters.infra.doctor._check_binary', return_value=True)
@@ -214,6 +220,68 @@ class TestRunDoctor(unittest.TestCase):
 
 
 # ── CLI dispatch ─────────────────────────────────────────────────────────────
+
+
+class TestCheckSelinux(unittest.TestCase):
+    """Test SELinux policy check."""
+
+    @patch('subprocess.run', side_effect=FileNotFoundError)
+    def test_no_selinux(self, _):
+        r = check_selinux()
+        self.assertTrue(r.ok)
+        self.assertFalse(r.enforcing)
+        self.assertIn('not installed', r.message)
+
+    @patch('subprocess.run')
+    def test_permissive(self, mock_run):
+        mock_run.return_value = Mock(stdout='Permissive\n')
+        r = check_selinux()
+        self.assertTrue(r.ok)
+        self.assertFalse(r.enforcing)
+
+    @patch('subprocess.run')
+    def test_enforcing_module_loaded(self, mock_run):
+        def side_effect(cmd, **_kw):
+            if cmd[0] == 'getenforce':
+                return Mock(stdout='Enforcing\n')
+            if cmd[0] == 'semodule':
+                return Mock(stdout='trcc_usb\nother_mod\n')
+            return Mock(stdout='')
+        mock_run.side_effect = side_effect
+        r = check_selinux()
+        self.assertTrue(r.ok)
+        self.assertTrue(r.enforcing)
+        self.assertTrue(r.module_loaded)
+
+    @patch('subprocess.run')
+    def test_enforcing_module_missing(self, mock_run):
+        def side_effect(cmd, **_kw):
+            if cmd[0] == 'getenforce':
+                return Mock(stdout='Enforcing\n')
+            if cmd[0] == 'semodule':
+                return Mock(stdout='other_mod\n')
+            return Mock(stdout='')
+        mock_run.side_effect = side_effect
+        r = check_selinux()
+        self.assertFalse(r.ok)
+        self.assertTrue(r.enforcing)
+        self.assertFalse(r.module_loaded)
+        self.assertIn('not installed', r.message)
+
+    @patch('subprocess.run')
+    def test_enforcing_semodule_not_found(self, mock_run):
+        calls = []
+
+        def side_effect(cmd, **_kw):
+            calls.append(cmd[0])
+            if cmd[0] == 'getenforce':
+                return Mock(stdout='Enforcing\n')
+            raise FileNotFoundError
+        mock_run.side_effect = side_effect
+        r = check_selinux()
+        self.assertFalse(r.ok)
+        self.assertTrue(r.enforcing)
+        self.assertFalse(r.module_loaded)
 
 
 class TestDoctorCLI(unittest.TestCase):

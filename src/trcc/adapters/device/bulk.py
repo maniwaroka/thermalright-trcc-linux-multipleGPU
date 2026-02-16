@@ -92,11 +92,18 @@ class BulkDevice:
             raise RuntimeError(f"USB device {self.vid:04x}:{self.pid:04x} not found")
 
         # Detach kernel drivers (best effort — SELinux may silently block this).
+        selinux_blocked = False
         for i in range(4):
             try:
                 if dev.is_kernel_driver_active(i):  # type: ignore[union-attr]
                     dev.detach_kernel_driver(i)  # type: ignore[union-attr]
-                    log.debug("Detached kernel driver from interface %d", i)
+                    # Verify detach actually worked (SELinux silently blocks it)
+                    if dev.is_kernel_driver_active(i):  # type: ignore[union-attr]
+                        selinux_blocked = True
+                        log.warning("Kernel driver still active on interface %d after "
+                                    "detach — SELinux may be blocking USB ioctls", i)
+                    else:
+                        log.debug("Detached kernel driver from interface %d", i)
             except (usb.core.USBError, NotImplementedError) as e:
                 log.debug("Could not detach kernel driver from interface %d: %s", i, e)
 
@@ -140,7 +147,16 @@ class BulkDevice:
         if intf is None:
             intf = cfg[(0, 0)]  # type: ignore[index]
 
-        usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
+        try:
+            usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
+        except usb.core.USBError as e:
+            if e.errno == 16 and selinux_blocked:  # EBUSY + detach was blocked
+                raise RuntimeError(
+                    "USB interface busy — SELinux is blocking USB device access. "
+                    "Run 'sudo trcc setup-selinux' to install the policy module, "
+                    "then unplug and replug the device."
+                ) from e
+            raise
 
         self._ep_out = usb.util.find_descriptor(
             intf,

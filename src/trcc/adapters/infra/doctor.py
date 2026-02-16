@@ -542,6 +542,57 @@ def check_udev() -> UdevResult:
         return UdevResult(ok=True, message='udev rules installed')
 
 
+@dataclass
+class SelinuxResult:
+    """Result of SELinux policy check."""
+    ok: bool
+    message: str
+    enforcing: bool = False
+    module_loaded: bool = False
+
+
+def check_selinux() -> SelinuxResult:
+    """Check if SELinux is enforcing and if trcc_usb policy module is loaded.
+
+    Returns ok=True when no action is needed: SELinux absent, permissive,
+    disabled, or enforcing with the trcc_usb module already loaded.
+    """
+    import subprocess
+
+    # Check if SELinux is present and enforcing
+    try:
+        r = subprocess.run(
+            ['getenforce'], capture_output=True, text=True, timeout=5,
+        )
+        status = r.stdout.strip().lower()
+    except FileNotFoundError:
+        return SelinuxResult(ok=True, message='SELinux not installed')
+    except Exception:
+        return SelinuxResult(ok=True, message='SELinux status unknown')
+
+    if status != 'enforcing':
+        return SelinuxResult(ok=True, message=f'SELinux {status} (no policy needed)')
+
+    # SELinux is enforcing — check if trcc_usb module is loaded
+    try:
+        r = subprocess.run(
+            ['semodule', '-l'], capture_output=True, text=True, timeout=10,
+        )
+        loaded = 'trcc_usb' in r.stdout
+    except (FileNotFoundError, Exception):
+        loaded = False
+
+    if loaded:
+        return SelinuxResult(
+            ok=True, message='SELinux enforcing — trcc_usb module loaded',
+            enforcing=True, module_loaded=True,
+        )
+    return SelinuxResult(
+        ok=False, message='SELinux enforcing — USB policy not installed',
+        enforcing=True, module_loaded=False,
+    )
+
+
 def check_desktop_entry() -> bool:
     """Check if .desktop file is installed."""
     from pathlib import Path
@@ -610,6 +661,17 @@ def run_doctor() -> int:
     print()
     if not _check_udev_rules():
         all_ok = False
+
+    # SELinux
+    se = check_selinux()
+    if se.enforcing:
+        print()
+        if se.ok:
+            print(f"  {_OK}  {se.message}")
+        else:
+            print(f"  {_MISS}  {se.message}")
+            print("         run: sudo trcc setup-selinux")
+            all_ok = False
 
     # Summary
     print()

@@ -243,6 +243,7 @@ class SetupWizard(QWidget):
         from trcc.adapters.infra.doctor import (
             check_desktop_entry,
             check_gpu,
+            check_selinux,
             check_system_deps,
             check_udev,
             get_setup_info,
@@ -283,8 +284,22 @@ class SetupWizard(QWidget):
             install_cmd=udev_cmd,
         )
 
-        # Step 5 — desktop entry
-        self._section('Step 5: Desktop Integration')
+        # Step 5 — SELinux (only shown when enforcing)
+        se = check_selinux()
+        if se.enforcing:
+            self._section('Step 5: SELinux Policy')
+            se_cmd = (
+                '' if se.ok
+                else 'sudo ' + self._trcc_prefix() + ' setup-selinux'
+            )
+            self._add_dep(
+                'SELinux USB policy', se.ok, True,
+                note='' if se.ok else se.message,
+                install_cmd=se_cmd,
+            )
+
+        # Step 6 — desktop entry
+        self._section('Step 6: Desktop Integration')
         desk = check_desktop_entry()
         desk_cmd = '' if desk else self._trcc_prefix() + ' install-desktop'
         self._add_dep(

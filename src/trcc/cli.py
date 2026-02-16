@@ -362,6 +362,12 @@ def _cmd_setup_udev(
     return SystemCommands.setup_udev(dry_run=dry_run)
 
 
+@app.command("setup-selinux")
+def _cmd_setup_selinux() -> int:
+    """Install SELinux policy module for USB device access."""
+    return SystemCommands.setup_selinux()
+
+
 @app.command("install-desktop")
 def _cmd_install_desktop() -> int:
     """Install application menu entry and icon."""
@@ -2113,6 +2119,109 @@ class SystemCommands:
             return 1
 
     @staticmethod
+    def setup_selinux():
+        """Install SELinux policy module allowing USB device access.
+
+        Compiles trcc_usb.te → .mod → .pp, then loads via semodule.
+        Required on SELinux-enforcing systems (Bazzite, Silverblue) where
+        detach_kernel_driver() is silently blocked.
+        """
+        import shutil
+        import tempfile
+
+        # Must be root
+        if os.geteuid() != 0:
+            return _sudo_reexec("setup-selinux")
+
+        # Check if SELinux is enforcing
+        try:
+            r = subprocess.run(
+                ["getenforce"], capture_output=True, text=True, timeout=5,
+            )
+            status = r.stdout.strip().lower()
+        except FileNotFoundError:
+            print("SELinux not installed — nothing to do.")
+            return 0
+
+        if status != 'enforcing':
+            print(f"SELinux is {status} — no policy needed.")
+            return 0
+
+        # Check if already loaded
+        try:
+            r = subprocess.run(
+                ["semodule", "-l"], capture_output=True, text=True, timeout=10,
+            )
+            if 'trcc_usb' in r.stdout:
+                print("SELinux module trcc_usb already loaded.")
+                return 0
+        except FileNotFoundError:
+            print("semodule not found — cannot manage SELinux policies.")
+            return 1
+
+        # Check for checkmodule
+        if not shutil.which('checkmodule'):
+            pm = None
+            try:
+                from trcc.adapters.infra.doctor import _detect_pkg_manager
+                pm = _detect_pkg_manager()
+            except Exception:
+                pass
+            pkg = 'policycoreutils-devel' if pm in ('dnf', 'rpm-ostree') else 'checkpolicy'
+            print(f"checkmodule not found — install {pkg} first.")
+            return 1
+
+        # Find .te source (shipped in package data)
+        te_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'trcc_usb.te')
+        if not os.path.isfile(te_src):
+            print(f"SELinux policy source not found: {te_src}")
+            return 1
+
+        # Compile and install in temp directory
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                import shutil as sh
+                te_path = os.path.join(tmp, 'trcc_usb.te')
+                mod_path = os.path.join(tmp, 'trcc_usb.mod')
+                pp_path = os.path.join(tmp, 'trcc_usb.pp')
+
+                sh.copy2(te_src, te_path)
+
+                # checkmodule -M -m -o trcc_usb.mod trcc_usb.te
+                r = subprocess.run(
+                    ['checkmodule', '-M', '-m', '-o', mod_path, te_path],
+                    capture_output=True, text=True,
+                )
+                if r.returncode != 0:
+                    print(f"checkmodule failed: {r.stderr.strip()}")
+                    return 1
+
+                # semodule_package -o trcc_usb.pp -m trcc_usb.mod
+                r = subprocess.run(
+                    ['semodule_package', '-o', pp_path, '-m', mod_path],
+                    capture_output=True, text=True,
+                )
+                if r.returncode != 0:
+                    print(f"semodule_package failed: {r.stderr.strip()}")
+                    return 1
+
+                # semodule -i trcc_usb.pp
+                r = subprocess.run(
+                    ['semodule', '-i', pp_path],
+                    capture_output=True, text=True,
+                )
+                if r.returncode != 0:
+                    print(f"semodule install failed: {r.stderr.strip()}")
+                    return 1
+
+            print("Installed SELinux module trcc_usb (USB device access for TRCC).")
+            return 0
+
+        except Exception as e:
+            print(f"Error installing SELinux policy: {e}")
+            return 1
+
+    @staticmethod
     def install_desktop():
         """Install .desktop menu entry and icon for app launchers.
 
@@ -2302,6 +2411,7 @@ StartupWMClass=trcc-linux
         from trcc.adapters.infra.doctor import (
             check_desktop_entry,
             check_gpu,
+            check_selinux,
             check_system_deps,
             check_udev,
             get_setup_info,
@@ -2312,8 +2422,8 @@ StartupWMClass=trcc-linux
 
         actions: list[str] = []
 
-        # ── Step 1/4: System dependencies ────────────────────────────
-        print("  Step 1/4: System dependencies")
+        # ── Step 1/5: System dependencies ────────────────────────────
+        print("  Step 1/5: System dependencies")
         deps = check_system_deps(info.pkg_manager)
         missing_required: list[str] = []
         missing_optional: list[str] = []
@@ -2351,8 +2461,8 @@ StartupWMClass=trcc-linux
 
         print()
 
-        # ── Step 2/4: GPU detection ──────────────────────────────────
-        print("  Step 2/4: GPU detection")
+        # ── Step 2/5: GPU detection ──────────────────────────────────
+        print("  Step 2/5: GPU detection")
         gpus = check_gpu()
         if not gpus:
             print("    [--]  No discrete GPU detected")
@@ -2375,8 +2485,8 @@ StartupWMClass=trcc-linux
                         print(f"    [!!] pip failed (exit {result.returncode})")
         print()
 
-        # ── Step 3/4: USB device permissions ─────────────────────────
-        print("  Step 3/4: USB device permissions")
+        # ── Step 3/5: USB device permissions ─────────────────────────
+        print("  Step 3/5: USB device permissions")
         udev = check_udev()
         if udev.ok:
             print(f"    [OK]  {udev.message}")
@@ -2392,8 +2502,26 @@ StartupWMClass=trcc-linux
                     print("    [!!] udev setup failed")
         print()
 
-        # ── Step 4/4: Desktop integration ────────────────────────────
-        print("  Step 4/4: Desktop integration")
+        # ── Step 4/5: SELinux policy ───────────────────────────────────
+        se = check_selinux()
+        if se.enforcing:
+            print("  Step 4/5: SELinux policy")
+            if se.ok:
+                print(f"    [OK]  {se.message}")
+            else:
+                print(f"    [!!]  {se.message}")
+                if SystemCommands._confirm(
+                    "Install SELinux USB policy? (requires sudo)", auto_yes,
+                ):
+                    rc = SystemCommands.setup_selinux()
+                    if rc == 0:
+                        actions.append("Installed SELinux policy")
+                    else:
+                        print("    [!!] SELinux setup failed")
+            print()
+
+        # ── Step 5/5: Desktop integration ────────────────────────────
+        print("  Step 5/5: Desktop integration")
         if check_desktop_entry():
             print("    [OK]  Application menu entry installed")
         else:
