@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "4.2.2"
+__version__ = "4.2.3"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -146,3 +146,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          web/zt archives had wrapping directory causing double nesting on
 #          extraction. Repacked all archives to uniform flat structure. Added
 #          _unwrap_nested_dir() safety net in extraction pipeline. 2308 tests.
+# 4.2.3  - Fix LED style 5 (LF8 / Phantom Spirit 120 Digital Snow) display
+#          corruption: add wire remap table for PM=49 (93 LEDs). C# SendHidVal
+#          reorders LEDs from logical to hardware wire positions — our code was
+#          missing this remap, sending colors to wrong physical LEDs. 2308 tests.

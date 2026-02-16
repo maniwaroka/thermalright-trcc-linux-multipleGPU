@@ -593,11 +593,33 @@ _REMAP_STYLE_4: tuple[int, ...] = (
     11, 12, 13, 15, 10, 9, 14,
 )
 
+# Style 5: LF8 (93 LEDs, 2 zones) — Phantom Spirit 120 Digital Snow / PM=49
+# C# SendHidVal reorders array8 (logical) → array9 (wire) for 92 LEDs;
+# LEDC13 (idx 92) is unused by C# but included for correct packet length.
+_REMAP_STYLE_5: tuple[int, ...] = (
+    6, 86, 87, 88, 90, 85, 84, 89,       # BFB, seg12 (C D E G B A F)
+    79, 80, 81, 83, 78, 77, 82,           # seg11 (C D E G B A F)
+    91, 5,                                 # LEDB13, MHz
+    72, 73, 74, 76, 71, 70, 75,           # seg10 (C D E G B A F)
+    65, 66, 67, 69, 64, 63, 68,           # seg9
+    58, 59, 60, 62, 57, 56, 61,           # seg8
+    51, 52, 53, 55, 50, 49, 54,           # seg7
+    11, 10, 9, 13, 12, 7, 0, 8,           # seg1 (E D C G F A) + Cpu1 + B
+    18, 17, 16, 20, 19, 14, 1, 15,        # seg2 (E D C G F A) + Gpu1 + B
+    25, 24, 23, 27, 26, 21, 22,           # seg3 (E D C G F A B)
+    3, 2,                                  # HSD, SSD
+    32, 31, 30, 34, 33, 28, 29,           # seg4
+    39, 38, 37, 41, 40, 35, 36,           # seg5
+    46, 45, 44, 48, 47, 42, 43,           # seg6
+    4, 92,                                 # WATT, LEDC13 (unused/padding)
+)
+
 # Style → remap table.  Styles not listed use identity mapping (no remap).
 LED_REMAP_TABLES: dict[int, tuple[int, ...]] = {
     2: _REMAP_STYLE_2,   # PA120_DIGITAL (84 LEDs)
     3: _REMAP_STYLE_3,   # AK120_DIGITAL (64 LEDs)
     4: _REMAP_STYLE_4,   # LC1 (31 LEDs)
+    5: _REMAP_STYLE_5,   # LF8 / Phantom Spirit 120 Digital Snow (93 LEDs)
     13: _REMAP_STYLE_4,  # HR10 shares LC1 layout
 }
 
