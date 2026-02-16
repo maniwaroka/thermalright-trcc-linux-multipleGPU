@@ -104,7 +104,7 @@ class UCInfoModule(QWidget):
         try:
             metrics = get_all_metrics()
             for key, box in self._sensor_boxes.items():
-                value = metrics.get(key)
+                value = getattr(metrics, key, None)
                 if value is not None and isinstance(value, (int, float)):
                     if 'temp' in key:
                         if self._temp_unit == '\u00b0F':

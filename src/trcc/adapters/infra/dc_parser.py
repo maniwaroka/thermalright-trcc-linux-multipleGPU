@@ -18,6 +18,7 @@ from trcc.core.models import (
     DisplayElement,
     ElementConfig,
     FontConfig,
+    OverlayMode,
 )
 
 from .binary_reader import BinaryReader
@@ -479,32 +480,32 @@ class DcParser:
                 'mode_sub': elem.mode_sub,
             }
 
-            if elem.mode == 1:
+            if elem.mode == OverlayMode.TIME:
                 key = 'time' if time_count == 0 else f'time_{time_count}'
                 config_entry['metric'] = 'time'
                 config_entry['time_format'] = elem.mode_sub
                 overlay_config[key] = config_entry
                 time_count += 1
 
-            elif elem.mode == 2:
+            elif elem.mode == OverlayMode.WEEKDAY:
                 key = 'weekday' if weekday_count == 0 else f'weekday_{weekday_count}'
                 config_entry['metric'] = 'weekday'
                 overlay_config[key] = config_entry
                 weekday_count += 1
 
-            elif elem.mode == 3:
+            elif elem.mode == OverlayMode.DATE:
                 key = 'date' if date_count == 0 else f'date_{date_count}'
                 config_entry['metric'] = 'date'
                 config_entry['date_format'] = elem.mode_sub
                 overlay_config[key] = config_entry
                 date_count += 1
 
-            elif elem.mode == 4:
+            elif elem.mode == OverlayMode.CUSTOM:
                 key = f'custom_{len([k for k in overlay_config if k.startswith("custom")])}'
                 config_entry['text'] = elem.text
                 overlay_config[key] = config_entry
 
-            elif elem.mode == 0:
+            elif elem.mode == OverlayMode.HARDWARE:
                 hw_key = f'hw_{elem.main_count}_{elem.sub_count}'
                 config_entry['metric'] = DcParser.get_hardware_metric_name(elem.main_count, elem.sub_count)
                 config_entry['temp_unit'] = elem.mode_sub

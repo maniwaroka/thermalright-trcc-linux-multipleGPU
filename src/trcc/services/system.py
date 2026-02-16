@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Optional
 
 from ..adapters.infra.data_repository import SysUtils
-from ..core.models import DATE_FORMATS, TIME_FORMATS, WEEKDAYS
+from ..core.models import DATE_FORMATS, TIME_FORMATS, WEEKDAYS, HardwareMetrics
 
 if TYPE_CHECKING:
     from ..adapters.system.config import PanelConfig
@@ -199,45 +199,44 @@ class SystemService:
     # ── Aggregate metrics ─────────────────────────────────────────────
 
     @property
-    def all_metrics(self) -> Dict[str, float]:
-        """All system metrics as a flat dict (non-blocking).
+    def all_metrics(self) -> HardwareMetrics:
+        """All system metrics as a typed DTO (non-blocking).
 
         Sensor readings come from cached background thread.
         Fallback values come from a separate background computation.
         Only date/time is computed inline (instant).
         """
-        metrics: Dict[str, float] = {}
+        m = HardwareMetrics()
 
         # Date and time (instant — no I/O)
         now = datetime.now()
-        metrics['date_year'] = now.year
-        metrics['date_month'] = now.month
-        metrics['date_day'] = now.day
-        metrics['time_hour'] = now.hour
-        metrics['time_minute'] = now.minute
-        metrics['time_second'] = now.second
-        metrics['day_of_week'] = now.weekday()
-        metrics['date'] = 0
-        metrics['time'] = 0
-        metrics['weekday'] = 0
+        m.date_year = now.year
+        m.date_month = now.month
+        m.date_day = now.day
+        m.time_hour = now.hour
+        m.time_minute = now.minute
+        m.time_second = now.second
+        m.day_of_week = now.weekday()
 
         # Batch read ALL sensors from cache (instant)
         defaults = self._ensure_defaults()
         readings = self._enumerator.read_all()
-        for legacy_key, sensor_id in defaults.items():
-            if sensor_id in readings:
-                metrics[legacy_key] = readings[sensor_id]
+        populated: set[str] = set()
+        for attr_name, sensor_id in defaults.items():
+            if sensor_id in readings and hasattr(m, attr_name):
+                setattr(m, attr_name, readings[sensor_id])
+                populated.add(attr_name)
 
         # Fallback values for metrics the enumerator couldn't provide.
         # Computed once (may call subprocess), then cached for future calls.
-        self._ensure_fallbacks(set(metrics.keys()))
+        self._ensure_fallbacks(populated)
         with self._fallback_lock:
             if self._fallback_cache:
-                for key, value in self._fallback_cache.items():
-                    if key not in metrics:
-                        metrics[key] = value
+                for attr_name, value in self._fallback_cache.items():
+                    if attr_name not in populated and hasattr(m, attr_name):
+                        setattr(m, attr_name, value)
 
-        return metrics
+        return m
 
     def _ensure_fallbacks(self, existing_keys: set[str]) -> None:
         """Compute fallback metrics once, then cache for future calls."""

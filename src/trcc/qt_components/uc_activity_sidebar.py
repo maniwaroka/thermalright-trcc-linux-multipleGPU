@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ..adapters.system.info import get_all_metrics
+from ..core.models import OverlayElementConfig, OverlayMode
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ SENSOR_TO_OVERLAY = {
 class SensorItem(QFrame):
     """Single sensor row — clickable to add to overlay."""
 
-    clicked = Signal(dict)  # sensor config for overlay
+    clicked = Signal(object)  # OverlayElementConfig
 
     def __init__(self, category, key_suffix, label, unit, metric_key, color, parent=None):
         super().__init__(parent)
@@ -121,23 +122,16 @@ class SensorItem(QFrame):
         # Overlay config for click-to-add
         sensor_key = f"{category}_{key_suffix}"
         main_count, sub_count = SENSOR_TO_OVERLAY.get(sensor_key, (0, 1))
-        self._overlay_config = {
-            'mode': 0,  # MODE_HARDWARE
-            'mode_sub': 0,
-            'main_count': main_count,
-            'sub_count': sub_count,
-            'color': color,
-            'x': 100,
-            'y': 100,
-            'font_name': 'Microsoft YaHei',
-            'font_size': 36,
-            'font_style': 0,
-            'text': '',
-        }
+        self._overlay_config = OverlayElementConfig(
+            mode=OverlayMode.HARDWARE,
+            main_count=main_count,
+            sub_count=sub_count,
+            color=color,
+        )
 
     def update_value(self, metrics):
-        """Update displayed value from metrics dict."""
-        value = metrics.get(self.metric_key)
+        """Update displayed value from HardwareMetrics DTO."""
+        value = getattr(metrics, self.metric_key, None)
         if value is not None:
             if isinstance(value, float):
                 if value >= 1000:
@@ -166,7 +160,7 @@ class UCActivitySidebar(QWidget):
     Click a sensor to add it to the overlay grid.
     """
 
-    sensor_clicked = Signal(dict)  # overlay element config
+    sensor_clicked = Signal(object)  # OverlayElementConfig
 
     def __init__(self, parent=None):
         super().__init__(parent)

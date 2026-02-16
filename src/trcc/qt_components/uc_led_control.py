@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..core.models import HardwareMetrics
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -297,7 +298,7 @@ class UCLedControl(QWidget):
 
         # HR10 state
         self._current_metric = "temp"
-        self._metrics: Dict[str, float] = {}
+        self._metrics: HardwareMetrics = HardwareMetrics()
         self._temp_unit = "\u00b0C"
 
         # LC2 clock state (style 9)
@@ -949,32 +950,25 @@ class UCLedControl(QWidget):
         if self._is_hr10:
             self._update_display_value()
 
-    def update_drive_metrics(self, metrics: Dict[str, float]) -> None:
-        """Update live drive metrics from system_info polling (HR10).
-
-        Expected keys: disk_temp, disk_activity, disk_read, disk_write.
-        """
+    def update_drive_metrics(self, metrics: HardwareMetrics) -> None:
+        """Update live drive metrics from system_info polling (HR10)."""
         self._metrics = metrics
 
-        if 'disk_temp' in metrics:
-            temp = metrics['disk_temp']
-            if self._temp_unit == "\u00b0F":
-                temp = temp * 9 / 5 + 32
-            self._metric_labels['disk_temp'].setText(
-                f"{temp:.0f} {self._temp_unit}"
-            )
-        if 'disk_activity' in metrics:
-            self._metric_labels['disk_activity'].setText(
-                f"{metrics['disk_activity']:.0f}%"
-            )
-        if 'disk_read' in metrics:
-            self._metric_labels['disk_read'].setText(
-                f"{metrics['disk_read']:.1f} MB/s"
-            )
-        if 'disk_write' in metrics:
-            self._metric_labels['disk_write'].setText(
-                f"{metrics['disk_write']:.1f} MB/s"
-            )
+        temp = metrics.disk_temp
+        if self._temp_unit == "\u00b0F":
+            temp = temp * 9 / 5 + 32
+        self._metric_labels['disk_temp'].setText(
+            f"{temp:.0f} {self._temp_unit}"
+        )
+        self._metric_labels['disk_activity'].setText(
+            f"{metrics.disk_activity:.0f}%"
+        )
+        self._metric_labels['disk_read'].setText(
+            f"{metrics.disk_read:.1f} MB/s"
+        )
+        self._metric_labels['disk_write'].setText(
+            f"{metrics.disk_write:.1f} MB/s"
+        )
 
         self._update_display_value()
 
@@ -1205,31 +1199,16 @@ class UCLedControl(QWidget):
 
         metric = self._current_metric
         if metric == "temp":
-            val = self._metrics.get('disk_temp')
-            if val is not None:
-                if self._temp_unit == "\u00b0F":
-                    val = val * 9 / 5 + 32
-                self._seg_display.set_value(f"{val:.0f}", self._temp_unit)
-            else:
-                self._seg_display.set_value("---", self._temp_unit)
+            val = self._metrics.disk_temp
+            if self._temp_unit == "\u00b0F":
+                val = val * 9 / 5 + 32
+            self._seg_display.set_value(f"{val:.0f}", self._temp_unit)
         elif metric == "activity":
-            val = self._metrics.get('disk_activity')
-            if val is not None:
-                self._seg_display.set_value(f"{val:.0f}", "%")
-            else:
-                self._seg_display.set_value("---", "%")
+            self._seg_display.set_value(f"{self._metrics.disk_activity:.0f}", "%")
         elif metric == "read":
-            val = self._metrics.get('disk_read')
-            if val is not None:
-                self._seg_display.set_value(f"{val:.0f}", "MB/s")
-            else:
-                self._seg_display.set_value("---", "MB/s")
+            self._seg_display.set_value(f"{self._metrics.disk_read:.0f}", "MB/s")
         elif metric == "write":
-            val = self._metrics.get('disk_write')
-            if val is not None:
-                self._seg_display.set_value(f"{val:.0f}", "MB/s")
-            else:
-                self._seg_display.set_value("---", "MB/s")
+            self._seg_display.set_value(f"{self._metrics.disk_write:.0f}", "MB/s")
 
     # -- HR10 circulate --
 
@@ -1424,58 +1403,42 @@ class UCLedControl(QWidget):
 
     # -- Sensor/memory/disk update methods --
 
-    def update_sensor_metrics(self, metrics: Dict[str, float]):
+    def update_sensor_metrics(self, metrics: HardwareMetrics) -> None:
         """Update UCInfoImage sensor gauges (for non-HR10 styles)."""
         unit = self._temp_unit
-        if 'cpu_temp' in metrics:
-            t = metrics['cpu_temp']
-            if unit == "\u00b0F":
-                t = t * 9 / 5 + 32
-            self._info_images['cpu_temp'].set_value(t, f"{t:.0f}", unit)
-        if 'cpu_freq' in metrics:
-            f = metrics['cpu_freq']
-            self._info_images['cpu_clock'].set_value(f, f"{f:.0f}", "MHz")
-        if 'cpu_percent' in metrics:
-            v = metrics['cpu_percent']
-            self._info_images['cpu_usage'].set_value(v, f"{v:.0f}", "%")
-        if 'gpu_temp' in metrics:
-            t = metrics['gpu_temp']
-            if unit == "\u00b0F":
-                t = t * 9 / 5 + 32
-            self._info_images['gpu_temp'].set_value(t, f"{t:.0f}", unit)
-        if 'gpu_clock' in metrics:
-            f = metrics['gpu_clock']
-            self._info_images['gpu_clock'].set_value(f, f"{f:.0f}", "MHz")
-        if 'gpu_usage' in metrics:
-            v = metrics['gpu_usage']
-            self._info_images['gpu_usage'].set_value(v, f"{v:.0f}", "%")
+        t = metrics.cpu_temp
+        if unit == "\u00b0F":
+            t = t * 9 / 5 + 32
+        self._info_images['cpu_temp'].set_value(t, f"{t:.0f}", unit)
+        self._info_images['cpu_clock'].set_value(
+            metrics.cpu_freq, f"{metrics.cpu_freq:.0f}", "MHz")
+        self._info_images['cpu_usage'].set_value(
+            metrics.cpu_percent, f"{metrics.cpu_percent:.0f}", "%")
+        t = metrics.gpu_temp
+        if unit == "\u00b0F":
+            t = t * 9 / 5 + 32
+        self._info_images['gpu_temp'].set_value(t, f"{t:.0f}", unit)
+        self._info_images['gpu_clock'].set_value(
+            metrics.gpu_clock, f"{metrics.gpu_clock:.0f}", "MHz")
+        self._info_images['gpu_usage'].set_value(
+            metrics.gpu_usage, f"{metrics.gpu_usage:.0f}", "%")
 
-    def update_memory_metrics(self, metrics: Dict[str, float]):
+    def update_memory_metrics(self, metrics: HardwareMetrics) -> None:
         """Update memory info labels (LC1 style 4)."""
-        if 'mem_temp' in metrics:
-            self._mem_labels['mem_temp'].setText(
-                f"{metrics['mem_temp']:.0f} \u00b0C")
-        if 'mem_clock' in metrics:
-            self._mem_labels['mem_clock'].setText(
-                f"{metrics['mem_clock']:.0f} MHz")
-        if 'mem_percent' in metrics:
-            self._mem_labels['mem_used'].setText(
-                f"{metrics['mem_percent']:.1f}%")
+        self._mem_labels['mem_temp'].setText(f"{metrics.mem_temp:.0f} \u00b0C")
+        self._mem_labels['mem_clock'].setText(f"{metrics.mem_clock:.0f} MHz")
+        self._mem_labels['mem_used'].setText(f"{metrics.mem_percent:.1f}%")
 
-    def update_lf11_disk_metrics(self, metrics: Dict[str, float]):
+    def update_lf11_disk_metrics(self, metrics: HardwareMetrics) -> None:
         """Update disk info labels (LF11 style 10)."""
-        if 'disk_temp' in metrics:
-            self._disk_labels['lf11_disk_temp'].setText(
-                f"{metrics['disk_temp']:.0f} \u00b0C")
-        if 'disk_activity' in metrics:
-            self._disk_labels['lf11_disk_usage'].setText(
-                f"{metrics['disk_activity']:.0f}%")
-        if 'disk_read' in metrics:
-            self._disk_labels['lf11_disk_read'].setText(
-                f"{metrics['disk_read']:.1f} MB/s")
-        if 'disk_write' in metrics:
-            self._disk_labels['lf11_disk_write'].setText(
-                f"{metrics['disk_write']:.1f} MB/s")
+        self._disk_labels['lf11_disk_temp'].setText(
+            f"{metrics.disk_temp:.0f} \u00b0C")
+        self._disk_labels['lf11_disk_usage'].setText(
+            f"{metrics.disk_activity:.0f}%")
+        self._disk_labels['lf11_disk_read'].setText(
+            f"{metrics.disk_read:.1f} MB/s")
+        self._disk_labels['lf11_disk_write'].setText(
+            f"{metrics.disk_write:.1f} MB/s")
 
     # ================================================================
     # Styles

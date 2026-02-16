@@ -44,6 +44,7 @@ class FakeDeviceInfo:
 
 from trcc.core.controllers import LEDController, LEDDeviceController  # noqa: E402
 from trcc.core.models import (  # noqa: E402
+    HardwareMetrics,
     LEDMode,
     LEDState,
     LEDZoneState,
@@ -285,7 +286,7 @@ class TestLEDServiceStateMutations:
         model.set_zone_brightness(99, 50)  # No exception
 
     def test_update_metrics(self, led_svc):
-        metrics = {"cpu_temp": 65, "gpu_load": 80}
+        metrics = HardwareMetrics(cpu_temp=65)
         led_svc.update_metrics(metrics)
         assert led_svc._metrics == metrics
 
@@ -437,14 +438,14 @@ class TestLEDServiceTickDispatch:
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value", return_value=(0, 255, 255))
     def test_tick_temp_linked(self, mock_cfv, led_svc):
         led_svc.set_mode(LEDMode.TEMP_LINKED)
-        led_svc.update_metrics({"cpu_temp": 25})
+        led_svc.update_metrics(HardwareMetrics(cpu_temp=25))
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value", return_value=(255, 255, 0))
     def test_tick_load_linked(self, mock_cfv, led_svc):
         led_svc.set_mode(LEDMode.LOAD_LINKED)
-        led_svc.update_metrics({"cpu_load": 60})
+        led_svc.update_metrics(HardwareMetrics(cpu_percent=60))
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
@@ -627,7 +628,7 @@ class TestTickTempLinked:
     def test_uses_cpu_temp_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc.state.temp_source = "cpu"
-        led_svc._metrics = {"cpu_temp": 45}
+        led_svc._metrics = HardwareMetrics(cpu_temp=45)
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         mock_cfv.assert_called_once()
         # First positional arg is the temp value
@@ -637,21 +638,21 @@ class TestTickTempLinked:
     def test_uses_gpu_temp(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 0, 0)
         led_svc.state.temp_source = "gpu"
-        led_svc._metrics = {"gpu_temp": 92}
+        led_svc._metrics = HardwareMetrics(gpu_temp=92)
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
-        led_svc._metrics = {}
+        led_svc._metrics = HardwareMetrics()
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_uniform_color(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
-        led_svc._metrics = {"cpu_temp": 40}
+        led_svc._metrics = HardwareMetrics(cpu_temp=40)
         colors = led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert all(c == (0, 255, 0) for c in colors)
         assert len(colors) == led_svc.state.segment_count
@@ -668,7 +669,7 @@ class TestTickLoadLinked:
     def test_uses_cpu_load_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 255, 0)
         led_svc.state.load_source = "cpu"
-        led_svc._metrics = {"cpu_percent": 60}
+        led_svc._metrics = HardwareMetrics(cpu_percent=60)
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
@@ -676,14 +677,14 @@ class TestTickLoadLinked:
     def test_uses_gpu_load(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 110, 0)
         led_svc.state.load_source = "gpu"
-        led_svc._metrics = {"gpu_usage": 85}
+        led_svc._metrics = HardwareMetrics(gpu_usage=85)
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
-        led_svc._metrics = {}
+        led_svc._metrics = HardwareMetrics()
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
@@ -726,7 +727,7 @@ class TestLEDControllerDelegation:
         assert led_controller.state.zones[1].color == (5, 10, 15)
 
     def test_update_metrics_delegates(self, led_controller):
-        metrics = {"cpu_temp": 55}
+        metrics = HardwareMetrics(cpu_temp=55)
         led_controller.update_metrics(metrics)
         assert led_controller.svc._metrics == metrics
 
@@ -748,14 +749,14 @@ class TestLEDControllerProtocol:
     def test_set_protocol(self, led_controller):
         proto = MagicMock()
         led_controller.set_protocol(proto)
-        assert led_controller._protocol is proto
+        assert led_controller.svc.has_protocol
 
     def test_set_protocol_none(self, led_controller):
         led_controller.set_protocol(None)
-        assert led_controller._protocol is None
+        assert not led_controller.svc.has_protocol
 
     def test_initial_protocol_is_none(self, led_controller):
-        assert led_controller._protocol is None
+        assert not led_controller.svc.has_protocol
 
 
 # =========================================================================
@@ -1176,7 +1177,7 @@ class TestLEDDeviceControllerCleanup:
         form_controller.led.set_protocol(MagicMock())
         form_controller._device_key = None  # Prevent save_config from running
         form_controller.cleanup()
-        assert form_controller.led._protocol is None
+        assert not form_controller.led.svc.has_protocol
 
     @patch("trcc.conf.Settings.save_device_setting")
     def test_cleanup_saves_then_clears(self, mock_save, form_controller):
@@ -1186,7 +1187,7 @@ class TestLEDDeviceControllerCleanup:
         form_controller._device_key = "0:0416_8001"
         form_controller.cleanup()
         mock_save.assert_called_once()
-        assert form_controller.led._protocol is None
+        assert not form_controller.led.svc.has_protocol
 
 
 # =========================================================================

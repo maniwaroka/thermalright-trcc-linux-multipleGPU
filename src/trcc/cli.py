@@ -13,12 +13,32 @@ Organized into six command classes:
   SystemCommands  — setup, install, admin, info, download
 """
 
+import functools
 import os
 import subprocess
 import sys
 from typing import Annotated, Optional
 
 import typer
+
+# =========================================================================
+# CLI error handler decorator
+# =========================================================================
+
+def _cli_handler(func):
+    """Decorator: catches Exception, prints error, returns 1."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except KeyboardInterrupt:
+            print("\nInterrupted.")
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+    return wrapper
+
 
 # =========================================================================
 # Typer app
@@ -721,71 +741,65 @@ class DeviceCommands:
         return line
 
     @staticmethod
+    @_cli_handler
     def detect(show_all=False):
         """Detect LCD device."""
-        try:
-            from trcc.adapters.device.detector import check_udev_rules, detect_devices
-            from trcc.conf import Settings
+        from trcc.adapters.device.detector import check_udev_rules, detect_devices
+        from trcc.conf import Settings
 
-            devices = detect_devices()
-            if not devices:
-                print("No compatible TRCC LCD device detected.")
-                return 1
-
-            if show_all:
-                selected = Settings.get_selected_device()
-                for i, dev in enumerate(devices, 1):
-                    marker = "*" if dev.scsi_device == selected else " "
-                    print(f"{marker} [{i}] {DeviceCommands._format(dev, probe=True)}")
-                if len(devices) > 1:
-                    print("\nUse 'trcc select N' to switch devices")
-            else:
-                selected = Settings.get_selected_device()
-                dev = None
-                if selected:
-                    dev = next((d for d in devices if d.scsi_device == selected), None)
-                if not dev:
-                    dev = devices[0]
-                print(f"Active: {DeviceCommands._format(dev, probe=True)}")
-
-            # Check for stale/missing udev rules on any device
-            for dev in devices:
-                if not check_udev_rules(dev):
-                    msg = f"\nDevice {dev.vid:04x}:{dev.pid:04x} needs updated udev rules.\n"
-                    msg += "Run:  sudo trcc setup-udev"
-                    if dev.protocol == "scsi":
-                        msg += "\nThen reboot for the USB storage quirk to take effect."
-                    print(msg)
-                    break
-
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        devices = detect_devices()
+        if not devices:
+            print("No compatible TRCC LCD device detected.")
             return 1
+
+        if show_all:
+            selected = Settings.get_selected_device()
+            for i, dev in enumerate(devices, 1):
+                marker = "*" if dev.scsi_device == selected else " "
+                print(f"{marker} [{i}] {DeviceCommands._format(dev, probe=True)}")
+            if len(devices) > 1:
+                print("\nUse 'trcc select N' to switch devices")
+        else:
+            selected = Settings.get_selected_device()
+            dev = None
+            if selected:
+                dev = next((d for d in devices if d.scsi_device == selected), None)
+            if not dev:
+                dev = devices[0]
+            print(f"Active: {DeviceCommands._format(dev, probe=True)}")
+
+        # Check for stale/missing udev rules on any device
+        for dev in devices:
+            if not check_udev_rules(dev):
+                msg = f"\nDevice {dev.vid:04x}:{dev.pid:04x} needs updated udev rules.\n"
+                msg += "Run:  sudo trcc setup-udev"
+                if dev.protocol == "scsi":
+                    msg += "\nThen reboot for the USB storage quirk to take effect."
+                print(msg)
+                break
+
+        return 0
 
     @staticmethod
+    @_cli_handler
     def select(number):
         """Select a device by number."""
-        try:
-            from trcc.adapters.device.detector import detect_devices
-            from trcc.conf import Settings
+        from trcc.adapters.device.detector import detect_devices
+        from trcc.conf import Settings
 
-            devices = detect_devices()
-            if not devices:
-                print("No devices found.")
-                return 1
-
-            if number < 1 or number > len(devices):
-                print(f"Invalid device number. Use 1-{len(devices)}")
-                return 1
-
-            device = devices[number - 1]
-            Settings.save_selected_device(device.scsi_device)
-            print(f"Selected: {device.scsi_device} ({device.product_name})")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        devices = detect_devices()
+        if not devices:
+            print("No devices found.")
             return 1
+
+        if number < 1 or number > len(devices):
+            print(f"Invalid device number. Use 1-{len(devices)}")
+            return 1
+
+        device = devices[number - 1]
+        Settings.save_selected_device(device.scsi_device)
+        print(f"Selected: {device.scsi_device} ({device.product_name})")
+        return 0
 
 
 # =========================================================================
@@ -964,67 +978,61 @@ class DisplayCommands:
             return 1
 
     @staticmethod
+    @_cli_handler
     def set_brightness(level, *, device=None):
         """Set display brightness level (1=25%, 2=50%, 3=100%).
 
         Persists to device config so 'trcc resume' uses it.
         """
-        try:
-            level_map = {1: 25, 2: 50, 3: 100}
-            if level not in level_map:
-                print("Error: brightness level must be 1, 2, or 3")
-                print("  1 = 25%  (dim)")
-                print("  2 = 50%  (medium)")
-                print("  3 = 100% (full)")
-                return 1
-
-            percent = level_map[level]
-
-            svc = DeviceCommands._get_service(device)
-            if not svc.selected:
-                print("No device found.")
-                return 1
-
-            dev = svc.selected
-
-            # Persist to device config
-            from trcc.conf import Settings
-            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-            Settings.save_device_setting(key, 'brightness_level', level)
-
-            print(f"Brightness set to L{level} ({percent}%) on {dev.path}")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        level_map = {1: 25, 2: 50, 3: 100}
+        if level not in level_map:
+            print("Error: brightness level must be 1, 2, or 3")
+            print("  1 = 25%  (dim)")
+            print("  2 = 50%  (medium)")
+            print("  3 = 100% (full)")
             return 1
 
+        percent = level_map[level]
+
+        svc = DeviceCommands._get_service(device)
+        if not svc.selected:
+            print("No device found.")
+            return 1
+
+        dev = svc.selected
+
+        # Persist to device config
+        from trcc.conf import Settings
+        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+        Settings.save_device_setting(key, 'brightness_level', level)
+
+        print(f"Brightness set to L{level} ({percent}%) on {dev.path}")
+        return 0
+
     @staticmethod
+    @_cli_handler
     def set_rotation(degrees, *, device=None):
         """Set display rotation (0, 90, 180, 270).
 
         Persists to device config so 'trcc resume' uses it.
         """
-        try:
-            if degrees not in (0, 90, 180, 270):
-                print("Error: rotation must be 0, 90, 180, or 270")
-                return 1
-
-            svc = DeviceCommands._get_service(device)
-            if not svc.selected:
-                print("No device found.")
-                return 1
-
-            dev = svc.selected
-
-            from trcc.conf import Settings
-            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-            Settings.save_device_setting(key, 'rotation', degrees)
-
-            print(f"Rotation set to {degrees}° on {dev.path}")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        if degrees not in (0, 90, 180, 270):
+            print("Error: rotation must be 0, 90, 180, or 270")
             return 1
+
+        svc = DeviceCommands._get_service(device)
+        if not svc.selected:
+            print("No device found.")
+            return 1
+
+        dev = svc.selected
+
+        from trcc.conf import Settings
+        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+        Settings.save_device_setting(key, 'rotation', degrees)
+
+        print(f"Rotation set to {degrees}° on {dev.path}")
+        return 0
 
     @staticmethod
     def screencast(*, device=None, x=0, y=0, w=0, h=0, fps=10):
@@ -1080,113 +1088,107 @@ class DisplayCommands:
             return 1
 
     @staticmethod
+    @_cli_handler
     def load_mask(mask_path, *, device=None):
         """Load mask overlay from file/directory and send composited image."""
-        try:
-            from pathlib import Path
+        from pathlib import Path
 
-            from PIL import Image
+        from PIL import Image
 
-            from trcc.services import ImageService, OverlayService
+        from trcc.services import ImageService, OverlayService
 
-            if not os.path.exists(mask_path):
-                print(f"Error: Path not found: {mask_path}")
-                return 1
-
-            svc = DeviceCommands._get_service(device)
-            if not svc.selected:
-                print("No device found.")
-                return 1
-
-            dev = svc.selected
-            w, h = dev.resolution
-
-            # Find mask image
-            p = Path(mask_path)
-            if p.is_dir():
-                mask_file = p / "01.png"
-                if not mask_file.exists():
-                    mask_file = next(p.glob("*.png"), None)
-                if not mask_file:
-                    print(f"Error: No PNG files in {mask_path}")
-                    return 1
-            else:
-                mask_file = p
-
-            overlay = OverlayService(w, h)
-            mask_img = Image.open(mask_file).convert('RGBA')
-            overlay.set_mask(mask_img)
-
-            # Black background + mask
-            bg = ImageService.solid_color(0, 0, 0, w, h)
-            overlay.set_background(bg)
-            overlay.enabled = True
-            result = overlay.render()
-
-            svc.send_pil(result, w, h)
-            print(f"Sent mask {mask_file.name} to {dev.path}")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        if not os.path.exists(mask_path):
+            print(f"Error: Path not found: {mask_path}")
             return 1
+
+        svc = DeviceCommands._get_service(device)
+        if not svc.selected:
+            print("No device found.")
+            return 1
+
+        dev = svc.selected
+        w, h = dev.resolution
+
+        # Find mask image
+        p = Path(mask_path)
+        if p.is_dir():
+            mask_file = p / "01.png"
+            if not mask_file.exists():
+                mask_file = next(p.glob("*.png"), None)
+            if not mask_file:
+                print(f"Error: No PNG files in {mask_path}")
+                return 1
+        else:
+            mask_file = p
+
+        overlay = OverlayService(w, h)
+        mask_img = Image.open(mask_file).convert('RGBA')
+        overlay.set_mask(mask_img)
+
+        # Black background + mask
+        bg = ImageService.solid_color(0, 0, 0, w, h)
+        overlay.set_background(bg)
+        overlay.enabled = True
+        result = overlay.render()
+
+        svc.send_pil(result, w, h)
+        print(f"Sent mask {mask_file.name} to {dev.path}")
+        return 0
 
     @staticmethod
+    @_cli_handler
     def render_overlay(dc_path, *, device=None, send=False, output=None):
         """Render overlay from DC config file."""
-        try:
-            from pathlib import Path
+        from pathlib import Path
 
-            from trcc.adapters.system.info import get_all_metrics
-            from trcc.services import ImageService, OverlayService
+        from trcc.adapters.system.info import get_all_metrics
+        from trcc.services import ImageService, OverlayService
 
-            if not os.path.exists(dc_path):
-                print(f"Error: Path not found: {dc_path}")
-                return 1
-
-            # Resolve device for resolution
-            w, h = 320, 320
-            svc = None
-            if device or send:
-                svc = DeviceCommands._get_service(device)
-                if svc and svc.selected:
-                    w, h = svc.selected.resolution
-
-            overlay = OverlayService(w, h)
-
-            # Load DC config
-            p = Path(dc_path)
-            dc_file = p / "config1.dc" if p.is_dir() else p
-            display_opts = overlay.load_from_dc(dc_file)
-
-            # Collect system metrics
-            metrics = get_all_metrics()
-            overlay.update_metrics(metrics)
-            overlay.enabled = True
-
-            # Black background
-            bg = ImageService.solid_color(0, 0, 0, w, h)
-            overlay.set_background(bg)
-            result = overlay.render()
-
-            if output:
-                result.save(output)
-                print(f"Saved overlay render to {output}")
-
-            if send and svc and svc.selected:
-                svc.send_pil(result, w, h)
-                print(f"Sent overlay to {svc.selected.path}")
-
-            if not output and not send:
-                elements = len(overlay.config) if overlay.config else 0
-                print(f"Overlay config loaded: {elements} elements ({w}x{h})")
-                if display_opts:
-                    for k, v in display_opts.items():
-                        print(f"  {k}: {v}")
-
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        if not os.path.exists(dc_path):
+            print(f"Error: Path not found: {dc_path}")
             return 1
+
+        # Resolve device for resolution
+        w, h = 320, 320
+        svc = None
+        if device or send:
+            svc = DeviceCommands._get_service(device)
+            if svc and svc.selected:
+                w, h = svc.selected.resolution
+
+        overlay = OverlayService(w, h)
+
+        # Load DC config
+        p = Path(dc_path)
+        dc_file = p / "config1.dc" if p.is_dir() else p
+        display_opts = overlay.load_from_dc(dc_file)
+
+        # Collect system metrics
+        metrics = get_all_metrics()
+        overlay.update_metrics(metrics)
+        overlay.enabled = True
+
+        # Black background
+        bg = ImageService.solid_color(0, 0, 0, w, h)
+        overlay.set_background(bg)
+        result = overlay.render()
+
+        if output:
+            result.save(output)
+            print(f"Saved overlay render to {output}")
+
+        if send and svc and svc.selected:
+            svc.send_pil(result, w, h)
+            print(f"Sent overlay to {svc.selected.path}")
+
+        if not output and not send:
+            elements = len(overlay.config) if overlay.config else 0
+            print(f"Overlay config loaded: {elements} elements ({w}x{h})")
+            if display_opts:
+                for k, v in display_opts.items():
+                    print(f"  {k}: {v}")
+
+        return 0
 
     @staticmethod
     def reset(device=None):
@@ -1213,101 +1215,97 @@ class DisplayCommands:
             return 1
 
     @staticmethod
+    @_cli_handler
     def resume():
         """Send last-used theme to each detected device (headless, no GUI)."""
-        try:
-            import time
+        import time
 
-            from trcc.conf import Settings
-            from trcc.services import DeviceService, ImageService
+        from trcc.conf import Settings
+        from trcc.services import DeviceService, ImageService
 
-            svc = DeviceService()
+        svc = DeviceService()
 
-            # Wait for USB devices to appear (they may not be ready at boot)
-            devices: list = []
-            for attempt in range(10):
-                devices = svc.detect()
-                if devices:
-                    break
-                print(f"Waiting for device... ({attempt + 1}/10)")
-                time.sleep(2)
+        # Wait for USB devices to appear (they may not be ready at boot)
+        devices: list = []
+        for attempt in range(10):
+            devices = svc.detect()
+            if devices:
+                break
+            print(f"Waiting for device... ({attempt + 1}/10)")
+            time.sleep(2)
 
-            if not devices:
-                print("No compatible TRCC device detected.")
-                return 1
-
-            sent = 0
-            for dev in devices:
-                if dev.protocol != "scsi":
-                    continue
-
-                # Discover resolution via handshake
-                if dev.resolution == (0, 0):
-                    try:
-                        from trcc.adapters.device.factory import DeviceProtocolFactory
-                        proto = DeviceProtocolFactory.get_protocol(dev)
-                        result = proto.handshake()
-                        res = getattr(result, 'resolution', None) if result else None
-                        if isinstance(res, tuple) and len(res) == 2 and res != (0, 0):
-                            dev.resolution = res
-                    except Exception:
-                        continue
-
-                key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-                cfg = Settings.get_device_config(key)
-                theme_path = cfg.get("theme_path")
-
-                if not theme_path:
-                    print(f"  [{dev.product}] No saved theme, skipping")
-                    continue
-
-                # Find the image to send (00.png in theme dir, or direct file)
-                image_path = None
-                if os.path.isdir(theme_path):
-                    candidate = os.path.join(theme_path, "00.png")
-                    if os.path.exists(candidate):
-                        image_path = candidate
-                elif os.path.isfile(theme_path):
-                    image_path = theme_path
-
-                if not image_path:
-                    print(f"  [{dev.product}] Theme not found: {theme_path}")
-                    continue
-
-                try:
-                    from PIL import Image
-
-                    img = Image.open(image_path).convert("RGB")
-                    w, h = dev.resolution
-                    img = ImageService.resize(img, w, h)
-
-                    # Apply brightness
-                    brightness_level = cfg.get("brightness_level", 3)
-                    brightness_pct = {1: 25, 2: 50, 3: 100}.get(brightness_level, 100)
-                    img = ImageService.apply_brightness(img, brightness_pct)
-
-                    # Apply rotation
-                    rotation = cfg.get("rotation", 0)
-                    img = ImageService.apply_rotation(img, rotation)
-
-                    # Send via service (auto byte-order)
-                    svc.select(dev)
-                    svc.send_pil(img, w, h)
-                    print(f"  [{dev.product}] Sent: {os.path.basename(theme_path)}")
-                    sent += 1
-                except Exception as e:
-                    print(f"  [{dev.product}] Error: {e}")
-
-            if sent == 0:
-                print("No themes were sent. Use the GUI to set a theme first.")
-                return 1
-
-            print(f"Resumed {sent} device(s).")
-            return 0
-
-        except Exception as e:
-            print(f"Error: {e}")
+        if not devices:
+            print("No compatible TRCC device detected.")
             return 1
+
+        sent = 0
+        for dev in devices:
+            if dev.protocol != "scsi":
+                continue
+
+            # Discover resolution via handshake
+            if dev.resolution == (0, 0):
+                try:
+                    from trcc.adapters.device.factory import DeviceProtocolFactory
+                    proto = DeviceProtocolFactory.get_protocol(dev)
+                    result = proto.handshake()
+                    res = getattr(result, 'resolution', None) if result else None
+                    if isinstance(res, tuple) and len(res) == 2 and res != (0, 0):
+                        dev.resolution = res
+                except Exception:
+                    continue
+
+            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+            cfg = Settings.get_device_config(key)
+            theme_path = cfg.get("theme_path")
+
+            if not theme_path:
+                print(f"  [{dev.product}] No saved theme, skipping")
+                continue
+
+            # Find the image to send (00.png in theme dir, or direct file)
+            image_path = None
+            if os.path.isdir(theme_path):
+                candidate = os.path.join(theme_path, "00.png")
+                if os.path.exists(candidate):
+                    image_path = candidate
+            elif os.path.isfile(theme_path):
+                image_path = theme_path
+
+            if not image_path:
+                print(f"  [{dev.product}] Theme not found: {theme_path}")
+                continue
+
+            try:
+                from PIL import Image
+
+                img = Image.open(image_path).convert("RGB")
+                w, h = dev.resolution
+                img = ImageService.resize(img, w, h)
+
+                # Apply brightness
+                brightness_level = cfg.get("brightness_level", 3)
+                brightness_pct = {1: 25, 2: 50, 3: 100}.get(brightness_level, 100)
+                img = ImageService.apply_brightness(img, brightness_pct)
+
+                # Apply rotation
+                rotation = cfg.get("rotation", 0)
+                img = ImageService.apply_rotation(img, rotation)
+
+                # Send via service (auto byte-order)
+                svc.select(dev)
+                svc.send_pil(img, w, h)
+                print(f"  [{dev.product}] Sent: {os.path.basename(theme_path)}")
+                sent += 1
+            except Exception as e:
+                print(f"  [{dev.product}] Error: {e}")
+
+        if sent == 0:
+            print("No themes were sent. Use the GUI to set a theme first.")
+            return 1
+
+        print(f"Resumed {sent} device(s).")
+        return 0
 
 
 # =========================================================================
@@ -1318,236 +1316,220 @@ class ThemeCommands:
     """Theme discovery and loading commands."""
 
     @staticmethod
+    @_cli_handler
     def list_themes(cloud=False, category=None):
         """List available themes for the current device resolution."""
-        try:
-            from trcc.adapters.infra.data_repository import DataManager
-            from trcc.conf import settings
-            from trcc.services import ThemeService
+        from trcc.adapters.infra.data_repository import DataManager
+        from trcc.conf import settings
+        from trcc.services import ThemeService
 
-            w, h = settings.width, settings.height
-            if not w or not h:
-                w, h = 320, 320
+        w, h = settings.width, settings.height
+        if not w or not h:
+            w, h = 320, 320
 
-            DataManager.ensure_all(w, h)
-            settings._resolve_paths()
+        DataManager.ensure_all(w, h)
+        settings._resolve_paths()
 
-            if cloud:
-                web_dir = settings.web_dir
-                if not web_dir or not web_dir.exists():
-                    print(f"No cloud themes for {w}x{h}.")
-                    return 0
-                themes = ThemeService.discover_cloud(web_dir, category)
-                print(f"Cloud themes ({w}x{h}): {len(themes)}")
-                for t in themes:
-                    cat = f" [{t.category}]" if t.category else ""
-                    print(f"  {t.name}{cat}")
-            else:
-                td = settings.theme_dir
-                if not td or not td.exists():
-                    print(f"No local themes for {w}x{h}.")
-                    return 0
-                themes = ThemeService.discover_local(td.path, (w, h))
-                print(f"Local themes ({w}x{h}): {len(themes)}")
-                for t in themes:
-                    kind = "video" if t.is_animated else "static"
-                    user = " [user]" if t.name.startswith(('Custom_', 'User')) else ""
-                    print(f"  {t.name} ({kind}){user}")
+        if cloud:
+            web_dir = settings.web_dir
+            if not web_dir or not web_dir.exists():
+                print(f"No cloud themes for {w}x{h}.")
+                return 0
+            themes = ThemeService.discover_cloud(web_dir, category)
+            print(f"Cloud themes ({w}x{h}): {len(themes)}")
+            for t in themes:
+                cat = f" [{t.category}]" if t.category else ""
+                print(f"  {t.name}{cat}")
+        else:
+            td = settings.theme_dir
+            if not td or not td.exists():
+                print(f"No local themes for {w}x{h}.")
+                return 0
+            themes = ThemeService.discover_local(td.path, (w, h))
+            print(f"Local themes ({w}x{h}): {len(themes)}")
+            for t in themes:
+                kind = "video" if t.is_animated else "static"
+                user = " [user]" if t.name.startswith(('Custom_', 'User')) else ""
+                print(f"  {t.name} ({kind}){user}")
 
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
-            return 1
+        return 0
 
     @staticmethod
+    @_cli_handler
     def load_theme(name, *, device=None):
         """Load a theme by name and send to LCD."""
-        try:
-            from PIL import Image
+        from PIL import Image
 
-            from trcc.adapters.infra.data_repository import DataManager
-            from trcc.conf import Settings, settings
-            from trcc.services import ImageService, ThemeService
+        from trcc.adapters.infra.data_repository import DataManager
+        from trcc.conf import Settings, settings
+        from trcc.services import ImageService, ThemeService
 
-            svc = DeviceCommands._get_service(device)
-            if not svc.selected:
-                print("No device found.")
-                return 1
-
-            dev = svc.selected
-            w, h = dev.resolution
-
-            DataManager.ensure_all(w, h)
-            settings._resolve_paths()
-
-            td = settings.theme_dir
-            if not td or not td.exists():
-                print(f"No themes for {w}x{h}.")
-                return 1
-
-            themes = ThemeService.discover_local(td.path, (w, h))
-            match = next((t for t in themes if t.name == name), None)
-            if not match:
-                # Try partial match
-                match = next((t for t in themes if name.lower() in t.name.lower()), None)
-            if not match:
-                print(f"Theme not found: {name}")
-                print("Use 'trcc theme-list' to see available themes.")
-                return 1
-
-            # Load the theme image
-            if match.is_animated and match.animation_path:
-                print(f"Theme '{match.name}' is animated — use 'trcc video {match.animation_path}'")
-                return 0
-
-            if match.background_path and match.background_path.exists():
-                img = Image.open(match.background_path).convert('RGB')
-                img = ImageService.resize(img, w, h)
-
-                # Apply saved adjustments
-                from trcc.conf import Settings
-                key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-                cfg = Settings.get_device_config(key)
-                brightness = {1: 25, 2: 50, 3: 100}.get(
-                    cfg.get('brightness_level', 3), 100)
-                rotation = cfg.get('rotation', 0)
-                img = ImageService.apply_brightness(img, brightness)
-                img = ImageService.apply_rotation(img, rotation)
-
-                svc.send_pil(img, w, h)
-
-                # Save as last-used theme
-                Settings.save_device_setting(key, 'theme_path', str(match.path))
-                print(f"Loaded '{match.name}' → {dev.path}")
-            else:
-                print(f"Theme '{match.name}' has no background image.")
-                return 1
-
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        svc = DeviceCommands._get_service(device)
+        if not svc.selected:
+            print("No device found.")
             return 1
 
-    @staticmethod
-    def save_theme(name, *, device=None, video=None):
-        """Save current display state as a custom theme."""
-        try:
-            from pathlib import Path
+        dev = svc.selected
+        w, h = dev.resolution
 
-            from PIL import Image
+        DataManager.ensure_all(w, h)
+        settings._resolve_paths()
 
-            from trcc.adapters.infra.data_repository import USER_DATA_DIR
-            from trcc.services import ThemeService
+        td = settings.theme_dir
+        if not td or not td.exists():
+            print(f"No themes for {w}x{h}.")
+            return 1
 
-            svc = DeviceCommands._get_service(device)
-            if not svc.selected:
-                print("No device found.")
-                return 1
+        themes = ThemeService.discover_local(td.path, (w, h))
+        match = next((t for t in themes if t.name == name), None)
+        if not match:
+            # Try partial match
+            match = next((t for t in themes if name.lower() in t.name.lower()), None)
+        if not match:
+            print(f"Theme not found: {name}")
+            print("Use 'trcc theme-list' to see available themes.")
+            return 1
 
-            dev = svc.selected
-            w, h = dev.resolution
+        # Load the theme image
+        if match.is_animated and match.animation_path:
+            print(f"Theme '{match.name}' is animated — use 'trcc video {match.animation_path}'")
+            return 0
 
-            # Load current background from last-used theme
-            from trcc.conf import Settings
+        if match.background_path and match.background_path.exists():
+            img = Image.open(match.background_path).convert('RGB')
+            img = ImageService.resize(img, w, h)
+
+            # Apply saved adjustments
             key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
             cfg = Settings.get_device_config(key)
-            theme_path = cfg.get('theme_path')
+            brightness = {1: 25, 2: 50, 3: 100}.get(
+                cfg.get('brightness_level', 3), 100)
+            rotation = cfg.get('rotation', 0)
+            img = ImageService.apply_brightness(img, brightness)
+            img = ImageService.apply_rotation(img, rotation)
 
-            bg = None
-            if theme_path:
-                from trcc.adapters.infra.data_repository import ThemeDir as TDir
-                td = TDir(theme_path)
-                if td.bg.exists():
-                    bg = Image.open(td.bg).convert('RGB')
-                    bg = bg.resize((w, h), Image.Resampling.LANCZOS)
+            svc.send_pil(img, w, h)
 
-            if not bg:
-                print("No current theme to save. Load a theme first.")
-                return 1
-
-            video_path = Path(video) if video else None
-            data_dir = Path(USER_DATA_DIR)
-            ok, msg = ThemeService.save(
-                name, data_dir, (w, h),
-                background=bg, overlay_config={},
-                video_path=video_path,
-                current_theme_path=Path(theme_path) if theme_path else None,
-            )
-            print(msg)
-            return 0 if ok else 1
-        except Exception as e:
-            print(f"Error: {e}")
+            # Save as last-used theme
+            Settings.save_device_setting(key, 'theme_path', str(match.path))
+            print(f"Loaded '{match.name}' → {dev.path}")
+        else:
+            print(f"Theme '{match.name}' has no background image.")
             return 1
 
+        return 0
+
     @staticmethod
+    @_cli_handler
+    def save_theme(name, *, device=None, video=None):
+        """Save current display state as a custom theme."""
+        from pathlib import Path
+
+        from PIL import Image
+
+        from trcc.adapters.infra.data_repository import USER_DATA_DIR
+        from trcc.services import ThemeService
+
+        svc = DeviceCommands._get_service(device)
+        if not svc.selected:
+            print("No device found.")
+            return 1
+
+        dev = svc.selected
+        w, h = dev.resolution
+
+        # Load current background from last-used theme
+        from trcc.conf import Settings
+        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+        cfg = Settings.get_device_config(key)
+        theme_path = cfg.get('theme_path')
+
+        bg = None
+        if theme_path:
+            from trcc.adapters.infra.data_repository import ThemeDir as TDir
+            td = TDir(theme_path)
+            if td.bg.exists():
+                bg = Image.open(td.bg).convert('RGB')
+                bg = bg.resize((w, h), Image.Resampling.LANCZOS)
+
+        if not bg:
+            print("No current theme to save. Load a theme first.")
+            return 1
+
+        video_path = Path(video) if video else None
+        data_dir = Path(USER_DATA_DIR)
+        ok, msg = ThemeService.save(
+            name, data_dir, (w, h),
+            background=bg, overlay_config={},
+            video_path=video_path,
+            current_theme_path=Path(theme_path) if theme_path else None,
+        )
+        print(msg)
+        return 0 if ok else 1
+
+    @staticmethod
+    @_cli_handler
     def export_theme(theme_name, output_path):
         """Export a theme as .tr file."""
-        try:
-            from pathlib import Path
+        from pathlib import Path
 
-            from trcc.adapters.infra.data_repository import DataManager
-            from trcc.conf import settings
-            from trcc.services import ThemeService
+        from trcc.adapters.infra.data_repository import DataManager
+        from trcc.conf import settings
+        from trcc.services import ThemeService
 
-            w, h = settings.width, settings.height
-            if not w or not h:
-                w, h = 320, 320
+        w, h = settings.width, settings.height
+        if not w or not h:
+            w, h = 320, 320
 
-            DataManager.ensure_all(w, h)
-            settings._resolve_paths()
+        DataManager.ensure_all(w, h)
+        settings._resolve_paths()
 
-            td = settings.theme_dir
-            if not td or not td.exists():
-                print(f"No themes for {w}x{h}.")
-                return 1
-
-            # Find theme by name
-            themes = ThemeService.discover_local(td.path, (w, h))
-            match = next((t for t in themes if t.name == theme_name), None)
-            if not match:
-                match = next(
-                    (t for t in themes if theme_name.lower() in t.name.lower()),
-                    None,
-                )
-            if not match or not match.path:
-                print(f"Theme not found: {theme_name}")
-                return 1
-
-            ok, msg = ThemeService.export_tr(match.path, Path(output_path))
-            print(msg)
-            return 0 if ok else 1
-        except Exception as e:
-            print(f"Error: {e}")
+        td = settings.theme_dir
+        if not td or not td.exists():
+            print(f"No themes for {w}x{h}.")
             return 1
+
+        # Find theme by name
+        themes = ThemeService.discover_local(td.path, (w, h))
+        match = next((t for t in themes if t.name == theme_name), None)
+        if not match:
+            match = next(
+                (t for t in themes if theme_name.lower() in t.name.lower()),
+                None,
+            )
+        if not match or not match.path:
+            print(f"Theme not found: {theme_name}")
+            return 1
+
+        ok, msg = ThemeService.export_tr(match.path, Path(output_path))
+        print(msg)
+        return 0 if ok else 1
 
     @staticmethod
+    @_cli_handler
     def import_theme(file_path, *, device=None):
         """Import a theme from .tr file."""
-        try:
-            from pathlib import Path
+        from pathlib import Path
 
-            from trcc.adapters.infra.data_repository import USER_DATA_DIR
-            from trcc.services import ThemeService
+        from trcc.adapters.infra.data_repository import USER_DATA_DIR
+        from trcc.services import ThemeService
 
-            svc = DeviceCommands._get_service(device)
-            if not svc.selected:
-                print("No device found.")
-                return 1
-
-            dev = svc.selected
-            w, h = dev.resolution
-            data_dir = Path(USER_DATA_DIR)
-
-            ok, result = ThemeService.import_tr(
-                Path(file_path), data_dir, (w, h))
-            if ok and not isinstance(result, str):
-                print(f"Imported: {result.name}")
-            else:
-                print(result)
-            return 0 if ok else 1
-        except Exception as e:
-            print(f"Error: {e}")
+        svc = DeviceCommands._get_service(device)
+        if not svc.selected:
+            print("No device found.")
             return 1
+
+        dev = svc.selected
+        w, h = dev.resolution
+        data_dir = Path(USER_DATA_DIR)
+
+        ok, result = ThemeService.import_tr(
+            Path(file_path), data_dir, (w, h))
+        if ok and not isinstance(result, str):
+            print(f"Imported: {result.name}")
+        else:
+            print(result)
+        return 0 if ok else 1
 
 
 # =========================================================================
@@ -1582,37 +1564,34 @@ class LEDCommands:
         return led_svc, status
 
     @staticmethod
+    @_cli_handler
     def set_color(hex_color):
         """Set LED static color."""
-        try:
-            hex_color = hex_color.lstrip('#')
-            if len(hex_color) != 6:
-                print("Error: Invalid hex color. Use format: ff0000")
-                return 1
-
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-
-            from trcc.core.models import LEDMode
-
-            led_svc, status = LEDCommands._get_led_service()
-            if not led_svc:
-                print("No LED device found.")
-                return 1
-
-            print(status)
-            led_svc.set_mode(LEDMode.STATIC)
-            led_svc.set_color(r, g, b)
-            led_svc.toggle_global(True)
-            led_svc.send_tick()
-            led_svc.save_config()
-
-            print(f"LED color set to #{hex_color}")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) != 6:
+            print("Error: Invalid hex color. Use format: ff0000")
             return 1
+
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+
+        from trcc.core.models import LEDMode
+
+        led_svc, status = LEDCommands._get_led_service()
+        if not led_svc:
+            print("No LED device found.")
+            return 1
+
+        print(status)
+        led_svc.set_mode(LEDMode.STATIC)
+        led_svc.set_color(r, g, b)
+        led_svc.toggle_global(True)
+        led_svc.send_tick()
+        led_svc.save_config()
+
+        print(f"LED color set to #{hex_color}")
+        return 0
 
     @staticmethod
     def set_mode(mode_name):
@@ -1664,73 +1643,64 @@ class LEDCommands:
             return 1
 
     @staticmethod
+    @_cli_handler
     def set_led_brightness(level):
         """Set LED brightness (0-100)."""
-        try:
-            if level < 0 or level > 100:
-                print("Error: Brightness must be 0-100")
-                return 1
-
-            led_svc, status = LEDCommands._get_led_service()
-            if not led_svc:
-                print("No LED device found.")
-                return 1
-
-            print(status)
-            led_svc.set_brightness(level)
-            led_svc.toggle_global(True)
-            led_svc.send_tick()
-            led_svc.save_config()
-
-            print(f"LED brightness set to {level}%")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        if level < 0 or level > 100:
+            print("Error: Brightness must be 0-100")
             return 1
 
+        led_svc, status = LEDCommands._get_led_service()
+        if not led_svc:
+            print("No LED device found.")
+            return 1
+
+        print(status)
+        led_svc.set_brightness(level)
+        led_svc.toggle_global(True)
+        led_svc.send_tick()
+        led_svc.save_config()
+
+        print(f"LED brightness set to {level}%")
+        return 0
+
     @staticmethod
+    @_cli_handler
     def led_off():
         """Turn LEDs off."""
-        try:
-            led_svc, status = LEDCommands._get_led_service()
-            if not led_svc:
-                print("No LED device found.")
-                return 1
-
-            print(status)
-            led_svc.toggle_global(False)
-            led_svc.send_tick()
-            led_svc.save_config()
-
-            print("LEDs turned off.")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        led_svc, status = LEDCommands._get_led_service()
+        if not led_svc:
+            print("No LED device found.")
             return 1
+
+        print(status)
+        led_svc.toggle_global(False)
+        led_svc.send_tick()
+        led_svc.save_config()
+
+        print("LEDs turned off.")
+        return 0
 
     @staticmethod
+    @_cli_handler
     def set_sensor_source(source):
         """Set CPU/GPU sensor source for temp/load linked LED modes."""
-        try:
-            source = source.lower()
-            if source not in ('cpu', 'gpu'):
-                print("Error: Source must be 'cpu' or 'gpu'")
-                return 1
-
-            led_svc, status = LEDCommands._get_led_service()
-            if not led_svc:
-                print("No LED device found.")
-                return 1
-
-            print(status)
-            led_svc.set_sensor_source(source)
-            led_svc.save_config()
-
-            print(f"LED sensor source set to {source.upper()}")
-            return 0
-        except Exception as e:
-            print(f"Error: {e}")
+        source = source.lower()
+        if source not in ('cpu', 'gpu'):
+            print("Error: Source must be 'cpu' or 'gpu'")
             return 1
+
+        led_svc, status = LEDCommands._get_led_service()
+        if not led_svc:
+            print("No LED device found.")
+            return 1
+
+        print(status)
+        led_svc.set_sensor_source(source)
+        led_svc.save_config()
+
+        print(f"LED sensor source set to {source.upper()}")
+        return 0
 
 
 # =========================================================================
@@ -2018,14 +1988,15 @@ class SystemCommands:
             groups = [
                 ("CPU", ['cpu_temp', 'cpu_percent', 'cpu_freq']),
                 ("GPU", ['gpu_temp', 'gpu_usage', 'gpu_clock']),
-                ("Memory", ['mem_percent', 'mem_used', 'mem_total']),
+                ("Memory", ['mem_percent']),
                 ("Date/Time", ['date', 'time', 'weekday']),
             ]
             for label, keys in groups:
                 print(f"\n{label}:")
                 for key in keys:
-                    if key in metrics:
-                        print(f"  {key}: {format_metric(key, metrics[key])}")
+                    val = getattr(metrics, key, None)
+                    if val is not None:
+                        print(f"  {key}: {format_metric(key, val)}")
 
             return 0
         except Exception as e:
@@ -2033,115 +2004,111 @@ class SystemCommands:
             return 1
 
     @staticmethod
+    @_cli_handler
     def setup_udev(dry_run=False):
         """Generate and install udev rules + USB storage quirks from KNOWN_DEVICES.
 
         Without quirks, UAS claims these LCD devices and the kernel ignores them
         (no /dev/sgX created). The :u quirk forces usb-storage bulk-only transport.
         """
-        try:
-            from trcc.adapters.device.detector import (
-                _BULK_DEVICES,
-                _HID_LCD_DEVICES,
-                _LED_DEVICES,
-                KNOWN_DEVICES,
-            )
+        from trcc.adapters.device.detector import (
+            _BULK_DEVICES,
+            _HID_LCD_DEVICES,
+            _LED_DEVICES,
+            KNOWN_DEVICES,
+        )
 
-            # Always include ALL devices in udev rules (so hardware is ready
-            # when users plug in HID/bulk devices, even without --testing-hid)
-            all_devices = {**KNOWN_DEVICES, **_HID_LCD_DEVICES, **_LED_DEVICES, **_BULK_DEVICES}
+        # Always include ALL devices in udev rules (so hardware is ready
+        # when users plug in HID/bulk devices, even without --testing-hid)
+        all_devices = {**KNOWN_DEVICES, **_HID_LCD_DEVICES, **_LED_DEVICES, **_BULK_DEVICES}
 
-            # --- 1. udev rules (permissions) ---
-            rules_path = "/etc/udev/rules.d/99-trcc-lcd.rules"
-            rules_lines = ["# Thermalright LCD/LED cooler devices — auto-generated by trcc setup-udev"]
+        # --- 1. udev rules (permissions) ---
+        rules_path = "/etc/udev/rules.d/99-trcc-lcd.rules"
+        rules_lines = ["# Thermalright LCD/LED cooler devices — auto-generated by trcc setup-udev"]
 
-            for (vid, pid), info in sorted(all_devices.items()):
-                vendor = info.vendor
-                product = info.product
-                protocol = info.protocol
-                if protocol == "hid":
-                    rules_lines.append(
-                        f'# {vendor} {product}\n'
-                        f'SUBSYSTEM=="hidraw", '
-                        f'ATTRS{{idVendor}}=="{vid:04x}", '
-                        f'ATTRS{{idProduct}}=="{pid:04x}", '
-                        f'MODE="0666"\n'
-                        f'SUBSYSTEM=="usb", '
-                        f'ATTR{{idVendor}}=="{vid:04x}", '
-                        f'ATTR{{idProduct}}=="{pid:04x}", '
-                        f'MODE="0666"'
-                    )
-                elif protocol == "bulk":
-                    rules_lines.append(
-                        f'# {vendor} {product}\n'
-                        f'SUBSYSTEM=="usb", '
-                        f'ATTR{{idVendor}}=="{vid:04x}", '
-                        f'ATTR{{idProduct}}=="{pid:04x}", '
-                        f'MODE="0666"'
-                    )
-                else:
-                    rules_lines.append(
-                        f'# {vendor} {product}\n'
-                        f'SUBSYSTEM=="scsi_generic", '
-                        f'ATTRS{{idVendor}}=="{vid:04x}", '
-                        f'ATTRS{{idProduct}}=="{pid:04x}", '
-                        f'MODE="0666"'
-                    )
+        for (vid, pid), info in sorted(all_devices.items()):
+            vendor = info.vendor
+            product = info.product
+            protocol = info.protocol
+            if protocol == "hid":
+                rules_lines.append(
+                    f'# {vendor} {product}\n'
+                    f'SUBSYSTEM=="hidraw", '
+                    f'ATTRS{{idVendor}}=="{vid:04x}", '
+                    f'ATTRS{{idProduct}}=="{pid:04x}", '
+                    f'MODE="0666"\n'
+                    f'SUBSYSTEM=="usb", '
+                    f'ATTR{{idVendor}}=="{vid:04x}", '
+                    f'ATTR{{idProduct}}=="{pid:04x}", '
+                    f'MODE="0666"'
+                )
+            elif protocol == "bulk":
+                rules_lines.append(
+                    f'# {vendor} {product}\n'
+                    f'SUBSYSTEM=="usb", '
+                    f'ATTR{{idVendor}}=="{vid:04x}", '
+                    f'ATTR{{idProduct}}=="{pid:04x}", '
+                    f'MODE="0666"'
+                )
+            else:
+                rules_lines.append(
+                    f'# {vendor} {product}\n'
+                    f'SUBSYSTEM=="scsi_generic", '
+                    f'ATTRS{{idVendor}}=="{vid:04x}", '
+                    f'ATTRS{{idProduct}}=="{pid:04x}", '
+                    f'MODE="0666"'
+                )
 
-            rules_content = "\n\n".join(rules_lines) + "\n"
+        rules_content = "\n\n".join(rules_lines) + "\n"
 
-            # --- 2. usb-storage quirks (UAS bypass) ---
-            quirk_entries = [f"{vid:04x}:{pid:04x}:u" for vid, pid in sorted(KNOWN_DEVICES)]
-            quirks_param = ",".join(quirk_entries)
+        # --- 2. usb-storage quirks (UAS bypass) ---
+        quirk_entries = [f"{vid:04x}:{pid:04x}:u" for vid, pid in sorted(KNOWN_DEVICES)]
+        quirks_param = ",".join(quirk_entries)
 
-            # modprobe config (persistent across reboots)
-            modprobe_path = "/etc/modprobe.d/trcc-lcd.conf"
-            modprobe_content = (
-                "# Thermalright LCD — force usb-storage bulk-only (bypass UAS)\n"
-                "# Without this, devices are ignored and /dev/sgX is never created\n"
-                "# Auto-generated by trcc setup-udev\n"
-                f"options usb-storage quirks={quirks_param}\n"
-            )
+        # modprobe config (persistent across reboots)
+        modprobe_path = "/etc/modprobe.d/trcc-lcd.conf"
+        modprobe_content = (
+            "# Thermalright LCD — force usb-storage bulk-only (bypass UAS)\n"
+            "# Without this, devices are ignored and /dev/sgX is never created\n"
+            "# Auto-generated by trcc setup-udev\n"
+            f"options usb-storage quirks={quirks_param}\n"
+        )
 
-            if dry_run:
-                print("=== udev rules ===")
-                print(rules_content)
-                print(f"# Would write to {rules_path}\n")
-                print("=== usb-storage quirks ===")
-                print(modprobe_content)
-                print(f"# Would write to {modprobe_path}")
-                return 0
-
-            # Need root — re-exec with sudo automatically
-            if os.geteuid() != 0:
-                return _sudo_reexec("setup-udev")
-
-            # Write udev rules
-            with open(rules_path, "w") as f:
-                f.write(rules_content)
-            print(f"Wrote {rules_path}")
-
-            # Write modprobe config
-            with open(modprobe_path, "w") as f:
-                f.write(modprobe_content)
-            print(f"Wrote {modprobe_path}")
-
-            # Apply quirks immediately (without reboot)
-            quirks_sysfs = "/sys/module/usb_storage/parameters/quirks"
-            if os.path.exists(quirks_sysfs):
-                with open(quirks_sysfs, "w") as f:
-                    f.write(quirks_param)
-                print(f"Applied quirks: {quirks_param}")
-
-            # Reload udev
-            subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
-            subprocess.run(["udevadm", "trigger"], check=False)
-            print("\nDone. Unplug and replug the USB cable (or reboot if it's not easily accessible).")
+        if dry_run:
+            print("=== udev rules ===")
+            print(rules_content)
+            print(f"# Would write to {rules_path}\n")
+            print("=== usb-storage quirks ===")
+            print(modprobe_content)
+            print(f"# Would write to {modprobe_path}")
             return 0
 
-        except Exception as e:
-            print(f"Error: {e}")
-            return 1
+        # Need root — re-exec with sudo automatically
+        if os.geteuid() != 0:
+            return _sudo_reexec("setup-udev")
+
+        # Write udev rules
+        with open(rules_path, "w") as f:
+            f.write(rules_content)
+        print(f"Wrote {rules_path}")
+
+        # Write modprobe config
+        with open(modprobe_path, "w") as f:
+            f.write(modprobe_content)
+        print(f"Wrote {modprobe_path}")
+
+        # Apply quirks immediately (without reboot)
+        quirks_sysfs = "/sys/module/usb_storage/parameters/quirks"
+        if os.path.exists(quirks_sysfs):
+            with open(quirks_sysfs, "w") as f:
+                f.write(quirks_param)
+            print(f"Applied quirks: {quirks_param}")
+
+        # Reload udev
+        subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
+        subprocess.run(["udevadm", "trigger"], check=False)
+        print("\nDone. Unplug and replug the USB cable (or reboot if it's not easily accessible).")
+        return 0
 
     @staticmethod
     def setup_selinux():

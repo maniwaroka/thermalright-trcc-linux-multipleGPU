@@ -26,6 +26,7 @@ from trcc.adapters.device.led_segment import (
     get_display,
     has_segment_display,
 )
+from trcc.core.models import HardwareMetrics
 
 # =========================================================================
 # Base class — encoding tables
@@ -85,12 +86,12 @@ class TestRegistry:
         assert 13 not in DISPLAYS
 
     def test_compute_mask_returns_list(self):
-        mask = compute_mask(1, {'cpu_temp': 50})
+        mask = compute_mask(1, HardwareMetrics(cpu_temp=50))
         assert isinstance(mask, list)
         assert all(isinstance(b, bool) for b in mask)
 
     def test_compute_mask_unknown_style(self):
-        assert compute_mask(99, {}) == []
+        assert compute_mask(99, HardwareMetrics()) == []
 
     def test_get_display_returns_instance(self):
         d = get_display(1)
@@ -133,16 +134,16 @@ class TestAX120Display:
         assert self.d.phase_count == 4
 
     def test_returns_30_bools(self):
-        mask = self.d.compute_mask({'cpu_temp': 42}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=42), 0, "C")
         assert len(mask) == 30
 
     def test_always_on_leds(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         assert mask[0] is True
         assert mask[1] is True
 
     def test_cpu_temp_phase(self):
-        mask = self.d.compute_mask({'cpu_temp': 55}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=55), 0, "C")
         assert mask[2] is True   # CPU1
         assert mask[3] is True   # CPU2
         assert mask[4] is False  # GPU1
@@ -152,25 +153,25 @@ class TestAX120Display:
         assert mask[8] is False  # %
 
     def test_cpu_usage_phase(self):
-        mask = self.d.compute_mask({'cpu_percent': 80}, 1, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=80), 1, "C")
         assert mask[2] is True   # CPU
         assert mask[8] is True   # %
         assert mask[6] is False  # °C
 
     def test_gpu_temp_phase(self):
-        mask = self.d.compute_mask({'gpu_temp': 70}, 2, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_temp=70), 2, "C")
         assert mask[4] is True   # GPU1
         assert mask[5] is True   # GPU2
         assert mask[2] is False  # CPU1
         assert mask[6] is True   # °C
 
     def test_gpu_usage_phase(self):
-        mask = self.d.compute_mask({'gpu_usage': 50}, 3, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_usage=50), 3, "C")
         assert mask[4] is True   # GPU
         assert mask[8] is True   # %
 
     def test_fahrenheit_indicator(self):
-        mask = self.d.compute_mask({'cpu_temp': 72}, 0, "F")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=72), 0, "F")
         assert mask[7] is True   # °F
         assert mask[6] is False  # °C
 
@@ -181,47 +182,47 @@ class TestAX120Display:
         (8, {'a', 'b', 'c', 'd', 'e', 'f', 'g'}),
     ])
     def test_ones_digit_encoding(self, digit, expected_segs):
-        mask = self.d.compute_mask({'cpu_temp': digit}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=digit), 0, "C")
         wire = self.d.WIRE_7SEG
         ones_leds = self.d.DIGITS[2]
         for wi, seg in enumerate(wire):
             assert mask[ones_leds[wi]] is (seg in expected_segs)
 
     def test_leading_zero_suppression_value_0(self):
-        mask = self.d.compute_mask({'cpu_temp': 0}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=0), 0, "C")
         for led in self.d.DIGITS[0]:
             assert mask[led] is False
         for led in self.d.DIGITS[1]:
             assert mask[led] is False
 
     def test_leading_zero_suppression_value_5(self):
-        mask = self.d.compute_mask({'cpu_temp': 5}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=5), 0, "C")
         for led in self.d.DIGITS[0]:
             assert mask[led] is False
         for led in self.d.DIGITS[1]:
             assert mask[led] is False
 
     def test_value_10_tens_shown(self):
-        mask = self.d.compute_mask({'cpu_temp': 10}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=10), 0, "C")
         for led in self.d.DIGITS[0]:
             assert mask[led] is False
         on_count = sum(1 for led in self.d.DIGITS[1] if mask[led])
         assert on_count == 2  # '1' = b,c
 
     def test_value_888_all_segments_lit(self):
-        mask = self.d.compute_mask({'cpu_temp': 888}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=888), 0, "C")
         for digit in self.d.DIGITS:
             for led in digit:
                 assert mask[led] is True
 
     def test_clamped_to_999(self):
-        m1 = self.d.compute_mask({'cpu_temp': 1500}, 0, "C")
-        m2 = self.d.compute_mask({'cpu_temp': 999}, 0, "C")
+        m1 = self.d.compute_mask(HardwareMetrics(cpu_temp=1500), 0, "C")
+        m2 = self.d.compute_mask(HardwareMetrics(cpu_temp=999), 0, "C")
         assert m1 == m2
 
     def test_negative_clamped_to_0(self):
-        m1 = self.d.compute_mask({'cpu_temp': -10}, 0, "C")
-        m2 = self.d.compute_mask({'cpu_temp': 0}, 0, "C")
+        m1 = self.d.compute_mask(HardwareMetrics(cpu_temp=-10), 0, "C")
+        m2 = self.d.compute_mask(HardwareMetrics(cpu_temp=0), 0, "C")
         assert m1 == m2
 
 
@@ -240,26 +241,26 @@ class TestPA120Display:
         assert self.d.phase_count == 1
 
     def test_always_on_indicators(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         for idx in (0, 1, 2, 3, 6, 9):  # CPU1,CPU2,GPU1,GPU2,BFB,BFB1
             assert mask[idx] is True
 
     def test_celsius_indicators(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         assert mask[4] is True   # SSD (°C)
         assert mask[7] is True   # SSD1 (°C GPU)
         assert mask[5] is False  # HSD (°F)
         assert mask[8] is False  # HSD1 (°F GPU)
 
     def test_fahrenheit_indicators(self):
-        mask = self.d.compute_mask({}, 0, "F")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "F")
         assert mask[5] is True   # HSD
         assert mask[8] is True   # HSD1
         assert mask[4] is False  # SSD
         assert mask[7] is False  # SSD1
 
     def test_simultaneous_all_metrics(self):
-        metrics = {'cpu_temp': 65, 'cpu_percent': 80, 'gpu_temp': 70, 'gpu_usage': 50}
+        metrics = HardwareMetrics(cpu_temp=65, cpu_percent=80, gpu_temp=70, gpu_usage=50)
         mask = self.d.compute_mask(metrics, 0, "C")
         # cpuTemp digits should be lit (value 65)
         on_count = sum(1 for led in self.d.CPU_TEMP_DIGITS[2] if mask[led])
@@ -267,12 +268,12 @@ class TestPA120Display:
 
     def test_gpu_usage_partial(self):
         """GPU usage 100+ lights the partial indicator."""
-        mask = self.d.compute_mask({'gpu_usage': 100}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_usage=100), 0, "C")
         assert mask[82] is True  # GPU_USE_PARTIAL[0]
         assert mask[83] is True  # GPU_USE_PARTIAL[1]
 
     def test_gpu_usage_under_100_no_partial(self):
-        mask = self.d.compute_mask({'gpu_usage': 99}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_usage=99), 0, "C")
         assert mask[82] is False
         assert mask[83] is False
 
@@ -292,27 +293,27 @@ class TestAK120Display:
         assert self.d.phase_count == 2
 
     def test_cpu_phase(self):
-        mask = self.d.compute_mask({'cpu_temp': 50, 'cpu_percent': 75, 'cpu_watt': 120}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=50, cpu_percent=75, cpu_power=120), 0, "C")
         assert mask[0] is True   # CPU1
         assert mask[5] is False  # GPU1
         assert mask[1] is True   # WATT always on
         assert mask[4] is True   # BFB always on
 
     def test_gpu_phase(self):
-        mask = self.d.compute_mask({'gpu_temp': 60, 'gpu_usage': 90, 'gpu_watt': 200}, 1, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_temp=60, gpu_usage=90, gpu_power=200), 1, "C")
         assert mask[5] is True   # GPU1
         assert mask[0] is False  # CPU1
 
     def test_temp_unit_indicator(self):
-        mask_c = self.d.compute_mask({}, 0, "C")
+        mask_c = self.d.compute_mask(HardwareMetrics(), 0, "C")
         assert mask_c[2] is True   # SSD (°C)
         assert mask_c[3] is False  # HSD (°F)
-        mask_f = self.d.compute_mask({}, 0, "F")
+        mask_f = self.d.compute_mask(HardwareMetrics(), 0, "F")
         assert mask_f[3] is True
         assert mask_f[2] is False
 
     def test_usage_partial(self):
-        mask = self.d.compute_mask({'cpu_percent': 100}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=100), 0, "C")
         assert mask[62] is True  # USE_PARTIAL[0]
         assert mask[63] is True  # USE_PARTIAL[1]
 
@@ -332,24 +333,24 @@ class TestLC1Display:
         assert self.d.phase_count == 3
 
     def test_temp_phase(self):
-        mask = self.d.compute_mask({'mem_temp': 45}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(mem_temp=45), 0, "C")
         assert mask[0] is True  # SSD indicator
         assert mask[1] is False  # MTNO
         assert mask[2] is False  # GNO
 
     def test_mhz_phase(self):
-        mask = self.d.compute_mask({'mem_clock': 3200}, 1, "C")
+        mask = self.d.compute_mask(HardwareMetrics(mem_clock=3200), 1, "C")
         assert mask[1] is True   # MTNO
         assert mask[0] is False  # SSD
 
     def test_gb_phase(self):
-        mask = self.d.compute_mask({'mem_used': 16}, 2, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 2, "C")
         assert mask[2] is True   # GNO
         assert mask[0] is False  # SSD
 
     def test_unit_digit_celsius(self):
         """Phase 0 with °C should encode 'C' in unit digit."""
-        mask = self.d.compute_mask({'mem_temp': 45}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(mem_temp=45), 0, "C")
         segs_c = SegmentDisplay.CHAR_7SEG['C']
         wire = self.d.WIRE_7SEG
         unit_leds = self.d.UNIT_DIGIT
@@ -357,7 +358,7 @@ class TestLC1Display:
             assert mask[unit_leds[wi]] is (seg in segs_c)
 
     def test_unit_digit_fahrenheit(self):
-        mask = self.d.compute_mask({'mem_temp': 45}, 0, "F")
+        mask = self.d.compute_mask(HardwareMetrics(mem_temp=45), 0, "F")
         segs_f = SegmentDisplay.CHAR_7SEG['F']
         wire = self.d.WIRE_7SEG
         unit_leds = self.d.UNIT_DIGIT
@@ -366,8 +367,8 @@ class TestLC1Display:
 
     def test_fahrenheit_conversion(self):
         """°F phase should convert °C value to °F."""
-        mask_c = self.d.compute_mask({'mem_temp': 100}, 0, "C")
-        mask_f = self.d.compute_mask({'mem_temp': 100}, 0, "F")
+        mask_c = self.d.compute_mask(HardwareMetrics(mem_temp=100), 0, "C")
+        mask_f = self.d.compute_mask(HardwareMetrics(mem_temp=100), 0, "F")
         # 100°C = 212°F → different digits → different masks
         assert mask_c != mask_f
 
@@ -387,29 +388,29 @@ class TestLF8Display:
         assert self.d.phase_count == 2
 
     def test_always_on_indicators(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         assert mask[4] is True  # WATT
         assert mask[5] is True  # MHZ
         assert mask[6] is True  # BFB
 
     def test_cpu_phase(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         assert mask[0] is True   # CPU1
         assert mask[1] is False  # GPU1
 
     def test_gpu_phase(self):
-        mask = self.d.compute_mask({}, 1, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 1, "C")
         assert mask[1] is True   # GPU1
         assert mask[0] is False  # CPU1
 
     def test_use_partial(self):
-        mask = self.d.compute_mask({'cpu_percent': 100}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=100), 0, "C")
         assert mask[91] is True  # USE_PARTIAL[0]
         assert mask[92] is True  # USE_PARTIAL[1]
 
     def test_4_metrics_encoded(self):
         """All 4 metrics should produce non-zero digit masks."""
-        metrics = {'cpu_temp': 55, 'cpu_watt': 120, 'cpu_mhz': 3500, 'cpu_percent': 75}
+        metrics = HardwareMetrics(cpu_temp=55, cpu_power=120, cpu_freq=3500, cpu_percent=75)
         mask = self.d.compute_mask(metrics, 0, "C")
         for digits in (self.d.TEMP_DIGITS, self.d.WATT_DIGITS, self.d.MHZ_DIGITS):
             on_any = any(mask[led] for digit in digits for led in digit)
@@ -431,13 +432,13 @@ class TestLF12Display:
         assert isinstance(self.d, LF8Display)
 
     def test_decoration_always_on(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         for idx in range(93, 124):
             assert mask[idx] is True
 
     def test_digit_region_same_as_lf8(self):
         """First 93 LEDs should have same digit encoding as LF8."""
-        metrics = {'cpu_temp': 65, 'cpu_watt': 100, 'cpu_mhz': 2000, 'cpu_percent': 50}
+        metrics = HardwareMetrics(cpu_temp=65, cpu_power=100, cpu_freq=2000, cpu_percent=50)
         lf8 = LF8Display()
         mask_lf8 = lf8.compute_mask(metrics, 0, "C")
         mask_lf12 = self.d.compute_mask(metrics, 0, "C")
@@ -459,21 +460,21 @@ class TestLF10Display:
         assert self.d.phase_count == 1
 
     def test_indicators(self):
-        mask = self.d.compute_mask({'cpu_temp': 50, 'gpu_temp': 60}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=50, gpu_temp=60), 0, "C")
         assert mask[0] is True  # CPU1
         assert mask[3] is True  # GPU1
         assert mask[1] is True  # SSD (°C CPU)
         assert mask[4] is True  # SSD1 (°C GPU)
 
     def test_fahrenheit_indicators(self):
-        mask = self.d.compute_mask({}, 0, "F")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "F")
         assert mask[2] is True  # HSD
         assert mask[5] is True  # HSD1
         assert mask[1] is False  # SSD
         assert mask[4] is False  # SSD1
 
     def test_decoration_always_on(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         for idx in range(84, 116):
             assert mask[idx] is True
 
@@ -482,19 +483,19 @@ class TestLF10Display:
             assert len(digit) == 13
 
     def test_cpu_temp_encoded(self):
-        mask = self.d.compute_mask({'cpu_temp': 88}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=88), 0, "C")
         # CPU digits (0-2) should have LEDs on
         on_any = any(mask[led] for digit in self.d.DIGIT_LEDS_13[:3] for led in digit)
         assert on_any is True
 
     def test_gpu_temp_encoded(self):
-        mask = self.d.compute_mask({'gpu_temp': 75}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_temp=75), 0, "C")
         on_any = any(mask[led] for digit in self.d.DIGIT_LEDS_13[3:6] for led in digit)
         assert on_any is True
 
     def test_13seg_leading_zero_suppression(self):
         """Value < 100 should blank the 13-seg hundreds digit."""
-        mask = self.d.compute_mask({'cpu_temp': 55}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=55), 0, "C")
         # First 13 LEDs (hundreds digit) should all be off
         for led in self.d.DIGIT_LEDS_13[0]:
             assert mask[led] is False
@@ -515,25 +516,25 @@ class TestCZ1Display:
         assert self.d.phase_count == 4
 
     def test_cpu_temp_phase(self):
-        mask = self.d.compute_mask({'cpu_temp': 65}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=65), 0, "C")
         assert mask[0] is True   # CPU1
         assert mask[1] is False  # GPU1
 
     def test_gpu_usage_phase(self):
-        mask = self.d.compute_mask({'gpu_usage': 90}, 3, "C")
+        mask = self.d.compute_mask(HardwareMetrics(gpu_usage=90), 3, "C")
         assert mask[3] is True   # GPU2
         assert mask[0] is False  # CPU1
 
     def test_2digit_encoding(self):
         """CZ1 only has 2 digits — values > 99 clamped."""
-        mask = self.d.compute_mask({'cpu_temp': 88}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=88), 0, "C")
         for digit in self.d.DIGITS:
             # '8' lights all 7 segments
             for led in digit:
                 assert mask[led] is True
 
     def test_leading_zero_suppression(self):
-        mask = self.d.compute_mask({'cpu_temp': 5}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=5), 0, "C")
         for led in self.d.DIGITS[0]:
             assert mask[led] is False  # tens = blank
 
@@ -553,14 +554,14 @@ class TestLC2Display:
         assert self.d.phase_count == 1
 
     def test_decoration_always_on(self):
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         for idx in range(54, 61):
             assert mask[idx] is True
 
     @patch('trcc.adapters.device.led_segment.datetime')
     def test_24h_format(self, mock_dt):
         mock_dt.now.return_value = datetime(2024, 2, 14, 15, 30)
-        mask = self.d.compute_mask({}, 0, "C", is_24h=True)
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C", is_24h=True)
         # Hour tens = 1, hour ones = 5 → both should have lit segments
         on_tens = sum(1 for led in self.d.DIGITS[0] if mask[led])
         assert on_tens > 0
@@ -568,7 +569,7 @@ class TestLC2Display:
     @patch('trcc.adapters.device.led_segment.datetime')
     def test_12h_format(self, mock_dt):
         mock_dt.now.return_value = datetime(2024, 2, 14, 15, 30)
-        mask = self.d.compute_mask({}, 0, "C", is_24h=False)
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C", is_24h=False)
         # 15:00 in 12h = 3:00 → hour tens blank, hour ones = 3
         for led in self.d.DIGITS[0]:
             assert mask[led] is False  # hour tens = 0 → blank
@@ -576,7 +577,7 @@ class TestLC2Display:
     @patch('trcc.adapters.device.led_segment.datetime')
     def test_midnight_12h(self, mock_dt):
         mock_dt.now.return_value = datetime(2024, 2, 14, 0, 0)
-        mask = self.d.compute_mask({}, 0, "C", is_24h=False)
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C", is_24h=False)
         # 0:00 in 12h = 12:00 → hour tens = 1
         on_tens = sum(1 for led in self.d.DIGITS[0] if mask[led])
         assert on_tens > 0  # '1' has segments
@@ -585,7 +586,7 @@ class TestLC2Display:
     def test_day_partial_bc(self, mock_dt):
         """Day ones digit uses partial (B,C segments only)."""
         mock_dt.now.return_value = datetime(2024, 2, 14, 12, 0)
-        mask = self.d.compute_mask({}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         # Day = 14 → ones = 4 → B,C in segs for '4'
         segs_4 = SegmentDisplay.CHAR_7SEG['4']
         if 'b' in segs_4:
@@ -609,25 +610,25 @@ class TestLF11Display:
         assert self.d.phase_count == 4
 
     def test_cpu_temp_phase(self):
-        mask = self.d.compute_mask({'cpu_temp': 65}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=65), 0, "C")
         assert mask[0] is True   # SSD
         assert mask[1] is False  # BFB
 
     def test_cpu_usage_phase(self):
-        mask = self.d.compute_mask({'cpu_percent': 80}, 1, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=80), 1, "C")
         assert mask[1] is True   # BFB
         assert mask[0] is False  # SSD
 
     def test_unit_digit_on_temp_phase(self):
         """Temperature phases show unit symbol in digit 4."""
-        mask = self.d.compute_mask({'cpu_temp': 50}, 0, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=50), 0, "C")
         unit_leds = self.d.DIGITS[3]
         on_count = sum(1 for led in unit_leds if mask[led])
         assert on_count > 0
 
     def test_no_unit_digit_on_usage_phase(self):
         """Usage phases don't show unit symbol."""
-        mask = self.d.compute_mask({'cpu_percent': 50}, 1, "C")
+        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=50), 1, "C")
         unit_leds = self.d.DIGITS[3]
         on_count = sum(1 for led in unit_leds if mask[led])
         assert on_count == 0
@@ -647,18 +648,18 @@ class TestCrossStyleConsistency:
             d = get_display(style_id)
             assert d is not None
             assert d.mask_size == size, f"Style {style_id} mask_size"
-            mask = d.compute_mask({}, 0, "C")
+            mask = d.compute_mask(HardwareMetrics(), 0, "C")
             assert len(mask) == size, f"Style {style_id} actual mask length"
 
     def test_all_masks_are_bool_lists(self):
         for style_id in range(1, 12):
-            mask = compute_mask(style_id, {})
+            mask = compute_mask(style_id, HardwareMetrics())
             assert all(isinstance(b, bool) for b in mask), f"Style {style_id}"
 
     def test_empty_metrics_no_crash(self):
         """All styles handle empty metrics gracefully."""
         for style_id in range(1, 12):
-            mask = compute_mask(style_id, {})
+            mask = compute_mask(style_id, HardwareMetrics())
             assert isinstance(mask, list)
 
     def test_all_phase_counts_positive(self):
@@ -721,14 +722,14 @@ class TestLEDServiceSegmentMode:
 
     def test_update_segment_mask(self):
         svc = self._make_service(1)
-        svc.update_metrics({'cpu_temp': 65})
+        svc.update_metrics(HardwareMetrics(cpu_temp=65))
         svc._update_segment_mask()
         assert svc._segment_mask is not None
         assert len(svc._segment_mask) == 30
 
     def test_update_segment_mask_style_5(self):
         svc = self._make_service(5)
-        svc.update_metrics({'cpu_temp': 65, 'cpu_watt': 100, 'cpu_mhz': 2000, 'cpu_percent': 50})
+        svc.update_metrics(HardwareMetrics(cpu_temp=65, cpu_power=100, cpu_freq=2000, cpu_percent=50))
         svc._update_segment_mask()
         assert svc._segment_mask is not None
         assert len(svc._segment_mask) == 93
@@ -736,7 +737,7 @@ class TestLEDServiceSegmentMode:
     def test_send_colors_uses_mask_length(self):
         """send_colors() should use mask length, not hardcoded AX120_LED_COUNT."""
         svc = self._make_service(5)  # 93 LEDs
-        svc.update_metrics({'cpu_temp': 55})
+        svc.update_metrics(HardwareMetrics(cpu_temp=55))
         svc._update_segment_mask()
 
         sent = []
@@ -756,7 +757,7 @@ class TestLEDServiceSegmentMode:
 
     def test_send_colors_applies_mask(self):
         svc = self._make_service(1)
-        svc.update_metrics({'cpu_temp': 55})
+        svc.update_metrics(HardwareMetrics(cpu_temp=55))
         svc._update_segment_mask()
         mask = svc._segment_mask
 

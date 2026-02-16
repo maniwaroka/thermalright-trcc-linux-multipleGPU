@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from ..services import (
     DeviceService,
@@ -19,6 +19,7 @@ from ..services import (
 from ..services.display import DisplayService
 from .models import (
     DeviceInfo,
+    HardwareMetrics,
     PlaybackState,
     ThemeInfo,
     ThemeType,
@@ -256,7 +257,7 @@ class OverlayController:
     def background(self) -> Any:
         return self._svc.background
 
-    def update_metrics(self, metrics: Dict[str, Any]):
+    def update_metrics(self, metrics: HardwareMetrics) -> None:
         self._svc.update_metrics(metrics)
 
     def render(self, background: Optional[Any] = None, *, force: bool = False) -> Any:
@@ -275,7 +276,7 @@ class OverlayController:
         self._svc.set_temp_unit(unit)
 
     def set_config(self, config: dict):
-        self._svc.configure(config)
+        self._svc.set_config(config)
         if self.on_config_changed:
             self.on_config_changed()
 
@@ -454,26 +455,21 @@ class LCDDeviceController:
 
     def load_local_theme(self, theme: ThemeInfo):
         result = self._display.load_local_theme(theme)
-        image = result.get('image')
-        if image:
-            self._fire_preview(image)
-            if self.auto_send and not result.get('is_animated'):
-                self._send_frame_to_lcd(image)
-        # Sync VideoController state so GUI starts animation timer
-        if result.get('is_animated') and self._display.is_video_playing():
-            if self.video.on_state_changed:
-                self.video.on_state_changed(PlaybackState.PLAYING)
-        self._fire_status(result.get('status', ''))
+        self._handle_theme_result(result, skip_send_if_animated=True)
 
     def load_cloud_theme(self, theme: ThemeInfo):
         result = self._display.load_cloud_theme(theme)
+        self._handle_theme_result(result, skip_send_if_animated=False)
+
+    def _handle_theme_result(self, result: dict,
+                             skip_send_if_animated: bool = False) -> None:
         image = result.get('image')
+        is_animated = result.get('is_animated', False)
         if image:
             self._fire_preview(image)
-            if self.auto_send:
+            if self.auto_send and not (skip_send_if_animated and is_animated):
                 self._send_frame_to_lcd(image)
-        # Sync VideoController state so GUI starts animation timer
-        if result.get('is_animated') and self._display.is_video_playing():
+        if is_animated and self._display.is_video_playing():
             if self.video.on_state_changed:
                 self.video.on_state_changed(PlaybackState.PLAYING)
         self._fire_status(result.get('status', ''))
@@ -673,28 +669,12 @@ class LEDController:
     def set_week_start(self, is_sunday: bool) -> None:
         self._svc.set_week_start(is_sunday)
 
-    def update_metrics(self, metrics: Dict) -> None:
+    def update_metrics(self, metrics: HardwareMetrics) -> None:
         self._svc.update_metrics(metrics)
 
     def configure_for_style(self, style_id: int) -> None:
         self._svc.configure_for_style(style_id)
-        self._svc._hr10_mode = (style_id == 13)
-        if self._svc._hr10_mode:
-            self._svc._update_hr10_mask()
-
-        # Activate segment display for all digit-display styles (1-11)
-        from ..adapters.device.led_segment import get_display
-        self._svc._seg_display = get_display(style_id)
-        self._svc._segment_mode = self._svc._seg_display is not None
-        if self._svc._segment_mode:
-            self._svc._seg_phase = 0
-            self._svc._seg_tick_count = 0
-            self._svc._update_segment_mask()
         self._fire_state_changed()
-
-    @property
-    def _protocol(self) -> Any:
-        return self._svc._protocol
 
     def set_protocol(self, protocol) -> None:
         self._svc.set_protocol(protocol)
@@ -706,7 +686,7 @@ class LEDController:
         colors = self._svc.tick()
         if self.on_preview_update:
             self.on_preview_update(colors)
-        if self._svc._protocol:
+        if self._svc.has_protocol:
             success = self._svc.send_colors(colors)
             if self.on_send_complete:
                 self.on_send_complete(success)

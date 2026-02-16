@@ -163,8 +163,18 @@ async def send_image(device_id: int, image: UploadFile, rotation: int = 0,
     if brightness != 100:
         img = ImageService.apply_brightness(img, brightness)
 
-    # Resize to device resolution
-    w, h = dev.resolution if dev.resolution != (0, 0) else (320, 320)
+    # Discover resolution via handshake if not yet known
+    w, h = dev.resolution
+    if (w, h) == (0, 0):
+        from trcc.adapters.device.factory import DeviceProtocolFactory
+        protocol = DeviceProtocolFactory.get_protocol(dev)
+        result = protocol.handshake()
+        res = getattr(result, 'resolution', None) if result else None
+        if isinstance(res, tuple) and len(res) == 2 and res != (0, 0):
+            dev.resolution = res
+            w, h = res
+        else:
+            raise HTTPException(status_code=503, detail="Cannot discover device resolution")
     img = ImageService.resize(img, w, h)
 
     # Convert and send

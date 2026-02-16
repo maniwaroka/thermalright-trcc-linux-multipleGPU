@@ -13,6 +13,7 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 from ..adapters.infra.font_resolver import FontResolver
+from ..core.models import HardwareMetrics
 from .system import SystemService
 
 log = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ class OverlayService:
 
         # Service-only state
         self._enabled: bool = False
-        self._metrics: dict[str, Any] = {}
+        self._metrics: HardwareMetrics = HardwareMetrics()
         self._dc_data: dict[str, Any] | None = None
 
     # ── Resolution ───────────────────────────────────────────────────
@@ -108,10 +109,6 @@ class OverlayService:
 
     def set_config(self, config: dict) -> None:
         """Set overlay config dict directly."""
-        self.config = config
-
-    def configure(self, config: dict) -> None:
-        """Alias for set_config (used by controllers/display)."""
         self.config = config
 
     def set_config_resolution(self, w: int, h: int) -> None:
@@ -166,7 +163,7 @@ class OverlayService:
                 result = load_config_json(str(json_path))
                 if result is not None:
                     overlay_config, display_options = result
-                    self.configure(overlay_config)
+                    self.set_config(overlay_config)
                     self.set_config_resolution(self.width, self.height)
                     self.set_dc_data({'display_options': display_options})
                     return display_options
@@ -180,7 +177,7 @@ class OverlayService:
 
             dc = DcConfig(dc_path)
             overlay_config = dc.to_overlay_config()
-            self.configure(overlay_config)
+            self.set_config(overlay_config)
             self.set_config_resolution(self.width, self.height)
             self.set_dc_data(dc.to_dict())
             return dc.display_options
@@ -233,7 +230,7 @@ class OverlayService:
 
     # ── Metrics ──────────────────────────────────────────────────────
 
-    def update_metrics(self, metrics: dict) -> None:
+    def update_metrics(self, metrics: HardwareMetrics) -> None:
         """Update system metrics for hardware overlay elements."""
         self._metrics = metrics
 
@@ -259,7 +256,8 @@ class OverlayService:
 
     # ── Render ───────────────────────────────────────────────────────
 
-    def render(self, background: Any = None, metrics: dict | None = None,
+    def render(self, background: Any = None,
+               metrics: HardwareMetrics | None = None,
                **_kw: Any) -> Any:
         """Render overlay onto background.
 
@@ -267,7 +265,7 @@ class OverlayService:
 
         Args:
             background: Optional PIL Image (uses stored background if None).
-            metrics: System metrics dict (uses stored metrics if None).
+            metrics: HardwareMetrics DTO (uses stored metrics if None).
 
         Returns:
             PIL Image with overlay rendered.
@@ -277,13 +275,13 @@ class OverlayService:
         m = metrics if metrics is not None else self._metrics
         return self._render_overlay(m)
 
-    def _render_overlay(self, metrics: dict | None = None) -> Any:
+    def _render_overlay(self, metrics: HardwareMetrics | None = None) -> Any:
         """Core PIL compositing — background + mask + text overlays.
 
         Optimized for video playback — returns background directly when
         there's nothing to overlay (no mask, no config).
         """
-        metrics = metrics or {}
+        metrics = metrics or HardwareMetrics()
 
         # Fast path: no overlays, just return background as-is
         has_overlays = (
@@ -350,11 +348,12 @@ class OverlayService:
                 text = str(cfg['text'])
             elif 'metric' in cfg:
                 metric_name = cfg['metric']
-                if metric_name in metrics:
+                value = getattr(metrics, metric_name, None)
+                if value is not None:
                     time_fmt = cfg.get('time_format', self.time_format)
                     date_fmt = cfg.get('date_format', self.date_format)
                     text = SystemService.format_metric(
-                        metric_name, metrics[metric_name],
+                        metric_name, value,
                         time_fmt, date_fmt, self.temp_unit)
                 else:
                     text = "N/A"

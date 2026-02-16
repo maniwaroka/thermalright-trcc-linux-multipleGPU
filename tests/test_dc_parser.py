@@ -159,7 +159,7 @@ class TestGetHardwareMetricName(unittest.TestCase):
 
     def test_disk_metrics(self):
         """Test disk sensor mappings."""
-        self.assertEqual(get_hardware_metric_name(3, 1), 'disk_activity')
+        self.assertEqual(get_hardware_metric_name(3, 1), 'disk_read')
 
     def test_unknown_sensor(self):
         """Test unknown sensor returns generic name."""

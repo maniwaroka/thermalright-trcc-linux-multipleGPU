@@ -33,6 +33,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..adapters.system.info import format_metric
+from ..core.models import (
+    HARDWARE_METRICS,
+    METRIC_TO_IDS,
+    OverlayElementConfig,
+    OverlayMode,
+)
 from .assets import Assets
 from .base import BasePanel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
@@ -40,21 +46,6 @@ from .constants import Colors, Layout, Sizes, Styles
 # ============================================================================
 # Overlay element constants (matching Tkinter UCXiTongXianShiSub)
 # ============================================================================
-
-# Mode constants
-MODE_HARDWARE = 0
-MODE_TIME = 1
-MODE_WEEKDAY = 2
-MODE_DATE = 3
-MODE_CUSTOM = 4
-
-# Hardware categories
-HW_CPU = 0
-HW_GPU = 1
-HW_MEM = 2
-HW_HDD = 3
-HW_NET = 4
-HW_FAN = 5
 
 CATEGORY_NAMES = {0: 'CPU', 1: 'GPU', 2: 'MEM', 3: 'HDD', 4: 'NET', 5: 'FAN'}
 
@@ -81,31 +72,14 @@ DATE_FORMATS = {1: 'yyyy/MM/dd', 2: 'dd/MM/yyyy', 3: 'MM/dd', 4: 'dd/MM'}
 
 # Background images per mode (60x60 icons)
 MODE_IMAGES = {
-    MODE_HARDWARE: 'P数据.png',
-    MODE_TIME: 'P时间.png',
-    MODE_WEEKDAY: 'P星期.png',
-    MODE_DATE: 'P日期.png',
-    MODE_CUSTOM: 'P文本.png',
+    OverlayMode.HARDWARE: 'P数据.png',
+    OverlayMode.TIME: 'P时间.png',
+    OverlayMode.WEEKDAY: 'P星期.png',
+    OverlayMode.DATE: 'P日期.png',
+    OverlayMode.CUSTOM: 'P文本.png',
 }
 
 SELECT_IMAGE = 'P选中.png'
-
-
-def _default_element_config(mode=MODE_TIME):
-    """Create a default element config dict."""
-    return {
-        'mode': mode,
-        'mode_sub': 0,
-        'x': 100,
-        'y': 100,
-        'main_count': 0,
-        'sub_count': 1,
-        'color': '#FFFFFF',
-        'font_name': 'Microsoft YaHei',
-        'font_size': 36,
-        'font_style': 0,
-        'text': '',
-    }
 
 
 # ============================================================================
@@ -127,20 +101,12 @@ class OverlayElementWidget(QWidget):
     clicked = Signal(int)           # index
     double_clicked = Signal(int)    # index (delete)
 
-    # Metric key map: (main_count, sub_count) → system_info metric name
-    _METRIC_MAP = {
-        (0, 1): 'cpu_temp', (0, 2): 'cpu_percent', (0, 3): 'cpu_freq', (0, 4): 'cpu_power',
-        (1, 1): 'gpu_temp', (1, 2): 'gpu_usage', (1, 3): 'gpu_clock', (1, 4): 'gpu_power',
-        (2, 1): 'mem_percent', (2, 2): 'mem_clock',
-        (3, 1): 'disk_read', (3, 2): 'disk_write',
-        (4, 1): 'net_down', (4, 2): 'net_up',
-        (5, 1): 'fan_rpm',
-    }
+    # Single source of truth: HARDWARE_METRICS in core/models.py
 
     def __init__(self, index, parent=None):
         super().__init__(parent)
         self.index = index
-        self.config = None  # element config dict or None (empty slot)
+        self.config: OverlayElementConfig | None = None
         self._selected = False
         self._live_value = ''   # label2: formatted value
         self._live_unit = ''    # label3: unit suffix
@@ -170,19 +136,19 @@ class OverlayElementWidget(QWidget):
 
     def update_metrics(self, metrics):
         """Update card with live system metrics (Windows UCXiTongXianShiSubTimer)."""
-        if not self.config or self.config.get('mode') != MODE_HARDWARE:
+        if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
-        mc = self.config.get('main_count', 0)
-        sc = self.config.get('sub_count', 1)
-        metric_key = self._METRIC_MAP.get((mc, sc))
-        if not metric_key or metric_key not in metrics:
+        metric_key = HARDWARE_METRICS.get((self.config.main_count, self.config.sub_count))
+        if not metric_key:
             return
-        raw = metrics[metric_key]
+        raw = getattr(metrics, metric_key, None)
+        if raw is None:
+            return
         # Split formatted value into number + unit (Windows regex pattern)
         import re
 
         formatted = format_metric(metric_key, raw,
-                                  temp_unit=self.config.get('mode_sub', 0))
+                                  temp_unit=self.config.mode_sub)
         # Separate number from unit: "52°C" → "52" + "°C"
         m = re.match(r'([\d.]+)(.*)', formatted)
         if m:
@@ -202,7 +168,7 @@ class OverlayElementWidget(QWidget):
         painter.setFont(self._CARD_FONT)
 
         if self.config:
-            mode = self.config.get('mode', MODE_TIME)
+            mode = self.config.mode
             # Draw mode background
             px = self._mode_pixmaps.get(mode)
             if px:
@@ -210,12 +176,12 @@ class OverlayElementWidget(QWidget):
             else:
                 painter.fillRect(self.rect(), QColor('#2D2D2D'))
 
-            color_str = self.config.get('color', '#FFFFFF')
+            color_str = self.config.color
 
-            if mode == MODE_HARDWARE:
-                main_count = self.config.get('main_count', 0)
-                cat_color = CATEGORY_COLORS.get(main_count, '#9375FF')
-                cat_name = CATEGORY_NAMES.get(main_count, '???')
+            if mode == OverlayMode.HARDWARE:
+                mc = self.config.main_count
+                cat_color = CATEGORY_COLORS.get(mc, '#9375FF')
+                cat_name = CATEGORY_NAMES.get(mc, '???')
 
                 # label1: category name in category color (Windows: label1.ForeColor)
                 painter.setPen(QColor(cat_color))
@@ -226,31 +192,28 @@ class OverlayElementWidget(QWidget):
                     painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
                                      self._live_value)
                 else:
-                    sub_name = SUB_METRICS.get(main_count, {}).get(
-                        self.config.get('sub_count', 1), '--')
+                    sub_name = SUB_METRICS.get(mc, {}).get(self.config.sub_count, '--')
                     painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, sub_name)
                 # label3: unit suffix (Windows: label3.ForeColor = myColor)
                 painter.drawText(2, 41, 56, 18, Qt.AlignmentFlag.AlignCenter,
                                  self._live_unit or '--')
-            elif mode == MODE_TIME:
+            elif mode == OverlayMode.TIME:
                 # Windows: label1+label3 hidden, only label2 visible
                 from datetime import datetime
-                mode_sub = self.config.get('mode_sub', 0)
-                if mode_sub == 1:
+                if self.config.mode_sub == 1:
                     text = datetime.now().strftime('%-I:%M %p')
                 else:
                     text = datetime.now().strftime('%H:%M')
                 painter.setPen(QColor(color_str))
                 painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
-            elif mode == MODE_DATE:
+            elif mode == OverlayMode.DATE:
                 # Windows: label1+label3 hidden, only label2 visible
                 from datetime import datetime
-                mode_sub = self.config.get('mode_sub', 0)
                 fmts = {0: '%Y/%m/%d', 1: '%Y/%m/%d', 2: '%d/%m/%Y', 3: '%m/%d', 4: '%d/%m'}
-                text = datetime.now().strftime(fmts.get(mode_sub, '%Y/%m/%d'))
+                text = datetime.now().strftime(fmts.get(self.config.mode_sub, '%Y/%m/%d'))
                 painter.setPen(QColor(color_str))
                 painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
-            elif mode == MODE_WEEKDAY:
+            elif mode == OverlayMode.WEEKDAY:
                 # Windows: label1+label3 hidden, only label2 visible
                 # Windows uses SUN=0..SAT=6 array indexed by DayOfWeek
                 from datetime import datetime
@@ -258,11 +221,11 @@ class OverlayElementWidget(QWidget):
                 painter.setPen(QColor(color_str))
                 painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
                                  days[datetime.now().weekday()])
-            elif mode == MODE_CUSTOM:
+            elif mode == OverlayMode.CUSTOM:
                 # Windows: label1+label3 hidden, label2.Text = myText
-                text = self.config.get('text', '')
                 painter.setPen(QColor(color_str))
-                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter, text)
+                painter.drawText(2, 21, 56, 18, Qt.AlignmentFlag.AlignCenter,
+                                 self.config.text)
 
             # Selection overlay (Windows: OnPaint draws imageSelect)
             if self._selected and not self._select_pixmap.isNull():
@@ -305,7 +268,7 @@ class OverlayGridPanel(QFrame):
     Has on/off toggle and "add" button at next available slot.
     """
 
-    element_selected = Signal(int, dict)   # index, config
+    element_selected = Signal(int, object)  # index, OverlayElementConfig
     element_deleted = Signal(int)           # index
     add_requested = Signal()
     elements_changed = Signal()             # any add/delete/reorder
@@ -321,7 +284,7 @@ class OverlayGridPanel(QFrame):
             Sizes.OVERLAY_GRID_W, Sizes.OVERLAY_GRID_H,
             fallback_style=f"background-color: {Colors.BASE_BG}; border-radius: 5px;")
 
-        self._configs = []         # list of element config dicts
+        self._configs: list[OverlayElementConfig] = []
         self._selected_index = -1
         self._overlay_enabled = True
         self._cells = []           # OverlayElementWidget instances (always 42)
@@ -454,13 +417,14 @@ class OverlayGridPanel(QFrame):
             return self._configs[self._selected_index]
         return None
 
-    def get_all_configs(self):
-        """Get all element configs as list of dicts."""
+    def get_all_configs(self) -> list[OverlayElementConfig]:
+        """Get all element configs."""
         return list(self._configs)
 
-    def load_configs(self, configs):
+    def load_configs(self, configs: list[OverlayElementConfig]):
         """Load element configs from list."""
-        self._configs = [dict(c) for c in configs[:self.MAX_ELEMENTS]]
+        from dataclasses import replace
+        self._configs = [replace(c) for c in configs[:self.MAX_ELEMENTS]]
         self._selected_index = -1
         self._refresh_cells()
 
@@ -475,49 +439,40 @@ class OverlayGridPanel(QFrame):
             return {}
 
         overlay_config = {}
-        metric_map = {
-            (0, 1): 'cpu_temp', (0, 2): 'cpu_percent', (0, 3): 'cpu_freq', (0, 4): 'cpu_power',
-            (1, 1): 'gpu_temp', (1, 2): 'gpu_usage', (1, 3): 'gpu_clock', (1, 4): 'gpu_power',
-            (2, 1): 'mem_percent', (2, 2): 'mem_clock',
-            (3, 1): 'disk_read', (3, 2): 'disk_write',
-            (4, 1): 'net_down', (4, 2): 'net_up',
-            (5, 1): 'fan_rpm',
-        }
 
         for i, cfg in enumerate(self._configs):
-            mode = cfg.get('mode', MODE_TIME)
             entry = {
-                'x': cfg.get('x', 100),
-                'y': cfg.get('y', 100),
-                'color': cfg.get('color', '#FFFFFF'),
+                'x': cfg.x,
+                'y': cfg.y,
+                'color': cfg.color,
                 'font': {
-                    'size': cfg.get('font_size', 36),
-                    'style': 'bold' if cfg.get('font_style', 0) == 1 else 'regular',
-                    'name': cfg.get('font_name', 'Microsoft YaHei'),
+                    'size': cfg.font_size,
+                    'style': 'bold' if cfg.font_style == 1 else 'regular',
+                    'name': cfg.font_name,
                 },
                 'enabled': True,
             }
 
-            if mode == MODE_TIME:
+            if cfg.mode == OverlayMode.TIME:
                 entry['metric'] = 'time'
-                entry['time_format'] = cfg.get('mode_sub', 0)
+                entry['time_format'] = cfg.mode_sub
                 key = f'time_{i}'
-            elif mode == MODE_DATE:
+            elif cfg.mode == OverlayMode.DATE:
                 entry['metric'] = 'date'
-                entry['date_format'] = cfg.get('mode_sub', 0)
+                entry['date_format'] = cfg.mode_sub
                 key = f'date_{i}'
-            elif mode == MODE_WEEKDAY:
+            elif cfg.mode == OverlayMode.WEEKDAY:
                 entry['metric'] = 'weekday'
                 key = f'weekday_{i}'
-            elif mode == MODE_CUSTOM:
-                entry['text'] = cfg.get('text', '')
+            elif cfg.mode == OverlayMode.CUSTOM:
+                entry['text'] = cfg.text
                 key = f'custom_{i}'
-            elif mode == MODE_HARDWARE:
-                mc = cfg.get('main_count', 0)
-                sc = cfg.get('sub_count', 1)
-                entry['metric'] = metric_map.get((mc, sc), f'hw_{mc}_{sc}')
-                entry['temp_unit'] = cfg.get('mode_sub', 0)
-                key = f'hw_{mc}_{sc}_{i}'
+            elif cfg.mode == OverlayMode.HARDWARE:
+                entry['metric'] = HARDWARE_METRICS.get(
+                    (cfg.main_count, cfg.sub_count),
+                    f'hw_{cfg.main_count}_{cfg.sub_count}')
+                entry['temp_unit'] = cfg.mode_sub
+                key = f'hw_{cfg.main_count}_{cfg.sub_count}_{i}'
             else:
                 continue
 
@@ -527,65 +482,43 @@ class OverlayGridPanel(QFrame):
 
     def load_from_overlay_config(self, overlay_config):
         """Load from OverlayRenderer config format."""
-        configs = []
-        for key, cfg in overlay_config.items():
+        configs: list[OverlayElementConfig] = []
+        for _key, cfg in overlay_config.items():
             if not isinstance(cfg, dict) or not cfg.get('enabled', True):
                 continue
-            elem = _default_element_config()
-            elem['x'] = cfg.get('x', 100)
-            elem['y'] = cfg.get('y', 100)
-            elem['color'] = cfg.get('color', '#FFFFFF')
+
             font = cfg.get('font', {})
-            if isinstance(font, dict):
-                elem['font_size'] = font.get('size', 36)
-                elem['font_style'] = 1 if font.get('style') == 'bold' else 0
-                if font.get('name'):
-                    elem['font_name'] = font['name']
+            font_size = font.get('size', 36) if isinstance(font, dict) else 36
+            font_style = (1 if font.get('style') == 'bold' else 0) if isinstance(font, dict) else 0
+            font_name = font.get('name', 'Microsoft YaHei') if isinstance(font, dict) else 'Microsoft YaHei'
+
+            elem = OverlayElementConfig(
+                x=cfg.get('x', 100),
+                y=cfg.get('y', 100),
+                color=cfg.get('color', '#FFFFFF'),
+                font_size=font_size,
+                font_style=font_style,
+                font_name=font_name,
+            )
 
             metric = cfg.get('metric', '')
             if metric == 'time':
-                elem['mode'] = MODE_TIME
-                elem['mode_sub'] = cfg.get('time_format', 0)
+                elem.mode = OverlayMode.TIME
+                elem.mode_sub = cfg.get('time_format', 0)
             elif metric == 'date':
-                elem['mode'] = MODE_DATE
-                elem['mode_sub'] = cfg.get('date_format', 0)
+                elem.mode = OverlayMode.DATE
+                elem.mode_sub = cfg.get('date_format', 0)
             elif metric == 'weekday':
-                elem['mode'] = MODE_WEEKDAY
+                elem.mode = OverlayMode.WEEKDAY
             elif 'text' in cfg:
-                elem['mode'] = MODE_CUSTOM
-                elem['text'] = cfg['text']
-            elif metric.startswith('cpu'):
-                elem['mode'] = MODE_HARDWARE
-                elem['main_count'] = 0
-                sub_map = {'cpu_temp': 1, 'cpu_percent': 2, 'cpu_freq': 3, 'cpu_power': 4}
-                elem['sub_count'] = sub_map.get(metric, 1)
-                elem['mode_sub'] = cfg.get('temp_unit', 0)
-            elif metric.startswith('gpu'):
-                elem['mode'] = MODE_HARDWARE
-                elem['main_count'] = 1
-                sub_map = {'gpu_temp': 1, 'gpu_usage': 2, 'gpu_clock': 3, 'gpu_power': 4}
-                elem['sub_count'] = sub_map.get(metric, 1)
-                elem['mode_sub'] = cfg.get('temp_unit', 0)
-            elif metric.startswith('mem'):
-                elem['mode'] = MODE_HARDWARE
-                elem['main_count'] = 2
-                elem['sub_count'] = 1
-                elem['mode_sub'] = cfg.get('temp_unit', 0)
-            elif metric.startswith('disk'):
-                elem['mode'] = MODE_HARDWARE
-                elem['main_count'] = 3
-                elem['sub_count'] = 1
-                elem['mode_sub'] = cfg.get('temp_unit', 0)
-            elif metric.startswith('net'):
-                elem['mode'] = MODE_HARDWARE
-                elem['main_count'] = 4
-                elem['sub_count'] = 1
-                elem['mode_sub'] = cfg.get('temp_unit', 0)
-            elif metric.startswith('fan'):
-                elem['mode'] = MODE_HARDWARE
-                elem['main_count'] = 5
-                elem['sub_count'] = 1
-                elem['mode_sub'] = cfg.get('temp_unit', 0)
+                elem.mode = OverlayMode.CUSTOM
+                elem.text = cfg['text']
+            elif metric in METRIC_TO_IDS:
+                mc, sc = METRIC_TO_IDS[metric]
+                elem.mode = OverlayMode.HARDWARE
+                elem.main_count = mc
+                elem.sub_count = sc
+                elem.mode_sub = cfg.get('temp_unit', 0)
             else:
                 continue
             configs.append(elem)
@@ -811,14 +744,14 @@ class ColorPickerPanel(QFrame):
 class AddElementPanel(QFrame):
     """Add new overlay element panel (matches UCXiTongXianShiAdd 230x430)."""
 
-    element_added = Signal(dict)  # full config dict
+    element_added = Signal(object)  # OverlayElementConfig
 
     ELEMENT_TYPES = [
-        ("Hardware Data", MODE_HARDWARE),
-        ("Time", MODE_TIME),
-        ("Weekday", MODE_WEEKDAY),
-        ("Date", MODE_DATE),
-        ("Custom Text", MODE_CUSTOM),
+        ("Hardware Data", OverlayMode.HARDWARE),
+        ("Time", OverlayMode.TIME),
+        ("Weekday", OverlayMode.WEEKDAY),
+        ("Date", OverlayMode.DATE),
+        ("Custom Text", OverlayMode.CUSTOM),
     ]
 
     def __init__(self, parent=None):
@@ -888,16 +821,15 @@ class AddElementPanel(QFrame):
         metrics = SUB_METRICS.get(idx, {})
         self.metric_combo.addItems(list(metrics.values()))
 
-    def _on_type_clicked(self, mode):
-        cfg = _default_element_config(mode)
+    def _on_type_clicked(self, mode: OverlayMode):
+        cfg = OverlayElementConfig(mode=mode)
 
-        if mode == MODE_HARDWARE:
+        if mode == OverlayMode.HARDWARE:
             self.hw_frame.setVisible(True)
             cat_idx = self.hw_combo.currentIndex()
-            metric_idx = self.metric_combo.currentIndex()
-            cfg['main_count'] = cat_idx
-            cfg['sub_count'] = metric_idx + 1
-            cfg['color'] = CATEGORY_COLORS.get(cat_idx, '#FFFFFF')
+            cfg.main_count = cat_idx
+            cfg.sub_count = self.metric_combo.currentIndex() + 1
+            cfg.color = CATEGORY_COLORS.get(cat_idx, '#FFFFFF')
         else:
             self.hw_frame.setVisible(False)
 
@@ -1019,20 +951,20 @@ class DataTablePanel(QFrame):
         self._mode_sub = mode_sub
         self._hide_all()
 
-        if mode == MODE_HARDWARE:
+        if mode == OverlayMode.HARDWARE:
             self._update_unit_image()
             self.unit_btn.setVisible(True)
-        elif mode == MODE_TIME:
+        elif mode == OverlayMode.TIME:
             self._update_time_image()
             self.time_btn.setVisible(True)
-        elif mode == MODE_WEEKDAY:
+        elif mode == OverlayMode.WEEKDAY:
             pass  # No controls
-        elif mode == MODE_DATE:
+        elif mode == OverlayMode.DATE:
             if self._mode_sub == 0:
                 self._mode_sub = 1  # Default to PYMD
             self._update_date_image()
             self.date_btn.setVisible(True)
-        elif mode == MODE_CUSTOM:
+        elif mode == OverlayMode.CUSTOM:
             self.text_input.setVisible(True)
 
     def _on_unit_clicked(self):
@@ -1470,18 +1402,15 @@ class UCThemeSetting(BasePanel):
 
     # --- Element selection / editing ---
 
-    def _on_element_selected(self, index, config):
+    def _on_element_selected(self, index, config: OverlayElementConfig):
         """Element was clicked — show its properties in color panel."""
         self.right_stack.setCurrentWidget(self.color_panel)
-        self.color_panel.set_position(config.get('x', 0), config.get('y', 0))
-        color_str = config.get('color', '#FFFFFF')
-        self.color_panel.set_color_hex(color_str)
-        self.color_panel.set_font_display(
-            config.get('font_name', 'Microsoft YaHei'),
-            config.get('font_size', 36))
-        self.data_table.set_mode(config.get('mode', MODE_TIME), config.get('mode_sub', 0))
-        if config.get('mode') == MODE_CUSTOM:
-            self.data_table.text_input.setText(config.get('text', ''))
+        self.color_panel.set_position(config.x, config.y)
+        self.color_panel.set_color_hex(config.color)
+        self.color_panel.set_font_display(config.font_name, config.font_size)
+        self.data_table.set_mode(config.mode, config.mode_sub)
+        if config.mode == OverlayMode.CUSTOM:
+            self.data_table.text_input.setText(config.text)
 
     def _on_add_requested(self):
         """Empty cell clicked — show add panel."""
@@ -1506,7 +1435,7 @@ class UCThemeSetting(BasePanel):
         config = self.overlay_grid.to_overlay_config()
         self.invoke_delegate(self.CMD_OVERLAY_CHANGED, config)
 
-    def _update_selected(self, require_mode: int | None = None, **fields):
+    def _update_selected(self, require_mode: OverlayMode | None = None, **fields):
         """Update selected overlay element config fields and propagate.
 
         Single entry point for all element property changes (color, position,
@@ -1517,9 +1446,10 @@ class UCThemeSetting(BasePanel):
         cfg = self.overlay_grid.get_selected_config()
         if cfg is None:
             return
-        if require_mode is not None and cfg.get('mode') != require_mode:
+        if require_mode is not None and cfg.mode != require_mode:
             return
-        cfg.update(fields)
+        for k, v in fields.items():
+            setattr(cfg, k, v)
         self.overlay_grid.update_element(idx, cfg)
         self._on_elements_changed()
 
@@ -1536,15 +1466,15 @@ class UCThemeSetting(BasePanel):
         self._update_selected(require_mode=mode, mode_sub=mode_sub)
         # Persist format preference so it carries across theme changes
         from ..conf import Settings
-        if mode == MODE_TIME:
+        if mode == OverlayMode.TIME:
             Settings.save_format_pref('time_format', mode_sub)
-        elif mode == MODE_DATE:
+        elif mode == OverlayMode.DATE:
             Settings.save_format_pref('date_format', mode_sub)
-        elif mode == MODE_HARDWARE:
+        elif mode == OverlayMode.HARDWARE:
             Settings.save_format_pref('temp_unit', mode_sub)
 
     def _on_text_changed(self, text):
-        self._update_selected(require_mode=MODE_CUSTOM, text=text)
+        self._update_selected(require_mode=OverlayMode.CUSTOM, text=text)
 
     # --- Display mode panels ---
 

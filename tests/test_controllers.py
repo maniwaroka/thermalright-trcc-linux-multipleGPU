@@ -27,6 +27,7 @@ from trcc.core.controllers import (
 )
 from trcc.core.models import (
     DeviceInfo,
+    HardwareMetrics,
     PlaybackState,
     ThemeInfo,
     ThemeType,
@@ -359,7 +360,7 @@ class TestOverlayController(unittest.TestCase):
         self.assertEqual(len(fired), 1)
 
     def test_update_metrics(self):
-        self.ctrl.update_metrics({'cpu_temp': 65})
+        self.ctrl.update_metrics(HardwareMetrics(cpu_temp=65))
 
     def test_render_no_config_returns_background(self):
         """With no config/mask, render returns background as-is (fast path)."""

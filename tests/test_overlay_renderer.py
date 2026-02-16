@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from PIL import Image
 
+from trcc.core.models import HardwareMetrics
 from trcc.services.overlay import OverlayService as OverlayRenderer
 
 
@@ -297,7 +298,7 @@ class TestRender(unittest.TestCase):
                 'enabled': True
             }
         })
-        metrics = {'cpu_temp': 45}
+        metrics = HardwareMetrics(cpu_temp=45)
         img = renderer.render(metrics=metrics)
         self.assertEqual(img.size, (320, 320))
 
@@ -328,7 +329,7 @@ class TestRender(unittest.TestCase):
             }
         })
         # Render with empty metrics
-        img = renderer.render(metrics={})
+        img = renderer.render(metrics=HardwareMetrics())
         self.assertEqual(img.size, (320, 320))
 
     def test_render_with_format_options(self):
@@ -345,7 +346,7 @@ class TestRender(unittest.TestCase):
                 'enabled': True
             }
         })
-        metrics = {'time': '14:30'}
+        metrics = HardwareMetrics()
         img = renderer.render(metrics=metrics)
         self.assertEqual(img.size, (320, 320))
 
@@ -362,7 +363,7 @@ class TestRender(unittest.TestCase):
                 'temp_unit': 1,  # Override: Fahrenheit
             }
         })
-        metrics = {'cpu_temp': 45}
+        metrics = HardwareMetrics(cpu_temp=45)
         img = renderer.render(metrics=metrics)
         self.assertEqual(img.size, (320, 320))
 
@@ -461,10 +462,7 @@ class TestRenderIntegration(unittest.TestCase):
         # Format options default to 0, no need to set
 
         # Render with metrics
-        metrics = {
-            'time': '14:30',
-            'cpu_temp': 45
-        }
+        metrics = HardwareMetrics(cpu_temp=45)
         img = renderer.render(metrics=metrics)
 
         # Verify output

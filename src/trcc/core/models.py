@@ -5,7 +5,7 @@ These models can be used by any GUI framework (Tkinter, PyQt6, etc.)
 """
 
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
@@ -175,6 +175,25 @@ class DeviceInfo:
     connected: bool = True
     brightness: int = 100  # 0-100%
     rotation: int = 0  # 0, 90, 180, 270
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'DeviceInfo':
+        """Create DeviceInfo from a detection dict (find_lcd_devices output)."""
+        return cls(
+            name=d.get('name', 'LCD'),
+            path=d.get('path', ''),
+            resolution=d.get('resolution', (0, 0)),
+            vendor=d.get('vendor'),
+            product=d.get('product'),
+            model=d.get('model'),
+            vid=d.get('vid', 0),
+            pid=d.get('pid', 0),
+            device_index=d.get('device_index', 0),
+            protocol=d.get('protocol', 'scsi'),
+            device_type=d.get('device_type', 1),
+            implementation=d.get('implementation', 'generic'),
+            led_style_id=d.get('led_style_id'),
+        )
 
     @property
     def resolution_str(self) -> str:
@@ -706,8 +725,10 @@ class DisplayElement:
     @property
     def mode_name(self) -> str:
         """Get human-readable mode name."""
-        names = {0: 'hardware', 1: 'time', 2: 'weekday', 3: 'date', 4: 'custom'}
-        return names.get(self.mode, f'unknown_{self.mode}')
+        try:
+            return OverlayMode(self.mode).name.lower()
+        except ValueError:
+            return f'unknown_{self.mode}'
 
     @property
     def color_hex(self) -> str:
@@ -716,20 +737,128 @@ class DisplayElement:
         return f"#{r:02x}{g:02x}{b:02x}"
 
 
+# =============================================================================
+# Overlay element types — UI/grid-level representation.
+# DisplayElement is the binary DC format; OverlayElementConfig is the
+# grid editor's typed representation (replaces raw dicts in _configs).
+# =============================================================================
+
+class OverlayMode(IntEnum):
+    """Display element mode — matches Windows myMode values 0..4."""
+    HARDWARE = 0
+    TIME = 1
+    WEEKDAY = 2
+    DATE = 3
+    CUSTOM = 4
+
+
+@dataclass
+class OverlayElementConfig:
+    """Overlay grid element config — UI-level representation.
+
+    Replaces the untyped dict from _default_element_config().
+    Used by OverlayGridPanel._configs and OverlayElementWidget.config.
+    """
+    mode: OverlayMode = OverlayMode.TIME
+    mode_sub: int = 0
+    x: int = 100
+    y: int = 100
+    main_count: int = 0
+    sub_count: int = 1
+    color: str = '#FFFFFF'
+    font_name: str = 'Microsoft YaHei'
+    font_size: int = 36
+    font_style: int = 0
+    text: str = ''
+
+
+# =============================================================================
+# HardwareMetrics DTO — typed container for all system sensor readings.
+# Replaces Dict[str, float] with magic string keys. Consumers use attribute
+# access (metrics.cpu_temp) instead of dict lookups (metrics['cpu_temp']).
+# Pyright catches typos at lint time. Fields default to 0.0.
+# =============================================================================
+
+@dataclass
+class HardwareMetrics:
+    """Typed DTO for all system sensor readings. Updated once/second by polling."""
+    # CPU
+    cpu_temp: float = 0.0
+    cpu_percent: float = 0.0
+    cpu_freq: float = 0.0
+    cpu_power: float = 0.0
+    # GPU
+    gpu_temp: float = 0.0
+    gpu_usage: float = 0.0
+    gpu_clock: float = 0.0
+    gpu_power: float = 0.0
+    # Memory
+    mem_temp: float = 0.0
+    mem_percent: float = 0.0
+    mem_clock: float = 0.0
+    mem_available: float = 0.0
+    # Disk
+    disk_temp: float = 0.0
+    disk_activity: float = 0.0
+    disk_read: float = 0.0
+    disk_write: float = 0.0
+    # Network
+    net_up: float = 0.0
+    net_down: float = 0.0
+    net_total_up: float = 0.0
+    net_total_down: float = 0.0
+    # Fan
+    fan_cpu: float = 0.0
+    fan_gpu: float = 0.0
+    fan_ssd: float = 0.0
+    fan_sys2: float = 0.0
+    # Date/Time
+    date_year: float = 0.0
+    date_month: float = 0.0
+    date_day: float = 0.0
+    time_hour: float = 0.0
+    time_minute: float = 0.0
+    time_second: float = 0.0
+    day_of_week: float = 0.0
+    date: float = 0.0
+    time: float = 0.0
+    weekday: float = 0.0
+
+
 # Hardware sensor ↔ metric name mapping (single source of truth).
+# Maps DC file (main_count, sub_count) → HardwareMetrics attribute name.
 # Used by dc_parser, dc_writer, dc_config, uc_sensor_picker.
 HARDWARE_METRICS: Dict[Tuple[int, int], str] = {
+    # CPU (main_count=0)
     (0, 1): 'cpu_temp',
     (0, 2): 'cpu_percent',
     (0, 3): 'cpu_freq',
     (0, 4): 'cpu_power',
+    # GPU (main_count=1)
     (1, 1): 'gpu_temp',
     (1, 2): 'gpu_usage',
     (1, 3): 'gpu_clock',
     (1, 4): 'gpu_power',
+    # MEM (main_count=2)
     (2, 1): 'mem_percent',
     (2, 2): 'mem_clock',
-    (3, 1): 'disk_activity',
+    (2, 3): 'mem_available',
+    (2, 4): 'mem_temp',
+    # HDD (main_count=3)
+    (3, 1): 'disk_read',
+    (3, 2): 'disk_write',
+    (3, 3): 'disk_activity',
+    (3, 4): 'disk_temp',
+    # NET (main_count=4)
+    (4, 1): 'net_down',
+    (4, 2): 'net_up',
+    (4, 3): 'net_total_down',
+    (4, 4): 'net_total_up',
+    # FAN (main_count=5)
+    (5, 1): 'fan_cpu',
+    (5, 2): 'fan_gpu',
+    (5, 3): 'fan_ssd',
+    (5, 4): 'fan_sys2',
 }
 
 METRIC_TO_IDS: Dict[str, Tuple[int, int]] = {v: k for k, v in HARDWARE_METRICS.items()}
@@ -875,6 +1004,19 @@ _PM_TO_FBL_OVERRIDES: dict[int, int] = {
 }
 
 
+# FBL 224 is shared by 3 resolutions — PM byte disambiguates
+_FBL_224_BY_PM: dict[int, tuple[int, int]] = {
+    10: (960, 540),
+    12: (800, 480),
+}
+
+# PM+SUB compound keys where sub byte changes the FBL mapping
+_PM_SUB_TO_FBL: dict[tuple[int, int], int] = {
+    (1, 48): 114,   # 1600x720
+    (1, 49): 192,   # 1920x462
+}
+
+
 def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple[int, int]:
     """Map FBL byte to (width, height).
 
@@ -885,11 +1027,7 @@ def fbl_to_resolution(fbl: int, pm: int = 0) -> tuple[int, int]:
     Returns (320, 320) as default if FBL is unknown.
     """
     if fbl == 224:
-        if pm == 10:
-            return (960, 540)
-        elif pm == 12:
-            return (800, 480)
-        return (854, 480)
+        return _FBL_224_BY_PM.get(pm, (854, 480))
     return FBL_TO_RESOLUTION.get(fbl, (320, 320))
 
 
@@ -898,12 +1036,10 @@ def pm_to_fbl(pm: int, sub: int = 0) -> int:
 
     Default: PM=FBL (same convention as SCSI poll bytes).
     Only overrides for the few PM values where PM ≠ FBL.
-    Special case: PM=1 + SUB=48 → FBL=114, PM=1 + SUB=49 → FBL=192.
+    Compound key (PM, SUB) checked first for sub-dependent mappings.
     """
-    if pm == 1 and sub == 48:
-        return 114
-    if pm == 1 and sub == 49:
-        return 192
+    if (pm, sub) in _PM_SUB_TO_FBL:
+        return _PM_SUB_TO_FBL[(pm, sub)]
     return _PM_TO_FBL_OVERRIDES.get(pm, pm)
 
 

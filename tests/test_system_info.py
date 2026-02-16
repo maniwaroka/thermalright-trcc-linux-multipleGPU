@@ -30,7 +30,7 @@ from trcc.adapters.system.info import (
     get_memory_usage,
     get_network_stats,
 )
-from trcc.core.models import DATE_FORMATS, TIME_FORMATS, WEEKDAYS
+from trcc.core.models import DATE_FORMATS, TIME_FORMATS, WEEKDAYS, HardwareMetrics
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -759,40 +759,41 @@ class TestGetAllMetrics(unittest.TestCase):
             },
         )
         m = si.all_metrics
+        self.assertIsInstance(m, HardwareMetrics)
 
-        # Always present: date/time fields
-        self.assertIn('date', m)
-        self.assertIn('time', m)
-        self.assertIn('weekday', m)
-        self.assertIn('day_of_week', m)
+        # Always present: date/time fields (set from datetime.now())
+        self.assertTrue(hasattr(m, 'date_year'))
+        self.assertTrue(hasattr(m, 'time_hour'))
+        self.assertTrue(hasattr(m, 'day_of_week'))
 
         # CPU metrics from enumerator
-        self.assertIn('cpu_temp', m)
-        self.assertAlmostEqual(m['cpu_temp'], 55.0)
-        self.assertIn('cpu_percent', m)
-        self.assertIn('cpu_freq', m)
+        self.assertAlmostEqual(m.cpu_temp, 55.0)
+        self.assertAlmostEqual(m.cpu_percent, 25.0)
+        self.assertAlmostEqual(m.cpu_freq, 3500.0)
 
         # Memory
-        self.assertIn('mem_percent', m)
-        self.assertIn('mem_available', m)
+        self.assertAlmostEqual(m.mem_percent, 50.0)
+        self.assertAlmostEqual(m.mem_available, 8000.0)
 
-        # GPU not mapped -- keys absent
-        self.assertNotIn('gpu_temp', m)
+        # GPU not mapped -- stays at default 0.0
+        self.assertAlmostEqual(m.gpu_temp, 0.0)
 
     def test_all_none_returns_minimal(self):
-        """When enumerator has no readings, only date/time/weekday present."""
+        """When enumerator has no readings, sensor fields stay at default 0.0."""
         si = _make_si(defaults={}, readings={})
         # Patch all fallbacks to return None
         with patch('trcc.services.system.subprocess.run', side_effect=FileNotFoundError), \
              patch('trcc.adapters.infra.data_repository.SysUtils.read_sysfs', return_value=None), \
              patch('builtins.open', side_effect=FileNotFoundError):
             m = si.all_metrics
-            self.assertIn('date', m)
-            self.assertIn('time', m)
-            self.assertIn('weekday', m)
-            self.assertNotIn('cpu_temp', m)
-            self.assertNotIn('gpu_temp', m)
-            self.assertNotIn('mem_percent', m)
+            self.assertIsInstance(m, HardwareMetrics)
+            # Date/time fields are set from datetime.now()
+            self.assertTrue(m.date_year > 0)
+            self.assertTrue(m.time_hour >= 0)
+            # Sensor fields stay at default 0.0
+            self.assertAlmostEqual(m.cpu_temp, 0.0)
+            self.assertAlmostEqual(m.gpu_temp, 0.0)
+            self.assertAlmostEqual(m.mem_percent, 0.0)
 
     def test_all_values_present(self):
         """All sensor keys present when enumerator provides them."""
@@ -827,19 +828,19 @@ class TestGetAllMetrics(unittest.TestCase):
             },
         )
         m = si.all_metrics
-        self.assertAlmostEqual(m['gpu_temp'], 65.0)
-        self.assertAlmostEqual(m['gpu_usage'], 75.0)
-        self.assertAlmostEqual(m['gpu_clock'], 2100.0)
-        self.assertAlmostEqual(m['mem_temp'], 38.0)
-        self.assertAlmostEqual(m['disk_temp'], 40.0)
-        self.assertIn('fan_cpu', m)
+        self.assertAlmostEqual(m.gpu_temp, 65.0)
+        self.assertAlmostEqual(m.gpu_usage, 75.0)
+        self.assertAlmostEqual(m.gpu_clock, 2100.0)
+        self.assertAlmostEqual(m.mem_temp, 38.0)
+        self.assertAlmostEqual(m.disk_temp, 40.0)
+        self.assertAlmostEqual(m.fan_cpu, 1200.0)
 
     def test_backward_compat_alias(self):
         with patch.object(SystemInfo, 'all_metrics',
                           new_callable=PropertyMock,
-                          return_value={'date': 0, 'time': 0}):
+                          return_value=HardwareMetrics()):
             result = get_all_metrics()
-            self.assertIn('date', result)
+            self.assertIsInstance(result, HardwareMetrics)
 
 
 # ── CPU temperature fallback branches ────────────────────────────────────────
@@ -1045,10 +1046,10 @@ class TestSystemInfoClass(unittest.TestCase):
             },
         )
         m = si.all_metrics
-        self.assertAlmostEqual(m['cpu_temp'], 60.0)
-        self.assertAlmostEqual(m['cpu_percent'], 30.0)
-        self.assertNotIn('gpu_temp', m)
-        self.assertIn('date', m)
+        self.assertAlmostEqual(m.cpu_temp, 60.0)
+        self.assertAlmostEqual(m.cpu_percent, 30.0)
+        self.assertAlmostEqual(m.gpu_temp, 0.0)
+        self.assertTrue(hasattr(m, 'date_year'))
 
     def test_format_metric_static(self):
         """format_metric is usable without an instance."""
@@ -1179,9 +1180,8 @@ class TestAllMetricsFallbacks(unittest.TestCase):
              patch.object(si, '_fallback_mem_clock', return_value=None), \
              patch.object(si, '_fallback_disk_temp', return_value=None):
             m = si.all_metrics
-            self.assertIn('cpu_temp', m)
-            self.assertAlmostEqual(m['cpu_temp'], 65.0)
-            self.assertNotIn('cpu_percent', m)
+            self.assertAlmostEqual(m.cpu_temp, 65.0)
+            self.assertAlmostEqual(m.cpu_percent, 0.0)
 
     def test_enumerator_data_not_overwritten_by_fallback(self):
         """Fallbacks only run for keys NOT already in metrics from enumerator."""
@@ -1193,7 +1193,7 @@ class TestAllMetricsFallbacks(unittest.TestCase):
             m = si.all_metrics
             # Enumerator provided cpu_temp=55, fallback should NOT be called
             fb.assert_not_called()
-            self.assertAlmostEqual(m['cpu_temp'], 55.0)
+            self.assertAlmostEqual(m.cpu_temp, 55.0)
 
 
 if __name__ == '__main__':

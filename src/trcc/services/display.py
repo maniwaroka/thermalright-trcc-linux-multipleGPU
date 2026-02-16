@@ -142,7 +142,7 @@ class DisplayService:
         self.overlay.enabled = False
         self.overlay.set_background(None)
         self.overlay.set_mask(None)
-        self.overlay.configure({})
+        self.overlay.set_config({})
         self._mask_source_dir = None
         self.current_image = None
         self.current_theme_path = theme.path

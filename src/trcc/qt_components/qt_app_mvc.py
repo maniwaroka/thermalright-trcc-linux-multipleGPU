@@ -63,6 +63,393 @@ from .uc_video_cut import UCVideoCut
 
 log = logging.getLogger(__name__)
 
+
+# =============================================================================
+# LED Handler — Mediator between UCLedControl panel and LEDDeviceController
+# =============================================================================
+
+class LEDHandler:
+    """Mediator for LED device control.
+
+    Owns the LEDDeviceController lifecycle, animation timer, sensor polling,
+    and signal wiring. Extracted from TRCCMainWindowMVC to reduce God Object.
+    """
+
+    def __init__(self, panel: UCLedControl, on_temp_unit_changed):
+        self._panel = panel
+        self._on_temp_unit_changed = on_temp_unit_changed
+        self._controller: LEDDeviceController | None = None
+        self._active = False
+        self._style_id = 0
+        self._sensor_counter = 0
+
+        # Timers (owned by handler, parented to panel for Qt lifecycle)
+        self._timer = QTimer(panel)
+        self._timer.timeout.connect(self._on_tick)
+        self._drive_timer = QTimer(panel)
+        self._drive_timer.timeout.connect(self._on_drive_metrics_tick)
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    @property
+    def has_controller(self) -> bool:
+        return self._controller is not None
+
+    def show(self, device: DeviceInfo):
+        """Initialize LED controller for device and start animation."""
+        if self._controller is None:
+            self._controller = LEDDeviceController()
+            self._connect_signals()
+
+        from ..services.led import LEDService
+        model = device.model or ''
+        led_style = device.led_style_id or LEDService.resolve_style_id(model)
+
+        self._controller.initialize(device, led_style)
+        self._style_id = led_style
+        self._sensor_counter = 0
+
+        style_info = LEDService.get_style_info(led_style)
+        if style_info:
+            self._panel.initialize(
+                led_style, style_info.segment_count, style_info.zone_count,
+                model=model,
+            )
+        self._panel.set_sensor_source(self._controller.led.state.temp_source)
+
+        seg_unit = "F" if settings.temp_unit == 1 else "C"
+        self._controller.led.set_seg_temp_unit(seg_unit)
+
+        self._active = True
+        self._timer.start(30)
+
+    def stop(self):
+        """Stop LED mode — save config, stop timers, release protocol."""
+        self._timer.stop()
+        self._drive_timer.stop()
+        self._active = False
+        if self._controller:
+            self._controller.cleanup()
+
+    def cleanup(self):
+        """Full cleanup for application shutdown."""
+        self._timer.stop()
+        self._drive_timer.stop()
+        if self._controller:
+            self._controller.cleanup()
+
+    def set_temp_unit(self, unit: str):
+        """Forward temperature unit change to segment display."""
+        if self._controller:
+            self._controller.led.set_seg_temp_unit(unit)
+
+    def start_drive_timer(self):
+        self._drive_timer.start(1000)
+
+    def stop_drive_timer(self):
+        self._drive_timer.stop()
+
+    # ── Signal wiring ────────────────────────────────────────────────
+
+    def _connect_signals(self):
+        """Wire UCLedControl signals to LEDDeviceController."""
+        if not self._controller:
+            return
+
+        ctrl = self._controller
+        panel = self._panel
+
+        panel.mode_changed.connect(self._on_mode_changed)
+        panel.color_changed.connect(self._on_color_changed)
+        panel.brightness_changed.connect(self._on_brightness_changed)
+        panel.global_toggled.connect(
+            lambda on: ctrl.led.toggle_global(on))
+        panel.segment_clicked.connect(
+            lambda idx: ctrl.led.toggle_segment(idx, not ctrl.led.state.segment_on[idx]))
+
+        panel.zone_selected.connect(self._on_zone_selected)
+        panel.sync_all_changed.connect(lambda _sync: None)
+
+        panel.clock_format_changed.connect(
+            lambda is_24h: ctrl.led.set_clock_format(is_24h))
+        panel.week_start_changed.connect(
+            lambda is_sun: ctrl.led.set_week_start(is_sun))
+
+        panel.sensor_source_changed.connect(
+            lambda src: ctrl.led.set_sensor_source(src))
+
+        panel.display_metric_changed.connect(self._on_hr10_metric_changed)
+        panel.temp_unit_changed.connect(self._on_temp_unit_changed)
+
+        ctrl.led.on_preview_update = self._on_colors_update
+        ctrl.on_status_update = lambda text: panel.set_status(text)
+
+    # ── Zone-aware routing ───────────────────────────────────────────
+
+    def _on_mode_changed(self, mode):
+        ctrl = self._controller
+        if not ctrl:
+            return
+        panel = self._panel
+        if panel.sync_all and ctrl.led.state.zones:
+            for i in range(len(ctrl.led.state.zones)):
+                ctrl.led.set_zone_mode(i, mode)
+        elif ctrl.led.state.zones:
+            ctrl.led.set_zone_mode(panel.selected_zone, mode)
+        else:
+            ctrl.led.set_mode(mode)
+
+    def _on_color_changed(self, r, g, b):
+        ctrl = self._controller
+        if not ctrl:
+            return
+        panel = self._panel
+        if panel.sync_all and ctrl.led.state.zones:
+            for i in range(len(ctrl.led.state.zones)):
+                ctrl.led.set_zone_color(i, r, g, b)
+        elif ctrl.led.state.zones:
+            ctrl.led.set_zone_color(panel.selected_zone, r, g, b)
+        else:
+            ctrl.led.set_color(r, g, b)
+
+    def _on_brightness_changed(self, val):
+        ctrl = self._controller
+        if not ctrl:
+            return
+        panel = self._panel
+        if panel.sync_all and ctrl.led.state.zones:
+            for i in range(len(ctrl.led.state.zones)):
+                ctrl.led.set_zone_brightness(i, val)
+        elif ctrl.led.state.zones:
+            ctrl.led.set_zone_brightness(panel.selected_zone, val)
+        else:
+            ctrl.led.set_brightness(val)
+
+    def _on_zone_selected(self, zone_index):
+        ctrl = self._controller
+        if not ctrl or not ctrl.led.state.zones:
+            return
+        zones = ctrl.led.state.zones
+        if 0 <= zone_index < len(zones):
+            z = zones[zone_index]
+            self._panel.load_zone_state(
+                zone_index, z.mode.value, z.color, z.brightness)
+
+    # ── Animation tick + sensor polling ──────────────────────────────
+
+    def _on_tick(self):
+        if not (self._controller and self._active):
+            return
+        self._controller.led.tick()
+
+        self._sensor_counter += 1
+        if self._sensor_counter >= 33:
+            self._sensor_counter = 0
+            self._poll_sensors()
+
+    def _poll_sensors(self):
+        if not self._controller:
+            return
+        try:
+            metrics = get_all_metrics()
+        except Exception:
+            return
+
+        self._controller.led.update_metrics(metrics)
+        panel = self._panel
+        style = self._style_id
+
+        if style in (1, 2, 3, 5, 6, 7, 8, 11):
+            panel.update_sensor_metrics(metrics)
+        if style == 4:
+            panel.update_memory_metrics(metrics)
+        if style == 10:
+            panel.update_lf11_disk_metrics(metrics)
+        if style == 9:
+            import datetime
+            now = datetime.datetime.now()
+            state = self._controller.led.state
+            hour = now.hour
+            if not state.is_timer_24h and hour > 12:
+                hour -= 12
+            dow = now.weekday()
+            if state.is_week_sunday:
+                dow = (dow + 1) % 7
+            self._panel._preview.set_timer(
+                now.month, now.day, hour, now.minute, dow)
+
+    # ── LED colors + HR10 display ────────────────────────────────────
+
+    def _on_colors_update(self, colors):
+        self._panel.set_led_colors(colors)
+
+    def _on_hr10_metric_changed(self, metric_key: str):
+        self._hr10_push_display_value()
+
+    def _hr10_push_display_value(self):
+        if not self._controller or not self._panel.is_hr10:
+            return
+        panel = self._panel
+        text, unit = panel.get_display_value()
+
+        indicators: set = set()
+        if '\u00b0' in unit:
+            indicators.add('deg')
+            if 'C' in unit:
+                text = text + 'C'
+            elif 'F' in unit:
+                text = text + 'F'
+        if '%' in unit:
+            indicators.add('%')
+        if 'MB' in unit or 'mb' in unit:
+            indicators.add('mbs')
+
+        self._controller.led.set_display_value(text, indicators)
+
+    def _on_drive_metrics_tick(self):
+        if not self._panel.is_hr10:
+            return
+        try:
+            metrics = get_all_metrics()
+            self._panel.update_drive_metrics(metrics)
+            self._hr10_push_display_value()
+        except Exception:
+            pass
+
+
+# =============================================================================
+# Screencast Handler — owns PipeWire capture, region coords, render loop
+# =============================================================================
+
+class ScreencastHandler:
+    """Mediator for screencast (screen capture → LCD) functionality.
+
+    Owns the capture timer, PipeWire session, and region coordinates.
+    Extracted from TRCCMainWindowMVC to reduce God Object.
+    """
+
+    def __init__(self, parent: QWidget, controller, on_frame):
+        self._controller = controller
+        self._on_frame = on_frame  # callback(pil_img) for preview + send
+        self._active = False
+        self._x = 0
+        self._y = 0
+        self._w = 0
+        self._h = 0
+        self._border = True  # Windows myYcbk
+        self._pipewire_cast = None
+
+        self._timer = QTimer(parent)
+        self._timer.timeout.connect(self._tick)
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    @active.setter
+    def active(self, value: bool):
+        self._active = value
+
+    @property
+    def border(self) -> bool:
+        return self._border
+
+    def toggle(self, enabled: bool):
+        """Start or stop screencast mode."""
+        self._active = enabled
+        if enabled:
+            from .screen_capture import is_wayland
+            if is_wayland() and self._pipewire_cast is None:
+                self._try_start_pipewire()
+            self._timer.start(150)  # ~6.67 FPS
+        else:
+            self._timer.stop()
+            self._stop_pipewire()
+
+    def stop(self):
+        """Force-stop screencast (called when switching modes)."""
+        self._timer.stop()
+        self._active = False
+
+    def set_params(self, x: int, y: int, w: int, h: int):
+        self._x = x
+        self._y = y
+        self._w = w
+        self._h = h
+
+    def set_border(self, visible: bool):
+        self._border = visible
+
+    def cleanup(self):
+        """Full cleanup for application shutdown."""
+        self._timer.stop()
+        self._stop_pipewire()
+
+    def _try_start_pipewire(self):
+        """Attempt to start PipeWire portal capture (non-blocking)."""
+        from .pipewire_capture import PIPEWIRE_AVAILABLE, PipeWireScreenCast
+        if not PIPEWIRE_AVAILABLE:
+            return
+
+        import threading
+        cast = PipeWireScreenCast()
+        self._pipewire_cast = cast
+
+        def _start():
+            if not cast.start(timeout=30):
+                self._pipewire_cast = None
+
+        threading.Thread(target=_start, daemon=True).start()
+
+    def _stop_pipewire(self):
+        if self._pipewire_cast is not None:
+            self._pipewire_cast.stop()
+            self._pipewire_cast = None
+
+    def _tick(self):
+        """Capture screen, scale to LCD, composite overlay, deliver via callback."""
+        if not self._active or self._w <= 0 or self._h <= 0:
+            return
+
+        from PIL import Image as PILImage
+
+        pil_img = None
+
+        # Try PipeWire first (Wayland GNOME/KDE)
+        if self._pipewire_cast is not None and self._pipewire_cast.is_running:
+            frame = self._pipewire_cast.grab_frame()
+            if frame is not None:
+                fw, fh, rgb_bytes = frame
+                full = PILImage.frombytes('RGB', (fw, fh), rgb_bytes)
+                x2 = min(self._x + self._w, fw)
+                y2 = min(self._y + self._h, fh)
+                x1 = min(self._x, fw)
+                y1 = min(self._y, fh)
+                if x2 > x1 and y2 > y1:
+                    pil_img = full.crop((x1, y1, x2, y2))
+
+        # Fallback: X11 / grim direct capture
+        if pil_img is None:
+            from .base import pixmap_to_pil
+            from .screen_capture import grab_screen_region
+
+            pixmap = grab_screen_region(self._x, self._y, self._w, self._h)
+            if pixmap.isNull():
+                return
+            pil_img = pixmap_to_pil(pixmap)
+
+        ctrl = self._controller
+        lcd_w, lcd_h = ctrl.lcd_width, ctrl.lcd_height
+        pil_img = pil_img.resize((lcd_w, lcd_h), PILImage.Resampling.LANCZOS)
+
+        if ctrl.overlay.is_enabled():
+            pil_img = ctrl.overlay.render(pil_img)
+
+        self._on_frame(pil_img)
+
+
 class TRCCMainWindowMVC(QMainWindow):
     """
     Main TRCC application window (singleton).
@@ -110,58 +497,19 @@ class TRCCMainWindowMVC(QMainWindow):
         self._data_dir = data_dir or Path(__file__).parent.parent / 'data'
         self.controller = create_controller(self._data_dir)
 
-        # Animation timer (view owns timer, controller owns logic)
-        self._animation_timer = QTimer(self)
-        self._animation_timer.timeout.connect(self._on_animation_tick)
-
-        # Metrics timer for live overlay updates (1s interval)
-        self._metrics_timer = QTimer(self)
-        self._metrics_timer.timeout.connect(self._on_metrics_tick)
-
-        # Device hot-plug poll timer (5s interval)
-        self._device_timer = QTimer(self)
-        self._device_timer.timeout.connect(self._on_device_poll)
-
+        # Timers (view owns timers, controller owns logic)
+        self._animation_timer = self._make_timer(self.controller.video_tick)
+        self._metrics_timer = self._make_timer(self._on_metrics_tick)
+        self._device_timer = self._make_timer(self._on_device_poll)
+        self._flash_timer = self._make_timer(self._on_flash_timeout, single_shot=True)
+        self._slideshow_timer = self._make_timer(self._on_slideshow_tick)
         # Handshake result signal (background thread → main thread)
         self._handshake_done.connect(self._on_handshake_done)
 
-        # Screencast timer (~6.67 FPS, matches Windows TPXSCount >= 3 at 50ms)
-        self._screencast_timer = QTimer(self)
-        self._screencast_timer.timeout.connect(self._on_screencast_tick)
-        self._screencast_x = 0
-        self._screencast_y = 0
-        self._screencast_w = 0
-        self._screencast_h = 0
-        self._screencast_active = False
         self._background_active = False  # C# myBjxs — background display mode
 
-        # PipeWire portal capture for Wayland (GNOME/KDE)
-        self._pipewire_cast = None
-        self._screencast_border = True  # Windows myYcbk
-
-        # Element flash timer (Windows shanPingTimer: ~1s blink on element select)
-        self._flash_timer = QTimer(self)
-        self._flash_timer.setSingleShot(True)
-        self._flash_timer.timeout.connect(self._on_flash_timeout)
-
-        # Slideshow timer (Windows myLunBoTimer: auto-rotate themes)
-        self._slideshow_timer = QTimer(self)
-        self._slideshow_timer.timeout.connect(self._on_slideshow_tick)
+        # Slideshow state
         self._slideshow_index = 0
-
-        # LED animation timer (30ms for LED effect ticks, matches FormLED timer1)
-        self._led_timer = QTimer(self)
-        self._led_timer.timeout.connect(self._on_led_tick)
-
-        # LED controller (lazy — created on first LED device selection)
-        self._led_controller: LEDDeviceController | None = None
-        self._led_active = False
-        self._led_style_id = 0          # current LED device style_id
-        self._led_sensor_counter = 0    # tick counter for sensor polling (~1s)
-
-        # Drive metrics timer for HR10 (1-second polling, slower than LED tick)
-        self._drive_metrics_timer = QTimer(self)
-        self._drive_metrics_timer.timeout.connect(self._on_drive_metrics_tick)
 
         # Per-device config tracking
         self._active_device_key = ''
@@ -172,6 +520,8 @@ class TRCCMainWindowMVC(QMainWindow):
         # Setup UI
         self._apply_dark_theme()
         self._setup_ui()
+        self._led = LEDHandler(self.uc_led_control, self._on_temp_unit_changed)
+        self._screencast = ScreencastHandler(self, self.controller, self._on_screencast_frame)
         self._connect_controller_callbacks()
         self._connect_view_signals()
 
@@ -254,6 +604,14 @@ class TRCCMainWindowMVC(QMainWindow):
         """Quit application from tray menu."""
         self._force_quit = True
         self.close()
+
+    def _make_timer(self, callback, *, single_shot: bool = False) -> QTimer:
+        """Create a QTimer connected to callback."""
+        timer = QTimer(self)
+        if single_shot:
+            timer.setSingleShot(True)
+        timer.timeout.connect(callback)
+        return timer
 
     def _set_panel_background(self, widget: QWidget, asset_name: str):
         """Set background image on a panel via QPalette."""
@@ -461,13 +819,13 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Start/stop drive metrics timer for HR10 LED devices
         if view == 'led' and self.uc_led_control.is_hr10:
-            self._drive_metrics_timer.start(1000)
+            self._led.start_drive_timer()
         else:
-            self._drive_metrics_timer.stop()
+            self._led.stop_drive_timer()
 
         # Stop LED timer when leaving LED view
-        if view != 'led' and self._led_active:
-            self._stop_led_view()
+        if view != 'led' and self._led.active:
+            self._led.stop()
 
     def _show_about(self):
         """Show the About / Control Center panel."""
@@ -488,15 +846,9 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.overlay.set_temp_unit(temp_int)
         self.uc_system_info.set_temp_unit(temp_int)
         self.uc_led_control.set_temp_unit(temp_int)
-        if self._led_controller:
-            self._led_controller.led.set_seg_temp_unit(unit)
+        self._led.set_temp_unit(unit)
         settings.set_temp_unit(temp_int)
         self.uc_preview.set_status(f"Temperature: °{unit}")
-
-    def _on_hdd_toggle_changed(self, enabled: bool):
-        """Handle HDD info toggle from Control Center."""
-        self.uc_preview.set_status(
-            f"HDD info: {'Enabled' if enabled else 'Disabled'}")
 
     def _on_refresh_changed(self, interval: int):
         """Handle data refresh interval change from Control Center.
@@ -735,34 +1087,23 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _connect_controller_callbacks(self):
         """Subscribe to controller callbacks."""
-        # Main controller
-        self.controller.on_preview_update = self._on_controller_preview_update
-        self.controller.on_status_update = self._on_controller_status_update
-        self.controller.on_error = self._on_controller_error
+        # Main controller — thin forwards to preview widget
+        self.controller.on_preview_update = lambda img: self.uc_preview.set_image(
+            img, fast=self.controller.is_video_playing())
+        self.controller.on_status_update = self.uc_preview.set_status
+        self.controller.on_error = lambda msg: self.uc_preview.set_status(f"Error: {msg}")
 
         # Video
         self.controller.video.on_state_changed = self._on_video_state_changed
-        self.controller.video.on_progress_update = self._on_video_progress_update
-        self.controller.video.on_video_loaded = self._on_video_loaded
+        self.controller.video.on_progress_update = self.uc_preview.set_progress
+        self.controller.video.on_video_loaded = lambda _: self.uc_preview.show_video_controls(True)
 
         # Devices
         self.controller.devices.on_device_selected = self._on_device_selected
         self.controller.devices.on_send_complete = self._on_send_complete
 
         # Overlay
-        self.controller.overlay.on_config_changed = self._on_overlay_config_changed
-
-    def _on_controller_preview_update(self, image):
-        """Handle preview image update from controller."""
-        self.uc_preview.set_image(image, fast=self.controller.is_video_playing())
-
-    def _on_controller_status_update(self, text):
-        """Handle status update from controller."""
-        self.uc_preview.set_status(text)
-
-    def _on_controller_error(self, message):
-        """Handle error from controller."""
-        self.uc_preview.set_status(f"Error: {message}")
+        self.controller.overlay.on_config_changed = self.controller.render_overlay_and_preview
 
     def _on_video_state_changed(self, state: PlaybackState):
         """Handle video state change."""
@@ -778,10 +1119,6 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_preview.set_playing(False)
             self.uc_preview.show_video_controls(False)
             self._animation_timer.stop()
-
-    def _on_video_progress_update(self, percent, current_time, total_time):
-        """Handle video progress update."""
-        self.uc_preview.set_progress(percent, current_time, total_time)
 
     def _on_device_selected(self, device: DeviceInfo):
         """Handle device selection — restore per-device config."""
@@ -932,13 +1269,14 @@ class TRCCMainWindowMVC(QMainWindow):
         else:
             self.uc_preview.set_status("Send failed — run 'trcc hid-debug' for details")
 
-    def _on_video_loaded(self, state):
-        """Handle video loaded - show controls."""
-        self.uc_preview.show_video_controls(True)
-
-    def _on_overlay_config_changed(self):
-        """Re-render preview when overlay config changes."""
-        self.controller.render_overlay_and_preview()
+    def _render_and_send(self, skip_if_video: bool = False) -> None:
+        """Render overlay preview and send to LCD if auto-send is on."""
+        img = self.controller.render_overlay_and_preview()
+        if not img or not self.controller.auto_send:
+            return
+        if skip_if_video and self.controller.video.is_playing():
+            return
+        self.controller._send_frame_to_lcd(img)
 
     # =========================================================================
     # View Signals (view -> controller actions)
@@ -953,7 +1291,9 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_theme_web.theme_selected.connect(self._on_cloud_theme_clicked)
         self.uc_theme_web.download_started.connect(
             lambda tid: self.uc_preview.set_status(f"Downloading: {tid}..."))
-        self.uc_theme_web.download_finished.connect(self._on_cloud_download_finished)
+        self.uc_theme_web.download_finished.connect(
+            lambda tid, ok: self.uc_preview.set_status(
+                f"{'Downloaded' if ok else 'Download failed'}: {tid}"))
         self.uc_theme_mask.mask_selected.connect(self._on_mask_clicked)
         self.uc_preview.delegate.connect(self._on_preview_delegate)
 
@@ -975,9 +1315,10 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Screencast coordinate changes + border toggle
         self.uc_theme_setting.screencast_params_changed.connect(
-            self._on_screencast_params_changed)
+            lambda x, y, w, h: (self._screencast.set_params(x, y, w, h),
+                                self.uc_preview.set_status(f"Cast: {x},{y} {w}x{h}")))
         self.uc_theme_setting.screencast_panel.border_toggled.connect(
-            self._on_screencast_border_toggle)
+            self._screencast.set_border)
 
         # Element flash on select (Windows shanPingCount/shanPingTimer)
         self.uc_theme_setting.overlay_grid.element_selected.connect(
@@ -1001,7 +1342,9 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_about.close_requested.connect(self._show_form)
         self.uc_about.language_changed.connect(self.set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
-        self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
+        self.uc_about.hdd_toggle_changed.connect(
+            lambda on: self.uc_preview.set_status(
+                f"HDD info: {'Enabled' if on else 'Disabled'}"))
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
 
     def _on_device_widget_clicked(self, device_info: dict):
@@ -1009,27 +1352,20 @@ class TRCCMainWindowMVC(QMainWindow):
 
         Routes to LED panel for LED devices, LCD form for everything else.
         """
-        implementation = device_info.get('implementation', 'generic')
-        device = DeviceInfo(
-            name=device_info.get('name', 'LCD'),
-            path=device_info.get('path', ''),
-            resolution=device_info.get('resolution', (0, 0)),
-            model=device_info.get('model'),
-            vid=device_info.get('vid', 0),
-            pid=device_info.get('pid', 0),
-            device_index=device_info.get('device_index', 0),
-            protocol=device_info.get('protocol', 'scsi'),
-            device_type=device_info.get('device_type', 1),
-            implementation=implementation,
-            led_style_id=device_info.get('led_style_id'),
-        )
+        device = DeviceInfo.from_dict(device_info)
 
-        if implementation == 'hid_led':
-            self._show_led_view(device)
+        if device.implementation == 'hid_led':
+            # Stop LCD timers before switching to LED view
+            self._animation_timer.stop()
+            self._slideshow_timer.stop()
+            self._screencast.stop()
+            self.controller.video.stop()
+            self._led.show(device)
+            self._show_view('led')
         else:
             # Stop LED mode if switching from LED to LCD device
-            if self._led_active:
-                self._stop_led_view()
+            if self._led.active:
+                self._led.stop()
             self._show_view('form')
             # Skip full reload if same device already selected
             current = self.controller.devices.get_selected()
@@ -1053,8 +1389,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.stop_metrics()
         # Reset background/screencast/video modes (C# ReadSystemConfiguration override)
         self._background_active = False
-        self._screencast_active = False
-        self._screencast_timer.stop()
+        self._screencast.stop()
         self._animation_timer.stop()
         self.uc_theme_setting.background_panel.set_enabled(False)
         self.uc_theme_setting.screencast_panel.set_enabled(False)
@@ -1082,8 +1417,7 @@ class TRCCMainWindowMVC(QMainWindow):
         """
         # Reset background/screencast modes (cloud theme overrides)
         self._background_active = False
-        self._screencast_active = False
-        self._screencast_timer.stop()
+        self._screencast.stop()
         self.uc_theme_setting.background_panel.set_enabled(False)
         self.uc_theme_setting.screencast_panel.set_enabled(False)
         if theme_info.video:
@@ -1115,9 +1449,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self.controller.overlay.enable(True)
             self.start_metrics()
         self.controller.overlay.set_config(element_data)
-        img = self.controller.render_overlay_and_preview()
-        if img and self.controller.auto_send and not self.controller.video.is_playing():
-            self.controller._send_frame_to_lcd(img)
+        self._render_and_send(skip_if_video=True)
 
         # Save overlay config per-device
         if self._active_device_key:
@@ -1139,89 +1471,33 @@ class TRCCMainWindowMVC(QMainWindow):
             # Stop other modes (C# exclusive toggle — only one mode active)
             self._animation_timer.stop()
             self.controller.video.stop()
-            self._screencast_timer.stop()
-            self._screencast_active = False
-            # Render and send immediately
-            img = self.controller.render_overlay_and_preview()
-            if img and self.controller.auto_send:
-                self.controller._send_frame_to_lcd(img)
+            self._screencast.stop()
+            self._render_and_send()
             # Start continuous rendering (C# isToTimer=true — timer sends every tick)
             if not self._metrics_timer.isActive():
                 self._metrics_timer.start(1000)
         else:
             # C# toggle OFF: myBjxs=false → black canvas + overlays
-            # Clear background so overlay renders on black
             self.controller.overlay.set_background(None)
             self.controller._display._create_black_background()
-            img = self.controller.render_overlay_and_preview()
-            if img and self.controller.auto_send:
-                self.controller._send_frame_to_lcd(img)
+            self._render_and_send()
             # Stop continuous background sending if overlay isn't independently enabled
             if not self.controller.overlay.is_enabled():
                 self._metrics_timer.stop()
         self.uc_preview.set_status(f"Background: {'On' if enabled else 'Off'}")
 
     def _on_screencast_toggle(self, enabled: bool):
-        """Handle screencast toggle — start/stop real-time capture loop.
-
-        Matches Windows myMode=16 behavior: timer-driven CopyFromScreen
-        at ~6.67 FPS, scaled to LCD resolution and sent to device.
-
-        On Wayland (GNOME/KDE), tries PipeWire portal capture first.
-        Falls back to grab_screen_region() on X11 or when PipeWire is
-        unavailable.
-        """
-        self._screencast_active = enabled
+        """Handle screencast toggle — delegate to ScreencastHandler."""
         if enabled:
-            # Stop other modes
             self._animation_timer.stop()
             self.controller.video.stop()
-
-            # Try PipeWire on Wayland (GNOME/KDE where grabWindow is blank)
-            from .screen_capture import is_wayland
-            if is_wayland() and self._pipewire_cast is None:
-                self._try_start_pipewire()
-
-            self._screencast_timer.start(150)  # ~6.67 FPS
-        else:
-            self._screencast_timer.stop()
-            self._stop_pipewire()
+        self._screencast.toggle(enabled)
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
-
-    def _try_start_pipewire(self):
-        """Attempt to start PipeWire portal capture (non-blocking).
-
-        The portal triggers a user consent dialog. If the user approves,
-        _on_screencast_tick() will use PipeWire frames instead of
-        grab_screen_region().
-        """
-        from .pipewire_capture import PIPEWIRE_AVAILABLE, PipeWireScreenCast
-        if not PIPEWIRE_AVAILABLE:
-            return
-
-        import threading
-        cast = PipeWireScreenCast()
-        self._pipewire_cast = cast
-
-        def _start():
-            if not cast.start(timeout=30):
-                self._pipewire_cast = None
-
-        # Start in background so portal dialog doesn't block the GUI
-        threading.Thread(target=_start, daemon=True).start()
-
-    def _stop_pipewire(self):
-        """Stop PipeWire capture if active."""
-        if self._pipewire_cast is not None:
-            self._pipewire_cast.stop()
-            self._pipewire_cast = None
 
     def _on_mask_display_toggle(self, enabled):
         """Toggle mask visibility on preview/LCD (Windows SetDrawMengBan)."""
         self.controller.overlay.set_mask_visible(enabled)
-        img = self.controller.render_overlay_and_preview()
-        if img and self.controller.auto_send:
-            self.controller._send_frame_to_lcd(img)
+        self._render_and_send()
         self.uc_preview.set_status(f"Mask: {'On' if enabled else 'Off'}")
 
     def _switch_to_mask_tab(self):
@@ -1231,9 +1507,7 @@ class TRCCMainWindowMVC(QMainWindow):
     def _on_mask_reset(self):
         """Clear mask from preview (Windows buttonYDMB_Click / cmd 99)."""
         self.controller.overlay.set_theme_mask(None)
-        img = self.controller.render_overlay_and_preview()
-        if img and self.controller.auto_send:
-            self.controller._send_frame_to_lcd(img)
+        self._render_and_send()
         self.uc_preview.set_status("Mask cleared")
 
     def _on_video_display_toggle(self, enabled):
@@ -1346,10 +1620,6 @@ class TRCCMainWindowMVC(QMainWindow):
                     self.uc_theme_local.set_theme_directory(td.path)
                 self.uc_theme_local.load_themes()
 
-    def _on_send_clicked(self):
-        """Handle send to LCD button click."""
-        self.controller.send_current_image()
-
     # =========================================================================
     # Image/Video Cutters
     # =========================================================================
@@ -1389,10 +1659,7 @@ class TRCCMainWindowMVC(QMainWindow):
             result.save(str(bg_path))
             # Set as overlay background so mask/overlays render on top
             self.controller.overlay.set_background(result)
-            # Re-render with overlays and send to LCD
-            preview = self.controller.render_overlay_and_preview()
-            if preview and self.controller.auto_send:
-                self.controller._send_frame_to_lcd(preview)
+            self._render_and_send()
             self.uc_preview.set_status("Image cropped and saved")
         else:
             self.uc_preview.set_status("Image crop cancelled")
@@ -1448,18 +1715,6 @@ class TRCCMainWindowMVC(QMainWindow):
             overlay = cfg.get('overlay', {})
             overlay['enabled'] = enabled
             Settings.save_device_setting(self._active_device_key, 'overlay', overlay)
-
-    def _on_screencast_params_changed(self, x, y, w, h):
-        """Store screencast region coordinates for the capture loop."""
-        self._screencast_x = x
-        self._screencast_y = y
-        self._screencast_w = w
-        self._screencast_h = h
-        self.uc_preview.set_status(f"Cast: {x},{y} {w}x{h}")
-
-    def _on_screencast_border_toggle(self, visible: bool):
-        """Handle screen cast border visibility toggle (Windows myYcbk / cmd=69)."""
-        self._screencast_border = visible
 
     def _on_element_flash(self, index: int, config: dict):
         """Flash/blink selected overlay element on preview (Windows shanPingCount).
@@ -1634,336 +1889,10 @@ class TRCCMainWindowMVC(QMainWindow):
             self.controller.themes.select_theme(theme)
             self._load_theme_overlay_config(path)
 
-    # =========================================================================
-    # Cloud Theme Download Feedback
-    # =========================================================================
-
-    def _on_cloud_download_finished(self, theme_id: str, success: bool):
-        """Handle cloud theme download completion."""
-        if success:
-            self.uc_preview.set_status(f"Downloaded: {theme_id}")
-        else:
-            self.uc_preview.set_status(f"Download failed: {theme_id}")
-
-    def _on_screencast_tick(self):
-        """Capture screen region, scale to LCD, update preview, send to LCD.
-
-        Called every 150ms by _screencast_timer when screencast mode is active.
-        Matches Windows Timer_event() myMode==16 with TPXSCount>=3.
-
-        Uses PipeWire portal frames on Wayland (GNOME/KDE) when available,
-        with client-side crop to the user's X/Y/W/H region. Falls back to
-        grab_screen_region() on X11 or when PipeWire isn't running.
-        """
-        if (not self._screencast_active
-                or self._screencast_w <= 0
-                or self._screencast_h <= 0):
-            return
-
-        from PIL import Image as PILImage
-
-        pil_img = None
-
-        # Try PipeWire first (Wayland GNOME/KDE)
-        if self._pipewire_cast is not None and self._pipewire_cast.is_running:
-            frame = self._pipewire_cast.grab_frame()
-            if frame is not None:
-                fw, fh, rgb_bytes = frame
-                full = PILImage.frombytes('RGB', (fw, fh), rgb_bytes)
-                # Crop to user's selected region
-                x2 = min(self._screencast_x + self._screencast_w, fw)
-                y2 = min(self._screencast_y + self._screencast_h, fh)
-                x1 = min(self._screencast_x, fw)
-                y1 = min(self._screencast_y, fh)
-                if x2 > x1 and y2 > y1:
-                    pil_img = full.crop((x1, y1, x2, y2))
-
-        # Fallback: X11 / grim direct capture
-        if pil_img is None:
-            from .base import pixmap_to_pil
-            from .screen_capture import grab_screen_region
-
-            pixmap = grab_screen_region(
-                self._screencast_x, self._screencast_y,
-                self._screencast_w, self._screencast_h)
-            if pixmap.isNull():
-                return
-            pil_img = pixmap_to_pil(pixmap)
-
-        lcd_w, lcd_h = self.controller.lcd_width, self.controller.lcd_height
-        pil_img = pil_img.resize((lcd_w, lcd_h), PILImage.Resampling.LANCZOS)
-
-        # Apply overlay if enabled
-        if self.controller.overlay.is_enabled():
-            pil_img = self.controller.overlay.render(pil_img)
-
+    def _on_screencast_frame(self, pil_img):
+        """Handle captured screencast frame — preview + send to LCD."""
         self.uc_preview.set_image(pil_img)
         self.controller._send_frame_to_lcd(pil_img)
-
-    # =========================================================================
-    # LED Device View
-    # =========================================================================
-
-    def _show_led_view(self, device: DeviceInfo):
-        """Show the LED control panel for an LED device.
-
-        Creates LEDDeviceController if needed, configures for device,
-        wires signals, and starts the 30ms animation timer.
-
-        Matches Windows: Form1 routes device1 to FormLED, not FormCZTV.
-        """
-        # Stop LCD timers
-        self._animation_timer.stop()
-        self._slideshow_timer.stop()
-        self._screencast_timer.stop()
-        self._screencast_active = False
-        self.controller.video.stop()
-
-        # Create controller on first use
-        if self._led_controller is None:
-            self._led_controller = LEDDeviceController()
-            self._connect_led_signals()
-
-        from ..services.led import LEDService
-        model = device.model or ''
-        # Use probe-resolved style_id directly (avoids name collision:
-        # PM=49 "LF10" shares style 5 with "LF8", but name lookup hits style 7)
-        led_style = device.led_style_id or LEDService.resolve_style_id(model)
-
-        # Initialize controller for this device
-        self._led_controller.initialize(device, led_style)
-        self._led_style_id = led_style
-        self._led_sensor_counter = 0
-
-        # All LED devices use the unified UCLedControl panel
-        style_info = LEDService.get_style_info(led_style)
-        if style_info:
-            self.uc_led_control.initialize(
-                led_style, style_info.segment_count, style_info.zone_count,
-                model=model,
-            )
-        # Sync saved sensor source to UI
-        source = self._led_controller.led.state.temp_source
-        self.uc_led_control.set_sensor_source(source)
-
-        # Sync saved temp unit to segment display
-        seg_unit = "F" if settings.temp_unit == 1 else "C"
-        self._led_controller.led.set_seg_temp_unit(seg_unit)
-
-        self._show_view('led')
-        self._led_active = True
-
-        # Start LED animation timer (30ms = FormLED timer1 interval)
-        self._led_timer.start(30)
-
-    def _stop_led_view(self):
-        """Stop LED mode — save config, stop timer, release protocol."""
-        self._led_timer.stop()
-        self._drive_metrics_timer.stop()
-        self._led_active = False
-        if self._led_controller:
-            self._led_controller.cleanup()
-
-    def _connect_led_signals(self):
-        """Wire UCLedControl signals to LEDDeviceController."""
-        if not self._led_controller:
-            return
-
-        ctrl = self._led_controller
-        panel = self.uc_led_control
-
-        # Mode/color/brightness → zone-aware routing
-        panel.mode_changed.connect(self._on_led_mode_changed)
-        panel.color_changed.connect(self._on_led_color_changed)
-        panel.brightness_changed.connect(self._on_led_brightness_changed)
-        panel.global_toggled.connect(
-            lambda on: ctrl.led.toggle_global(on))
-        panel.segment_clicked.connect(
-            lambda idx: ctrl.led.toggle_segment(idx, not ctrl.led.state.segment_on[idx]))
-
-        # Zone selection
-        panel.zone_selected.connect(self._on_zone_selected)
-        panel.sync_all_changed.connect(lambda _sync: None)  # routing handled by mode/color/brightness
-
-        # LC2 clock signals
-        panel.clock_format_changed.connect(
-            lambda is_24h: ctrl.led.set_clock_format(is_24h))
-        panel.week_start_changed.connect(
-            lambda is_sun: ctrl.led.set_week_start(is_sun))
-
-        # Sensor source (CPU/GPU) for temp/load linked modes
-        panel.sensor_source_changed.connect(
-            lambda src: ctrl.led.set_sensor_source(src))
-
-        # HR10 display metric selection → controller display value
-        panel.display_metric_changed.connect(self._on_hr10_metric_changed)
-
-        # °C/°F toggle from LED panel → propagate to app-wide setting
-        panel.temp_unit_changed.connect(self._on_temp_unit_changed)
-
-        # Controller → view (preview colors)
-        ctrl.led.on_preview_update = self._on_led_colors_update
-        ctrl.on_status_update = lambda text: panel.set_status(text)
-
-    def _on_led_mode_changed(self, mode):
-        """Route mode change to correct zone or global."""
-        ctrl = self._led_controller
-        if not ctrl:
-            return
-        panel = self.uc_led_control
-        if panel.sync_all and ctrl.led.state.zones:
-            for i in range(len(ctrl.led.state.zones)):
-                ctrl.led.set_zone_mode(i, mode)
-        elif ctrl.led.state.zones:
-            ctrl.led.set_zone_mode(panel.selected_zone, mode)
-        else:
-            ctrl.led.set_mode(mode)
-
-    def _on_led_color_changed(self, r, g, b):
-        """Route color change to correct zone or global."""
-        ctrl = self._led_controller
-        if not ctrl:
-            return
-        panel = self.uc_led_control
-        if panel.sync_all and ctrl.led.state.zones:
-            for i in range(len(ctrl.led.state.zones)):
-                ctrl.led.set_zone_color(i, r, g, b)
-        elif ctrl.led.state.zones:
-            ctrl.led.set_zone_color(panel.selected_zone, r, g, b)
-        else:
-            ctrl.led.set_color(r, g, b)
-
-    def _on_led_brightness_changed(self, val):
-        """Route brightness change to correct zone or global."""
-        ctrl = self._led_controller
-        if not ctrl:
-            return
-        panel = self.uc_led_control
-        if panel.sync_all and ctrl.led.state.zones:
-            for i in range(len(ctrl.led.state.zones)):
-                ctrl.led.set_zone_brightness(i, val)
-        elif ctrl.led.state.zones:
-            ctrl.led.set_zone_brightness(panel.selected_zone, val)
-        else:
-            ctrl.led.set_brightness(val)
-
-    def _on_zone_selected(self, zone_index):
-        """Load zone state into panel when a zone is selected."""
-        ctrl = self._led_controller
-        if not ctrl or not ctrl.led.state.zones:
-            return
-        zones = ctrl.led.state.zones
-        if 0 <= zone_index < len(zones):
-            z = zones[zone_index]
-            self.uc_led_control.load_zone_state(
-                zone_index, z.mode.value, z.color, z.brightness)
-
-    def _on_led_tick(self):
-        """Called every 30ms — advance LED animation and send to device."""
-        if not (self._led_controller and self._led_active):
-            return
-        self._led_controller.led.tick()
-
-        # Sensor polling (~1s = every 33 ticks at 30ms)
-        self._led_sensor_counter += 1
-        if self._led_sensor_counter >= 33:
-            self._led_sensor_counter = 0
-            self._poll_led_sensors()
-
-    def _poll_led_sensors(self):
-        """Poll system metrics and route to appropriate panels and controller."""
-        if not self._led_controller:
-            return
-        try:
-            from ..adapters.system.info import get_all_metrics
-            metrics = get_all_metrics()
-        except Exception:
-            return
-
-        # Feed to controller for temp/load-linked LED modes
-        self._led_controller.led.update_metrics(metrics)
-
-        panel = self.uc_led_control
-        style = self._led_style_id
-
-        # Sensor labels (styles 1-3, 5-8, 11)
-        if style in (1, 2, 3, 5, 6, 7, 8, 11):
-            panel.update_sensor_metrics(metrics)
-
-        # LC1 memory (style 4)
-        if style == 4:
-            panel.update_memory_metrics(metrics)
-
-        # LF11 disk (style 10)
-        if style == 10:
-            try:
-                from ..adapters.system.info import get_disk_stats, get_disk_temperature
-                disk = get_disk_stats()
-                temp = get_disk_temperature()
-                if temp is not None:
-                    disk['disk_temp'] = temp
-                panel.update_lf11_disk_metrics(disk)
-            except Exception:
-                pass
-
-        # LC2 clock (style 9) — push time to preview
-        if style == 9:
-            import datetime
-            now = datetime.datetime.now()
-            state = self._led_controller.led.state
-            hour = now.hour
-            if not state.is_timer_24h and hour > 12:
-                hour -= 12
-            dow = now.weekday()  # 0=Mon
-            if state.is_week_sunday:
-                dow = (dow + 1) % 7  # shift so 0=Sun
-            self.uc_led_control._preview.set_timer(
-                now.month, now.day, hour, now.minute, dow)
-
-    def _on_led_colors_update(self, colors):
-        """Forward computed LED colors to the unified LED panel."""
-        self.uc_led_control.set_led_colors(colors)
-
-    def _on_hr10_metric_changed(self, metric_key: str):
-        """Handle display metric selection change from LED panel (HR10)."""
-        self._hr10_push_display_value()
-
-    def _hr10_push_display_value(self):
-        """Push the current display text to the LED controller for rendering."""
-        if not self._led_controller or not self.uc_led_control.is_hr10:
-            return
-        panel = self.uc_led_control
-        text, unit = panel.get_display_value()
-
-        # Map unit to indicator set + adjust text for physical layout
-        indicators: set = set()
-        if '\u00b0' in unit:
-            indicators.add('deg')
-            if 'C' in unit:
-                text = text + 'C'
-            elif 'F' in unit:
-                text = text + 'F'
-        if '%' in unit:
-            indicators.add('%')
-        if 'MB' in unit or 'mb' in unit:
-            indicators.add('mbs')
-
-        self._led_controller.led.set_display_value(text, indicators)
-
-    def _on_drive_metrics_tick(self):
-        """Called every 1s — poll drive metrics for HR10 display."""
-        if not self.uc_led_control.is_hr10:
-            return
-        try:
-            from ..adapters.system.info import get_disk_stats, get_disk_temperature
-            metrics = get_disk_stats()
-            temp = get_disk_temperature()
-            if temp is not None:
-                metrics['disk_temp'] = temp
-            self.uc_led_control.update_drive_metrics(metrics)
-            self._hr10_push_display_value()
-        except Exception:
-            pass
 
     def _on_capture_requested(self):
         """Launch screen capture overlay → feed to image cutter."""
@@ -1985,18 +1914,15 @@ class TRCCMainWindowMVC(QMainWindow):
         """Launch eyedropper color picker overlay."""
         from .eyedropper import EyedropperOverlay
         self._eyedropper_overlay = EyedropperOverlay()
-        self._eyedropper_overlay.color_picked.connect(self._on_eyedropper_picked)
-        self._eyedropper_overlay.cancelled.connect(self._on_eyedropper_done)
+        self._eyedropper_overlay.color_picked.connect(self._eyedropper_pick)
+        self._eyedropper_overlay.cancelled.connect(
+            lambda: setattr(self, '_eyedropper_overlay', None))
         self._eyedropper_overlay.show()
 
-    def _on_eyedropper_picked(self, r, g, b):
+    def _eyedropper_pick(self, r, g, b):
         """Handle picked color from eyedropper."""
         self._eyedropper_overlay = None
         self.uc_theme_setting.color_panel._apply_color(r, g, b)
-
-    def _on_eyedropper_done(self):
-        """Eyedropper cancelled."""
-        self._eyedropper_overlay = None
 
     # =========================================================================
     # DC File Loading
@@ -2059,26 +1985,11 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_device.update_devices(devices)
 
             # Auto-select first device if none selected
-            if devices and not self.controller.devices.get_selected() and not self._led_active:
-                d = devices[0]
-                implementation = d.get('implementation', 'generic')
-                device = DeviceInfo(
-                    name=d.get('name', 'LCD'),
-                    path=d.get('path', ''),
-                    resolution=d.get('resolution', (0, 0)),
-                    vendor=d.get('vendor'),
-                    product=d.get('product'),
-                    model=d.get('model'),
-                    vid=d.get('vid', 0),
-                    pid=d.get('pid', 0),
-                    device_index=d.get('device_index', 0),
-                    protocol=d.get('protocol', 'scsi'),
-                    device_type=d.get('device_type', 1),
-                    implementation=implementation,
-                    led_style_id=d.get('led_style_id'),
-                )
-                if implementation == 'hid_led':
-                    self._show_led_view(device)
+            if devices and not self.controller.devices.get_selected() and not self._led.active:
+                device = DeviceInfo.from_dict(devices[0])
+                if device.implementation == 'hid_led':
+                    self._led.show(device)
+                    self._show_view('led')
                 else:
                     self.controller.devices.select_device(device)
                     self.uc_preview.set_status(f"Device: {device.path}")
@@ -2123,10 +2034,6 @@ class TRCCMainWindowMVC(QMainWindow):
             self.brightness_btn.setText(f"L{self._brightness_level}")
             self.brightness_btn.setStyleSheet(Styles.TEXT_BUTTON)
 
-    def _on_animation_tick(self):
-        """Handle animation timer tick - forward to controller."""
-        self.controller.video_tick()
-
     def _on_metrics_tick(self):
         """Collect system metrics and re-render overlay, send to LCD.
 
@@ -2144,9 +2051,7 @@ class TRCCMainWindowMVC(QMainWindow):
             or self._background_active
         )
         if should_render:
-            img = self.controller.render_overlay_and_preview()
-            if img and self.controller.auto_send and not self.controller.video.is_playing():
-                self.controller._send_frame_to_lcd(img)
+            self._render_and_send(skip_if_video=True)
 
     def start_metrics(self):
         """Start live metrics collection for overlay display."""
@@ -2204,14 +2109,10 @@ class TRCCMainWindowMVC(QMainWindow):
         self._tray.hide()
         self._animation_timer.stop()
         self._slideshow_timer.stop()
-        self._screencast_timer.stop()
-        self._stop_pipewire()
+        self._screencast.cleanup()
         self._metrics_timer.stop()
         self._device_timer.stop()
-        self._led_timer.stop()
-        self._drive_metrics_timer.stop()
-        if self._led_controller:
-            self._led_controller.cleanup()
+        self._led.cleanup()
         self.uc_system_info.stop_updates()
         self.uc_info_module.stop_updates()
         self.uc_activity_sidebar.stop_updates()

@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "4.2.5"
+__version__ = "4.2.6"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -159,3 +159,8 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          resolve_style_id() name lookup matched style 7 (116 LEDs) instead
 #          of style 5 (93 LEDs). Now stores style_id from probe directly on
 #          DeviceInfo — no reverse name lookup. 2308 tests.
+# 4.2.6  - Refactor: inline trivial callbacks, DeviceInfo.from_dict() factory,
+#          LEDHandler/ScreencastHandler mediators, data-driven dispatch
+#          (pm_to_fbl, fbl_to_resolution), extract _render_and_send/_scan_lsscsi
+#          helpers, remove duplicate overlay.configure(), dead code cleanup.
+#          SCSI handshake fix (was returning None since v4.2.4). 2311 tests.

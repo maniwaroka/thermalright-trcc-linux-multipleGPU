@@ -18,7 +18,6 @@ import time
 from typing import Dict, List, Set
 
 from trcc.adapters.infra.data_repository import SysUtils
-from trcc.core.models import RESOLUTION_TO_PM as _RESOLUTION_TO_PM
 from trcc.core.models import HandshakeResult, fbl_to_resolution
 
 log = logging.getLogger(__name__)
@@ -218,27 +217,15 @@ def find_lcd_devices() -> List[Dict]:
             if not dev.scsi_device:
                 continue
 
-            # Resolution discovered via handshake (_init_device → poll → fbl_to_resolution)
-            resolution = (0, 0)
-
-            # SCSI poll byte[0] = resolution code = PM (matches USBLCD.exe).
-            # Use it to resolve variant-specific button image.
-            button_image = dev.button_image
-            scsi_pm = _RESOLUTION_TO_PM.get(resolution)
-            if scsi_pm is not None:
-                from .hid import get_button_image
-                resolved = get_button_image(scsi_pm, 0)
-                if resolved:
-                    button_image = resolved
-
+            # Resolution (0,0) until handshake polls FBL from device
             devices.append({
                 'name': f"{dev.vendor_name} {dev.product_name}",
                 'path': dev.scsi_device,
-                'resolution': resolution,
+                'resolution': (0, 0),
                 'vendor': dev.vendor_name,
                 'product': dev.product_name,
                 'model': dev.model,
-                'button_image': button_image,
+                'button_image': dev.button_image,
                 'vid': dev.vid,
                 'pid': dev.pid,
                 'protocol': 'scsi',

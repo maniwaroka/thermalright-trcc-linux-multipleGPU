@@ -68,7 +68,7 @@ from trcc.cli import (
     uninstall,
 )
 from trcc.cli import test_display as cli_test_display
-from trcc.core.models import DeviceInfo
+from trcc.core.models import DeviceInfo, HardwareMetrics
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -271,9 +271,9 @@ class TestShowInfo(unittest.TestCase):
     def test_show_info_success(self):
         """Successful metrics fetch returns 0."""
         mock_mod = MagicMock()
-        mock_mod.get_all_metrics.return_value = {
-            'cpu_temp': 65, 'cpu_percent': 30, 'mem_percent': 45
-        }
+        mock_mod.get_all_metrics.return_value = HardwareMetrics(
+            cpu_temp=65, cpu_percent=30, mem_percent=45
+        )
         mock_mod.format_metric.side_effect = lambda k, v: f"{v}"
 
         with patch.dict('sys.modules', {'trcc.adapters.system.info': mock_mod}):
@@ -828,20 +828,16 @@ class TestShowInfoMetrics(unittest.TestCase):
     @patch('trcc.adapters.system.info.format_metric', side_effect=lambda k, v: str(v))
     @patch('trcc.adapters.system.info.get_all_metrics')
     def test_shows_gpu_and_memory(self, mock_metrics, _):
-        mock_metrics.return_value = {
-            'cpu_temp': 65.0,
-            'cpu_percent': 42.0,
-            'cpu_freq': 3600,
-            'gpu_temp': 70.0,
-            'gpu_usage': 80.0,
-            'gpu_clock': 1800,
-            'mem_percent': 55.0,
-            'mem_used': 8192,
-            'mem_total': 16384,
-            'date': '2025-01-01',
-            'time': '12:00',
-            'weekday': 'Monday',
-        }
+        mock_metrics.return_value = HardwareMetrics(
+            cpu_temp=65.0,
+            cpu_percent=42.0,
+            cpu_freq=3600,
+            gpu_temp=70.0,
+            gpu_usage=80.0,
+            gpu_clock=1800,
+            mem_percent=55.0,
+            mem_available=8192,
+        )
         result = show_info()
         self.assertEqual(result, 0)
 
@@ -849,7 +845,7 @@ class TestShowInfoMetrics(unittest.TestCase):
     @patch('trcc.adapters.system.info.get_all_metrics')
     def test_shows_partial_metrics(self, mock_metrics, _):
         """Handles missing keys gracefully."""
-        mock_metrics.return_value = {'cpu_temp': 65.0}
+        mock_metrics.return_value = HardwareMetrics(cpu_temp=65.0)
         result = show_info()
         self.assertEqual(result, 0)
 
@@ -1738,7 +1734,7 @@ class TestRenderOverlay(unittest.TestCase):
         with patch('os.path.exists', return_value=True), \
              patch('trcc.services.OverlayService') as MockOverlay, \
              patch('trcc.services.ImageService.solid_color', return_value=mock_img), \
-             patch('trcc.adapters.system.info.get_all_metrics', return_value={}):
+             patch('trcc.adapters.system.info.get_all_metrics', return_value=HardwareMetrics()):
             overlay_inst = MockOverlay.return_value
             overlay_inst.load_from_dc.return_value = {}
             overlay_inst.config = {'elem1': {}}
@@ -1752,7 +1748,7 @@ class TestRenderOverlay(unittest.TestCase):
         with patch('os.path.exists', return_value=True), \
              patch('trcc.services.OverlayService') as MockOverlay, \
              patch('trcc.services.ImageService.solid_color', return_value=mock_img), \
-             patch('trcc.adapters.system.info.get_all_metrics', return_value={}):
+             patch('trcc.adapters.system.info.get_all_metrics', return_value=HardwareMetrics()):
             overlay_inst = MockOverlay.return_value
             overlay_inst.load_from_dc.return_value = {}
             overlay_inst.config = {}

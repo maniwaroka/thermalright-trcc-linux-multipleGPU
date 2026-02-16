@@ -54,6 +54,7 @@ from trcc.core.models import (
     METRIC_TO_IDS,
     CarouselConfig,
     DisplayElement,
+    OverlayMode,
     ThemeConfig,
 )
 
@@ -238,18 +239,18 @@ class DcWriter:
             if 'metric' in cfg:
                 metric = cfg['metric']
                 if metric == 'time':
-                    elem.mode = 1
+                    elem.mode = OverlayMode.TIME
                     elem.mode_sub = cfg.get('time_format', cfg.get('mode_sub', 0))
                 elif metric == 'weekday':
-                    elem.mode = 2
+                    elem.mode = OverlayMode.WEEKDAY
                 elif metric == 'date':
-                    elem.mode = 3
+                    elem.mode = OverlayMode.DATE
                     elem.mode_sub = cfg.get('date_format', cfg.get('mode_sub', 0))
                 else:
-                    elem.mode = 0
+                    elem.mode = OverlayMode.HARDWARE
                     elem.main_count, elem.sub_count = METRIC_TO_IDS.get(metric, (0, 0))
             elif 'text' in cfg:
-                elem.mode = 4
+                elem.mode = OverlayMode.CUSTOM
                 elem.text = cfg['text']
 
             theme.elements.append(elem)

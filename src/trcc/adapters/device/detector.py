@@ -232,33 +232,23 @@ class DeviceDetector:
             except (IOError, OSError):
                 continue
 
-        # Method 2: Use lsscsi -g
-        output = DeviceDetector.run_command(['lsscsi', '-g'])
-        if output:
-            for line in output.split('\n'):
-                if 'USBLCD' in line:
-                    match = re.search(r'/dev/sg\d+', line)
-                    if match:
-                        return match.group(0)
+        # Fallback: try lsscsi variants
+        _scan = DeviceDetector._scan_lsscsi
+        return (_scan(['lsscsi', '-g'], ['USBLCD'])
+                or _scan(['lsscsi', '-t'], ['USBLCD', 'usb'])
+                or _scan(['lsscsi'], ['USBLCD']))
 
-        # Method 3: Use lsscsi -t
-        output = DeviceDetector.run_command(['lsscsi', '-t'])
-        if output:
-            for line in output.split('\n'):
-                if 'USBLCD' in line or 'usb' in line.lower():
-                    match = re.search(r'/dev/sg\d+', line)
-                    if match:
-                        return match.group(0)
-
-        # Method 4: Plain lsscsi
-        output = DeviceDetector.run_command(['lsscsi'])
-        if output:
-            for line in output.split('\n'):
-                if 'USBLCD' in line:
-                    match = re.search(r'/dev/sg\d+', line)
-                    if match:
-                        return match.group(0)
-
+    @staticmethod
+    def _scan_lsscsi(cmd: list[str], patterns: list[str]) -> Optional[str]:
+        """Scan lsscsi output for /dev/sgN matching any pattern."""
+        output = DeviceDetector.run_command(cmd)
+        if not output:
+            return None
+        for line in output.split('\n'):
+            if any(p in line or p.lower() in line.lower() for p in patterns):
+                match = re.search(r'/dev/sg\d+', line)
+                if match:
+                    return match.group(0)
         return None
 
     @staticmethod

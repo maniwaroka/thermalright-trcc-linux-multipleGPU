@@ -27,7 +27,10 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    from ...core.models import HardwareMetrics
 
 log = logging.getLogger(__name__)
 
@@ -103,7 +106,7 @@ class SegmentDisplay(ABC):
     @abstractmethod
     def compute_mask(
         self,
-        metrics: Dict[str, Any],
+        metrics: HardwareMetrics,
         phase: int = 0,
         temp_unit: str = "C",
         **kw: Any,
@@ -297,7 +300,7 @@ class AX120Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 4
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 30
         for idx in self.ALWAYS_ON:
@@ -312,7 +315,7 @@ class AX120Display(SegmentDisplay):
         else:
             mask[self.PERCENT] = True
 
-        value = int(metrics.get(metric_key, 0))
+        value = int(getattr(metrics, metric_key, 0))
         if is_temp:
             value = self._to_display_temp(value, temp_unit)
         self._encode_3digit(value, self.DIGITS, mask)
@@ -369,7 +372,7 @@ class PA120Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 1
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 84
 
@@ -388,20 +391,20 @@ class PA120Display(SegmentDisplay):
 
         # All 4 metrics simultaneously
         self._encode_3digit(
-            self._to_display_temp(metrics.get('cpu_temp', 0), temp_unit),
+            self._to_display_temp(getattr(metrics, 'cpu_temp', 0), temp_unit),
             self.CPU_TEMP_DIGITS, mask,
         )
         self._encode_2digit_partial(
-            int(metrics.get('cpu_percent', 0)),
+            int(getattr(metrics, 'cpu_percent', 0)),
             self.CPU_USE_DIGITS, self.CPU_USE_PARTIAL, mask,
         )
         self._encode_3digit(
-            self._to_display_temp(metrics.get('gpu_temp', 0), temp_unit),
+            self._to_display_temp(getattr(metrics, 'gpu_temp', 0), temp_unit),
             self.GPU_TEMP_DIGITS, mask,
         )
 
         # GPU usage: tens (full) + ones (B,C only) + hundreds (partial)
-        gu = max(0, min(199, int(metrics.get('gpu_usage', 0))))
+        gu = max(0, min(199, int(getattr(metrics, 'gpu_usage', 0))))
         if gu >= 100:
             mask[self.GPU_USE_PARTIAL[0]] = True
             mask[self.GPU_USE_PARTIAL[1]] = True
@@ -457,8 +460,8 @@ class AK120Display(SegmentDisplay):
     USE_PARTIAL = (62, 63)
 
     PHASES = (
-        ('cpu_temp', 'cpu_percent', 'cpu_watt', CPU1),
-        ('gpu_temp', 'gpu_usage', 'gpu_watt', GPU1),
+        ('cpu_temp', 'cpu_percent', 'cpu_power', CPU1),
+        ('gpu_temp', 'gpu_usage', 'gpu_power', GPU1),
     )
 
     # ── Interface ──────────────────────────────────────────────────
@@ -471,7 +474,7 @@ class AK120Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 2
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 69
 
@@ -482,10 +485,10 @@ class AK120Display(SegmentDisplay):
         mask[source_idx] = True
         mask[self.SSD if temp_unit == "C" else self.HSD] = True
 
-        self._encode_3digit(int(metrics.get(watt_key, 0)), self.WATT_DIGITS, mask)
-        self._encode_3digit(self._to_display_temp(metrics.get(temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
+        self._encode_3digit(int(getattr(metrics, watt_key, 0)), self.WATT_DIGITS, mask)
+        self._encode_3digit(self._to_display_temp(getattr(metrics, temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
         self._encode_2digit_partial(
-            int(metrics.get(use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
+            int(getattr(metrics, use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
         )
         return mask
 
@@ -529,7 +532,7 @@ class LC1Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 3
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 38
 
@@ -540,7 +543,7 @@ class LC1Display(SegmentDisplay):
 
         mask[indicator_idx] = True
 
-        value = int(metrics.get(metric_key, 0))
+        value = int(getattr(metrics, metric_key, 0))
         if actual_mode == -1:
             value = self._to_display_temp(value, "F")
         self._encode_3digit(value, self.DIGITS, mask)
@@ -590,8 +593,8 @@ class LF8Display(SegmentDisplay):
     USE_PARTIAL = (91, 92)
 
     PHASES = (
-        ('cpu_temp', 'cpu_watt', 'cpu_mhz', 'cpu_percent', CPU1),
-        ('gpu_temp', 'gpu_watt', 'gpu_mhz', 'gpu_usage', GPU1),
+        ('cpu_temp', 'cpu_power', 'cpu_freq', 'cpu_percent', CPU1),
+        ('gpu_temp', 'gpu_power', 'gpu_clock', 'gpu_usage', GPU1),
     )
 
     # ── Interface ──────────────────────────────────────────────────
@@ -604,7 +607,7 @@ class LF8Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 2
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * self.mask_size
 
@@ -616,11 +619,11 @@ class LF8Display(SegmentDisplay):
         mask[src] = True
         mask[self.SSD if temp_unit == "C" else self.HSD] = True
 
-        self._encode_3digit(self._to_display_temp(metrics.get(temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
-        self._encode_3digit(int(metrics.get(watt_key, 0)), self.WATT_DIGITS, mask)
-        self._encode_3digit(int(metrics.get(mhz_key, 0)), self.MHZ_DIGITS, mask)
+        self._encode_3digit(self._to_display_temp(getattr(metrics, temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
+        self._encode_3digit(int(getattr(metrics, watt_key, 0)), self.WATT_DIGITS, mask)
+        self._encode_3digit(int(getattr(metrics, mhz_key, 0)), self.MHZ_DIGITS, mask)
         self._encode_2digit_partial(
-            int(metrics.get(use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
+            int(getattr(metrics, use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
         )
         return mask
 
@@ -639,7 +642,7 @@ class LF12Display(LF8Display):
     def mask_size(self) -> int:
         return 124
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         # Compute digit mask using parent's logic on a 124-element mask
         mask = [False] * 124
@@ -652,11 +655,11 @@ class LF12Display(LF8Display):
         mask[src] = True
         mask[self.SSD if temp_unit == "C" else self.HSD] = True
 
-        self._encode_3digit(self._to_display_temp(metrics.get(temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
-        self._encode_3digit(int(metrics.get(watt_key, 0)), self.WATT_DIGITS, mask)
-        self._encode_3digit(int(metrics.get(mhz_key, 0)), self.MHZ_DIGITS, mask)
+        self._encode_3digit(self._to_display_temp(getattr(metrics, temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
+        self._encode_3digit(int(getattr(metrics, watt_key, 0)), self.WATT_DIGITS, mask)
+        self._encode_3digit(int(getattr(metrics, mhz_key, 0)), self.MHZ_DIGITS, mask)
         self._encode_2digit_partial(
-            int(metrics.get(use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
+            int(getattr(metrics, use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
         )
 
         # Decoration LEDs — always on
@@ -705,7 +708,7 @@ class LF10Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 1
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 116
 
@@ -721,12 +724,12 @@ class LF10Display(SegmentDisplay):
 
         # CPU temp (digits 1-3)
         self._encode_3digit_13seg(
-            self._to_display_temp(metrics.get('cpu_temp', 0), temp_unit),
+            self._to_display_temp(getattr(metrics, 'cpu_temp', 0), temp_unit),
             self.DIGIT_LEDS_13[0:3], mask,
         )
         # GPU temp (digits 4-6)
         self._encode_3digit_13seg(
-            self._to_display_temp(metrics.get('gpu_temp', 0), temp_unit),
+            self._to_display_temp(getattr(metrics, 'gpu_temp', 0), temp_unit),
             self.DIGIT_LEDS_13[3:6], mask,
         )
 
@@ -773,7 +776,7 @@ class CZ1Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 4
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 18
 
@@ -781,7 +784,7 @@ class CZ1Display(SegmentDisplay):
         for idx in indicator_on:
             mask[idx] = True
 
-        value = int(metrics.get(metric_key, 0))
+        value = int(getattr(metrics, metric_key, 0))
         if 'temp' in metric_key:
             value = self._to_display_temp(value, temp_unit)
         self._encode_2digit(value, self.DIGITS, mask)
@@ -821,7 +824,7 @@ class LC2Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 1
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 61
 
@@ -899,7 +902,7 @@ class LF11Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 4
 
-    def compute_mask(self, metrics: Dict[str, Any], phase: int = 0,
+    def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 38
 
@@ -910,7 +913,7 @@ class LF11Display(SegmentDisplay):
         else:
             mask[self.BFB] = True
 
-        value = int(metrics.get(metric_key, 0))
+        value = int(getattr(metrics, metric_key, 0))
         if is_temp:
             value = self._to_display_temp(value, temp_unit)
         self._encode_3digit(value, self.DIGITS[0:3], mask)
@@ -949,7 +952,7 @@ DISPLAYS: Dict[int, SegmentDisplay] = {
 
 def compute_mask(
     style_id: int,
-    metrics: Dict[str, Any],
+    metrics: HardwareMetrics,
     phase: int = 0,
     temp_unit: str = "C",
     is_24h: bool = True,
@@ -959,7 +962,7 @@ def compute_mask(
 
     Args:
         style_id: LED device style (1-11).
-        metrics: Sensor readings dict (cpu_temp, cpu_percent, etc.).
+        metrics: HardwareMetrics DTO with sensor readings.
         phase: Current rotation phase (0-based).
         temp_unit: "C" or "F".
         is_24h: 24-hour clock mode (style 9 only).

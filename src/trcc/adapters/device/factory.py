@@ -103,8 +103,8 @@ class DeviceProtocol(ABC):
     def handshake(self) -> Optional[HandshakeResult]:
         """Perform device handshake and return capabilities.
 
-        Returns HandshakeResult (or subclass) with resolution, model_id, etc.
-        Returns None for protocols that don't handshake (e.g. SCSI).
+        Returns HandshakeResult with resolution, model_id, etc.
+        Returns None if handshake fails or device is unresponsive.
         """
 
     @property
@@ -143,8 +143,10 @@ class ScsiProtocol(DeviceProtocol):
         self._path = device_path
 
     def handshake(self) -> Optional[HandshakeResult]:
-        """SCSI devices don't handshake — resolution is known at detection time."""
-        return None
+        """Poll SCSI device to discover FBL → resolution."""
+        from .scsi import ScsiDevice
+        dev = ScsiDevice(self._path)
+        return dev.handshake()
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         try:

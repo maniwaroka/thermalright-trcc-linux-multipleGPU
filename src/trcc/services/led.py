@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..core.models import LEDMode, LEDState, LEDZoneState
+from ..core.models import HardwareMetrics, LEDMode, LEDState, LEDZoneState
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class LEDService:
 
     def __init__(self, state: LEDState | None = None) -> None:
         self.state = state or LEDState()
-        self._metrics: Dict[str, Any] = {}
+        self._metrics: HardwareMetrics = HardwareMetrics()
         self._protocol: Any = None
 
         # HR10 state (style 13 — 7-segment digit rendering)
@@ -132,13 +132,20 @@ class LEDService:
     def set_week_start(self, is_sunday: bool) -> None:
         self.state.is_week_sunday = is_sunday
 
-    def update_metrics(self, metrics: Dict[str, Any]) -> None:
+    def update_metrics(self, metrics: HardwareMetrics) -> None:
         """Update cached sensor metrics for temp/load-linked modes."""
         self._metrics = metrics
 
     def configure_for_style(self, style_id: int) -> None:
-        """Configure state for a specific LED device style."""
+        """Configure state for a specific LED device style.
+
+        Sets up LED segment counts/zones from the style registry,
+        activates HR10 mode for style 13, and activates segment
+        display rotation for digit-display styles (1-11).
+        """
         from ..adapters.device.led import LED_STYLES
+        from ..adapters.device.led_segment import get_display
+
         style = LED_STYLES.get(style_id)
         if style:
             self.state.style = style.style_id
@@ -150,6 +157,17 @@ class LEDService:
                 self.state.zones = [LEDZoneState() for _ in range(style.zone_count)]
             else:
                 self.state.zones = []
+
+        self._hr10_mode = (style_id == 13)
+        self._seg_display = get_display(style_id)
+        self._segment_mode = self._seg_display is not None
+
+        if self._hr10_mode:
+            self._update_hr10_mask()
+        if self._segment_mode:
+            self._seg_phase = 0
+            self._seg_tick_count = 0
+            self._update_segment_mask()
 
     # ── Effect engine ───────────────────────────────────────────────
 
@@ -285,7 +303,7 @@ class LEDService:
         from ..adapters.device.led import ColorEngine
 
         source = self.state.temp_source
-        temp = self._metrics.get(f"{source}_temp", 0)
+        temp = getattr(self._metrics, f"{source}_temp", 0)
         color = ColorEngine.color_for_value(temp, ColorEngine.TEMP_GRADIENT)
         return [color] * seg_count
 
@@ -294,8 +312,7 @@ class LEDService:
         from ..adapters.device.led import ColorEngine
 
         source = self.state.load_source
-        key = "cpu_percent" if source == "cpu" else "gpu_usage"
-        load = self._metrics.get(key, 0)
+        load = self._metrics.cpu_percent if source == "cpu" else self._metrics.gpu_usage
         color = ColorEngine.color_for_value(load, ColorEngine.LOAD_GRADIENT)
         return [color] * seg_count
 
@@ -361,6 +378,10 @@ class LEDService:
 
     # ── Protocol send ───────────────────────────────────────────────
 
+    @property
+    def has_protocol(self) -> bool:
+        return self._protocol is not None
+
     def set_protocol(self, protocol: Any) -> None:
         self._protocol = protocol
 
@@ -414,19 +435,6 @@ class LEDService:
         )
 
         self.configure_for_style(led_style)
-        self._hr10_mode = (led_style == 13)
-
-        # Activate segment display for all digit-display styles (1-11)
-        from ..adapters.device.led_segment import get_display
-        self._seg_display = get_display(led_style)
-        self._segment_mode = self._seg_display is not None
-
-        if self._hr10_mode:
-            self._update_hr10_mask()
-        if self._segment_mode:
-            self._seg_phase = 0
-            self._seg_tick_count = 0
-            self._update_segment_mask()
 
         try:
             from ..adapters.device.factory import DeviceProtocolFactory
