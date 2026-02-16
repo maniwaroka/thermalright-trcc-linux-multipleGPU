@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "4.2.1"
+__version__ = "4.2.2"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -142,3 +142,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          USB claims (crashed process, suspend/resume, device re-enumeration).
 #          Fix SELinux detection: detach_kernel_driver error path now correctly
 #          sets selinux_blocked flag for actionable error messages. 2303 tests.
+# 4.2.2  - Fix gallery/masks empty for non-320x320 resolutions: 29 of 33
+#          web/zt archives had wrapping directory causing double nesting on
+#          extraction. Repacked all archives to uniform flat structure. Added
+#          _unwrap_nested_dir() safety net in extraction pipeline. 2308 tests.
