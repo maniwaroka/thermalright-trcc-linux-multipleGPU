@@ -162,6 +162,33 @@ class SegmentDisplay(ABC):
                 if seg_name in segs:
                     mask[leds[wire_idx]] = True
 
+    def _encode_4digit(
+        self,
+        value: int,
+        digit_leds: Tuple[Tuple[int, ...], ...],
+        mask: List[bool],
+    ) -> None:
+        """Encode 0-9999 into 4 seven-segment digits with leading-zero suppression.
+
+        C# SetMyNumeral MHz: num4=thousands, num=hundreds, num2=tens, num3=ones.
+        """
+        v = max(0, min(9999, value))
+        d_th, d_h = v // 1000, (v % 1000) // 100
+        d_t, d_o = (v % 100) // 10, v % 10
+        chars = [str(d_th), str(d_h), str(d_t), str(d_o)]
+        if d_th == 0:
+            chars[0] = ' '
+            if d_h == 0:
+                chars[1] = ' '
+                if d_t == 0:
+                    chars[2] = ' '
+        for digit_idx, ch in enumerate(chars):
+            segs = self.CHAR_7SEG.get(ch, set())
+            leds = digit_leds[digit_idx]
+            for wire_idx, seg_name in enumerate(self.WIRE_7SEG):
+                if seg_name in segs:
+                    mask[leds[wire_idx]] = True
+
     def _encode_2digit_partial(
         self,
         value: int,
@@ -582,15 +609,16 @@ class LF8Display(SegmentDisplay):
         (42, 43, 44, 45, 46, 47, 48),
     )
     MHZ_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (49, 50, 51, 52, 53, 54, 55),
-        (56, 57, 58, 59, 60, 61, 62),
-        (63, 64, 65, 66, 67, 68, 69),
+        (49, 50, 51, 52, 53, 54, 55),    # seg7 = thousands
+        (56, 57, 58, 59, 60, 61, 62),    # seg8 = hundreds
+        (63, 64, 65, 66, 67, 68, 69),    # seg9 = tens
+        (70, 71, 72, 73, 74, 75, 76),    # seg10 = ones
     )
     USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (70, 71, 72, 73, 74, 75, 76),
-        (77, 78, 79, 80, 81, 82, 83),
+        (77, 78, 79, 80, 81, 82, 83),    # seg11 = tens
+        (84, 85, 86, 87, 88, 89, 90),    # seg12 = ones
     )
-    USE_PARTIAL = (91, 92)
+    USE_PARTIAL = (91, 92)                    # seg13 partial = hundreds (B,C)
 
     PHASES = (
         ('cpu_temp', 'cpu_power', 'cpu_freq', 'cpu_percent', CPU1),
@@ -621,7 +649,7 @@ class LF8Display(SegmentDisplay):
 
         self._encode_3digit(self._to_display_temp(getattr(metrics, temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
         self._encode_3digit(int(getattr(metrics, watt_key, 0)), self.WATT_DIGITS, mask)
-        self._encode_3digit(int(getattr(metrics, mhz_key, 0)), self.MHZ_DIGITS, mask)
+        self._encode_4digit(int(getattr(metrics, mhz_key, 0)), self.MHZ_DIGITS, mask)
         self._encode_2digit_partial(
             int(getattr(metrics, use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
         )
@@ -657,7 +685,7 @@ class LF12Display(LF8Display):
 
         self._encode_3digit(self._to_display_temp(getattr(metrics, temp_key, 0), temp_unit), self.TEMP_DIGITS, mask)
         self._encode_3digit(int(getattr(metrics, watt_key, 0)), self.WATT_DIGITS, mask)
-        self._encode_3digit(int(getattr(metrics, mhz_key, 0)), self.MHZ_DIGITS, mask)
+        self._encode_4digit(int(getattr(metrics, mhz_key, 0)), self.MHZ_DIGITS, mask)
         self._encode_2digit_partial(
             int(getattr(metrics, use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask,
         )

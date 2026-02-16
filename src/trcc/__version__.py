@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "4.2.7"
+__version__ = "4.2.8"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -167,4 +167,10 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 # 4.2.7  - Fix frame transfer: send entire buffer in single USB transfer
 #          instead of chunking (HID Type 2 + Bulk), matching Windows USBLCDNEW.
 #          Expand debug report raw handshake output from 16 to 64 bytes.
+#          2311 tests.
+# 4.2.8  - Fix LED segment display: LF8/LF12 MHz now uses 4 digits (0-9999)
+#          matching C# SetMyNumeral, fixing 999 MHz cap. Correct usage digit
+#          indices (were overlapping MHz ones position via remap table).
+#          Fix LED device handshake warning on boot: route LED devices
+#          directly to LED panel in auto-select, skipping LCD handshake.
 #          2311 tests.

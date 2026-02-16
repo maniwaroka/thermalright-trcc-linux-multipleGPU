@@ -1126,6 +1126,13 @@ class TRCCMainWindowMVC(QMainWindow):
                  device.path, device.vid, device.pid, device.protocol, device.resolution)
         self._active_device_key = Settings.device_config_key(
             device.device_index, device.vid, device.pid)
+
+        # LED devices have no LCD resolution — route to LED panel directly.
+        if device.implementation == 'hid_led':
+            self._led.show(device)
+            self._show_view('led')
+            return
+
         self.uc_preview.set_status(f"Device: {device.path}")
 
         # Resolution (0,0) = not yet discovered — handshake to find it.
