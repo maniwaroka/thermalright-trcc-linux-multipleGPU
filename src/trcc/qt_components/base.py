@@ -232,9 +232,15 @@ def set_background_pixmap(widget, asset_name, width=None, height=None,
         pixmap = Assets.load_pixmap(asset_name, w, h)
 
     if pixmap and not pixmap.isNull():
+        # Remove any previous background filter to avoid stale paint
+        for child in widget.children():
+            if isinstance(child, _BgPaintFilter):
+                widget.removeEventFilter(child)
+                child.deleteLater()
         filt = _BgPaintFilter(pixmap, widget)
         widget.installEventFilter(filt)
         widget.setAutoFillBackground(False)
+        widget.update()
         return pixmap
 
     if fallback_style:

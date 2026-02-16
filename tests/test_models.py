@@ -95,7 +95,7 @@ class TestDeviceInfo(unittest.TestCase):
 
     def test_defaults(self):
         d = DeviceInfo(name='LCD', path='/dev/sg0')
-        self.assertEqual(d.brightness, 100)
+        self.assertEqual(d.brightness, 65)
         self.assertEqual(d.rotation, 0)
         self.assertTrue(d.connected)
 

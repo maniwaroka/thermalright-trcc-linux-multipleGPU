@@ -173,7 +173,7 @@ class DeviceInfo:
 
     # State
     connected: bool = True
-    brightness: int = 100  # 0-100%
+    brightness: int = 65  # 0-100% (C# default: 65)
     rotation: int = 0  # 0, 90, 180, 270
 
     @classmethod
@@ -372,7 +372,7 @@ class LEDZoneState:
     """
     mode: LEDMode = LEDMode.STATIC
     color: Tuple[int, int, int] = (255, 0, 0)
-    brightness: int = 100  # 0-100 (from FormLED.cs myBrightness, default 65)
+    brightness: int = 65   # 0-100 (C# default: 65)
     on: bool = True
 
 
@@ -392,7 +392,7 @@ class LEDState:
     # Global state
     mode: LEDMode = LEDMode.STATIC    # myLedMode
     color: Tuple[int, int, int] = (255, 0, 0)  # rgbR1, rgbG1, rgbB1
-    brightness: int = 100       # myBrightness (0-100)
+    brightness: int = 65        # myBrightness (0-100, C# default: 65)
     global_on: bool = True      # myOnOff
 
     # Per-segment on/off (ucScreenLED1.isOn[] per logical segment)
@@ -407,6 +407,10 @@ class LEDState:
     # Sensor linkage (for TEMP_LINKED and LOAD_LINKED modes)
     temp_source: str = "cpu"    # "cpu" or "gpu"
     load_source: str = "cpu"    # "cpu" or "gpu"
+
+    # LC1 (style 4) sub-style: 0=memory, 1=hard disk
+    sub_style: int = 0              # nowLedStyleSub
+    memory_ratio: int = 2           # DDR multiplier (1, 2, or 4) — C# default: 2
 
     # LC2 clock settings (style 9)
     is_timer_24h: bool = True
@@ -634,12 +638,140 @@ _REMAP_STYLE_5: tuple[int, ...] = (
     4, 92,                                 # WATT, LEDC13 (unused/padding)
 )
 
+# Style 6: LF12 (141 wire positions, 124 logical LEDs)
+# Decoration LEDs (ZhuangShi) are DUPLICATED on the wire — each physical pair
+# gets the same logical LED color.  This is hardware design, not a bug.
+_REMAP_STYLE_6: tuple[int, ...] = (
+    # decoration ring top (ZS27-31 forward, then ZS30-27 mirrored)
+    119, 120, 121, 122, 123,
+    122, 121, 120, 119,
+    # BFB (duplicated)
+    6, 6,
+    # seg12 (C D E G B A F)
+    86, 87, 88, 90, 85, 84, 89,
+    # seg11 (C D E G B A F)
+    79, 80, 81, 83, 78, 77, 82,
+    # LEDC13, LEDB13, MHz
+    92, 91, 5,
+    # seg10 (C D E G B A F)
+    72, 73, 74, 76, 71, 70, 75,
+    # seg9
+    65, 66, 67, 69, 64, 63, 68,
+    # seg8
+    58, 59, 60, 62, 57, 56, 61,
+    # seg7
+    51, 52, 53, 55, 50, 49, 54,
+    # decoration LEDs ZS13-ZS26 (straight sequence)
+    105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118,
+    # WATT
+    4,
+    # seg6 (C D E G B A F)
+    44, 45, 46, 48, 43, 42, 47,
+    # seg5
+    37, 38, 39, 41, 36, 35, 40,
+    # seg4
+    30, 31, 32, 34, 29, 28, 33,
+    # SSD, HSD
+    2, 3,
+    # seg3 (C D E G B A) + Gpu1 + F
+    23, 24, 25, 27, 22, 21, 1, 26,
+    # seg2 (C D E G B A F)
+    16, 17, 18, 20, 15, 14, 19,
+    # seg1 (C D E G B A F)
+    9, 10, 11, 13, 8, 7, 12,
+    # Cpu1
+    0,
+    # decoration LEDs ZS1-ZS12 (each duplicated to 2 wire positions)
+    93, 93, 94, 94, 95, 95, 96, 96, 97, 97, 98, 98,
+    99, 99, 100, 100, 101, 101, 102, 102, 103, 103, 104, 104,
+)
+
+# Style 7: LF10 (146 wire positions, 116 logical LEDs, 13-segment digits A-M)
+# Many entries are duplicated on the wire (physical LED pairs).
+_REMAP_STYLE_7: tuple[int, ...] = (
+    # decoration ring (ZS32..27 descending, then ZS27..32 ascending = mirrored)
+    115, 114, 113, 112, 111, 110,
+    110, 111, 112, 113, 114, 115,
+    # decoration ZS20..1 descending
+    103, 102, 101, 100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84,
+    # decoration ZS21..26
+    104, 105, 106, 107, 108, 109,
+    # Cpu1 (duplicated)
+    0, 0,
+    # digit 1: L1 A1 B1(dup) C1 D1 E1 M1(dup) K1 J1 I1 H1(dup) G1 F1
+    17, 6, 7, 7, 8, 9, 10, 18, 18, 16, 15, 14, 13, 13, 12, 11,
+    # digit 2: J2 I2 H2(dup) G2 F2 E2 M2(dup) K2 L2 A2 B2(dup) C2 D2
+    28, 27, 26, 26, 25, 24, 23, 31, 31, 29, 30, 19, 20, 20, 21, 22,
+    # digit 3: L3 A3 B3(dup) C3 D3 E3 M3(dup) K3 J3 I3 H3(dup) G3 F3
+    43, 32, 33, 33, 34, 35, 36, 44, 44, 42, 41, 40, 39, 39, 38, 37,
+    # HSD(dup) SSD(dup) Gpu1(dup)
+    2, 2, 1, 1, 3, 3,
+    # digit 4: L4 A4 B4(dup) C4 D4 E4 M4(dup) K4 J4 I4 H4(dup) G4 F4
+    56, 45, 46, 46, 47, 48, 49, 57, 57, 55, 54, 53, 52, 52, 51, 50,
+    # digit 5: J5 I5 H5(dup) G5 F5 E5 M5(dup) K5 L5 A5 B5(dup) C5 D5
+    67, 66, 65, 65, 64, 63, 62, 70, 70, 68, 69, 58, 59, 59, 60, 61,
+    # digit 6: L6 A6 B6(dup) C6 D6 E6 M6(dup) K6 J6 I6 H6(dup) G6 F6
+    82, 71, 72, 72, 73, 74, 75, 83, 83, 81, 80, 79, 78, 78, 77, 76,
+    # HSD1(dup) SSD1(dup)
+    5, 5, 4, 4,
+)
+
+# Style 9: LC2 clock (63 wire positions, 61 logical LEDs)
+# Riqi (date indicator) is triplicated on the wire.
+_REMAP_STYLE_9: tuple[int, ...] = (
+    # decoration (ZS7..1 descending)
+    60, 59, 58, 57, 56, 55, 54,
+    # colon LEDs
+    53, 52,
+    # seg5 (F A B G E D C)
+    36, 31, 32, 37, 35, 34, 33,
+    # Riqi (date indicator, triplicated)
+    2, 2, 2,
+    # seg6 (F A B G E D C)
+    43, 38, 39, 44, 42, 41, 40,
+    # seg7 (F A B G E D C)
+    50, 45, 46, 51, 49, 48, 47,
+    # seg4 (C D E G B A F)
+    26, 27, 28, 30, 25, 24, 29,
+    # seg3 (C D E G B A F)
+    19, 20, 21, 23, 18, 17, 22,
+    # Shijian1, Shijian2 (time indicators)
+    0, 1,
+    # seg2 (C D E G B A F)
+    12, 13, 14, 16, 11, 10, 15,
+    # seg1 (C D E G B A F)
+    5, 6, 7, 9, 4, 3, 8,
+)
+
+# Style 10: LF11 (38 wire positions, 38 logical LEDs)
+_REMAP_STYLE_10: tuple[int, ...] = (
+    # GNo (=MHz), MTNo (=BFB)
+    2, 1,
+    # seg5 (C D E G B A) + SSD + F
+    33, 34, 35, 37, 32, 31, 0, 36,
+    # seg4 (C D E G B A F)
+    26, 27, 28, 30, 25, 24, 29,
+    # seg3 (C D E G B A F)
+    19, 20, 21, 23, 18, 17, 22,
+    # seg2 (C D E G B A F)
+    12, 13, 14, 16, 11, 10, 15,
+    # seg1 (C D E G B A F)
+    5, 6, 7, 9, 4, 3, 8,
+)
+
 # Style → remap table.  Styles not listed use identity mapping (no remap).
+# NOTE: Styles 8 (CZ1) and 11 (LF15) use dual-source color arrays
+# (ledVal8[] / ledValLF15[]) that cannot be expressed as simple index remaps.
+# Style 12 (LF13) uses identity mapping from ledValLF13[].
 LED_REMAP_TABLES: dict[int, tuple[int, ...]] = {
     2: _REMAP_STYLE_2,   # PA120_DIGITAL (84 LEDs)
     3: _REMAP_STYLE_3,   # AK120_DIGITAL (64 LEDs)
     4: _REMAP_STYLE_4,   # LC1 (31 LEDs)
     5: _REMAP_STYLE_5,   # LF8 / Phantom Spirit 120 Digital Snow (93 LEDs)
+    6: _REMAP_STYLE_6,   # LF12 (141 LEDs, decoration duplicated)
+    7: _REMAP_STYLE_7,   # LF10 (146 LEDs, 13-segment, duplicated)
+    9: _REMAP_STYLE_9,   # LC2 clock (63 LEDs, Riqi triplicated)
+    10: _REMAP_STYLE_10,  # LF11 (38 LEDs)
     13: _REMAP_STYLE_4,  # HR10 shares LC1 layout
 }
 

@@ -189,6 +189,30 @@ class SegmentDisplay(ABC):
                 if seg_name in segs:
                     mask[leds[wire_idx]] = True
 
+    def _encode_5digit(
+        self,
+        value: int,
+        digit_leds: Tuple[Tuple[int, ...], ...],
+        mask: List[bool],
+    ) -> None:
+        """Encode 0-99999 into 5 seven-segment digits with leading-zero suppression."""
+        v = max(0, min(99999, value))
+        digits = [(v // 10000), (v % 10000) // 1000, (v % 1000) // 100,
+                  (v % 100) // 10, v % 10]
+        chars = [str(d) for d in digits]
+        # Suppress leading zeros
+        for i in range(4):  # don't suppress ones digit
+            if digits[i] == 0:
+                chars[i] = ' '
+            else:
+                break
+        for digit_idx, ch in enumerate(chars):
+            segs = self.CHAR_7SEG.get(ch, set())
+            leds = digit_leds[digit_idx]
+            for wire_idx, seg_name in enumerate(self.WIRE_7SEG):
+                if seg_name in segs:
+                    mask[leds[wire_idx]] = True
+
     def _encode_2digit_partial(
         self,
         value: int,
@@ -376,18 +400,18 @@ class PA120Display(SegmentDisplay):
         (31, 32, 33, 34, 35, 36, 37),
         (38, 39, 40, 41, 42, 43, 44),
     )
-    CPU_USE_PARTIAL = (46, 47)
+    CPU_USE_PARTIAL = (80, 81)   # B11/C11 overflow for "1xx"
 
     GPU_TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (52, 53, 54, 55, 56, 57, 58),
-        (59, 60, 61, 62, 63, 64, 65),
-        (66, 67, 68, 69, 70, 71, 72),
+        (45, 46, 47, 48, 49, 50, 51),  # LED6 = gpuTemp hundreds
+        (52, 53, 54, 55, 56, 57, 58),  # LED7 = gpuTemp tens
+        (59, 60, 61, 62, 63, 64, 65),  # LED8 = gpuTemp ones
     )
-    GPU_USE_TENS: Tuple[Tuple[int, ...], ...] = (
-        (73, 74, 75, 76, 77, 78, 79),
+    GPU_USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
+        (66, 67, 68, 69, 70, 71, 72),  # LED9 = gpuUse tens
+        (73, 74, 75, 76, 77, 78, 79),  # LED10 = gpuUse ones
     )
-    GPU_USE_ONES_BC = (80, 81)
-    GPU_USE_PARTIAL = (82, 83)
+    GPU_USE_PARTIAL = (82, 83)   # B12/C12 overflow for "1xx"
 
     # ── Interface ──────────────────────────────────────────────────
 
@@ -430,24 +454,11 @@ class PA120Display(SegmentDisplay):
             self.GPU_TEMP_DIGITS, mask,
         )
 
-        # GPU usage: tens (full) + ones (B,C only) + hundreds (partial)
-        gu = max(0, min(199, int(getattr(metrics, 'gpu_usage', 0))))
-        if gu >= 100:
-            mask[self.GPU_USE_PARTIAL[0]] = True
-            mask[self.GPU_USE_PARTIAL[1]] = True
-            gu -= 100
-        d_t, d_o = gu // 10, gu % 10
-        # Tens → full 7-seg digit
-        segs_t = self.CHAR_7SEG.get(str(d_t) if d_t > 0 else ' ', set())
-        for wire_idx, seg_name in enumerate(self.WIRE_7SEG):
-            if seg_name in segs_t:
-                mask[self.GPU_USE_TENS[0][wire_idx]] = True
-        # Ones → partial (B, C segments only)
-        segs_o = self.CHAR_7SEG.get(str(d_o), set())
-        if 'b' in segs_o:
-            mask[self.GPU_USE_ONES_BC[0]] = True
-        if 'c' in segs_o:
-            mask[self.GPU_USE_ONES_BC[1]] = True
+        # GPU usage: 2 full digits + partial overflow (same pattern as CPU usage)
+        self._encode_2digit_partial(
+            int(getattr(metrics, 'gpu_usage', 0)),
+            self.GPU_USE_DIGITS, self.GPU_USE_PARTIAL, mask,
+        )
 
         return mask
 
@@ -528,6 +539,8 @@ class LC1Display(SegmentDisplay):
     """Style 4 — LC1: 38-LED mask, mode-based 3-phase (temp/MHz/GB).
 
     NVMe memory device — displays different metrics with unit symbol.
+    Sub-style 0 = memory mode (temp/MHz*DDR/GB).
+    Sub-style 1 = hard disk mode (temp/RPM/MHz).
     Remapped style.
     """
 
@@ -543,10 +556,17 @@ class LC1Display(SegmentDisplay):
     )
     UNIT_DIGIT = (24, 25, 26, 27, 28, 29, 30)
 
-    PHASES = (
+    # Sub-style 0: memory mode phases
+    PHASES_MEM = (
         ('mem_temp', 0, SSD),     # temperature
-        ('mem_clock', 1, MTNO),   # MHz
+        ('mem_clock', 1, MTNO),   # MHz (* memoryRatio)
         ('mem_used', 2, GNO),     # GB
+    )
+    # Sub-style 1: hard disk mode phases
+    PHASES_DISK = (
+        ('disk_temp', 0, SSD),    # temperature
+        ('disk_read', 1, MTNO),   # RPM/MHz
+        ('disk_activity', 2, GNO),  # activity
     )
 
     # ── Interface ──────────────────────────────────────────────────
@@ -559,22 +579,39 @@ class LC1Display(SegmentDisplay):
     def phase_count(self) -> int:
         return 3
 
+    # All 4 digit positions for 4-digit modes (MHz/GB)
+    ALL_DIGITS: Tuple[Tuple[int, ...], ...] = (
+        (3, 4, 5, 6, 7, 8, 9),
+        (10, 11, 12, 13, 14, 15, 16),
+        (17, 18, 19, 20, 21, 22, 23),
+        (24, 25, 26, 27, 28, 29, 30),
+    )
+
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 38
 
-        metric_key, mode, indicator_idx = self.PHASES[phase % 3]
-        actual_mode = mode
-        if mode == 0 and temp_unit == "F":
-            actual_mode = -1
+        sub_style = kw.get('sub_style', 0)
+        memory_ratio = kw.get('memory_ratio', 2)
+        phases = self.PHASES_DISK if sub_style == 1 else self.PHASES_MEM
 
+        metric_key, mode, indicator_idx = phases[phase % 3]
         mask[indicator_idx] = True
-
         value = int(getattr(metrics, metric_key, 0))
-        if actual_mode == -1:
-            value = self._to_display_temp(value, "F")
-        self._encode_3digit(value, self.DIGITS, mask)
-        self._encode_unit(actual_mode, self.UNIT_DIGIT, mask)
+
+        if mode == 0:
+            # Temperature: 3 digits + C/F unit symbol on digit 4
+            if temp_unit == "F":
+                value = self._to_display_temp(value, "F")
+            self._encode_3digit(value, self.DIGITS, mask)
+            unit_mode = -1 if temp_unit == "F" else 0
+            self._encode_unit(unit_mode, self.UNIT_DIGIT, mask)
+        else:
+            # MHz/GB/RPM: 4-digit number using all 4 positions
+            if sub_style == 0 and mode == 1:
+                value *= memory_ratio  # DDR multiplier for memory clock
+            self._encode_4digit(value, self.ALL_DIGITS, mask)
+
         return mask
 
 
@@ -830,17 +867,20 @@ class LC2Display(SegmentDisplay):
     """
 
     # ── Layout data ────────────────────────────────────────────────
+    # Indices 0-2: time colon dots (0, 1) + date separator (2) — always on
+    COLON_AND_SEP = (0, 1, 2)
+
     DIGITS: Tuple[Tuple[int, ...], ...] = (
         (3, 4, 5, 6, 7, 8, 9),        # Hour tens
         (10, 11, 12, 13, 14, 15, 16),  # Hour ones
         (17, 18, 19, 20, 21, 22, 23),  # Minute tens
         (24, 25, 26, 27, 28, 29, 30),  # Minute ones
-        (31, 32, 33, 34, 35, 36, 37),  # Month tens
-        (38, 39, 40, 41, 42, 43, 44),  # Month ones
-        (45, 46, 47, 48, 49, 50, 51),  # Day tens
+        (31, 32, 33, 34, 35, 36, 37),  # Month ones (full digit)
+        (38, 39, 40, 41, 42, 43, 44),  # Day tens (full digit)
+        (45, 46, 47, 48, 49, 50, 51),  # Day ones (full digit)
     )
-    DAY_ONES_BC = (52, 53)
-    DECORATION = tuple(range(54, 61))
+    MONTH_TENS_BC = (52, 53)  # B8/C8 — partial for month tens (0 or 1)
+    DECORATION = tuple(range(54, 61))  # 7 weekday bar indicators
 
     # ── Interface ──────────────────────────────────────────────────
 
@@ -857,7 +897,12 @@ class LC2Display(SegmentDisplay):
         mask = [False] * 61
 
         is_24h = kw.get('is_24h', True)
+        week_sunday = kw.get('week_sunday', False)
         now = datetime.now()
+
+        # Time colons + date separator — always on
+        for idx in self.COLON_AND_SEP:
+            mask[idx] = True
 
         hour = now.hour
         if not is_24h:
@@ -872,21 +917,33 @@ class LC2Display(SegmentDisplay):
         self._encode_clock_digit(now.minute // 10, self.DIGITS[2], mask)
         self._encode_clock_digit(now.minute % 10, self.DIGITS[3], mask)
 
-        # Month
-        self._encode_clock_digit(now.month // 10, self.DIGITS[4], mask)
-        self._encode_clock_digit(now.month % 10, self.DIGITS[5], mask)
+        # Month tens: partial B/C only (can only show "1" or blank)
+        m_tens = now.month // 10
+        if m_tens == 1:
+            mask[self.MONTH_TENS_BC[0]] = True  # B segment
+            mask[self.MONTH_TENS_BC[1]] = True  # C segment
 
-        # Day: tens (full) + ones (partial B,C)
-        self._encode_clock_digit(now.day // 10, self.DIGITS[6], mask)
-        d_ones = now.day % 10
-        segs = self.CHAR_7SEG.get(str(d_ones), set())
-        if 'b' in segs:
-            mask[self.DAY_ONES_BC[0]] = True
-        if 'c' in segs:
-            mask[self.DAY_ONES_BC[1]] = True
+        # Month ones: full digit at DIGITS[4]
+        self._encode_clock_digit(now.month % 10, self.DIGITS[4], mask)
 
-        for idx in self.DECORATION:
-            mask[idx] = True
+        # Day: tens (full) + ones (full)
+        self._encode_clock_digit(now.day // 10, self.DIGITS[5], mask,
+                                 suppress_zero=True)
+        self._encode_clock_digit(now.day % 10, self.DIGITS[6], mask)
+
+        # Weekday progressive fill (C#: isOn[ZhuangShi1]=true always,
+        # isOn[ZhuangShi2]=(w>0), isOn[ZhuangShi3]=(w>1), ... isOn[ZhuangShi7]=(w>5))
+        # Python weekday: 0=Mon..6=Sun; C# DayOfWeek: 0=Sun..6=Sat
+        py_wd = now.weekday()  # 0=Mon..6=Sun
+        if week_sunday:
+            # Sunday-start: Sun=0, Mon=1, ..., Sat=6
+            w = (py_wd + 1) % 7
+        else:
+            # Monday-start: Mon=0, ..., Sun=6
+            w = py_wd
+        for i, idx in enumerate(self.DECORATION):
+            mask[idx] = (i == 0) or (w > i - 1)
+
         return mask
 
 
@@ -895,15 +952,16 @@ class LC2Display(SegmentDisplay):
 # ═══════════════════════════════════════════════════════════════════════
 
 class LF11Display(SegmentDisplay):
-    """Style 10 — LF11: 38-LED, 4-phase sensor rotation with unit symbol.
+    """Style 10 — LF11: 38-LED, hard-disk sensor rotation.
 
-    Similar to AX120 rotation but with 5 digit positions and unit display.
+    C# SetMyNumeralHardDisk: mode 0 = SSD temp (3-digit + C/F),
+    mode 1 = BFB/fan (5-digit), mode 2 = MHz (5-digit).
     """
 
     # ── Layout data ────────────────────────────────────────────────
-    SSD = 0       # °C/°F
-    BFB = 1       # %
-    MHZ_IND = 2   # MHz
+    SSD = 0       # °C/°F indicator
+    BFB = 1       # % / fan indicator (shared with MTNo)
+    MHZ_IND = 2   # MHz indicator (shared with GNo)
 
     DIGITS: Tuple[Tuple[int, ...], ...] = (
         (3, 4, 5, 6, 7, 8, 9),
@@ -913,11 +971,11 @@ class LF11Display(SegmentDisplay):
         (31, 32, 33, 34, 35, 36, 37),
     )
 
+    # (metric_key, mode): mode 0=temp, 1=BFB/5-digit, 2=MHz/5-digit
     PHASES = (
-        ('cpu_temp', True),
-        ('cpu_percent', False),
-        ('gpu_temp', True),
-        ('gpu_usage', False),
+        ('disk_temp', 0),
+        ('disk_activity', 1),
+        ('disk_read', 2),
     )
 
     # ── Interface ──────────────────────────────────────────────────
@@ -928,27 +986,30 @@ class LF11Display(SegmentDisplay):
 
     @property
     def phase_count(self) -> int:
-        return 4
+        return 3
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
                      temp_unit: str = "C", **kw: Any) -> List[bool]:
         mask = [False] * 38
 
-        metric_key, is_temp = self.PHASES[phase % 4]
-
-        if is_temp:
-            mask[self.SSD] = True
-        else:
-            mask[self.BFB] = True
-
+        metric_key, mode = self.PHASES[phase % 3]
         value = int(getattr(metrics, metric_key, 0))
-        if is_temp:
-            value = self._to_display_temp(value, temp_unit)
-        self._encode_3digit(value, self.DIGITS[0:3], mask)
 
-        if is_temp:
-            mode = -1 if temp_unit == "F" else 0
-            self._encode_unit(mode, self.DIGITS[3], mask)
+        if mode == 0:
+            # Temperature: SSD indicator, 3-digit + C/F unit on digits 4-5
+            mask[self.SSD] = True
+            value = self._to_display_temp(value, temp_unit)
+            self._encode_3digit(value, self.DIGITS[0:3], mask)
+            unit_mode = -1 if temp_unit == "F" else 0
+            self._encode_unit(unit_mode, self.DIGITS[3], mask)
+        elif mode == 1:
+            # BFB/fan: 5-digit value across all positions
+            mask[self.BFB] = True
+            self._encode_5digit(value, self.DIGITS, mask)
+        else:
+            # MHz: 5-digit value across all positions
+            mask[self.MHZ_IND] = True
+            self._encode_5digit(value, self.DIGITS, mask)
 
         return mask
 

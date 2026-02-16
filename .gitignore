@@ -124,3 +124,6 @@ trcc_callgraph*
 
 # Large binary docs
 doc/*.pdf
+
+# C# audit docs (reference only, not for distribution)
+doc/audit/

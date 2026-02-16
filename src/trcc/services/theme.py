@@ -359,6 +359,15 @@ class ThemeService:
             theme_path = data_dir / f'theme{w}{h}' / name
             import_theme(str(import_path), str(theme_path))
             theme = ThemeInfo.from_directory(theme_path)
+
+            # Warn if imported theme resolution doesn't match device
+            if (isinstance(theme, ThemeInfo)
+                    and theme.resolution != (0, 0)
+                    and theme.resolution != lcd_size):
+                log.warning(
+                    "Imported theme resolution %s doesn't match "
+                    "device resolution %s", theme.resolution, lcd_size)
+
             return True, theme
         except Exception as e:
             return False, f"Import failed: {e}"

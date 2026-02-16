@@ -553,7 +553,25 @@ class TestLC2Display:
     def test_phase_count(self):
         assert self.d.phase_count == 1
 
-    def test_decoration_always_on(self):
+    @patch('trcc.adapters.device.led_segment.datetime')
+    def test_weekday_progressive_fill(self, mock_dt):
+        """C# progressive fill: bar[0] always on, bar[i] on if weekday > i-1."""
+        # Wednesday = weekday() == 2 (Mon-start), so w=2 → bars 0,1,2 on
+        mock_dt.now.return_value = datetime(2024, 2, 14, 12, 0)  # Wednesday
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
+        deco = list(range(54, 61))
+        assert mask[deco[0]] is True   # bar 0 always on
+        assert mask[deco[1]] is True   # w=2 > 0
+        assert mask[deco[2]] is True   # w=2 > 1
+        assert mask[deco[3]] is False  # w=2 not > 2
+        assert mask[deco[4]] is False
+        assert mask[deco[5]] is False
+        assert mask[deco[6]] is False
+
+    @patch('trcc.adapters.device.led_segment.datetime')
+    def test_weekday_sunday_all_on(self, mock_dt):
+        """Sunday (Mon-start w=6) lights all 7 bars."""
+        mock_dt.now.return_value = datetime(2024, 2, 18, 12, 0)  # Sunday
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
         for idx in range(54, 61):
             assert mask[idx] is True
@@ -583,20 +601,35 @@ class TestLC2Display:
         assert on_tens > 0  # '1' has segments
 
     @patch('trcc.adapters.device.led_segment.datetime')
-    def test_day_partial_bc(self, mock_dt):
-        """Day ones digit uses partial (B,C segments only)."""
+    def test_month_tens_partial_bc(self, mock_dt):
+        """Month tens uses partial B/C (can only show '1' or blank)."""
+        # December → month=12 → month tens=1 → B,C should be on
+        mock_dt.now.return_value = datetime(2024, 12, 14, 12, 0)
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
+        assert mask[52] is True   # MONTH_TENS_BC[0] = B segment
+        assert mask[53] is True   # MONTH_TENS_BC[1] = C segment
+
+    @patch('trcc.adapters.device.led_segment.datetime')
+    def test_month_tens_blank_for_single_digit(self, mock_dt):
+        """Month < 10 → month tens blank (both B,C off)."""
+        # February → month=2 → month tens=0 → both off
         mock_dt.now.return_value = datetime(2024, 2, 14, 12, 0)
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
-        # Day = 14 → ones = 4 → B,C in segs for '4'
-        segs_4 = SegmentDisplay.CHAR_7SEG['4']
-        if 'b' in segs_4:
-            assert mask[52] is True  # DAY_ONES_BC[0]
-        if 'c' in segs_4:
-            assert mask[53] is True  # DAY_ONES_BC[1]
+        assert mask[52] is False  # MONTH_TENS_BC[0]
+        assert mask[53] is False  # MONTH_TENS_BC[1]
+
+    @patch('trcc.adapters.device.led_segment.datetime')
+    def test_colons_and_separator_always_on(self, mock_dt):
+        """Time colons (0,1) and date separator (2) are always lit."""
+        mock_dt.now.return_value = datetime(2024, 2, 14, 12, 0)
+        mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
+        assert mask[0] is True  # colon dot 1
+        assert mask[1] is True  # colon dot 2
+        assert mask[2] is True  # date separator
 
 
 # =========================================================================
-# Style 10 — LF11 (38 LEDs, 4-phase sensor)
+# Style 10 — LF11 (38 LEDs, 3-phase hard-disk sensor)
 # =========================================================================
 
 class TestLF11Display:
@@ -607,31 +640,41 @@ class TestLF11Display:
         assert self.d.mask_size == 38
 
     def test_phase_count(self):
-        assert self.d.phase_count == 4
+        assert self.d.phase_count == 3
 
-    def test_cpu_temp_phase(self):
-        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=65), 0, "C")
+    def test_disk_temp_phase(self):
+        """Phase 0: disk_temp → SSD indicator on, 3-digit + C/F unit."""
+        mask = self.d.compute_mask(HardwareMetrics(disk_temp=45), 0, "C")
         assert mask[0] is True   # SSD
         assert mask[1] is False  # BFB
+        assert mask[2] is False  # MHz
 
-    def test_cpu_usage_phase(self):
-        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=80), 1, "C")
+    def test_disk_activity_phase(self):
+        """Phase 1: disk_activity → BFB indicator on, 5-digit value."""
+        mask = self.d.compute_mask(HardwareMetrics(disk_activity=1200), 1, "C")
         assert mask[1] is True   # BFB
         assert mask[0] is False  # SSD
 
-    def test_unit_digit_on_temp_phase(self):
-        """Temperature phases show unit symbol in digit 4."""
-        mask = self.d.compute_mask(HardwareMetrics(cpu_temp=50), 0, "C")
+    def test_disk_read_phase(self):
+        """Phase 2: disk_read → MHz indicator on, 5-digit value."""
+        mask = self.d.compute_mask(HardwareMetrics(disk_read=500), 2, "C")
+        assert mask[2] is True   # MHz
+        assert mask[0] is False  # SSD
+
+    def test_temp_phase_has_unit(self):
+        """Temperature phase shows unit symbol in digit 4."""
+        mask = self.d.compute_mask(HardwareMetrics(disk_temp=50), 0, "C")
         unit_leds = self.d.DIGITS[3]
         on_count = sum(1 for led in unit_leds if mask[led])
         assert on_count > 0
 
-    def test_no_unit_digit_on_usage_phase(self):
-        """Usage phases don't show unit symbol."""
-        mask = self.d.compute_mask(HardwareMetrics(cpu_percent=50), 1, "C")
-        unit_leds = self.d.DIGITS[3]
-        on_count = sum(1 for led in unit_leds if mask[led])
-        assert on_count == 0
+    def test_5digit_mode_uses_all_digits(self):
+        """BFB/MHz phases use all 5 digit positions for large values."""
+        mask = self.d.compute_mask(HardwareMetrics(disk_activity=12345), 1, "C")
+        # All 5 digit groups should have some segments lit for 12345
+        for digit_group in self.d.DIGITS:
+            on_count = sum(1 for led in digit_group if mask[led])
+            assert on_count > 0
 
 
 # =========================================================================

@@ -121,9 +121,10 @@ class ImageService:
     def byte_order_for(protocol: str, resolution: tuple[int, int]) -> str:
         """Determine RGB565 byte order for a device.
 
-        Big-endian for 320x320 SCSI, little-endian otherwise.
-        Matches Windows TRCC ImageTo565 logic.
+        Big-endian for SCSI 320x320 and SCSI 240x320 (FBL=51/53,
+        SPIMode=2), little-endian for other SCSI resolutions.
+        HID/Bulk always big-endian.
         """
-        if protocol == 'scsi' and resolution != (320, 320):
+        if protocol == 'scsi' and resolution not in ((320, 320), (240, 320)):
             return '<'
         return '>'

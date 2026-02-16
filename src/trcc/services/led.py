@@ -374,6 +374,8 @@ class LEDService:
             self._seg_temp_unit,
             is_24h=self.state.is_timer_24h,
             week_sunday=self.state.is_week_sunday,
+            sub_style=self.state.sub_style,
+            memory_ratio=self.state.memory_ratio,
         )
 
     # ── Protocol send ───────────────────────────────────────────────

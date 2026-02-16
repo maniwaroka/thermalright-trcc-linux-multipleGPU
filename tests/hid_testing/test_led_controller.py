@@ -129,7 +129,7 @@ class TestLEDZoneState:
         zone = LEDZoneState()
         assert zone.mode is LEDMode.STATIC
         assert zone.color == (255, 0, 0)
-        assert zone.brightness == 100
+        assert zone.brightness == 65
         assert zone.on is True
 
     def test_custom_creation(self):
@@ -159,7 +159,7 @@ class TestLEDState:
         assert led_state.zone_count == 1
         assert led_state.mode is LEDMode.STATIC
         assert led_state.color == (255, 0, 0)
-        assert led_state.brightness == 100
+        assert led_state.brightness == 65
         assert led_state.global_on is True
         assert led_state.rgb_timer == 0
         assert led_state.temp_source == "cpu"
@@ -1225,9 +1225,9 @@ class TestMultiZoneTick:
         model.state.zone_count = 3
         model.state.segment_count = 7
         model.state.zones = [
-            LEDZoneState(mode=LEDMode.STATIC, color=(255, 0, 0)),
-            LEDZoneState(mode=LEDMode.STATIC, color=(0, 255, 0)),
-            LEDZoneState(mode=LEDMode.STATIC, color=(0, 0, 255)),
+            LEDZoneState(mode=LEDMode.STATIC, color=(255, 0, 0), brightness=100),
+            LEDZoneState(mode=LEDMode.STATIC, color=(0, 255, 0), brightness=100),
+            LEDZoneState(mode=LEDMode.STATIC, color=(0, 0, 255), brightness=100),
         ]
         colors = model.tick()
         assert len(colors) == 7
@@ -1262,8 +1262,8 @@ class TestMultiZoneTick:
         model.state.zone_count = 2
         model.state.segment_count = 6
         model.state.zones = [
-            LEDZoneState(mode=LEDMode.BREATHING, color=(100, 100, 100)),
-            LEDZoneState(mode=LEDMode.STATIC, color=(0, 255, 0)),
+            LEDZoneState(mode=LEDMode.BREATHING, color=(100, 100, 100), brightness=100),
+            LEDZoneState(mode=LEDMode.STATIC, color=(0, 255, 0), brightness=100),
         ]
         colors = model.tick()
         assert len(colors) == 6
@@ -1288,10 +1288,10 @@ class TestMultiZoneTick:
         model.state.zone_count = 4
         model.state.segment_count = 18
         model.state.zones = [
-            LEDZoneState(mode=LEDMode.STATIC, color=(255, 0, 0)),
-            LEDZoneState(mode=LEDMode.STATIC, color=(0, 255, 0)),
-            LEDZoneState(mode=LEDMode.STATIC, color=(0, 0, 255)),
-            LEDZoneState(mode=LEDMode.STATIC, color=(255, 255, 0)),
+            LEDZoneState(mode=LEDMode.STATIC, color=(255, 0, 0), brightness=100),
+            LEDZoneState(mode=LEDMode.STATIC, color=(0, 255, 0), brightness=100),
+            LEDZoneState(mode=LEDMode.STATIC, color=(0, 0, 255), brightness=100),
+            LEDZoneState(mode=LEDMode.STATIC, color=(255, 255, 0), brightness=100),
         ]
         colors = model.tick()
         assert len(colors) == 18

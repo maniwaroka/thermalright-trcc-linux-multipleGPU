@@ -92,6 +92,10 @@ def _get_device_images(device_info: dict) -> tuple[str | None, str | None]:
         if Assets.exists(spaced):
             return spaced, f"{spaced}a"
 
+        underscored = button_image.replace(' ', '_')
+        if Assets.exists(underscored):
+            return underscored, f"{underscored}a"
+
     # Try model field
     model = device_info.get('model', '')
     if model in DEVICE_IMAGE_MAP:
@@ -188,7 +192,7 @@ class UCDevice(BasePanel):
             Assets.ABOUT_BTN, Assets.ABOUT_BTN_ACTIVE,
             checkable=True, fallback_text="About"
         )
-        self.about_btn.setToolTip("Settings")
+        self.about_btn.setToolTip("Control Center")
         self.about_btn.clicked.connect(self._on_about_clicked)
 
     def _build_device_buttons(self, devices: list[dict]) -> None:
