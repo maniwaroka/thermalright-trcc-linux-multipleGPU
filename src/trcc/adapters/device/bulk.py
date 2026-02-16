@@ -104,8 +104,19 @@ class BulkDevice:
                                     "detach — SELinux may be blocking USB ioctls", i)
                     else:
                         log.debug("Detached kernel driver from interface %d", i)
-            except (usb.core.USBError, NotImplementedError) as e:
+            except usb.core.USBError as e:
                 log.debug("Could not detach kernel driver from interface %d: %s", i, e)
+                # Check if driver is still active after the error — if so, SELinux
+                # likely blocked the ioctl (the error alone doesn't tell us).
+                try:
+                    if dev.is_kernel_driver_active(i):  # type: ignore[union-attr]
+                        selinux_blocked = True
+                        log.warning("Kernel driver still active on interface %d "
+                                    "after detach error — SELinux may be blocking", i)
+                except (usb.core.USBError, NotImplementedError):
+                    pass
+            except NotImplementedError:
+                pass
 
         # Skip set_configuration() if device already has an active config.
         # On SELinux (Bazzite, Silverblue) detach_kernel_driver() is silently
@@ -150,13 +161,41 @@ class BulkDevice:
         try:
             usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
         except usb.core.USBError as e:
-            if e.errno == 16 and selinux_blocked:  # EBUSY + detach was blocked
+            if e.errno != 16:  # Not EBUSY — unknown error
+                raise
+            if selinux_blocked:
                 raise RuntimeError(
                     "USB interface busy — SELinux is blocking USB device access. "
                     "Run 'sudo trcc setup-selinux' to install the policy module, "
                     "then unplug and replug the device."
                 ) from e
-            raise
+            # EBUSY without SELinux — stale claim from crashed process, suspend,
+            # or device re-enumeration.  Reset the device and retry once.
+            log.warning("claim_interface() EBUSY — resetting device and retrying")
+            dev.reset()  # type: ignore[union-attr]
+            import time
+            time.sleep(0.5)
+            dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
+            if dev is None:
+                raise RuntimeError(
+                    f"USB device {self.vid:04x}:{self.pid:04x} not found after reset"
+                ) from e
+            for i in range(4):
+                try:
+                    if dev.is_kernel_driver_active(i):  # type: ignore[union-attr]
+                        dev.detach_kernel_driver(i)  # type: ignore[union-attr]
+                except (usb.core.USBError, NotImplementedError):
+                    pass
+            # Re-acquire configuration and interface after reset
+            cfg = dev.get_active_configuration()  # type: ignore[union-attr]
+            intf = None
+            for candidate in cfg:
+                if candidate.bInterfaceClass == 255:  # type: ignore[union-attr]
+                    intf = candidate
+                    break
+            if intf is None:
+                intf = cfg[(0, 0)]  # type: ignore[index]
+            usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
 
         self._ep_out = usb.util.find_descriptor(
             intf,

@@ -28,6 +28,14 @@ from trcc.adapters.device.bulk import (
 from trcc.core.models import HandshakeResult
 
 
+class _FakeUSBError(Exception):
+    """Stand-in for usb.core.USBError — real class needed for except clauses."""
+
+    def __init__(self, msg: str = "", errno: int | None = None):
+        super().__init__(msg)
+        self.errno = errno
+
+
 def _make_handshake_response(pm: int = 100, sub: int = 0, length: int = 1024) -> bytes:
     """Build a fake handshake response with PM at byte[24] and SUB at byte[36]."""
     resp = bytearray(length)
@@ -146,6 +154,106 @@ class TestBulkDeviceOpen(unittest.TestCase):
         bd = BulkDevice(0x87AD, 0x70DB)
         with self.assertRaises(RuntimeError):
             bd._open()
+
+    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
+    def test_open_selinux_blocked_detach_error_sets_flag(self):
+        """When detach_kernel_driver raises USBError and driver is still active,
+        selinux_blocked should be True → claim_interface EBUSY gives SELinux message."""
+        import usb.core
+        import usb.util
+
+        # Wire real exception class into mocked usb.core
+        usb.core.USBError = _FakeUSBError
+
+        mock_dev = MagicMock()
+        usb.core.find.return_value = mock_dev
+        mock_cfg = MagicMock()
+        mock_dev.get_active_configuration.return_value = mock_cfg
+        mock_intf = MagicMock()
+        mock_intf.bInterfaceClass = 255
+        mock_intf.bInterfaceNumber = 0
+        mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
+
+        # Kernel driver is active, detach raises USBError, driver stays active
+        mock_dev.is_kernel_driver_active.return_value = True
+        mock_dev.detach_kernel_driver.side_effect = _FakeUSBError("Resource busy", errno=16)
+
+        # claim_interface fails with EBUSY
+        usb.util.claim_interface.side_effect = _FakeUSBError("Resource busy", errno=16)
+
+        bd = BulkDevice(0x87AD, 0x70DB)
+        with self.assertRaises(RuntimeError) as ctx:
+            bd._open()
+        self.assertIn("SELinux", str(ctx.exception))
+        self.assertIn("setup-selinux", str(ctx.exception))
+
+    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
+    def test_open_claim_ebusy_retries_after_reset(self):
+        """claim_interface EBUSY (no SELinux) → reset + retry succeeds."""
+        import usb.core
+        import usb.util
+
+        usb.core.USBError = _FakeUSBError
+
+        mock_dev = MagicMock()
+        mock_dev2 = MagicMock()  # device after reset + re-find
+        usb.core.find.side_effect = [mock_dev, mock_dev2]
+        mock_cfg = MagicMock()
+        mock_dev.get_active_configuration.return_value = mock_cfg
+        mock_dev2.get_active_configuration.return_value = mock_cfg
+        mock_dev.is_kernel_driver_active.return_value = False
+        mock_dev2.is_kernel_driver_active.return_value = False
+        mock_intf = MagicMock()
+        mock_intf.bInterfaceClass = 255
+        mock_intf.bInterfaceNumber = 0
+        mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
+
+        # First claim fails with EBUSY, second succeeds
+        usb.util.claim_interface.side_effect = [
+            _FakeUSBError("Resource busy", errno=16), None
+        ]
+
+        ep_out = MagicMock()
+        ep_out.bEndpointAddress = 0x01
+        ep_in = MagicMock()
+        ep_in.bEndpointAddress = 0x81
+        usb.util.find_descriptor.side_effect = [ep_out, ep_in]
+
+        bd = BulkDevice(0x87AD, 0x70DB)
+        bd._open()
+
+        # Verify reset was called on first device
+        mock_dev.reset.assert_called_once()
+        # Device was re-found after reset
+        self.assertEqual(usb.core.find.call_count, 2)
+        # Endpoints found on re-found device
+        self.assertEqual(bd._ep_out, ep_out)
+        self.assertEqual(bd._ep_in, ep_in)
+
+    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
+    def test_open_claim_ebusy_reset_device_not_found(self):
+        """claim_interface EBUSY → reset → device gone → RuntimeError."""
+        import usb.core
+        import usb.util
+
+        usb.core.USBError = _FakeUSBError
+
+        mock_dev = MagicMock()
+        usb.core.find.side_effect = [mock_dev, None]  # gone after reset
+        mock_cfg = MagicMock()
+        mock_dev.get_active_configuration.return_value = mock_cfg
+        mock_dev.is_kernel_driver_active.return_value = False
+        mock_intf = MagicMock()
+        mock_intf.bInterfaceClass = 255
+        mock_intf.bInterfaceNumber = 0
+        mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
+
+        usb.util.claim_interface.side_effect = _FakeUSBError("Resource busy", errno=16)
+
+        bd = BulkDevice(0x87AD, 0x70DB)
+        with self.assertRaises(RuntimeError) as ctx:
+            bd._open()
+        self.assertIn("not found after reset", str(ctx.exception))
 
 
 class TestBulkDeviceHandshake(unittest.TestCase):

@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "4.2.0"
+__version__ = "4.2.1"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -138,3 +138,7 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          if device already configured, clear error message. Distro-specific
 #          install hints for checkmodule/semodule_package. Fix CI workflows
 #          triggering on stable branch. 2300 tests.
+# 4.2.1  - Fix bulk claim_interface EBUSY: retry with device reset on stale
+#          USB claims (crashed process, suspend/resume, device re-enumeration).
+#          Fix SELinux detection: detach_kernel_driver error path now correctly
+#          sets selinux_blocked flag for actionable error messages. 2303 tests.
