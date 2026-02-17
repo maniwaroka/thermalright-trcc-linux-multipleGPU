@@ -161,7 +161,7 @@ Even a "it doesn't work" report is helpful — the `trcc report` output tells us
 TRCC Linux supports 4 USB protocol types:
 
 - **SCSI** (`87CD:70DB`, `0416:5406`, `0402:3922`) — USB Mass Storage, sends raw RGB565 pixels via `sg_raw`
-- **HID Type 2** (`0416:5302`) — USB HID, DA/DB/DC/DD magic bytes, JPEG frames in 512-byte chunks
+- **HID Type 2** (`0416:5302`) — USB HID, DA/DB/DC/DD magic bytes, RGB565 frames with 20-byte header (512-byte aligned)
 - **HID Type 3** (`0418:5303`, `0418:5304`) — USB HID, 0x65/0x66 prefix, fixed-size frames with ACK
 - **HID LED** (`0416:8001`) — USB HID, 64-byte reports for RGB LED color/effect control
 - **Bulk** (`87AD:70DB`) — Raw USB vendor-specific protocol via pyusb (GrandVision/Mjolnir Vision)

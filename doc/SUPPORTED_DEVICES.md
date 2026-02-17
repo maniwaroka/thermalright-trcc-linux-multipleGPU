@@ -23,7 +23,7 @@ These devices have been reported by testers with varying levels of validation.
 
 | Product | Connection | Issue | Status |
 |---------|-----------|-------|--------|
-| Assassin Spirit 120 Vision ARGB | HID (0416:5302) | [#16](https://github.com/Lexonight1/thermalright-trcc-linux/issues/16) | Fix posted in v3.0.9 (chunked writes + skip SetConfig), awaiting confirmation |
+| Assassin Spirit 120 Vision ARGB | HID (0416:5302) | [#16](https://github.com/Lexonight1/thermalright-trcc-linux/issues/16) | Fix posted in v5.0.4 (frame header magic), awaiting confirmation |
 | Mjolnir Vision 360 | Bulk (87AD:70DB) | [#22](https://github.com/Lexonight1/thermalright-trcc-linux/issues/22) | Fix posted in v3.0.4 (JPEG encoding + PM=5), awaiting confirmation |
 
 ### LED + Segment Display (RGB Fan Control, Temperature Readout)

@@ -190,7 +190,22 @@ The FBL value 0x36 (54) maps to 360×360 resolution in TRCC.exe's FBL table. But
 4. Send via synchronous USB bulk write to EP02 OUT
 5. Sleep 1ms
 
-The 20-byte offset suggests the frame data has a 20-byte internal header (the DA/DB/DC/DD protocol header, prepared by TRCC.exe) followed by pixel data. The 512-byte alignment is required for USB bulk transfers.
+The 20-byte header is prepared by TRCC.exe (`FormCZTV.ImageTo565()` mode 3):
+```
+Offset  Value       Meaning
+0-3     DA DB DC DD  Protocol magic (same as handshake)
+4       02           SSCRM_CMD_TYPE_PICTURE
+5       00           Reserved
+6       01           Mode flag
+7       00           Reserved
+8-9     F0 00        240 (LE16, hardcoded)
+10-11   40 01        320 (LE16, hardcoded)
+12      02           Sub-flag
+13-15   00 00 00     Reserved
+16-19   LL LL LL LL  Image data length (LE uint32)
+```
+
+Image data is RGB565 (not JPEG — `myDeviceMode=3` uses `ImageTo565()`). The 512-byte alignment is required for USB bulk transfers.
 
 ---
 
@@ -304,11 +319,11 @@ Note: `0416:5406` is handled by BOTH binaries — USBLCDNEW.exe via raw USB, USB
 
 ### Frame Send Comparison
 
-| Device | Header Size | Payload | Total | Chunked? | ACK? |
-|---|---|---|---|---|---|
-| 87CD:70DB | 64 | from bytes[60:63] | varies | No (single) | No |
-| 0416:5302 | 20 | from bytes[16:19] | 512-aligned | No (single) | No |
-| 0416:5406 | 16 | 204,800 (320×320) | 204,816 | No (single) | Yes (16 bytes) |
+| Device | Header Size | Header Magic | Payload Format | Total | Chunked? | ACK? |
+|---|---|---|---|---|---|---|
+| 87CD:70DB | 64 | `12 34 56 78` | JPEG (myDeviceMode=2) | varies | No (single) | No |
+| 0416:5302 | 20 | `DA DB DC DD` | RGB565 (myDeviceMode=3) | 512-aligned | No (single) | No |
+| 0416:5406 | 16 | `F5 01 01 00` | RGB565 (myDeviceMode=10) | 204,816 | No (single) | Yes (16 bytes) |
 
 ### trcc-linux Implementation Mapping
 

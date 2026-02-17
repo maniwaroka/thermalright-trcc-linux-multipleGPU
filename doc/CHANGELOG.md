@@ -1,5 +1,28 @@
 # Changelog
 
+## v5.0.4
+
+### HID Type 2 Frame Header Fix
+- **Fixed**: HID Type 2 frame header was sending all-zero 16-byte prefix — device firmware expects `DA DB DC DD` magic + command type (`0x02`) + mode flags matching C# `FormCZTV.ImageTo565()` mode 3. Without the magic, firmware rejects frames causing USB disconnect (#16) or stuck-on-logo (#28)
+- Affects all HID Type 2 LCD devices (`0416:5302`): Assassin Spirit, Frozen Warframe, etc.
+- 2353 tests across 35 files
+
+## v5.0.3
+
+### LED Wire Remap & SCSI Byte Order Fix
+- **Fixed**: LED wire remap skipped — `LEDService.initialize()` never called `protocol.handshake()`, so style info was never cached and wire remap was silently skipped. Affects all LED devices (#19 Phantom Spirit EVO, #15 PA120)
+- **Fixed**: SCSI byte order — removed 240x320 from big-endian set (C# FBL 50 uses little-endian, not SPIMode=2)
+- **Added**: SCSI handshake section in `trcc report` (FBL byte + resolution) for resolution diagnostics (#17)
+- 2352 tests across 35 files
+
+## v5.0.0 — v5.0.2
+
+### Complete Windows C# Feature Parity
+- v5.0.0: Full gap audit — 35 items resolved (wire remap, zone carousel, LED test mode, DDR multiplier, split mode, video fit-mode, DRAM/SMART info, SPI byte order)
+- v5.0.1: Fix SELinux detection without root (sesearch fallback)
+- v5.0.2: Fix LED auto-detection (probe PM during enumeration), config version tracking, LED timer optimization
+- 2319 tests across 35 files
+
 ## v4.2.0
 
 ### SELinux Support
@@ -45,10 +68,10 @@
 
 ## v3.0.9
 
-### PA120 Remap Fix & HID Type 2 Disconnect Fix
+### PA120 Remap Fix & HID Type 2 Transport Fix
 - **Fixed**: PA120 LED remap table — misplaced SSD/HSD/C11/B11 block shifted zones 4+ by 4 wire positions
-- **Fixed**: HID Type 2 frame send — chunk at 512 bytes matching C# UCDevice.cs (was sending full packet in one write, causing USB disconnect on some devices)
 - **Fixed**: HID Type 2 `open()` — skip redundant `set_configuration()` if already configured, preventing USB bus reset on Linux
+- Note: HID Type 2 frame send was later changed to single transfer in v4.2.7, then frame header fixed in v5.0.4
 - 2290 tests across 35 files
 
 ## v3.0.8
