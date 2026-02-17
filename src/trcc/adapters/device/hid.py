@@ -27,6 +27,7 @@ from typing import Any, Optional, Set
 import usb.core
 import usb.util
 
+from trcc.adapters.device.frame import FrameDevice
 from trcc.core.models import (
     DEVICE_BUTTON_IMAGE,  # noqa: F401 — re-export
     PM_TO_BUTTON_IMAGE,  # noqa: F401 — re-export
@@ -161,7 +162,7 @@ def _ceil_to_512(n: int) -> int:
 # HID device base class
 # =========================================================================
 
-class HidDevice:
+class HidDevice(FrameDevice):
     """Base for HID LCD device handlers (Type 2 and Type 3).
 
     Provides shared init state and the handshake template:

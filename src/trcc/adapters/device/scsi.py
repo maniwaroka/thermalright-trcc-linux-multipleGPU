@@ -18,6 +18,7 @@ import time
 import zlib
 from typing import Dict, List, Set
 
+from trcc.adapters.device.frame import FrameDevice
 from trcc.adapters.infra.data_repository import SysUtils
 from trcc.core.models import HandshakeResult, fbl_to_resolution
 
@@ -53,7 +54,7 @@ _BOOT_ANIM_RESOLUTIONS = {
 # =========================================================================
 
 
-class ScsiDevice:
+class ScsiDevice(FrameDevice):
     """SCSI LCD device handler wrapping sg_raw subprocess calls."""
 
     # Track which devices have been initialized (poll + init sent)

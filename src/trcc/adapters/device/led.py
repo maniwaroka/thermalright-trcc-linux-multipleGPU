@@ -30,6 +30,7 @@ from trcc.core.models import (
     remap_led_colors,  # noqa: F401 — re-export
 )
 
+from .frame import LedDevice
 from .hid import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
@@ -297,7 +298,7 @@ class LedPacketBuilder:
 # LED HID sender (from UCDevice.cs ThreadSendDeviceData1)
 # =========================================================================
 
-class LedHidSender:
+class LedHidSender(LedDevice):
     """Sends LED packets via UsbTransport with 64-byte report chunking.
 
     Matches UCDevice.cs ThreadSendDeviceData1 (lines 983-1026):

@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import struct
 
+from trcc.adapters.device.frame import FrameDevice
 from trcc.core.models import HandshakeResult, fbl_to_resolution, pm_to_fbl
 
 log = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ _FRAME_HEADER_SIZE = 64
 _WRITE_CHUNK_SIZE = 16 * 1024  # 16 KiB per USB bulk write
 
 
-class BulkDevice:
+class BulkDevice(FrameDevice):
     """USB bulk device handler for USBLCDNew-type LCDs (87AD:70DB etc.).
 
     Uses pyusb for raw bulk endpoint I/O.  The kernel must not have

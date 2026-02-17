@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Callable, Optional
 
 from PIL import Image
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -34,10 +35,17 @@ log = logging.getLogger(__name__)
 
 
 class BasePanel(QFrame):
-    """
-    Base class for TRCC panels.
+    """Base class for TRCC panels.
 
-    Matches Tkinter component pattern with delegate callbacks.
+    Enforces lifecycle:
+        _setup_ui() — abstract, must be implemented by every subclass.
+        apply_language(lang) — virtual hook, default no-op.
+        get_state() / set_state() — virtual hooks, default no-op/empty.
+
+    Provides:
+        invoke_delegate() — delegate signal emission (MVC pattern).
+        _apply_background(asset_name) — background image helper.
+        start_periodic_updates() / stop_periodic_updates() — timer management.
     """
 
     # Signal for delegate pattern (replaces Tkinter invoke_delegate)
@@ -57,8 +65,80 @@ class BasePanel(QFrame):
         elif height:
             self.setFixedHeight(height)
 
-        # Resource directory
+        # Resource directory (legacy)
         self._resource_dir = None
+        # Periodic update timer
+        self._update_timer: Optional[QTimer] = None
+
+    def __init_subclass__(cls, **kwargs):
+        """Enforce that concrete subclasses implement _setup_ui()."""
+        super().__init_subclass__(**kwargs)
+        # Skip enforcement on intermediate abstract classes (e.g. BaseThemeBrowser)
+        # by checking if _setup_ui is still the base stub or a real override.
+        if '_setup_ui' not in cls.__dict__ and not any(
+            '_setup_ui' in base.__dict__ for base in cls.__mro__[1:]
+            if base is not BasePanel
+        ):
+            raise TypeError(
+                f"{cls.__name__} must implement _setup_ui()"
+            )
+
+    def _setup_ui(self) -> None:
+        """Create child widgets and lay out the panel.
+
+        Called by subclass __init__ (not called automatically by BasePanel).
+        Must be overridden by every concrete subclass.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _setup_ui()"
+        )
+
+    # === Virtual hooks (default no-op) ===
+
+    def apply_language(self, lang: str) -> None:
+        """Update localized text/images for the given language.
+
+        Override in panels that have localized content.
+        """
+
+    def get_state(self) -> dict:
+        """Serialize panel state for save/restore."""
+        return {}
+
+    def set_state(self, state: dict) -> None:
+        """Restore panel state from a previously saved dict."""
+
+    # === Concrete helpers ===
+
+    def _apply_background(self, asset_name: str) -> Optional[QPixmap]:
+        """Apply a background image using set_background_pixmap."""
+        return set_background_pixmap(self, asset_name)
+
+    def start_periodic_updates(
+        self, interval_ms: int, callback: Callable[[], None],
+    ) -> None:
+        """Start a periodic timer calling `callback` every `interval_ms`.
+
+        Creates a QTimer on first call. Subsequent calls restart with
+        the new interval and callback.
+        """
+        if self._update_timer is None:
+            self._update_timer = QTimer(self)
+        else:
+            self._update_timer.stop()
+            try:
+                self._update_timer.timeout.disconnect()
+            except RuntimeError:
+                pass
+        self._update_timer.timeout.connect(callback)
+        self._update_timer.start(interval_ms)
+
+    def stop_periodic_updates(self) -> None:
+        """Stop the periodic update timer if running."""
+        if self._update_timer is not None:
+            self._update_timer.stop()
+
+    # === Legacy ===
 
     def set_resource_dir(self, path):
         """Set the resource directory for loading images."""
@@ -528,6 +608,10 @@ class BaseThemeBrowser(BasePanel):
         self.item_widgets: list = []
         self.selected_item = None
 
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        """BaseThemeBrowser UI: scroll area + filter buttons."""
         self._setup_base_ui()
         self._create_filter_buttons()
 

@@ -180,9 +180,9 @@ class UCAbout(BasePanel):
         self._cb_on = Assets.load_pixmap(Assets.CHECKBOX_ON, sz, sz)
 
         self._setup_ui()
-        self._apply_background()
+        self._apply_localized_background()
 
-    def _apply_background(self):
+    def _apply_localized_background(self):
         """Set localized background image (no tiling)."""
         from ..conf import settings
         bg_name = Assets.get_localized(Assets.ABOUT_BG, settings.lang)
@@ -426,4 +426,4 @@ class UCAbout(BasePanel):
         from ..conf import settings
         for ls, btn in self._lang_buttons.items():
             btn.setChecked(ls == settings.lang)
-        self._apply_background()
+        self._apply_localized_background()
