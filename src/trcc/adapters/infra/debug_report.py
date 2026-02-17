@@ -208,12 +208,20 @@ class DebugReport:
     def _handshakes(self) -> None:
         sec = self._add("Handshakes")
         try:
+            scsi_devs = [d for d in self._detected_devices if d.protocol == "scsi"]
             hid_devs = [d for d in self._detected_devices if d.protocol == "hid"]
             bulk_devs = [d for d in self._detected_devices if d.protocol == "bulk"]
 
-            if not hid_devs and not bulk_devs:
-                sec.lines.append("  (no HID/Bulk devices to handshake)")
+            if not scsi_devs and not hid_devs and not bulk_devs:
+                sec.lines.append("  (no devices to handshake)")
                 return
+
+            for dev in scsi_devs:
+                sec.lines.append(f"\n  {dev.vid:04x}:{dev.pid:04x} — SCSI")
+                try:
+                    self._handshake_scsi(dev, sec)
+                except Exception as e:
+                    sec.lines.append(f"    FAILED: {e}")
 
             for dev in hid_devs:
                 is_led = dev.implementation == "hid_led"
@@ -280,6 +288,26 @@ class DebugReport:
             sec.lines.append("    (from cache — device in use by trcc gui)")
         else:
             sec.lines.append("    (device in use by trcc gui)")
+
+    def _handshake_scsi(self, dev, sec: _Section) -> None:
+        from trcc.adapters.device.factory import ScsiProtocol
+        from trcc.core.models import FBL_TO_RESOLUTION
+
+        protocol = ScsiProtocol(dev.scsi_device)
+        try:
+            result = protocol.handshake()
+            if result is None:
+                sec.lines.append(
+                    "    Result: None (poll failed)")
+                return
+            fbl = result.model_id
+            known = "KNOWN" if fbl in FBL_TO_RESOLUTION else "UNKNOWN"
+            res = result.resolution or (0, 0)
+            sec.lines.append(
+                f"    FBL={fbl} ({known}), "
+                f"resolution={res[0]}x{res[1]}")
+        finally:
+            protocol.close()
 
     def _handshake_hid_lcd(self, dev, sec: _Section) -> None:
         from trcc.adapters.device.factory import HidProtocol, _is_ebusy

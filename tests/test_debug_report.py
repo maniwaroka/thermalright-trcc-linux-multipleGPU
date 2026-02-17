@@ -250,7 +250,7 @@ class TestHandshakesSection(unittest.TestCase):
         rpt = DebugReport()
         rpt._handshakes()
         _, body = rpt.sections[0]
-        self.assertIn("no HID/Bulk", body)
+        self.assertIn("no devices to handshake", body)
 
 
 class TestKnownVids(unittest.TestCase):

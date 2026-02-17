@@ -258,7 +258,8 @@ class ScsiDevice(FrameDevice):
         resolution = fbl_to_resolution(fbl)
         self.width, self.height = resolution
         self._initialized = True
-        return HandshakeResult(resolution=resolution)
+        log.info("SCSI handshake OK: FBL=%d, resolution=%s", fbl, resolution)
+        return HandshakeResult(resolution=resolution, model_id=fbl)
 
     def send_frame(self, rgb565_data: bytes) -> bool:
         """Send one RGB565 frame."""

@@ -421,10 +421,10 @@ class LedProtocol(DeviceProtocol):
             from .led import LedPacketBuilder, remap_led_colors
 
             # Remap logical LED order → physical wire order (per-style).
-            if self._handshake_result and hasattr(self._handshake_result, 'style') and self._handshake_result.style:
-                led_colors = remap_led_colors(
-                    led_colors, self._handshake_result.style.style_id,
-                )
+            hr = self._handshake_result
+            style = getattr(hr, 'style', None) if hr else None
+            if style:
+                led_colors = remap_led_colors(led_colors, style.style_id)
 
             packet = LedPacketBuilder.build_led_packet(
                 led_colors, is_on, global_on, brightness

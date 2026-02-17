@@ -524,6 +524,7 @@ class LEDService:
         try:
             from ..adapters.device.factory import DeviceProtocolFactory
             protocol = DeviceProtocolFactory.get_protocol(device_info)
+            protocol.handshake()  # Cache handshake result for wire remap
             self.set_protocol(protocol)
         except Exception as e:
             log.error("LED protocol error: %s", e)
