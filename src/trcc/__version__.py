@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.0.6"
+__version__ = "5.0.7"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -215,3 +215,16 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          change (~1/sec). Fix RGBA transparency bug in overlay layer.
 #          Cloud theme fix: QTimer bound method wrapper, slideshow timer guards.
 #          2395 tests.
+# 5.0.6  - Video hot path optimization: early return in _apply_adjustments when
+#          no adjustments needed (brightness=100, rotation=0, no split), remove
+#          unnecessary RGBA round-trip in overlay compositing. Commit Renderer
+#          ABC + PilRenderer (were untracked — fresh clone would crash). Delete
+#          dead files (qt_video.py, test_renderer.py). 2359 tests.
+# 5.0.7  - Fix PA120 (style 2) LED segment display: wire remap table had
+#          SSD/HSD/C11/B11 indicators at end instead of position 23 (shifted
+#          all LEDs after digit 3 by 4 wire positions). PA120Display logical
+#          indices didn't match C# (indicators at 0-9 instead of 2-8, digit 1
+#          at index 10 instead of 9) — remap read C# indices but mask wrote to
+#          wrong positions. Combined effect: scrambled digits + indicators on
+#          physical display. Fixes #15 "not displaying correlated data". 2359
+#          tests.

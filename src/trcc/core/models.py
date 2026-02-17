@@ -597,10 +597,17 @@ PRESET_COLORS: List[Tuple[int, int, int]] = [
 # =============================================================================
 
 # Style 2: PA120_DIGITAL (84 LEDs, 4 zones)
+# Wire order from C# FormLED.cs SendHidVal (line 4391):
+# Cpu2,Cpu1, digit1(FABGEDC), digit2, digit3,
+# SSD,HSD,LEDC11,LEDB11,  digit4, digit5,
+# BFB,BFB1,  digit10(CDEGBAF), digit9,
+# LEDB12,LEDC12,SSD1,HSD1,  digit8, digit7, digit6,
+# Gpu1,Gpu2
 _REMAP_STYLE_2: tuple[int, ...] = (
     3, 2, 14, 9, 10, 15, 13, 12, 11,
     21, 16, 17, 22, 20, 19, 18,
     28, 23, 24, 29, 27, 26, 25,
+    6, 7, 81, 80,
     36, 31, 32, 37, 35, 34, 33,
     43, 38, 39, 44, 42, 41, 40,
     8, 8,
@@ -610,7 +617,7 @@ _REMAP_STYLE_2: tuple[int, ...] = (
     61, 62, 63, 65, 60, 59, 64,
     54, 55, 56, 58, 53, 52, 57,
     47, 48, 49, 51, 46, 45, 50,
-    4, 5, 6, 7, 81, 80,
+    4, 5,
 )
 
 # Style 3: AK120_DIGITAL (64 LEDs, 2 zones)
@@ -798,7 +805,7 @@ LED_REMAP_TABLES: dict[int, tuple[int, ...]] = {
 # Styles not listed here default to all-on.
 LED_DEFAULT_OFF: dict[int, frozenset[int]] = {
     1: frozenset({4, 5, 7, 8}),            # HR10 preview: only index 6 on of 6-8
-    2: frozenset({5, 8}),                   # PA120
+    2: frozenset({7}),                       # PA120: HSD(°F) off by default (°C mode)
     3: frozenset({3, 5}),                   # AK120
     4: frozenset({1, 2, 25, 26, 30}),       # LC1
     5: frozenset({1, 3}),                   # LF8

@@ -1367,22 +1367,24 @@ class TestRemapLedColors:
         assert remapped[0] == (40, 50, 60)  # Physical 0 = Cpu2
         assert remapped[1] == (10, 20, 30)  # Physical 1 = Cpu1
 
-    def test_style_2_gpu_and_tail(self):
-        """Style 2 physical 78-83: Gpu1, Gpu2, SSD, HSD, C11, B11."""
+    def test_style_2_gpu_and_indicators(self):
+        """Style 2: Gpu1/Gpu2 at wire 82-83, SSD/HSD at 23-24, C11/B11 at 25-26."""
         colors = [(0, 0, 0)] * 84
         colors[4] = (100, 0, 0)    # Gpu1 at logical 4
         colors[5] = (0, 100, 0)    # Gpu2 at logical 5
-        colors[6] = (0, 0, 100)    # SSD at logical 6
-        colors[7] = (50, 50, 0)    # HSD at logical 7
-        colors[81] = (0, 50, 50)   # C11 at logical 81
-        colors[80] = (50, 0, 50)   # B11 at logical 80
+        colors[6] = (0, 0, 100)    # SSD at logical 6 (appears at wire 23 AND 59)
+        colors[7] = (50, 50, 0)    # HSD at logical 7 (appears at wire 24 AND 60)
+        colors[81] = (0, 50, 50)   # LEDC11 at logical 81
+        colors[80] = (50, 0, 50)   # LEDB11 at logical 80
         remapped = remap_led_colors(colors, style_id=2)
-        assert remapped[78] == (100, 0, 0)  # Physical 78 = Gpu1
-        assert remapped[79] == (0, 100, 0)  # Physical 79 = Gpu2
-        assert remapped[80] == (0, 0, 100)  # Physical 80 = SSD
-        assert remapped[81] == (50, 50, 0)  # Physical 81 = HSD
-        assert remapped[82] == (0, 50, 50)  # Physical 82 = C11
-        assert remapped[83] == (50, 0, 50)  # Physical 83 = B11
+        assert remapped[82] == (100, 0, 0)  # Physical 82 = Gpu1
+        assert remapped[83] == (0, 100, 0)  # Physical 83 = Gpu2
+        assert remapped[23] == (0, 0, 100)  # Physical 23 = SSD
+        assert remapped[59] == (0, 0, 100)  # Physical 59 = SSD1 (same index as SSD)
+        assert remapped[24] == (50, 50, 0)  # Physical 24 = HSD
+        assert remapped[60] == (50, 50, 0)  # Physical 60 = HSD1 (same index as HSD)
+        assert remapped[25] == (0, 50, 50)  # Physical 25 = LEDC11
+        assert remapped[26] == (50, 0, 50)  # Physical 26 = LEDB11
 
     def test_style_2_uniform_color_unchanged_count(self):
         """Uniform color (all same) remaps to same colors in different order."""

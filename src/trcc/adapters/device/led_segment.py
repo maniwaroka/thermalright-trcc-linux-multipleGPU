@@ -384,34 +384,36 @@ class PA120Display(SegmentDisplay):
     Layout: [indicators(10)][cpuTemp 3d][cpuUse 2d+partial][gap][gpuTemp 3d][gpuUse 1d+partial+partial]
     """
 
-    # ── Layout data ────────────────────────────────────────────────
-    CPU1, CPU2, GPU1, GPU2 = 0, 1, 2, 3
-    SSD, HSD = 4, 5         # °C, °F (CPU side)
-    BFB = 6                  # % (CPU side)
-    SSD1, HSD1 = 7, 8       # °C, °F (GPU side)
-    BFB1 = 9                 # % (GPU side)
+    # ── Layout data (C# UCScreenLED.cs indices) ────────────────────
+    # Index 0 unused (WATT=1 not used for PA120).  Index 30 = gap.
+    # SSD1/HSD1/BFB1 are aliases — same physical LED as SSD/HSD/BFB.
+    CPU1, CPU2 = 2, 3        # Cpu1, Cpu2 indicators
+    GPU1, GPU2 = 4, 5        # Gpu1, Gpu2 indicators
+    SSD, HSD = 6, 7          # °C, °F (shared for CPU+GPU side)
+    BFB = 8                   # % (shared for CPU+GPU side)
+    SSD1, HSD1, BFB1 = 6, 7, 8  # aliases (same LED index as SSD/HSD/BFB)
 
     CPU_TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (10, 11, 12, 13, 14, 15, 16),
-        (17, 18, 19, 20, 21, 22, 23),
-        (24, 25, 26, 27, 28, 29, 30),
+        (9, 10, 11, 12, 13, 14, 15),   # LEDA1..LEDG1
+        (16, 17, 18, 19, 20, 21, 22),  # LEDA2..LEDG2
+        (23, 24, 25, 26, 27, 28, 29),  # LEDA3..LEDG3
     )
     CPU_USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (31, 32, 33, 34, 35, 36, 37),
-        (38, 39, 40, 41, 42, 43, 44),
+        (31, 32, 33, 34, 35, 36, 37),  # LEDA4..LEDG4 (index 30 = gap)
+        (38, 39, 40, 41, 42, 43, 44),  # LEDA5..LEDG5
     )
-    CPU_USE_PARTIAL = (80, 81)   # B11/C11 overflow for "1xx"
+    CPU_USE_PARTIAL = (80, 81)   # LEDB11/LEDC11 overflow for "1xx"
 
     GPU_TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (45, 46, 47, 48, 49, 50, 51),  # LED6 = gpuTemp hundreds
-        (52, 53, 54, 55, 56, 57, 58),  # LED7 = gpuTemp tens
-        (59, 60, 61, 62, 63, 64, 65),  # LED8 = gpuTemp ones
+        (45, 46, 47, 48, 49, 50, 51),  # LEDA6..LEDG6
+        (52, 53, 54, 55, 56, 57, 58),  # LEDA7..LEDG7
+        (59, 60, 61, 62, 63, 64, 65),  # LEDA8..LEDG8
     )
     GPU_USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (66, 67, 68, 69, 70, 71, 72),  # LED9 = gpuUse tens
-        (73, 74, 75, 76, 77, 78, 79),  # LED10 = gpuUse ones
+        (66, 67, 68, 69, 70, 71, 72),  # LEDA9..LEDG9
+        (73, 74, 75, 76, 77, 78, 79),  # LEDA10..LEDG10
     )
-    GPU_USE_PARTIAL = (82, 83)   # B12/C12 overflow for "1xx"
+    GPU_USE_PARTIAL = (82, 83)   # LEDB12/LEDC12 overflow for "1xx"
 
     # ── Interface ──────────────────────────────────────────────────
 

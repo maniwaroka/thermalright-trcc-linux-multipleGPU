@@ -242,22 +242,20 @@ class TestPA120Display:
 
     def test_always_on_indicators(self):
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
-        for idx in (0, 1, 2, 3, 6, 9):  # CPU1,CPU2,GPU1,GPU2,BFB,BFB1
+        # C# indices: CPU1=2, CPU2=3, GPU1=4, GPU2=5, BFB=BFB1=8
+        for idx in (2, 3, 4, 5, 8):
             assert mask[idx] is True
 
     def test_celsius_indicators(self):
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
-        assert mask[4] is True   # SSD (°C)
-        assert mask[7] is True   # SSD1 (°C GPU)
-        assert mask[5] is False  # HSD (°F)
-        assert mask[8] is False  # HSD1 (°F GPU)
+        # C# indices: SSD=SSD1=6 (°C), HSD=HSD1=7 (°F)
+        assert mask[6] is True   # SSD/SSD1 (°C)
+        assert mask[7] is False  # HSD/HSD1 (°F)
 
     def test_fahrenheit_indicators(self):
         mask = self.d.compute_mask(HardwareMetrics(), 0, "F")
-        assert mask[5] is True   # HSD
-        assert mask[8] is True   # HSD1
-        assert mask[4] is False  # SSD
-        assert mask[7] is False  # SSD1
+        assert mask[7] is True   # HSD/HSD1 (°F)
+        assert mask[6] is False  # SSD/SSD1 (°C)
 
     def test_simultaneous_all_metrics(self):
         metrics = HardwareMetrics(cpu_temp=65, cpu_percent=80, gpu_temp=70, gpu_usage=50)
