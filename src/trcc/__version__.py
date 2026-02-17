@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.0.2"
+__version__ = "5.0.3"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -195,3 +195,10 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          30ms→150ms matching C# 10-tick counter, remove redundant 30ms USB
 #          cooldown sleep, skip USB sends when colors unchanged (static mode).
 #          Sensor poll interval 0.9s→2.0s. 2319 tests.
+# 5.0.3  - Fix LED wire remap skipped: LEDService.initialize() never called
+#          protocol.handshake(), so style info was never cached and wire remap
+#          was silently skipped — colors sent to wrong physical LED positions.
+#          Affects all LED devices (#19 Phantom Spirit EVO, #15 PA120).
+#          Fix SCSI byte order: remove 240x320 from big-endian set (C# FBL 50
+#          uses little-endian, not SPIMode=2). Add SCSI handshake to trcc report
+#          (FBL byte + resolution) for resolution diagnostics (#17). 2352 tests.
