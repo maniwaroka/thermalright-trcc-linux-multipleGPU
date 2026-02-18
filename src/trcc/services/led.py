@@ -1,7 +1,7 @@
 """LED effect engine, device communication, and config persistence.
 
 Pure Python, no Qt dependencies.
-Absorbs business logic from LEDModel (effects), LEDController (HR10, protocol send),
+Absorbs business logic from LEDModel (effects), LEDController (protocol send),
 and LEDDeviceController (config, protocol factory).
 """
 from __future__ import annotations
@@ -20,7 +20,6 @@ class LEDService:
     Orchestrates:
     - State mutation (set_mode, set_color, set_brightness, toggles)
     - Effect computation (tick -> per-segment colors)
-    - HR10 7-segment rendering
     - Protocol send (build packet, send via LedProtocol)
     - Config save/load (serialize LEDState to conf.py)
     - Style resolution (model_name -> style_id)
@@ -30,12 +29,6 @@ class LEDService:
         self.state = state or LEDState()
         self._metrics: HardwareMetrics = HardwareMetrics()
         self._protocol: Any = None
-
-        # HR10 state (style 13 — 7-segment digit rendering)
-        self._hr10_mode = False
-        self._hr10_display_text = "---"
-        self._hr10_indicators: set = {'deg'}
-        self._hr10_mask: Optional[List[bool]] = None
 
         # Segment display state (styles 1-11 — all digit-display LED devices)
         self._segment_mode = False
@@ -187,9 +180,8 @@ class LEDService:
     def configure_for_style(self, style_id: int) -> None:
         """Configure state for a specific LED device style.
 
-        Sets up LED segment counts/zones from the style registry,
-        activates HR10 mode for style 13, and activates segment
-        display rotation for digit-display styles (1-11).
+        Sets up LED segment counts/zones from the style registry and
+        activates segment display rotation for digit-display styles (1-11).
         """
         from ..adapters.device.led import LED_STYLES
         from ..adapters.device.led_segment import get_display
@@ -206,12 +198,9 @@ class LEDService:
             else:
                 self.state.zones = []
 
-        self._hr10_mode = (style_id == 13)
         self._seg_display = get_display(style_id)
         self._segment_mode = self._seg_display is not None
 
-        if self._hr10_mode:
-            self._update_hr10_mask()
         if self._segment_mode:
             self._seg_phase = 0
             self._seg_tick_count = 0
@@ -394,22 +383,6 @@ class LEDService:
         color = ColorEngine.color_for_value(load, ColorEngine.LOAD_GRADIENT)
         return [color] * seg_count
 
-    # ── HR10 7-segment ──────────────────────────────────────────────
-
-    def set_display_value(self, text: str, indicators: Optional[set] = None) -> None:
-        """Set HR10 display text for 7-segment rendering."""
-        self._hr10_display_text = text
-        self._hr10_indicators = indicators or set()
-        self._update_hr10_mask()
-
-    def _update_hr10_mask(self) -> None:
-        if not self._hr10_mode:
-            return
-        from ..adapters.device.led_hr10 import Hr10Display
-        self._hr10_mask = Hr10Display.get_digit_mask(
-            self._hr10_display_text, self._hr10_indicators
-        )
-
     # ── Segment display (all styles 1-11) ────────────────────────
 
     def _next_phase(self) -> int:
@@ -436,6 +409,23 @@ class LEDService:
             memory_ratio=self.state.memory_ratio,
         )
 
+    # ── Display-ready colors ────────────────────────────────────────
+
+    def apply_mask(self, colors: List[Tuple[int, int, int]]
+                   ) -> List[Tuple[int, int, int]]:
+        """Apply segment mask to produce per-LED color array.
+
+        Returns the same masked array used for both hardware send and
+        preview rendering — one entry per physical LED position.
+        """
+        if self._segment_mode and self._segment_mask:
+            base = colors[0] if colors else (0, 0, 0)
+            return [
+                base if self._segment_mask[i] else (0, 0, 0)
+                for i in range(len(self._segment_mask))
+            ]
+        return colors
+
     # ── Protocol send ───────────────────────────────────────────────
 
     @property
@@ -450,24 +440,8 @@ class LEDService:
         if not colors or not self._protocol:
             return False
 
-        if self._segment_mode and self._segment_mask:
-            base_color = colors[0] if colors else (0, 0, 0)
-            send_colors: list[Any] = [
-                base_color if self._segment_mask[i] else (0, 0, 0)
-                for i in range(len(self._segment_mask))
-            ]
-            is_on = None
-        elif self._hr10_mode and self._hr10_mask:
-            from ..adapters.device.led_hr10 import LED_COUNT
-            base_color = colors[0] if colors else (0, 0, 0)
-            send_colors = [
-                base_color if self._hr10_mask[i] else (0, 0, 0)
-                for i in range(LED_COUNT)
-            ]
-            is_on = None
-        else:
-            send_colors = colors
-            is_on = self.state.segment_on
+        send_colors = self.apply_mask(colors)
+        is_on = None if self._segment_mode else self.state.segment_on
 
         try:
             return self._protocol.send_led_data(

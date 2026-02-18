@@ -481,8 +481,6 @@ LED_STYLES: dict[int, LedDeviceStyle] = {
     10: LedDeviceStyle(10, 38, 17, 1, "LF11", "DLF11", "D0LF11"),
     11: LedDeviceStyle(11, 93, 72, 2, "LF15", "DLF15", "D0LF15"),
     12: LedDeviceStyle(12, 62, 62, 1, "LF13", "DLF13", "D0LF13"),
-    # HR10 2280 Pro Digital — NVMe SSD heatsink with ARGB digital display.
-    13: LedDeviceStyle(13, 31, 14, 1, "HR10_2280_PRO_DIGITAL", "DAX120_DIGITAL", "D0数码屏"),
 }
 
 
@@ -511,14 +509,12 @@ class PmRegistry:
     """Encapsulates all PM-to-device metadata lookups.
 
     Maps firmware PM bytes (from HID handshake) to device style, model name,
-    and button image.  Handles sub-type overrides (e.g. HR10 vs LC1 on PM=128)
-    and PA120 variant range (PMs 17-31).
+    and button image.  Handles sub-type overrides and PA120 variant range
+    (PMs 17-31).
     """
 
     # (pm, sub_type) → PmEntry override for devices that share a PM byte.
-    _OVERRIDES: dict[tuple[int, int], PmEntry] = {
-        (128, 129): PmEntry(13, "HR10_2280_PRO_DIGITAL", "A1HR10 2280 PRO DIGITAL"),
-    }
+    _OVERRIDES: dict[tuple[int, int], PmEntry] = {}
 
     # PM → PmEntry base registry (built once at class load time).
     _REGISTRY: dict[int, PmEntry] = {
@@ -634,7 +630,7 @@ _REMAP_STYLE_3: tuple[int, ...] = (
     67, 68,
 )
 
-# Style 4: LC1 (31 LEDs, 1 zone) — also base for HR10 (style 13)
+# Style 4: LC1 (31 LEDs, 1 zone)
 _REMAP_STYLE_4: tuple[int, ...] = (
     2, 1, 33, 34, 35, 37, 32, 31, 6,
     36, 25, 26, 27, 29, 24, 23, 28,
@@ -797,14 +793,13 @@ LED_REMAP_TABLES: dict[int, tuple[int, ...]] = {
     7: _REMAP_STYLE_7,   # LF10 (146 LEDs, 13-segment, duplicated)
     9: _REMAP_STYLE_9,   # LC2 clock (63 LEDs, Riqi triplicated)
     10: _REMAP_STYLE_10,  # LF11 (38 LEDs)
-    13: _REMAP_STYLE_4,  # HR10 shares LC1 layout
 }
 
 
 # Default-off LED indices per style (from C# isOnN arrays in UCScreenLED.cs).
 # Styles not listed here default to all-on.
 LED_DEFAULT_OFF: dict[int, frozenset[int]] = {
-    1: frozenset({4, 5, 7, 8}),            # HR10 preview: only index 6 on of 6-8
+    1: frozenset({4, 5, 7, 8}),            # AX120: only index 6 on of 6-8
     2: frozenset({7}),                       # PA120: HSD(°F) off by default (°C mode)
     3: frozenset({3, 5}),                   # AK120
     4: frozenset({1, 2, 25, 26, 30}),       # LC1
@@ -814,7 +809,6 @@ LED_DEFAULT_OFF: dict[int, frozenset[int]] = {
     8: frozenset({1, 2, 3}),                # CZ1
     10: frozenset({1, 2, 32, 33, 37}),      # LF11
     11: frozenset({1, 3}),                  # LF15
-    13: frozenset({1, 2, 25, 26, 30}),      # HR10 shares LC1 layout
 }
 
 

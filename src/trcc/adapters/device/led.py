@@ -487,7 +487,7 @@ class _LedProbeCache:
     """Disk-backed cache for LED handshake results.
 
     Keyed by VID:PID:usb_path so multiple identical-PID devices
-    (e.g. LC1 + HR10) are disambiguated by bus position.
+    are disambiguated by bus position.
     """
 
     @staticmethod

@@ -3,19 +3,18 @@
 LED control panel (FormLED equivalent).
 
 Full LED control UI matching Windows FormLED layout:
-- Left side: Device preview (UCScreenLED circles or UCSevenSegment for HR10)
+- Left side: Device preview (UCScreenLED segment rectangles)
 - Right side: Mode buttons, color wheel, RGB controls, presets, brightness
 - Bottom: Zone selection buttons (for multi-zone devices)
-- HR10-specific: Drive metrics panel, display selection, circulate mode
 
 Layout coordinates from FormLED.cs InitializeComponent / FormLED.resx.
-All LED devices (styles 1-13) use this single panel — matching Windows
+All LED devices (styles 1-12) use this single panel — matching Windows
 FormLED.cs which is one form for all LED device types.
 """
 
 from typing import Dict, List, Tuple
 
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIntValidator, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -34,7 +33,6 @@ from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
 from .uc_screen_led import UCScreenLED
-from .uc_seven_segment import UCSevenSegment
 
 # =========================================================================
 # Layout constants (from FormLED.cs InitializeComponent, ClientSize 1274x800)
@@ -50,10 +48,6 @@ PANEL_HEIGHT = 800
 # UCScreenLED preview — C#: ucScreenLED1 at (36, 128) 460x460
 PREVIEW_X, PREVIEW_Y = 36, 128
 PREVIEW_W, PREVIEW_H = 460, 460
-
-# 7-segment preview (HR10)
-SEG_PREVIEW_X, SEG_PREVIEW_Y = 30, 100
-SEG_PREVIEW_W, SEG_PREVIEW_H = 500, 400
 
 # Mode buttons — C#: buttonDSCL..FZLD at (590..1105, 227) each 93x62
 MODE_Y = 227
@@ -101,23 +95,6 @@ TEMP_LEGEND_Y = 480
 TEMP_LEGEND_W = 560
 TEMP_LEGEND_H = 18
 
-# Drive metrics panel (HR10, bottom left below preview)
-METRICS_X = 30
-METRICS_Y = 540
-METRICS_W = 500
-METRICS_H = 130
-
-# Display selection buttons (HR10, bottom right)
-DISPLAY_SEL_X = 590
-DISPLAY_SEL_Y = 710
-DISPLAY_SEL_W = 120
-DISPLAY_SEL_H = 45
-DISPLAY_SEL_SPACING = 8
-
-# Circulate checkbox (HR10)
-CIRCULATE_X = 590
-CIRCULATE_Y = 670
-
 # Zone buttons — C#: button1-4 at (590/748/902/1058, 707) 140x50
 # FormLEDInit repositions button5/6 and buttonN1-4 to button1.Top (=707)
 # for ALL styles, so every variant ends up at Y=707.
@@ -151,11 +128,6 @@ STATUS_X = 590
 STATUS_Y = 770
 STATUS_W = 600
 
-# --- HR10-specific overrides ---
-HR10_BRIGHT_X = 590
-HR10_BRIGHT_Y = 600
-HR10_BRIGHT_W = 560
-
 # Mode button labels (English)
 MODE_LABELS = [
     "Static",
@@ -177,19 +149,6 @@ PRESET_COLORS = [
     (214, 0, 255),    # Purple
     (255, 255, 255),  # White
 ]
-
-# Display selection options (HR10)
-DISPLAY_METRICS = [
-    ("Temp\n(\u00b0C/\u00b0F)", "temp"),
-    ("Activity\n(%)", "activity"),
-    ("Read Rate\n(MB/s)", "read"),
-    ("Write Rate\n(MB/s)", "write"),
-]
-
-# Circulate interval range (seconds)
-CIRCULATE_MIN_S = 2
-CIRCULATE_MAX_S = 10
-CIRCULATE_DEFAULT_S = 5
 
 # Shared stylesheet fragments (used by multiple widgets in this module)
 _STYLE_MUTED_LABEL = "color: #aaa; font-size: 12px;"
@@ -307,7 +266,7 @@ class UCLedControl(QWidget):
 
     Contains device preview, mode buttons, color wheel, color picker,
     brightness, and zone selection. Handles all LED device styles
-    including HR10 (style 13) with 7-segment preview and drive metrics.
+    including all LED device styles (1-12).
     """
 
     # Signals for controller binding
@@ -316,9 +275,6 @@ class UCLedControl(QWidget):
     brightness_changed = Signal(int)         # 0-100
     global_toggled = Signal(bool)            # on/off
     segment_clicked = Signal(int)            # segment index
-    # HR10-specific signals
-    display_metric_changed = Signal(str)     # "temp", "activity", ...
-    circulate_toggled = Signal(bool)
     # Zone signals
     zone_selected = Signal(int)              # zone index (0-based)
     zone_toggled = Signal(int, bool)         # zone index, on/off
@@ -344,25 +300,17 @@ class UCLedControl(QWidget):
         self._current_mode = 0
         self._zone_count = 1
         self._style_id = 0
-        self._is_hr10 = False
 
         # Zone state
         self._selected_zone = 0
         self._carousel_mode = False
 
-        # HR10 state
-        self._current_metric = "temp"
-        self._metrics: HardwareMetrics = HardwareMetrics()
+        # Temp unit for display
         self._temp_unit = "\u00b0C"
 
         # LC2 clock state (style 9)
         self._is_timer_24h = True
         self._is_week_sunday = False
-
-        # Circulate timer (HR10)
-        self._circulate_timer = QTimer(self)
-        self._circulate_timer.timeout.connect(self._on_circulate_tick)
-        self._circulate_index = 0
 
         self._setup_ui()
 
@@ -381,12 +329,6 @@ class UCLedControl(QWidget):
         self._preview = UCScreenLED(self)
         self._preview.move(PREVIEW_X, PREVIEW_Y)
         self._preview.segment_clicked.connect(self.segment_clicked.emit)
-
-        # -- 7-Segment Preview (HR10 — hidden by default) --
-        self._seg_display = UCSevenSegment(self)
-        self._seg_display.move(SEG_PREVIEW_X, SEG_PREVIEW_Y)
-        self._seg_display.set_value("---", "\u00b0C")
-        self._seg_display.setVisible(False)
 
         # -- Title label (hidden when background is loaded — bg has device name) --
         self._title = QLabel("RGB LED Control", self)
@@ -650,105 +592,6 @@ class UCLedControl(QWidget):
         self._carousel_interval.setVisible(False)
 
         # ============================================================
-        # HR10-specific widgets (hidden by default)
-        # ============================================================
-
-        # -- Drive Metrics Panel (bottom left, below preview) --
-        self._metrics_bg = QFrame(self)
-        self._metrics_bg.setGeometry(METRICS_X, METRICS_Y, METRICS_W, METRICS_H)
-        self._metrics_bg.setStyleSheet(
-            "background-color: rgba(20, 20, 20, 200); "
-            "border: 1px solid #444; border-radius: 6px;"
-        )
-        self._metrics_bg.setVisible(False)
-
-        self._metric_labels: Dict[str, QLabel] = {}
-        self._metric_name_labels: List[QLabel] = []
-        metric_defs = [
-            ("Drive Temp:", "disk_temp", "-- \u00b0C"),
-            ("Total Activity:", "disk_activity", "-- %"),
-            ("Read Rate:", "disk_read", "-- MB/s"),
-            ("Write Rate:", "disk_write", "-- MB/s"),
-        ]
-        for i, (label_text, key, default) in enumerate(metric_defs):
-            y = METRICS_Y + 12 + i * 28
-
-            name_label = QLabel(label_text, self)
-            name_label.setGeometry(METRICS_X + 15, y, 140, 24)
-            name_label.setStyleSheet("color: #aaa; font-size: 13px;")
-            name_label.setVisible(False)
-            self._metric_name_labels.append(name_label)
-
-            value_label = QLabel(default, self)
-            value_label.setGeometry(METRICS_X + 160, y, 120, 24)
-            value_label.setStyleSheet(
-                "color: white; font-size: 13px; font-weight: bold;"
-            )
-            value_label.setVisible(False)
-            self._metric_labels[key] = value_label
-
-        # NVMe device label
-        self._nvme_label = QLabel("", self)
-        self._nvme_label.setGeometry(METRICS_X + 200, METRICS_Y + 10, 280, 20)
-        self._nvme_label.setStyleSheet("color: #666; font-size: 11px;")
-        self._nvme_label.setVisible(False)
-
-        # -- Display Selection section --
-        self._ds_label = QLabel("Display selection", self)
-        self._ds_label.setGeometry(DISPLAY_SEL_X, DISPLAY_SEL_Y - 30, 200, 20)
-        self._ds_label.setStyleSheet("color: #aaa; font-size: 12px;")
-        self._ds_label.setVisible(False)
-
-        # Circulate checkbox
-        self._circulate_cb = QCheckBox("Circulate", self)
-        self._circulate_cb.setGeometry(CIRCULATE_X, CIRCULATE_Y, 100, 20)
-        self._circulate_cb.setStyleSheet(
-            "QCheckBox { color: #aaa; font-size: 12px; }"
-            "QCheckBox::indicator { width: 14px; height: 14px; }"
-            "QCheckBox::indicator:unchecked { border: 1px solid #666; background: #333; }"
-            "QCheckBox::indicator:checked { border: 1px solid #4CAF50; background: #4CAF50; }"
-        )
-        self._circulate_cb.setToolTip("Cycle through display modes")
-        self._circulate_cb.toggled.connect(self._on_circulate_toggled)
-        self._circulate_cb.setVisible(False)
-
-        # Circulate interval spinbox
-        self._circulate_interval_label = QLabel("Interval:", self)
-        self._circulate_interval_label.setGeometry(CIRCULATE_X + 110, CIRCULATE_Y, 55, 20)
-        self._circulate_interval_label.setStyleSheet("color: #888; font-size: 11px;")
-        self._circulate_interval_label.setVisible(False)
-
-        self._circulate_interval = QSpinBox(self)
-        self._circulate_interval.setGeometry(CIRCULATE_X + 170, CIRCULATE_Y - 2, 45, 22)
-        self._circulate_interval.setRange(CIRCULATE_MIN_S, CIRCULATE_MAX_S)
-        self._circulate_interval.setValue(CIRCULATE_DEFAULT_S)
-        self._circulate_interval.setSuffix("s")
-        self._circulate_interval.setToolTip("Circulate interval (seconds)")
-        self._circulate_interval.setStyleSheet(
-            "color: white; background: #333; border: 1px solid #555; "
-            "border-radius: 3px; font-size: 11px;"
-        )
-        self._circulate_interval.valueChanged.connect(
-            self._on_circulate_interval_changed
-        )
-        self._circulate_interval.setVisible(False)
-
-        # Display selection buttons
-        self._display_buttons: List[QPushButton] = []
-        for i, (label, metric_key) in enumerate(DISPLAY_METRICS):
-            btn = QPushButton(label, self)
-            x = DISPLAY_SEL_X + i * (DISPLAY_SEL_W + DISPLAY_SEL_SPACING)
-            btn.setGeometry(x, DISPLAY_SEL_Y, DISPLAY_SEL_W, DISPLAY_SEL_H)
-            btn.setCheckable(True)
-            btn.setToolTip(f"Show {label}")
-            btn.setStyleSheet(self._display_button_style())
-            btn.clicked.connect(
-                lambda checked, key=metric_key, idx=i: self._on_display_selected(key, idx)
-            )
-            btn.setVisible(False)
-            self._display_buttons.append(btn)
-
-        # ============================================================
         # LC2 clock widgets (style 9 — hidden by default)
         # ============================================================
 
@@ -962,7 +805,7 @@ class UCLedControl(QWidget):
         """Configure for a specific LED device style.
 
         Args:
-            style_id: LED device style (1-13).
+            style_id: LED device style (1-12).
             segment_count: Number of LED segments.
             zone_count: Number of independent zones.
             model: Device model name (for PM-specific preview image).
@@ -970,12 +813,8 @@ class UCLedControl(QWidget):
         self._style_id = style_id
         self._zone_count = zone_count
         self._model = model
-        self._is_hr10 = False  # HR10 renders as standard LED panel
 
-        # Toggle preview widgets
         self._preview.setVisible(True)
-        self._seg_display.setVisible(False)
-
         self._preview.set_style(style_id, segment_count)
 
         # Load device preview background (PM-specific or style default)
@@ -1002,11 +841,7 @@ class UCLedControl(QWidget):
 
             self._title.setText(f"RGB LED Control \u2014 {style.model_name}")
 
-        # Layout shift for HR10 (color wheel takes space)
         self._apply_layout()
-
-        # Show/hide HR10-specific controls
-        self._set_hr10_visibility(self._is_hr10)
 
         # Apply zone button images for this style, then show/hide
         self._apply_zone_images(style_id)
@@ -1040,13 +875,7 @@ class UCLedControl(QWidget):
 
     def set_led_colors(self, colors: List[Tuple[int, int, int]]) -> None:
         """Update LED preview from controller tick."""
-        if self._is_hr10:
-            # Use the first LED color to tint the 7-segment display
-            if colors:
-                r, g, b = colors[0]
-                self._seg_display.set_color(r, g, b)
-        else:
-            self._preview.set_colors(colors)
+        self._preview.set_colors(colors)
 
     def set_status(self, text: str) -> None:
         """Update status text."""
@@ -1072,43 +901,6 @@ class UCLedControl(QWidget):
         # Sync °C/°F button visuals
         self._btn_celsius.setChecked(unit_int == 0)
         self._btn_fahrenheit.setChecked(unit_int == 1)
-        if self._is_hr10:
-            self._update_display_value()
-
-    def update_drive_metrics(self, metrics: HardwareMetrics) -> None:
-        """Update live drive metrics from system_info polling (HR10)."""
-        self._metrics = metrics
-
-        temp = metrics.disk_temp
-        if self._temp_unit == "\u00b0F":
-            temp = temp * 9 / 5 + 32
-        self._metric_labels['disk_temp'].setText(
-            f"{temp:.0f} {self._temp_unit}"
-        )
-        self._metric_labels['disk_activity'].setText(
-            f"{metrics.disk_activity:.0f}%"
-        )
-        self._metric_labels['disk_read'].setText(
-            f"{metrics.disk_read:.1f} MB/s"
-        )
-        self._metric_labels['disk_write'].setText(
-            f"{metrics.disk_write:.1f} MB/s"
-        )
-
-        self._update_display_value()
-
-    def get_display_value(self) -> Tuple[str, str]:
-        """Return (value_text, unit_text) for the current 7-segment display.
-
-        Used by the controller to push the display text to the LED
-        hardware without reaching into private widget attributes.
-        """
-        return self._seg_display.get_display_text()
-
-    @property
-    def is_hr10(self) -> bool:
-        """Whether the panel is currently showing an HR10 device."""
-        return self._is_hr10
 
     # ================================================================
     # Layout management
@@ -1144,51 +936,15 @@ class UCLedControl(QWidget):
     def _apply_layout(self):
         """Reposition controls.  All backgrounds include a color wheel area,
         so the layout is unified: wheel left, RGB/presets/brightness right.
-        Only HR10-specific widgets (drive metrics, display selection) differ.
         """
-        if self._is_hr10:
-            bright_x = HR10_BRIGHT_X
-            bright_y = HR10_BRIGHT_Y
-            bright_w = HR10_BRIGHT_W
-        else:
-            bright_x = BRIGHT_X
-            bright_y = BRIGHT_Y
-            bright_w = BRIGHT_W
-
-        # RGB controls — positions set in _setup_ui at C# coordinates;
-        # no repositioning needed (unified layout).
-
         # Brightness
-        self._brightness_slider.setGeometry(bright_x, bright_y, bright_w, 20)
+        self._brightness_slider.setGeometry(BRIGHT_X, BRIGHT_Y, BRIGHT_W, 20)
         self._brightness_label.setGeometry(
-            bright_x + bright_w + 5, bright_y, 40, 20)
+            BRIGHT_X + BRIGHT_W + 5, BRIGHT_Y, 40, 20)
 
-        # ON button visible for non-HR10 (HR10 has no separate on/off)
-        self._onoff_btn.setVisible(not self._is_hr10)
+        self._onoff_btn.setVisible(True)
 
         self._status.setGeometry(STATUS_X, STATUS_Y, STATUS_W, 24)
-
-    def _set_hr10_visibility(self, visible: bool):
-        """Show/hide all HR10-specific widgets."""
-        self._seg_display.setVisible(visible)
-        self._metrics_bg.setVisible(visible)
-        self._nvme_label.setVisible(visible)
-        self._ds_label.setVisible(visible)
-        self._circulate_cb.setVisible(visible)
-        self._circulate_interval_label.setVisible(visible)
-        self._circulate_interval.setVisible(visible)
-
-        for lbl in self._metric_name_labels:
-            lbl.setVisible(visible)
-        for lbl in self._metric_labels.values():
-            lbl.setVisible(visible)
-        for btn in self._display_buttons:
-            btn.setVisible(visible)
-
-        if not visible:
-            self._circulate_timer.stop()
-            self._temp_legend.setVisible(False)
-            self._temp_legend_labels.setVisible(False)
 
     # ================================================================
     # Internal handlers
@@ -1199,33 +955,8 @@ class UCLedControl(QWidget):
         self._current_mode = index
         for i, btn in enumerate(self._mode_buttons):
             btn.setChecked(i == index)
-        if self._is_hr10:
-            self._update_mode_visibility()
-        else:
-            self._preview.set_led_mode(index)
+        self._preview.set_led_mode(index)
         self.mode_changed.emit(index)
-
-    def _update_mode_visibility(self):
-        """Toggle control visibility based on selected mode (HR10).
-
-        For HR10, modes 0-1 (static/breathing) use the color wheel + RGB
-        controls.  Modes 2-5 hide them and may show the temp legend.
-        For non-HR10, all controls stay visible (C# behaviour).
-        """
-        mode = self._current_mode
-        show_color = mode in (0, 1)
-        show_temp_legend = mode in (4, 5)
-
-        self._color_wheel.setVisible(show_color)
-        self._temp_legend.setVisible(show_temp_legend)
-        self._temp_legend_labels.setVisible(show_temp_legend)
-
-        for slider in self._rgb_sliders:
-            slider.setVisible(show_color)
-        for spinbox in self._rgb_spinboxes:
-            spinbox.setVisible(show_color)
-        for btn in self._preset_buttons:
-            btn.setVisible(show_color)
 
     def _on_hue_changed(self, hue: int):
         """Handle color wheel hue selection -> update RGB sliders."""
@@ -1242,8 +973,6 @@ class UCLedControl(QWidget):
             self._rgb_spinboxes[i].setValue(val)
             self._rgb_spinboxes[i].blockSignals(False)
         self._sync_wheel_from_rgb(r, g, b)
-        if self._is_hr10:
-            self._seg_display.set_color(r, g, b)
         self.color_changed.emit(r, g, b)
 
     def _on_spinbox_changed(self, index: int, value: int):
@@ -1255,8 +984,6 @@ class UCLedControl(QWidget):
         g = self._rgb_spinboxes[1].value()
         b = self._rgb_spinboxes[2].value()
         self._sync_wheel_from_rgb(r, g, b)
-        if self._is_hr10:
-            self._seg_display.set_color(r, g, b)
         self.color_changed.emit(r, g, b)
 
     def _set_color(self, r: int, g: int, b: int):
@@ -1269,8 +996,6 @@ class UCLedControl(QWidget):
             self._rgb_spinboxes[i].setValue(val)
             self._rgb_spinboxes[i].blockSignals(False)
         self._sync_wheel_from_rgb(r, g, b)
-        if self._is_hr10:
-            self._seg_display.set_color(r, g, b)
         self.color_changed.emit(r, g, b)
 
     def _sync_wheel_from_rgb(self, r: int, g: int, b: int):
@@ -1290,54 +1015,6 @@ class UCLedControl(QWidget):
 
     def _update_color_swatch(self):
         """No-op — color swatch removed (color wheel shows selected hue)."""
-
-    # -- HR10 display selection --
-
-    def _on_display_selected(self, metric_key: str, button_index: int):
-        """Handle display selection button click (HR10)."""
-        self._current_metric = metric_key
-        for i, btn in enumerate(self._display_buttons):
-            btn.setChecked(i == button_index)
-        self._update_display_value()
-        self.display_metric_changed.emit(metric_key)
-
-    def _update_display_value(self):
-        """Update the 7-segment display with the current metric value (HR10)."""
-        if not self._is_hr10:
-            return
-
-        metric = self._current_metric
-        if metric == "temp":
-            val = self._metrics.disk_temp
-            if self._temp_unit == "\u00b0F":
-                val = val * 9 / 5 + 32
-            self._seg_display.set_value(f"{val:.0f}", self._temp_unit)
-        elif metric == "activity":
-            self._seg_display.set_value(f"{self._metrics.disk_activity:.0f}", "%")
-        elif metric == "read":
-            self._seg_display.set_value(f"{self._metrics.disk_read:.0f}", "MB/s")
-        elif metric == "write":
-            self._seg_display.set_value(f"{self._metrics.disk_write:.0f}", "MB/s")
-
-    # -- HR10 circulate --
-
-    def _on_circulate_toggled(self, enabled: bool):
-        if enabled:
-            interval_ms = self._circulate_interval.value() * 1000
-            self._circulate_timer.start(interval_ms)
-            self._circulate_index = 0
-        else:
-            self._circulate_timer.stop()
-        self.circulate_toggled.emit(enabled)
-
-    def _on_circulate_interval_changed(self, value: int):
-        if self._circulate_timer.isActive():
-            self._circulate_timer.start(value * 1000)
-
-    def _on_circulate_tick(self):
-        self._circulate_index = (self._circulate_index + 1) % len(DISPLAY_METRICS)
-        _label, key = DISPLAY_METRICS[self._circulate_index]
-        self._on_display_selected(key, self._circulate_index)
 
     # -- Zone selection --
 
@@ -1448,11 +1125,14 @@ class UCLedControl(QWidget):
         self._btn_mon.setVisible(visible)
 
     def _set_sensor_visibility(self, visible: bool):
-        """Show/hide UCInfoImage sensor gauges and °C/°F buttons."""
+        """Show/hide UCInfoImage sensor gauges.
+
+        Note: °C/°F buttons (buttonC/buttonF) are permanently hidden in C#
+        (Visible=false in InitializeComponent, never changed). Temp unit is
+        controlled via the app settings, not per-panel buttons.
+        """
         for widget in self._info_images.values():
             widget.setVisible(visible)
-        self._btn_celsius.setVisible(visible)
-        self._btn_fahrenheit.setVisible(visible)
 
     def _set_mem_visibility(self, visible: bool):
         """Show/hide LC1 memory info panel (C# ucledMemoryInfo1)."""
@@ -1471,7 +1151,7 @@ class UCLedControl(QWidget):
     # -- Sensor/memory/disk update methods --
 
     def update_sensor_metrics(self, metrics: HardwareMetrics) -> None:
-        """Update UCInfoImage sensor gauges (for non-HR10 styles)."""
+        """Update UCInfoImage sensor gauges."""
         unit = self._temp_unit
         t = metrics.cpu_temp
         if unit == "\u00b0F":
@@ -1607,11 +1287,3 @@ class UCLedControl(QWidget):
             "QPushButton:hover { background: rgba(255, 255, 255, 20); }"
         )
 
-    @staticmethod
-    def _display_button_style() -> str:
-        return (
-            "QPushButton { background: transparent; color: transparent; "
-            "border: none; }"
-            "QPushButton:checked { background: rgba(33, 150, 243, 60); }"
-            "QPushButton:hover { background: rgba(255, 255, 255, 20); }"
-        )

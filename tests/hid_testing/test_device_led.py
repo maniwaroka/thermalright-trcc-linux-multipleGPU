@@ -97,49 +97,49 @@ def _make_valid_handshake_response(pm: int = 3, sub_type: int = 0) -> bytes:
 class TestLedDeviceStyle:
     """Test LED_STYLES registry completeness and correctness."""
 
-    def test_registry_has_13_styles(self):
-        assert len(LED_STYLES) == 13
+    def test_registry_has_12_styles(self):
+        assert len(LED_STYLES) == 12
 
-    def test_style_ids_are_1_through_13(self):
-        assert set(LED_STYLES.keys()) == set(range(1, 14))
+    def test_style_ids_are_1_through_12(self):
+        assert set(LED_STYLES.keys()) == set(range(1, 13))
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_has_positive_led_count(self, style_id):
         style = LED_STYLES[style_id]
         assert style.led_count > 0
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_has_positive_segment_count(self, style_id):
         style = LED_STYLES[style_id]
         assert style.segment_count > 0
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_segment_count_lte_led_count(self, style_id):
         """Segment count should never exceed LED count."""
         style = LED_STYLES[style_id]
         assert style.segment_count <= style.led_count
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_zone_count_positive(self, style_id):
         style = LED_STYLES[style_id]
         assert style.zone_count >= 1
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_has_model_name(self, style_id):
         style = LED_STYLES[style_id]
         assert style.model_name != ""
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_has_preview_image(self, style_id):
         style = LED_STYLES[style_id]
         assert style.preview_image.startswith("D")
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_has_background_base(self, style_id):
         style = LED_STYLES[style_id]
         assert style.background_base.startswith("D0")
 
-    @pytest.mark.parametrize("style_id", range(1, 14))
+    @pytest.mark.parametrize("style_id", range(1, 13))
     def test_style_id_field_matches_key(self, style_id):
         """The style_id field should match the dictionary key."""
         style = LED_STYLES[style_id]
@@ -239,11 +239,6 @@ class TestPmMapping:
         """Unknown PM falls back to 'Unknown (pm=N)'."""
         assert PmRegistry.get_model_name(255) == "Unknown (pm=255)"
 
-    def test_get_model_name_hr10_override(self):
-        """HR10 (pm=128, sub=129) overrides LC1 model name."""
-        assert PmRegistry.get_model_name(128) == "LC1"
-        assert PmRegistry.get_model_name(128, 129) == "HR10_2280_PRO_DIGITAL"
-
     def test_get_style_known(self):
         """PmRegistry.get_style returns correct style for known PM."""
         style = PmRegistry.get_style(1)
@@ -277,22 +272,6 @@ class TestPmMapping:
         """LC1 (pm=128, sub_type=0) resolves to style 4."""
         style = PmRegistry.get_style(128, sub_type=0)
         assert style.style_id == 4
-
-    def test_get_style_hr10_sub_type_override(self):
-        """HR10 (pm=128, sub_type=129) resolves to style 13 via SUB_TYPE_OVERRIDES."""
-        style = PmRegistry.get_style(128, sub_type=129)
-        assert style.style_id == 13
-        assert style.model_name == "HR10_2280_PRO_DIGITAL"
-        assert style.led_count == 31
-
-    def test_sub_type_override_takes_precedence(self):
-        """PmRegistry._OVERRIDES should override PmRegistry.PM_TO_STYLE."""
-        # HR10 entry exists
-        assert (128, 129) in PmRegistry._OVERRIDES
-        # Without sub_type, PM=128 → style 4 (LC1)
-        assert PmRegistry.get_style(128).style_id == 4
-        # With sub_type=129, PM=128 → style 13 (HR10)
-        assert PmRegistry.get_style(128, 129).style_id == 13
 
     def test_pm49_resolves_to_style_5_not_7(self):
         """PM=49 is product 'LF10' but uses style 5 (LF8 layout, 93 LEDs).
@@ -973,22 +952,6 @@ class TestLedHidSenderHandshake:
         assert len(info.raw_response) == 64
         assert info.raw_response[0:4] == LED_MAGIC
 
-    def test_handshake_hr10_via_sub_type(self):
-        """HR10 device (PM=128, SUB=129) resolved via SUB_TYPE_OVERRIDES."""
-        transport = _make_mock_transport()
-        transport.read.return_value = _make_valid_handshake_response(
-            pm=128, sub_type=129
-        )
-
-        sender = LedHidSender(transport)
-        info = sender.handshake()
-
-        assert info.pm == 128
-        assert info.sub_type == 129
-        assert info.style.style_id == 13
-        assert info.model_name == "HR10_2280_PRO_DIGITAL"
-
-
 class TestLedHidSenderSendLedData:
     """Test LedHidSender.send_led_data() chunking and transport calls."""
 
@@ -1352,10 +1315,6 @@ class TestRemapLedColors:
     def test_style_4_table_length(self):
         """Style 4 (LC1) remap table has exactly 31 entries."""
         assert len(LED_REMAP_TABLES[4]) == 31
-
-    def test_style_13_shares_style_4(self):
-        """Style 13 (HR10) shares the same remap as style 4 (LC1)."""
-        assert LED_REMAP_TABLES[13] is LED_REMAP_TABLES[4]
 
     def test_style_2_remaps_correctly(self):
         """Style 2 first physical positions get Cpu2 then Cpu1 colors."""

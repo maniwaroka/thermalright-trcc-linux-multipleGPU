@@ -86,8 +86,6 @@ class LEDHandler:
         # Timers (owned by handler, parented to panel for Qt lifecycle)
         self._timer = QTimer(panel)
         self._timer.timeout.connect(self._on_tick)
-        self._drive_timer = QTimer(panel)
-        self._drive_timer.timeout.connect(self._on_drive_metrics_tick)
 
     @property
     def active(self) -> bool:
@@ -128,7 +126,6 @@ class LEDHandler:
     def stop(self):
         """Stop LED mode — save config, stop timers, release protocol."""
         self._timer.stop()
-        self._drive_timer.stop()
         self._active = False
         if self._controller:
             self._controller.cleanup()
@@ -136,7 +133,6 @@ class LEDHandler:
     def cleanup(self):
         """Full cleanup for application shutdown."""
         self._timer.stop()
-        self._drive_timer.stop()
         if self._controller:
             self._controller.cleanup()
 
@@ -144,12 +140,6 @@ class LEDHandler:
         """Forward temperature unit change to segment display."""
         if self._controller:
             self._controller.led.set_seg_temp_unit(unit)
-
-    def start_drive_timer(self):
-        self._drive_timer.start(1000)
-
-    def stop_drive_timer(self):
-        self._drive_timer.stop()
 
     # ── Signal wiring ────────────────────────────────────────────────
 
@@ -184,7 +174,6 @@ class LEDHandler:
         panel.week_start_changed.connect(
             lambda is_sun: ctrl.led.set_week_start(is_sun))
 
-        panel.display_metric_changed.connect(self._on_hr10_metric_changed)
         panel.temp_unit_changed.connect(self._on_temp_unit_changed)
         panel.disk_index_changed.connect(
             lambda idx: ctrl.led.set_disk_index(idx))
@@ -278,43 +267,10 @@ class LEDHandler:
             self._panel._preview.set_timer(
                 now.month, now.day, hour, now.minute, dow)
 
-    # ── LED colors + HR10 display ────────────────────────────────────
+    # ── LED colors ──────────────────────────────────────────────────
 
     def _on_colors_update(self, colors):
         self._panel.set_led_colors(colors)
-
-    def _on_hr10_metric_changed(self, metric_key: str):
-        self._hr10_push_display_value()
-
-    def _hr10_push_display_value(self):
-        if not self._controller or not self._panel.is_hr10:
-            return
-        panel = self._panel
-        text, unit = panel.get_display_value()
-
-        indicators: set = set()
-        if '\u00b0' in unit:
-            indicators.add('deg')
-            if 'C' in unit:
-                text = text + 'C'
-            elif 'F' in unit:
-                text = text + 'F'
-        if '%' in unit:
-            indicators.add('%')
-        if 'MB' in unit or 'mb' in unit:
-            indicators.add('mbs')
-
-        self._controller.led.set_display_value(text, indicators)
-
-    def _on_drive_metrics_tick(self):
-        if not self._panel.is_hr10:
-            return
-        try:
-            metrics = get_all_metrics()
-            self._panel.update_drive_metrics(metrics)
-            self._hr10_push_display_value()
-        except Exception:
-            pass
 
 
 # =============================================================================
@@ -851,12 +807,6 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_system_info.start_updates()
         else:
             self.uc_system_info.stop_updates()
-
-        # Start/stop drive metrics timer for HR10 LED devices
-        if view == 'led' and self.uc_led_control.is_hr10:
-            self._led.start_drive_timer()
-        else:
-            self._led.stop_drive_timer()
 
         # Stop LED timer when leaving LED view
         if view != 'led' and self._led.active:

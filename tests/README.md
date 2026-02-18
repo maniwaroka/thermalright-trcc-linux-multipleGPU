@@ -41,7 +41,6 @@ tests/
 ├── test_device_led_kvm.py       # KVM LED backend
 ├── test_device_scsi.py          # Low-level SCSI commands
 ├── test_doctor.py               # Dependency health check + setup wizard
-├── test_hr10_display.py         # HR10 7-segment display
 ├── test_integration.py          # Cross-component integration
 ├── test_media_player.py         # FFmpeg video frame extraction
 ├── test_models.py               # Domain constants, resolution pipeline

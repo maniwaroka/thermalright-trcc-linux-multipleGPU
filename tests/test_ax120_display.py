@@ -820,7 +820,3 @@ class TestLEDServiceSegmentMode:
             else:
                 assert led_colors[i] == (0, 0, 0)
 
-    def test_hr10_mode_not_set_for_segment_styles(self):
-        for style_id in range(1, 12):
-            svc = self._make_service(style_id)
-            assert svc._hr10_mode is False

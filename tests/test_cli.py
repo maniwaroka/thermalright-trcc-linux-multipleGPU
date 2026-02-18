@@ -38,7 +38,6 @@ from trcc.cli import (
     export_theme,
     gui,
     hid_debug,
-    hr10_tempd,
     import_theme,
     install_desktop,
     led_brightness,
@@ -1452,35 +1451,6 @@ class TestLedDebug(unittest.TestCase):
         """main() dispatches 'led-debug' to DiagCommands.led_debug()."""
         with patch.object(DiagCommands, 'led_debug', return_value=0) as mock_fn, \
              patch('sys.argv', ['trcc', 'led-debug']):
-            result = main()
-        self.assertEqual(result, 0)
-        mock_fn.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# hr10_tempd
-# ---------------------------------------------------------------------------
-
-class TestHr10Tempd(unittest.TestCase):
-    """Tests for hr10_tempd() command."""
-
-    @patch('trcc.adapters.device.led_hr10.run_hr10_daemon', return_value=0)
-    def test_success(self, mock_daemon):
-        result = hr10_tempd(brightness=50, drive="980", unit="F", verbose=1)
-        self.assertEqual(result, 0)
-        mock_daemon.assert_called_once_with(
-            brightness=50, model_substr="980", unit="F", verbose=True,
-        )
-
-    @patch('trcc.adapters.device.led_hr10.run_hr10_daemon', side_effect=Exception("no device"))
-    def test_exception_returns_1(self, _):
-        result = hr10_tempd()
-        self.assertEqual(result, 1)
-
-    def test_dispatch_hr10_tempd(self):
-        """main() dispatches 'hr10-tempd' to DiagCommands.hr10_tempd()."""
-        with patch.object(DiagCommands, 'hr10_tempd', return_value=0) as mock_fn, \
-             patch('sys.argv', ['trcc', 'hr10-tempd']):
             result = main()
         self.assertEqual(result, 0)
         mock_fn.assert_called_once()

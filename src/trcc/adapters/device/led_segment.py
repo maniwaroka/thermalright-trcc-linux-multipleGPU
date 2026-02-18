@@ -1019,7 +1019,6 @@ DISPLAYS: Dict[int, SegmentDisplay] = {
     10: LF11Display(),
     11: LF8Display(),   # LF15 = same layout as LF8
     # 12: LF13 — pure RGB, no digit display
-    # 13: HR10 — handled by device_led_hr10.py
 }
 
 

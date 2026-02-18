@@ -714,13 +714,13 @@ class LEDController:
     def set_protocol(self, protocol) -> None:
         self._svc.set_protocol(protocol)
 
-    def set_display_value(self, text: str, indicators: Optional[set] = None) -> None:
-        self._svc.set_display_value(text, indicators)
-
     def tick(self) -> None:
         colors = self._svc.tick()
+        # Apply segment mask so preview shows per-LED colors
+        # (same array that gets sent to hardware).
+        display_colors = self._svc.apply_mask(colors)
         if self.on_preview_update:
-            self.on_preview_update(colors)
+            self.on_preview_update(display_colors)
         if self._svc.has_protocol:
             success = self._svc.send_colors(colors)
             if self.on_send_complete:

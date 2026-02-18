@@ -426,17 +426,6 @@ def _cmd_led_debug(
     return DiagCommands.led_debug(test=test_colors)
 
 
-@app.command("hr10-tempd")
-def _cmd_hr10_tempd(
-    brightness: Annotated[int, typer.Option("-b", help="LED brightness 0-100")] = 100,
-    drive: Annotated[str, typer.Option("-dr", help="NVMe model substring to match")] = "9100",
-    unit: Annotated[str, typer.Option("-u", help="Temperature unit: C or F")] = "C",
-) -> int:
-    """Display NVMe temperature on HR10 (daemon)."""
-    return DiagCommands.hr10_tempd(
-        brightness=brightness, drive=drive, unit=unit, verbose=_verbose)
-
-
 @app.command("report")
 def _cmd_report() -> int:
     """Generate full diagnostic report for bug reports."""
@@ -1949,22 +1938,6 @@ class DiagCommands:
             traceback.print_exc()
             return 1
 
-    @staticmethod
-    def hr10_tempd(brightness=100, drive="9100", unit="C", verbose=0):
-        """Run the HR10 NVMe temperature display daemon."""
-        try:
-            from trcc.adapters.device.led_hr10 import run_hr10_daemon
-            return run_hr10_daemon(
-                brightness=brightness,
-                model_substr=drive,
-                unit=unit,
-                verbose=verbose > 0,
-            )
-        except Exception as e:
-            print(f"Error: {e}")
-            import traceback
-            traceback.print_exc()
-            return 1
 
 
 # =========================================================================
@@ -2562,7 +2535,6 @@ resume = DisplayCommands.resume
 show_info = SystemCommands.show_info
 hid_debug = DiagCommands.hid_debug
 led_debug = DiagCommands.led_debug
-hr10_tempd = DiagCommands.hr10_tempd
 setup_udev = SystemCommands.setup_udev
 install_desktop = SystemCommands.install_desktop
 uninstall = SystemCommands.uninstall

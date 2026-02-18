@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.0.11"
+__version__ = "5.1.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -255,3 +255,8 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          overlay that _load_theme_overlay_config() just loaded from the DC file.
 #          Affects fresh installs, config resets, and USB device index changes.
 #          2372 tests.
+# 5.1.0  - Remove HR10 NVMe heatsink support: Linux-only device (not in Windows
+#          C# reference), broken preview rendering, shared VID:PID with all LED
+#          devices. Removes led_hr10.py, uc_seven_segment.py, style 13, HR10
+#          CLI commands, and all related tests. LED styles now 1-12. -1762 lines.
+#          2286 tests.
