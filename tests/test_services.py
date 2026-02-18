@@ -126,19 +126,101 @@ class TestImageServiceBrightness(unittest.TestCase):
 
 
 class TestImageServiceByteOrder(unittest.TestCase):
-    """Test byte order determination."""
+    """Test byte order determination.
+
+    C# ImageTo565 byte-order logic:
+      SCSI: big-endian for 320x320 (is320x320) and 320x240 (SPIMode=2)
+      HID:  big-endian only for 320x320 (is320x320), little-endian otherwise
+    """
 
     def test_320x320_scsi_big_endian(self):
         self.assertEqual(ImageService.byte_order_for('scsi', (320, 320)), '>')
 
+    def test_320x240_scsi_big_endian(self):
+        """SCSI 320x240 (FBL 51) uses SPIMode=2 → big-endian."""
+        self.assertEqual(ImageService.byte_order_for('scsi', (320, 240)), '>')
+
     def test_480x480_scsi_little_endian(self):
         self.assertEqual(ImageService.byte_order_for('scsi', (480, 480)), '<')
 
-    def test_hid_always_big_endian(self):
-        self.assertEqual(ImageService.byte_order_for('hid', (480, 480)), '>')
-
     def test_240x240_scsi_little_endian(self):
         self.assertEqual(ImageService.byte_order_for('scsi', (240, 240)), '<')
+
+    def test_hid_320x320_big_endian(self):
+        """HID Type 3 (320x320) uses big-endian (is320x320 in C#)."""
+        self.assertEqual(ImageService.byte_order_for('hid', (320, 320)), '>')
+
+    def test_hid_320x240_little_endian(self):
+        """HID Type 2 at 320x240 uses little-endian (no SPIMode=2 for HID)."""
+        self.assertEqual(ImageService.byte_order_for('hid', (320, 240)), '<')
+
+    def test_hid_480x480_little_endian(self):
+        """HID non-320x320 uses little-endian."""
+        self.assertEqual(ImageService.byte_order_for('hid', (480, 480)), '<')
+
+    def test_hid_240x240_little_endian(self):
+        self.assertEqual(ImageService.byte_order_for('hid', (240, 240)), '<')
+
+    def test_bulk_320x320_big_endian(self):
+        self.assertEqual(ImageService.byte_order_for('bulk', (320, 320)), '>')
+
+    def test_bulk_480x480_little_endian(self):
+        self.assertEqual(ImageService.byte_order_for('bulk', (480, 480)), '<')
+
+
+class TestImageServiceDeviceRotation(unittest.TestCase):
+    """Test device-level pre-rotation for non-square displays.
+
+    C# ImageTo565: non-square displays (not 240x240/320x320/480x480) get
+    a 90° CW rotation before encoding.  Square displays are unchanged.
+    """
+
+    def test_square_240x240_no_rotation(self):
+        img = Image.new('RGB', (240, 240), (255, 0, 0))
+        result = ImageService.apply_device_rotation(img, (240, 240))
+        self.assertEqual(result.size, (240, 240))
+
+    def test_square_320x320_no_rotation(self):
+        img = Image.new('RGB', (320, 320), (255, 0, 0))
+        result = ImageService.apply_device_rotation(img, (320, 320))
+        self.assertEqual(result.size, (320, 320))
+
+    def test_square_480x480_no_rotation(self):
+        img = Image.new('RGB', (480, 480), (255, 0, 0))
+        result = ImageService.apply_device_rotation(img, (480, 480))
+        self.assertEqual(result.size, (480, 480))
+
+    def test_non_square_320x240_rotates(self):
+        """320x240 → 90° CW → 240x320 (portrait for HID Type 2)."""
+        img = Image.new('RGB', (320, 240))
+        result = ImageService.apply_device_rotation(img, (320, 240))
+        self.assertEqual(result.size, (240, 320))
+
+    def test_non_square_640x480_rotates(self):
+        img = Image.new('RGB', (640, 480))
+        result = ImageService.apply_device_rotation(img, (640, 480))
+        self.assertEqual(result.size, (480, 640))
+
+    def test_non_square_360x360_rotates(self):
+        """360x360 is NOT in C#'s square list — gets rotation."""
+        img = Image.new('RGB', (360, 360))
+        result = ImageService.apply_device_rotation(img, (360, 360))
+        self.assertEqual(result.size, (360, 360))  # square → dimensions same
+
+    def test_non_square_pixel_data(self):
+        """Verify pixel data is correctly rotated 90° CW."""
+        # 4x2 image: top-left red, top-right green
+        img = Image.new('RGB', (4, 2))
+        img.putpixel((0, 0), (255, 0, 0))  # top-left = red
+        img.putpixel((3, 0), (0, 255, 0))  # top-right = green
+        result = ImageService.apply_device_rotation(img, (4, 2))
+        # After 90° CW: top-left was bottom-left → now top-left
+        # Red was at (0,0) → after 90° CW → (1, 0) in 2x4 result
+        self.assertEqual(result.size, (2, 4))
+        # 90° CW: (x,y) → (h-1-y, x) where h=original height
+        # (0,0) → (1, 0), (3,0) → (1, 3)
+        self.assertEqual(result.getpixel((1, 0)), (255, 0, 0))
+        self.assertEqual(result.getpixel((1, 3)), (0, 255, 0))
 
 
 class TestImageServiceResize(unittest.TestCase):

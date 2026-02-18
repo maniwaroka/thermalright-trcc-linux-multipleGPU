@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.0.7"
+__version__ = "5.0.8"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -228,3 +228,10 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          wrong positions. Combined effect: scrambled digits + indicators on
 #          physical display. Fixes #15 "not displaying correlated data". 2359
 #          tests.
+# 5.0.8  - Fix HID Type 2 color distortion and rotation: RGB565 byte order
+#          was big-endian for all HID devices, but C# uses little-endian for
+#          HID Type 2 (myDeviceSPIMode != 2 unless SCSI mode 1 + FBL 51).
+#          Also add non-square display pre-rotation: C# ImageTo565 rotates
+#          non-square images 90° CW before encoding (LCD panel is physically
+#          portrait-mounted). Both fixes match C# FormCZTV.ImageTo565()
+#          exactly. Addresses #28 color/rotation reports. 2372 tests.

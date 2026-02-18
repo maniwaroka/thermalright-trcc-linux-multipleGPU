@@ -209,9 +209,10 @@ class TestStrategyPattern(unittest.TestCase):
         self.assertEqual(ImageService.byte_order_for('scsi', (480, 480)), '<')
 
     def test_byte_order_strategy_hid(self):
-        """HID always uses big-endian regardless of resolution."""
-        self.assertEqual(ImageService.byte_order_for('hid', (480, 480)), '>')
+        """HID uses big-endian for 320x320, little-endian for others."""
         self.assertEqual(ImageService.byte_order_for('hid', (320, 320)), '>')
+        self.assertEqual(ImageService.byte_order_for('hid', (480, 480)), '<')
+        self.assertEqual(ImageService.byte_order_for('hid', (320, 240)), '<')
 
     def test_rotation_strategy_0(self):
         img = Image.new('RGB', (4, 8))

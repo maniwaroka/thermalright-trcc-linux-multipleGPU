@@ -163,20 +163,22 @@ class DeviceService:
         """Encode PIL Image for device and send.
 
         Bulk devices use JPEG (C# ImageToJpg), SCSI/HID use RGB565.
+        Non-square displays get 90° CW pre-rotation (C# ImageTo565).
         """
         from .image import ImageService
 
         device = self._selected
         protocol = device.protocol if device else 'scsi'
+        resolution = device.resolution if device else (320, 320)
+
+        # C# ImageTo565: non-square displays rotate +90° CW before encoding.
+        image = ImageService.apply_device_rotation(image, resolution)
 
         if protocol == 'bulk':
             jpeg = ImageService.to_jpeg(image)
             return self.send_rgb565(jpeg, width, height)
 
-        byte_order = ImageService.byte_order_for(
-            protocol,
-            device.resolution if device else (320, 320),
-        )
+        byte_order = ImageService.byte_order_for(protocol, resolution)
         return self.send_image(image, width, height, byte_order)
 
     def send_rgb565_async(self, data: bytes, width: int, height: int) -> None:

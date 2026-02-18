@@ -118,18 +118,48 @@ class ImageService:
         return struct.pack(f'{byte_order}H', pixel)
 
     # SCSI resolutions that use big-endian RGB565 (SPIMode=2).
-    # FBL 100/101/102 → 320x320, FBL 51 → 320x240.
-    # C#: myDeviceSPIMode=2 forces big-endian for these FBL values.
-    # FBL 50 → 240x320 does NOT use SPIMode=2 (little-endian).
+    # C#: myDeviceMode==1 && fbl==51 → myDeviceSPIMode=2.
+    # FBL 100/101/102 → 320x320 (is320x320), FBL 51 → 320x240 (SPIMode=2).
+    # FBL 50 → 320x240 does NOT trigger SPIMode=2 (little-endian).
     _SCSI_BIG_ENDIAN = {(320, 320), (320, 240)}
+
+    # Square resolutions that skip the 90° device pre-rotation.
+    # C# ImageTo565: (is240x240 || is320x320 || is480x480) → use directionB directly.
+    # All other resolutions rotate +90° CW before encoding (non-square branch).
+    _SQUARE_NO_ROTATE = {(240, 240), (320, 320), (480, 480)}
 
     @staticmethod
     def byte_order_for(protocol: str, resolution: tuple[int, int]) -> str:
         """Determine RGB565 byte order for a device.
 
-        Big-endian for SCSI 320x320/320x240 (SPIMode=2) and all HID/Bulk.
-        Little-endian for other SCSI resolutions (including 240x320).
+        C# ImageTo565 byte-order logic:
+          - is320x320 (FBL 100/101/102) → big-endian
+          - myDeviceSPIMode==2 → big-endian (SCSI mode 1 + FBL 51,
+            or HID mode 3 + FBL 53 which also resolves to 320x320)
+          - else → little-endian
+
+        SCSI: big-endian for 320x320 and 320x240, little-endian otherwise.
+        HID/Bulk: big-endian only for 320x320 (is320x320 check), little-endian
+        otherwise.  HID Type 2 at 320x240 does NOT set myDeviceSPIMode=2.
         """
-        if protocol == 'scsi' and resolution not in ImageService._SCSI_BIG_ENDIAN:
-            return '<'
-        return '>'
+        if protocol == 'scsi':
+            return '>' if resolution in ImageService._SCSI_BIG_ENDIAN else '<'
+        # HID/Bulk: only 320x320 uses big-endian (is320x320 in C#)
+        return '>' if resolution == (320, 320) else '<'
+
+    @staticmethod
+    def apply_device_rotation(image: Any, resolution: tuple[int, int]) -> Any:
+        """Apply device-level pre-rotation for non-square displays.
+
+        C# ImageTo565 rotation for directionB=0:
+          - Square (240x240, 320x320, 480x480): no rotation
+          - Non-square: +90° CW (RotateImg(90°))
+
+        This base rotation is applied AFTER user rotation (directionB) and
+        BEFORE RGB565/JPEG encoding.  Non-square LCD panels are physically
+        mounted in portrait orientation; the 90° rotation converts landscape
+        frame data to the portrait layout the firmware expects.
+        """
+        if resolution in ImageService._SQUARE_NO_ROTATE:
+            return image
+        return image.transpose(PILImage.Transpose.ROTATE_270)

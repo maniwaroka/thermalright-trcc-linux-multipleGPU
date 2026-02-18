@@ -519,9 +519,16 @@ class DisplayService:
 
         C# protocol: bulk devices (USBLCDNew) use JPEG (cmd=2),
         SCSI/HID use raw RGB565.
+
+        Non-square displays get a 90° CW pre-rotation before encoding
+        (C# ImageTo565: non-square branch rotates +90° for all protocols).
         """
         device = self.devices.selected
         protocol = device.protocol if device else 'scsi'
+        resolution = device.resolution if device else (320, 320)
+
+        # C# ImageTo565: non-square displays rotate +90° CW before encoding.
+        img = ImageService.apply_device_rotation(img, resolution)
 
         if protocol == 'bulk':
             data = ImageService.to_jpeg(img)
@@ -529,10 +536,7 @@ class DisplayService:
                       img.width, img.height, len(data))
             return data
 
-        byte_order = ImageService.byte_order_for(
-            protocol,
-            device.resolution if device else (320, 320),
-        )
+        byte_order = ImageService.byte_order_for(protocol, resolution)
         data = ImageService.to_rgb565(img, byte_order)
         log.debug("_encode_for_device: %dx%d mode=%s order=%s → RGB565 %d bytes",
                   img.width, img.height, img.mode, byte_order, len(data))
