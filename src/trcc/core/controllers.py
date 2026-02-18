@@ -19,7 +19,6 @@ from ..services import (
 from ..services.display import DisplayService
 from .models import (
     DeviceInfo,
-    HardwareMetrics,
     PlaybackState,
     ThemeInfo,
     ThemeType,
@@ -229,7 +228,15 @@ class OverlayController:
     """Thin waiter for overlay rendering.
 
     Delegates to OverlayService, fires callbacks to GUI.
+    Most methods auto-delegate via __getattr__; only methods that
+    add value (name mapping, callbacks) are defined explicitly.
     """
+
+    _NAME_MAP: dict[str, str] = {
+        'set_target_size': 'set_resolution',
+        'set_theme_mask': 'set_mask',
+        'get_theme_mask': 'get_mask',
+    }
 
     def __init__(self, svc: OverlayService | None = None):
         self._svc = svc or OverlayService()
@@ -241,63 +248,24 @@ class OverlayController:
     def svc(self) -> OverlayService:
         return self._svc
 
-    def set_target_size(self, width: int, height: int):
-        self._svc.set_resolution(width, height)
-
     def enable(self, enabled: bool = True):
         self._svc.enabled = enabled
 
     def is_enabled(self) -> bool:
         return self._svc.enabled
 
-    def set_background(self, image: Any):
-        self._svc.set_background(image)
-
-    @property
-    def background(self) -> Any:
-        return self._svc.background
-
-    def update_metrics(self, metrics: HardwareMetrics) -> None:
-        self._svc.update_metrics(metrics)
-
-    def render(self, background: Optional[Any] = None, *, force: bool = False) -> Any:
-        return self._svc.render(background, force=force)
-
-    def set_theme_mask(self, mask_image, position=None):
-        self._svc.set_mask(mask_image, position)
-
-    def get_theme_mask(self):
-        return self._svc.get_mask()
-
-    def set_mask_visible(self, visible: bool):
-        self._svc.set_mask_visible(visible)
-
-    def set_temp_unit(self, unit: int):
-        self._svc.set_temp_unit(unit)
-
     def set_config(self, config: dict):
         self._svc.set_config(config)
         if self.on_config_changed:
             self.on_config_changed()
 
-    def set_config_resolution(self, width: int, height: int):
-        self._svc.set_config_resolution(width, height)
-
-    def set_scale_enabled(self, enabled: bool):
-        self._svc.set_scale_enabled(enabled)
-
-    def load_from_dc(self, dc_path: Path) -> dict:
-        return self._svc.load_from_dc(dc_path)
-
-    def set_dc_data(self, data):
-        self._svc.set_dc_data(data)
-
-    def get_dc_data(self):
-        return self._svc.get_dc_data()
-
-    @property
-    def config(self) -> dict:
-        return self._svc.config
+    def __getattr__(self, name: str):
+        try:
+            svc = object.__getattribute__(self, '_svc')
+        except AttributeError:
+            raise AttributeError(name) from None
+        svc_name = self._NAME_MAP.get(name, name)
+        return getattr(svc, svc_name)
 
 
 class LCDDeviceController:
@@ -619,7 +587,15 @@ class LEDController:
     """Thin waiter for LED state and device communication.
 
     Delegates all logic to LEDService, fires callbacks to GUI.
+    Most methods auto-delegate via __getattr__; methods in
+    _NOTIFY_METHODS also fire on_state_changed after delegation.
     """
+
+    _NOTIFY_METHODS = frozenset({
+        'set_mode', 'set_color', 'set_brightness', 'toggle_global',
+        'toggle_segment', 'set_zone_mode', 'set_zone_color',
+        'set_zone_brightness', 'toggle_zone', 'configure_for_style',
+    })
 
     def __init__(self, svc: Any = None):
         from ..services.led import LEDService
@@ -638,82 +614,6 @@ class LEDController:
     def state(self) -> Any:
         return self._svc.state
 
-    def set_mode(self, mode) -> None:
-        self._svc.set_mode(mode)
-        self._fire_state_changed()
-
-    def set_color(self, r: int, g: int, b: int) -> None:
-        self._svc.set_color(r, g, b)
-        self._fire_state_changed()
-
-    def set_brightness(self, brightness: int) -> None:
-        self._svc.set_brightness(brightness)
-        self._fire_state_changed()
-
-    def toggle_global(self, on: bool) -> None:
-        self._svc.toggle_global(on)
-        self._fire_state_changed()
-
-    def toggle_segment(self, index: int, on: bool) -> None:
-        self._svc.toggle_segment(index, on)
-        self._fire_state_changed()
-
-    def set_zone_mode(self, zone: int, mode) -> None:
-        self._svc.set_zone_mode(zone, mode)
-        self._fire_state_changed()
-
-    def set_zone_color(self, zone: int, r: int, g: int, b: int) -> None:
-        self._svc.set_zone_color(zone, r, g, b)
-        self._fire_state_changed()
-
-    def set_zone_brightness(self, zone: int, brightness: int) -> None:
-        self._svc.set_zone_brightness(zone, brightness)
-        self._fire_state_changed()
-
-    def toggle_zone(self, zone: int, on: bool) -> None:
-        self._svc.toggle_zone(zone, on)
-        self._fire_state_changed()
-
-    def set_zone_carousel(self, enabled: bool) -> None:
-        self._svc.set_zone_carousel(enabled)
-
-    def set_zone_carousel_zone(self, zone: int, selected: bool) -> None:
-        self._svc.set_zone_carousel_zone(zone, selected)
-
-    def set_zone_carousel_interval(self, seconds: int) -> None:
-        self._svc.set_zone_carousel_interval(seconds)
-
-    def set_disk_index(self, index: int) -> None:
-        self._svc.set_disk_index(index)
-
-    def set_memory_ratio(self, ratio: int) -> None:
-        self._svc.set_memory_ratio(ratio)
-
-    def set_test_mode(self, enabled: bool) -> None:
-        self._svc.set_test_mode(enabled)
-
-    def set_sensor_source(self, source: str) -> None:
-        self._svc.set_sensor_source(source)
-
-    def set_seg_temp_unit(self, unit: str) -> None:
-        self._svc.set_seg_temp_unit(unit)
-
-    def set_clock_format(self, is_24h: bool) -> None:
-        self._svc.set_clock_format(is_24h)
-
-    def set_week_start(self, is_sunday: bool) -> None:
-        self._svc.set_week_start(is_sunday)
-
-    def update_metrics(self, metrics: HardwareMetrics) -> None:
-        self._svc.update_metrics(metrics)
-
-    def configure_for_style(self, style_id: int) -> None:
-        self._svc.configure_for_style(style_id)
-        self._fire_state_changed()
-
-    def set_protocol(self, protocol) -> None:
-        self._svc.set_protocol(protocol)
-
     def tick(self) -> None:
         colors = self._svc.tick()
         # Apply segment mask so preview shows per-LED colors
@@ -729,6 +629,20 @@ class LEDController:
     def _fire_state_changed(self) -> None:
         if self.on_state_changed:
             self.on_state_changed(self._svc.state)
+
+    def __getattr__(self, name: str):
+        try:
+            svc = object.__getattribute__(self, '_svc')
+        except AttributeError:
+            raise AttributeError(name) from None
+        attr = getattr(svc, name)
+        if name in self._NOTIFY_METHODS and callable(attr):
+            def _notifying(*args, **kwargs):
+                result = attr(*args, **kwargs)
+                self._fire_state_changed()
+                return result
+            return _notifying
+        return attr
 
 
 class LEDDeviceController:

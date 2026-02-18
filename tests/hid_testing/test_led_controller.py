@@ -628,7 +628,7 @@ class TestTickTempLinked:
     def test_uses_cpu_temp_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc.state.temp_source = "cpu"
-        led_svc._metrics = HardwareMetrics(cpu_temp=45)
+        led_svc.update_metrics(HardwareMetrics(cpu_temp=45))
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         mock_cfv.assert_called_once()
         # First positional arg is the temp value
@@ -638,21 +638,21 @@ class TestTickTempLinked:
     def test_uses_gpu_temp(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 0, 0)
         led_svc.state.temp_source = "gpu"
-        led_svc._metrics = HardwareMetrics(gpu_temp=92)
+        led_svc.update_metrics(HardwareMetrics(gpu_temp=92))
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
-        led_svc._metrics = HardwareMetrics()
+        led_svc.update_metrics(HardwareMetrics())
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_uniform_color(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
-        led_svc._metrics = HardwareMetrics(cpu_temp=40)
+        led_svc.update_metrics(HardwareMetrics(cpu_temp=40))
         colors = led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert all(c == (0, 255, 0) for c in colors)
         assert len(colors) == led_svc.state.segment_count
@@ -669,7 +669,7 @@ class TestTickLoadLinked:
     def test_uses_cpu_load_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 255, 0)
         led_svc.state.load_source = "cpu"
-        led_svc._metrics = HardwareMetrics(cpu_percent=60)
+        led_svc.update_metrics(HardwareMetrics(cpu_percent=60))
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
@@ -677,14 +677,14 @@ class TestTickLoadLinked:
     def test_uses_gpu_load(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 110, 0)
         led_svc.state.load_source = "gpu"
-        led_svc._metrics = HardwareMetrics(gpu_usage=85)
+        led_svc.update_metrics(HardwareMetrics(gpu_usage=85))
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
     @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
-        led_svc._metrics = HardwareMetrics()
+        led_svc.update_metrics(HardwareMetrics())
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 

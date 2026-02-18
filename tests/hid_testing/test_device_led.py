@@ -6,15 +6,16 @@ packet building, HID sender chunking, handshake, and the public API.
 """
 
 import math
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import call, patch
 
 import pytest
 
+# _patch_hid_sleep and make_mock_transport live in hid_testing/conftest.py
+from tests.hid_testing.conftest import make_mock_transport as _make_mock_transport
 from trcc.adapters.device.hid import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
-    UsbTransport,
 )
 from trcc.adapters.device.led import (
     DELAY_POST_INIT_S,
@@ -42,17 +43,6 @@ from trcc.adapters.device.led import (
     send_led_colors,
 )
 
-# Patch time.sleep globally for all tests in this module so handshake/send
-# delays don't slow the suite down.
-pytestmark = pytest.mark.usefixtures("_patch_sleep")
-
-
-@pytest.fixture(autouse=True)
-def _patch_sleep():
-    """Disable time.sleep in led_device for fast tests."""
-    with patch("trcc.adapters.device.led.time.sleep"):
-        yield
-
 
 @pytest.fixture(autouse=True)
 def _clear_rgb_table_cache():
@@ -62,17 +52,6 @@ def _clear_rgb_table_cache():
     ColorEngine._cached_table = None
     yield
     ColorEngine._cached_table = original
-
-
-# =========================================================================
-# Helpers
-# =========================================================================
-
-def _make_mock_transport() -> MagicMock:
-    """Create a MagicMock that satisfies the UsbTransport interface."""
-    t = MagicMock(spec=UsbTransport)
-    t.is_open = True
-    return t
 
 
 def _make_valid_handshake_response(pm: int = 3, sub_type: int = 0) -> bytes:

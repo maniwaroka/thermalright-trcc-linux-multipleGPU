@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 from PIL import Image
 
+from tests.conftest import make_test_image as _make_test_image
 from trcc.core.controllers import (
     DeviceController,
     LCDDeviceController,
@@ -58,11 +59,6 @@ def _make_form_controller():
 def _stop_patches(patches):
     for p in patches:
         p.stop()
-
-
-def _make_test_image(w=320, h=320, color=(128, 0, 0)):
-    return Image.new('RGB', (w, h), color)
-
 
 # =============================================================================
 # ThemeController
@@ -419,7 +415,7 @@ class TestOverlayControllerRenderer(unittest.TestCase):
         bg = Image.new('RGB', (320, 320), 'blue')
         with patch.object(self.ctrl._svc, 'render', return_value=bg) as mock_render:
             result = self.ctrl.render(bg)
-            mock_render.assert_called_once_with(bg, force=False)
+            mock_render.assert_called_once_with(bg)
             self.assertEqual(result, bg)
 
     def test_set_background(self):

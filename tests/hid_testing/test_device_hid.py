@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+# _patch_hid_sleep and _make_mock_transport live in hid_testing/conftest.py
+from tests.hid_testing.conftest import make_mock_transport as _make_mock_transport
 from trcc.adapters.device.hid import (
     DELAY_FRAME_TYPE2_S,
     DELAY_POST_INIT_S,
@@ -37,32 +39,9 @@ from trcc.adapters.device.hid import (
     HidDeviceType2,
     HidDeviceType3,
     HidHandshakeInfo,
-    UsbTransport,
     _ceil_to_512,
     find_hid_devices,
 )
-
-# Patch time.sleep globally for all tests in this module so handshake/frame
-# delays don't slow the suite down.
-pytestmark = pytest.mark.usefixtures("_patch_sleep")
-
-
-@pytest.fixture(autouse=True)
-def _patch_sleep():
-    """Disable time.sleep in hid_device for fast tests."""
-    with patch("trcc.adapters.device.hid.time.sleep"):
-        yield
-
-
-# =========================================================================
-# Helpers
-# =========================================================================
-
-def _make_mock_transport() -> MagicMock:
-    """Create a MagicMock that satisfies the UsbTransport interface."""
-    t = MagicMock(spec=UsbTransport)
-    t.is_open = True
-    return t
 
 
 def _make_type2_valid_response() -> bytes:

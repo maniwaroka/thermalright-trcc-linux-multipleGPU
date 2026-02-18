@@ -123,9 +123,9 @@ class DcConfig:
 
     def save(self, filepath: str | Path) -> None:
         """Write config1.dc in 0xDD binary format."""
-        from .dc_writer import DcWriter
+        from .dc_writer import write as write_dc
 
-        DcWriter.write(self._to_theme_config(), str(filepath))
+        write_dc(self._to_theme_config(), str(filepath))
 
     def _to_theme_config(self):
         """Convert to dc_writer.ThemeConfig for write_dc_file()."""
@@ -165,9 +165,9 @@ class DcConfig:
     def from_overlay_config(cls, overlay_config: dict,
                             width: int = 320, height: int = 320) -> DcConfig:
         """Create DcConfig from an overlay renderer config dict."""
-        from .dc_writer import DcWriter
+        from .dc_writer import overlay_to_theme
 
-        tc = DcWriter.overlay_to_theme(overlay_config, width, height)
+        tc = overlay_to_theme(overlay_config, width, height)
         dc = cls()
         dc.elements = tc.elements
         dc.overlay_w = tc.overlay_w

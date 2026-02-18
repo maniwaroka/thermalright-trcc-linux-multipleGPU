@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.models import HardwareMetrics, LEDMode, LEDState, LEDZoneState
+from .led_effects import LEDEffectEngine
 
 log = logging.getLogger(__name__)
 
@@ -25,9 +26,17 @@ class LEDService:
     - Style resolution (model_name -> style_id)
     """
 
+    # Methods delegated to LEDEffectEngine via __getattr__
+    _ENGINE_METHODS = frozenset({
+        '_tick_single_mode', '_tick_test_mode', '_tick_multi_zone',
+        '_tick_breathing_for', '_tick_colorful_for', '_tick_rainbow_for',
+        '_tick_temp_linked_for', '_tick_load_linked_for', '_next_carousel_zone',
+    })
+
     def __init__(self, state: LEDState | None = None) -> None:
         self.state = state or LEDState()
         self._metrics: HardwareMetrics = HardwareMetrics()
+        self._engine = LEDEffectEngine(self.state, self._metrics)
         self._protocol: Any = None
 
         # Segment display state (styles 1-11 — all digit-display LED devices)
@@ -123,16 +132,6 @@ class LEDService:
         """Set carousel interval in seconds (C# textBoxTimer)."""
         self.state.zone_carousel_interval = max(1, seconds) * 6
 
-    def _next_carousel_zone(self, current: int) -> int:
-        """Find next enabled zone in carousel, wrapping around."""
-        zones = self.state.zone_carousel_zones
-        n = len(zones)
-        for offset in range(1, n + 1):
-            candidate = (current + offset) % n
-            if zones[candidate]:
-                return candidate
-        return 0
-
     def set_zone_mode(self, zone: int, mode: LEDMode) -> None:
         """Set mode for a specific zone."""
         if 0 <= zone < len(self.state.zones):
@@ -176,6 +175,7 @@ class LEDService:
     def update_metrics(self, metrics: HardwareMetrics) -> None:
         """Update cached sensor metrics for temp/load-linked modes."""
         self._metrics = metrics
+        self._engine.metrics = metrics
 
     def configure_for_style(self, style_id: int) -> None:
         """Configure state for a specific LED device style.
@@ -231,157 +231,6 @@ class LEDService:
             return self._tick_multi_zone()
         return self._tick_single_mode(self.state.mode, self.state.color,
                                       self.state.segment_count)
-
-    def _tick_single_mode(self, mode: LEDMode, color: Tuple[int, int, int],
-                          seg_count: int) -> List[Tuple[int, int, int]]:
-        """Compute colors for a single mode across seg_count segments."""
-        if mode == LEDMode.STATIC:
-            return [color] * seg_count
-        elif mode == LEDMode.BREATHING:
-            return self._tick_breathing_for(color, seg_count)
-        elif mode == LEDMode.COLORFUL:
-            return self._tick_colorful_for(seg_count)
-        elif mode == LEDMode.RAINBOW:
-            return self._tick_rainbow_for(seg_count)
-        elif mode == LEDMode.TEMP_LINKED:
-            return self._tick_temp_linked_for(seg_count)
-        elif mode == LEDMode.LOAD_LINKED:
-            return self._tick_load_linked_for(seg_count)
-        return [(0, 0, 0)] * seg_count
-
-    _TEST_COLORS = [(1, 1, 1), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
-
-    def _tick_test_mode(self) -> List[Tuple[int, int, int]]:
-        """C# checkBox1 test mode: cycle 4 colors every 10 ticks at min brightness."""
-        self.state.test_timer += 1
-        if self.state.test_timer >= 10:
-            self.state.test_timer = 0
-            self.state.test_color = (self.state.test_color + 1) % 4
-        color = self._TEST_COLORS[self.state.test_color]
-        return [color] * self.state.led_count
-
-    def _tick_multi_zone(self) -> List[Tuple[int, int, int]]:
-        """Compute per-zone colors for multi-zone devices.
-
-        When carousel (LunBo) is enabled, only the currently active zone
-        lights up and the device cycles through selected zones on a timer.
-        """
-        total = self.state.segment_count
-        zone_count = len(self.state.zones)
-        colors: List[Tuple[int, int, int]] = []
-
-        # Advance carousel timer
-        if self.state.zone_carousel:
-            self.state.zone_carousel_ticks += 1
-            if self.state.zone_carousel_ticks >= self.state.zone_carousel_interval:
-                self.state.zone_carousel_ticks = 0
-                self.state.zone_carousel_current = self._next_carousel_zone(
-                    self.state.zone_carousel_current)
-
-        active_zone = self.state.zone_carousel_current if self.state.zone_carousel else None
-
-        for zi, zone in enumerate(self.state.zones):
-            base = total // zone_count
-            n_segs = base + (1 if zi < total % zone_count else 0)
-
-            # Zone off, or carousel active and not this zone's turn
-            if not zone.on or (active_zone is not None and zi != active_zone):
-                colors.extend([(0, 0, 0)] * n_segs)
-            else:
-                zone_colors = self._tick_single_mode(zone.mode, zone.color, n_segs)
-                if zone.brightness < 100:
-                    scale = zone.brightness / 100.0
-                    zone_colors = [
-                        (int(r * scale), int(g * scale), int(b * scale))
-                        for r, g, b in zone_colors
-                    ]
-                colors.extend(zone_colors)
-
-        return colors
-
-    # ── Effect algorithms (ported from FormLED.cs) ──────────────────
-
-    def _tick_breathing_for(self, color: Tuple[int, int, int],
-                            seg_count: int) -> List[Tuple[int, int, int]]:
-        """DSHX_Timer: pulse brightness, period=66 ticks."""
-        timer = self.state.rgb_timer
-        period = 66
-        half = period // 2
-
-        if timer < half:
-            factor = timer / half
-        else:
-            factor = (period - 1 - timer) / half
-
-        r, g, b = color
-        anim_r = int(r * factor * 0.8 + r * 0.2)
-        anim_g = int(g * factor * 0.8 + g * 0.2)
-        anim_b = int(b * factor * 0.8 + b * 0.2)
-
-        self.state.rgb_timer = (timer + 1) % period
-
-        return [(anim_r, anim_g, anim_b)] * seg_count
-
-    def _tick_colorful_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
-        """QCJB_Timer: 6-phase color gradient cycle, period=168 ticks."""
-        timer = self.state.rgb_timer
-        period = 168
-        phase_len = 28
-
-        phase = timer // phase_len
-        offset = timer % phase_len
-        t = int(255 * offset / (phase_len - 1)) if phase_len > 1 else 0
-
-        if phase == 0:
-            r, g, b = 255, t, 0
-        elif phase == 1:
-            r, g, b = 255 - t, 255, 0
-        elif phase == 2:
-            r, g, b = 0, 255, t
-        elif phase == 3:
-            r, g, b = 0, 255 - t, 255
-        elif phase == 4:
-            r, g, b = t, 0, 255
-        else:
-            r, g, b = 255, 0, 255 - t
-
-        self.state.rgb_timer = (timer + 1) % period
-
-        return [(r, g, b)] * seg_count
-
-    def _tick_rainbow_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
-        """CHMS_Timer: 768-entry RGB table with per-segment offset."""
-        from ..adapters.device.led import ColorEngine
-        table = ColorEngine.get_table()
-        timer = self.state.rgb_timer
-        table_len = len(table)
-
-        colors = []
-        for i in range(seg_count):
-            idx = (timer + i * table_len // max(seg_count, 1)) % table_len
-            colors.append(table[idx])
-
-        self.state.rgb_timer = (timer + 4) % table_len
-
-        return colors
-
-    def _tick_temp_linked_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
-        """WDLD_Timer: color from temperature thresholds."""
-        from ..adapters.device.led import ColorEngine
-
-        source = self.state.temp_source
-        temp = getattr(self._metrics, f"{source}_temp", 0)
-        color = ColorEngine.color_for_value(temp, ColorEngine.TEMP_GRADIENT)
-        return [color] * seg_count
-
-    def _tick_load_linked_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
-        """FZLD_Timer: color from CPU/GPU load thresholds."""
-        from ..adapters.device.led import ColorEngine
-
-        source = self.state.load_source
-        load = self._metrics.cpu_percent if source == "cpu" else self._metrics.gpu_usage
-        color = ColorEngine.color_for_value(load, ColorEngine.LOAD_GRADIENT)
-        return [color] * seg_count
 
     # ── Segment display (all styles 1-11) ────────────────────────
 
@@ -583,3 +432,14 @@ class LEDService:
         """Save config and release protocol."""
         self.save_config()
         self.set_protocol(None)
+
+    # ── Effect engine delegation ─────────────────────────────────
+
+    def __getattr__(self, name: str):
+        if name in self._ENGINE_METHODS:
+            try:
+                engine = object.__getattribute__(self, '_engine')
+            except AttributeError:
+                raise AttributeError(name) from None
+            return getattr(engine, name)
+        raise AttributeError(f'{type(self).__name__!r} has no attribute {name!r}')

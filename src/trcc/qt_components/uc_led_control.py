@@ -1200,8 +1200,8 @@ class UCLedControl(QWidget):
     def _populate_memory_identity(self) -> None:
         """Populate memory timing labels from DRAM SPD info."""
         try:
-            from ..services.system import SystemService
-            self._mem_slots = SystemService.get_memory_info()
+            from ..adapters.system.hardware import get_memory_info
+            self._mem_slots = get_memory_info()
             if self._mem_slots:
                 s = self._mem_slots[0]
                 for key in ('mem_tcas', 'mem_trcd', 'mem_trp',
@@ -1230,8 +1230,8 @@ class UCLedControl(QWidget):
     def _populate_disk_identity(self) -> None:
         """Populate disk selector dropdown (C# ucComboBoxC)."""
         try:
-            from ..services.system import SystemService
-            self._disk_slots = SystemService.get_disk_info()
+            from ..adapters.system.hardware import get_disk_info
+            self._disk_slots = get_disk_info()
 
             self._disk_selector.blockSignals(True)
             self._disk_selector.clear()

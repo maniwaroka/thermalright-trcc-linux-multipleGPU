@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+from tests.conftest import save_test_png as _make_png
 from trcc.adapters.device.detector import DetectedDevice
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -25,14 +26,6 @@ def _make_device(vid=0x87CD, pid=0x70DB, scsi="/dev/sg0", usb_path="2-1",
         implementation=impl, model=model,
         button_image="A1CZTV", protocol=protocol, device_type=1,
     )
-
-
-def _make_png(path, w=320, h=320):
-    """Write a minimal valid PNG at *path*."""
-    from PIL import Image
-    img = Image.new("RGB", (w, h), color=(255, 0, 0))
-    img.save(path, "PNG")
-
 
 # ── Pipeline: detect → driver init → send frame ────────────────────────────
 

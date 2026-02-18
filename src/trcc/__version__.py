@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.1.0"
+__version__ = "5.1.1"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -260,3 +260,9 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          devices. Removes led_hr10.py, uc_seven_segment.py, style 13, HR10
 #          CLI commands, and all related tests. LED styles now 1-12. -1762 lines.
 #          2286 tests.
+# 5.1.1  - OOP/KISS refactor phase 1: dc_writer class→module functions,
+#          cli.py split to cli/ package (6 submodules), controller __getattr__
+#          delegation (LEDController 26→6 methods, OverlayController 19→5),
+#          extract LEDEffectEngine from LEDService (Strategy pattern), move
+#          HW info to adapters/system/hardware.py, shared test conftest.py.
+#          Net -3100 lines. 2286 tests.
