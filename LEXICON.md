@@ -62,6 +62,13 @@ Shared terminology so everyone uses the same names.
 | **USER_DATA_DIR** | User writable data (`~/.trcc/data/`) — primary data location, survives pip upgrades |
 | **Config dir** | Application config (`~/.config/trcc/`) — `config.json` with per-device settings |
 
+## Versioning
+| Term | Meaning |
+|------|---------|
+| **Major** | First digit (`X.0.0`) — breaking changes, major architectural shifts |
+| **Minor** | Second digit (`0.X.0`) — new features, device support, significant enhancements |
+| **Patch** | Third digit (`0.0.X`) — bug fixes, small corrections, no new features |
+
 ## Adapters (Hexagonal Architecture)
 | Term | Meaning |
 |------|---------|

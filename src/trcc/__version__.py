@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.0.9"
+__version__ = "5.0.10"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -244,3 +244,9 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          info panels to C# UCLEDMemoryInfo/UCLEDHarddiskInfo layout (transparent
 #          bg, golden text, exact label positions). Remove Linux-only Source:
 #          CPU/GPU toggle. HR10 renders as standard LED panel. 2372 tests.
+# 5.0.10 - Fix LED static/load-linked mode timeout: remove skip-if-unchanged
+#          optimization — C# always sends every tick (keepalive). Fix font
+#          style (bold/italic) not applied to LCD: wire font_style through
+#          signal chain from QFontDialog to OverlayElementConfig. Fix bulk
+#          device rotation regression: C# ImageToJpg does no pre-rotation,
+#          only ImageTo565 rotates non-square displays. 2372 tests.
