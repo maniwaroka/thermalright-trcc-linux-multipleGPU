@@ -1150,6 +1150,11 @@ FBL_TO_RESOLUTION: dict[int, tuple[int, int]] = {
     224: (854, 480),
 }
 
+# FBL values that trigger JPEG encoding for HID Type 2 (C# myDeviceMode == 2).
+# C# FormCZTV: these resolutions use ImageToJpg() instead of ImageTo565().
+# Header byte[6] = 0x00 (JPEG) vs 0x01 (RGB565), with actual width/height.
+JPEG_MODE_FBLS: frozenset[int] = frozenset({54, 114, 128, 192, 224})
+
 # Reverse lookup: resolution → PM/FBL (first match wins)
 RESOLUTION_TO_PM: dict[tuple[int, int], int] = {
     res: fbl for fbl, res in FBL_TO_RESOLUTION.items()

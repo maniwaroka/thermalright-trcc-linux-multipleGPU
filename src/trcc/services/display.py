@@ -15,7 +15,7 @@ from typing import Any, Tuple
 
 from ..adapters.infra.data_repository import RESOURCES_DIR, DataManager, ThemeDir
 from ..conf import settings
-from ..core.models import SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP
+from ..core.models import JPEG_MODE_FBLS, SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP
 from .device import DeviceService
 from .image import ImageService
 from .media import MediaService
@@ -517,20 +517,24 @@ class DisplayService:
     def _encode_for_device(self, img: Any) -> bytes:
         """Encode image for LCD device.
 
-        C# protocol: bulk devices (USBLCDNew) use JPEG (ImageToJpg),
-        SCSI/HID use raw RGB565 (ImageTo565).
+        C# protocol encoding depends on device type:
+        - Bulk: JPEG (ImageToJpg), no rotation
+        - HID Type 2 with JPEG_MODE_FBLS: JPEG (ImageToJpg), no rotation
+        - SCSI / HID (standard): RGB565 (ImageTo565), non-square pre-rotation
 
         C# ImageTo565 rotates non-square displays +90° CW before encoding.
-        ImageToJpg does NOT rotate — bulk devices skip pre-rotation.
+        ImageToJpg does NOT rotate.
         """
         device = self.devices.selected
         protocol = device.protocol if device else 'scsi'
         resolution = device.resolution if device else (320, 320)
+        fbl = device.fbl_code if device else None
 
-        if protocol == 'bulk':
+        # Bulk and HID JPEG-mode devices use JPEG encoding (no rotation)
+        if protocol == 'bulk' or (protocol == 'hid' and fbl in JPEG_MODE_FBLS):
             data = ImageService.to_jpeg(img)
-            log.debug("_encode_for_device: %dx%d → JPEG %d bytes",
-                      img.width, img.height, len(data))
+            log.debug("_encode_for_device: %dx%d → JPEG %d bytes (protocol=%s, fbl=%s)",
+                      img.width, img.height, len(data), protocol, fbl)
             return data
 
         # C# ImageTo565: non-square displays rotate +90° CW before encoding.

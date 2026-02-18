@@ -1,6 +1,6 @@
 """TRCC Linux version information."""
 
-__version__ = "5.1.2"
+__version__ = "5.2.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
@@ -271,3 +271,9 @@ __version_info__ = tuple(int(x) for x in __version__.split("."))
 #          buffers per chunk size. Cache shutil.which('sg_raw'). Cache
 #          psutil.cpu_freq (10s TTL). Slow sensor poll 2s→4s. CPU usage
 #          drops ~21%→15% (animated theme), ~7% (static). 2286 tests.
+# 5.2.0  - HID Type 2 JPEG encoding for large-resolution devices: 1280x480
+#          (Trofeo Vision), 1600x720, 1920x462, 854x480, 960x540, 800x480,
+#          360x360 (FanLCD). C# uses ImageToJpg() (mode 2) instead of
+#          ImageTo565() (mode 3) for these FBLs — header byte[6]=0x00 with
+#          actual width/height instead of hardcoded 240x320. Auto-detects
+#          JPEG by FF D8 magic bytes. Addresses #34/#35. 2286 tests.

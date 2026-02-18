@@ -349,36 +349,46 @@ class HidDeviceType2(HidDevice):
     # -- Frame send -------------------------------------------------------
 
     @staticmethod
-    def build_frame_packet(image_data: bytes) -> bytes:
+    def build_frame_packet(
+        image_data: bytes,
+        width: int = 240,
+        height: int = 320,
+    ) -> bytes:
         """Build a frame packet from raw image data.
 
-        C# FormCZTV.ImageTo565() mode 3 builds a 20-byte header::
+        C# FormCZTV has two encoding modes for HID Type 2:
+
+        **Mode 3** (RGB565, ``ImageTo565()``): hardcoded 240x320 header::
 
             DA DB DC DD 02 00 01 00 F0 00 40 01 02 00 00 00 [len_LE32]
 
-        - [0:4]   DA DB DC DD — protocol magic (same as handshake)
-        - [4]     02 — SSCRM_CMD_TYPE_PICTURE
-        - [6]     01 — mode flag
-        - [8:10]  F0 00 — 240 (LE16, hardcoded in C#)
-        - [10:12] 40 01 — 320 (LE16, hardcoded in C#)
-        - [12]    02 — sub-flag
-        - [16:20] image data length (LE uint32)
+        **Mode 2** (JPEG, ``ImageToJpg()``): actual resolution in header::
 
-        The total transfer length is rounded up to the next 512-byte
-        boundary (C#: ``num2 / 512 * 512 + (num2 % 512 != 0 ? 512 : 0)``).
+            DA DB DC DD 02 00 00 00 WW WW HH HH 02 00 00 00 [len_LE32]
 
-        Returns the padded packet ready for USB bulk write.
+        Differences: byte[6] = 0x01 (RGB565) vs 0x00 (JPEG),
+        bytes[8:12] = hardcoded 240x320 vs actual width/height.
+
+        JPEG is auto-detected by FF D8 magic bytes.
+        The total transfer length is 512-byte aligned.
         """
-        # Match C# FormCZTV.ImageTo565() mode 3 header exactly
+        is_jpeg = len(image_data) >= 2 and image_data[0] == 0xFF and image_data[1] == 0xD8
+
         header = bytearray([
             0xDA, 0xDB, 0xDC, 0xDD,  # magic
             0x02, 0x00,               # cmd_type = PICTURE
-            0x01, 0x00,               # mode flag
-            0xF0, 0x00,               # 240 (LE16, hardcoded)
-            0x40, 0x01,               # 320 (LE16, hardcoded)
-            0x02, 0x00, 0x00, 0x00,   # sub-flag
         ])
+        if is_jpeg:
+            # Mode 2: JPEG — byte[6]=0x00, actual resolution
+            header.extend(b'\x00\x00')
+            header.extend(struct.pack('<HH', width, height))
+        else:
+            # Mode 3: RGB565 — byte[6]=0x01, hardcoded 240x320
+            header.extend(b'\x01\x00')
+            header.extend(struct.pack('<HH', 240, 320))
+        header.extend([0x02, 0x00, 0x00, 0x00])  # sub-flag
         header.extend(struct.pack('<I', len(image_data)))
+
         raw = bytes(header) + image_data
         padded_len = _ceil_to_512(len(raw))
         return raw.ljust(padded_len, b'\x00')
@@ -390,9 +400,11 @@ class HidDeviceType2(HidDevice):
         buffer in a single Transfer() call.  pyusb splits into USB packets
         internally — the device sees one logical transfer.
 
+        For JPEG-mode devices (FBL in JPEG_MODE_FBLS), the header includes
+        actual width/height. For RGB565 devices, header uses hardcoded 240x320.
+
         Args:
-            image_data: Raw image bytes (JPEG or other format the
-                        device expects).
+            image_data: Raw image bytes (RGB565 or JPEG depending on device).
 
         Returns:
             True if the transfer succeeded.
@@ -403,7 +415,9 @@ class HidDeviceType2(HidDevice):
         if not self._initialized:
             raise RuntimeError("Type 2 device not initialized — call handshake() first")
 
-        packet = self.build_frame_packet(image_data)
+        di = self.device_info
+        w, h = di.resolution if di is not None and di.resolution is not None else (240, 320)
+        packet = self.build_frame_packet(image_data, w, h)
 
         # C# USBLCDNEW ThreadSendDeviceDataH: single Transfer() call
         total = self.transport.write(EP_WRITE_02, packet, DEFAULT_TIMEOUT_MS)

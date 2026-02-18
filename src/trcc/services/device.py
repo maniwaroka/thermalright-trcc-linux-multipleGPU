@@ -9,7 +9,7 @@ import logging
 import threading
 from typing import Any, Optional
 
-from ..core.models import DeviceInfo, LCDDeviceConfig
+from ..core.models import JPEG_MODE_FBLS, DeviceInfo, LCDDeviceConfig
 
 log = logging.getLogger(__name__)
 
@@ -162,16 +162,17 @@ class DeviceService:
     def send_pil(self, image: Any, width: int, height: int) -> bool:
         """Encode PIL Image for device and send.
 
-        Bulk devices use JPEG (C# ImageToJpg — no rotation),
-        SCSI/HID use RGB565 (C# ImageTo565 — non-square pre-rotation).
+        Bulk and HID JPEG-mode devices use JPEG (C# ImageToJpg — no rotation).
+        SCSI/HID (standard) use RGB565 (C# ImageTo565 — non-square pre-rotation).
         """
         from .image import ImageService
 
         device = self._selected
         protocol = device.protocol if device else 'scsi'
         resolution = device.resolution if device else (320, 320)
+        fbl = device.fbl_code if device else None
 
-        if protocol == 'bulk':
+        if protocol == 'bulk' or (protocol == 'hid' and fbl in JPEG_MODE_FBLS):
             jpeg = ImageService.to_jpeg(image)
             return self.send_rgb565(jpeg, width, height)
 
