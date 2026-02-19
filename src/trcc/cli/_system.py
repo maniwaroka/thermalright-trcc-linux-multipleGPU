@@ -276,36 +276,33 @@ def setup_selinux():
 def install_desktop():
     """Install .desktop menu entry and icon for app launchers.
 
-    Works from both pip install and git clone — generates .desktop inline
-    and resolves icons from the package tree (src/trcc/assets/icons/).
+    Reads the shipped .desktop file from the package assets directory.
+    Works from both pip install and git clone.
     """
     import shutil
 
     home = Path.home()
     app_dir = home / ".local" / "share" / "applications"
 
-    # Icons live inside the package (works for both pip install and git clone)
-    # __file__ is trcc/cli/_system.py — parent.parent = trcc/
-    icon_pkg_dir = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "assets" / "icons"
+    # Package root: __file__ is trcc/cli/_system.py — parent.parent = trcc/
+    pkg_root = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    icon_pkg_dir = pkg_root / "assets" / "icons"
+    desktop_src = pkg_root / "assets" / "trcc-linux.desktop"
 
-    # Generate .desktop content inline (no dependency on repo root)
-    desktop_content = """\
-[Desktop Entry]
-Name=TRCC Linux
-Comment=Thermalright LCD Control Center
-Exec=trcc gui
-Icon=trcc
-Terminal=false
-Type=Application
-Categories=Utility;System;
-Keywords=thermalright;lcd;cooler;aio;cpu;
-StartupWMClass=trcc-linux
-"""
-
-    # Install .desktop file
+    # Install .desktop file (copy from package assets, or generate if missing)
     app_dir.mkdir(parents=True, exist_ok=True)
     desktop_dst = app_dir / "trcc-linux.desktop"
-    desktop_dst.write_text(desktop_content)
+    if desktop_src.exists():
+        shutil.copy2(desktop_src, desktop_dst)
+    else:
+        desktop_dst.write_text(
+            "[Desktop Entry]\nName=TRCC Linux\n"
+            "Comment=Thermalright LCD Control Center\nExec=trcc gui\n"
+            "Icon=trcc\nTerminal=false\nType=Application\n"
+            "Categories=Utility;System;\n"
+            "Keywords=thermalright;lcd;cooler;aio;cpu;\n"
+            "StartupWMClass=trcc-linux\n"
+        )
     print(f"Installed {desktop_dst}")
 
     # Install icons to XDG hicolor theme

@@ -4,7 +4,7 @@
 
 The project follows hexagonal architecture. The **services layer** is the core hexagon containing all business logic (pure Python, no framework deps). Four driving adapters consume the services:
 
-- **CLI** (`cli.py`) — Typer, 39 commands across 6 command classes
+- **CLI** (`cli/` package) — Typer, 39 commands across 6 submodules
 - **GUI** (`qt_components/`) — PySide6, controllers in `core/` call services
 - **API** (`api.py`) — FastAPI REST adapter (optional `[api]` extra)
 - **Setup GUI** (`install/gui.py`) — Standalone PySide6 setup wizard
@@ -13,7 +13,7 @@ The project follows hexagonal architecture. The **services layer** is the core h
 
 ```
 src/trcc/
-├── cli.py                       # Typer CLI adapter (39 commands, 6 command classes)
+├── cli/                         # Typer CLI adapter package (6 submodules)
 ├── api.py                       # FastAPI REST adapter (optional [api] extra)
 ├── conf.py                      # Settings singleton + persistence helpers
 ├── __version__.py               # Version info
@@ -22,15 +22,18 @@ src/trcc/
 │   │   ├── scsi.py              # SCSI protocol (sg_raw)
 │   │   ├── hid.py               # HID USB transport (PyUSB)
 │   │   ├── led.py               # LED RGB protocol (effects, HID sender)
-│   │   ├── led_hr10.py          # HR10 LED backend
+│   │   ├── led_effect.py        # LEDEffectEngine — strategy pattern for LED effects
 │   │   ├── led_kvm.py           # KVM LED backend
 │   │   ├── led_segment.py       # Segment display renderer (11 styles)
 │   │   ├── bulk.py              # Raw USB bulk protocol
 │   │   ├── lcd.py               # SCSI RGB565 frame send
 │   │   ├── detector.py          # USB device scan + registries
 │   │   └── factory.py           # Protocol factory (SCSI/HID/LED/Bulk routing)
+│   ├── render/                  # Rendering backends (Strategy pattern)
+│   │   └── pil.py               # PilRenderer — CPU-only PIL/Pillow backend
 │   ├── system/                  # System integration
 │   │   ├── sensors.py           # Hardware sensor discovery + collection
+│   │   ├── hardware.py          # Hardware info (CPU, GPU, RAM, disk)
 │   │   ├── info.py              # Dashboard panel config
 │   │   └── config.py            # Dashboard config persistence
 │   └── infra/                   # Infrastructure (I/O, files, network)
@@ -56,6 +59,7 @@ src/trcc/
 │   ├── led.py                   # LEDService — LED RGB control via LedProtocol
 │   ├── media.py                 # MediaService — GIF/video frame extraction
 │   ├── overlay.py               # OverlayService — overlay rendering
+│   ├── renderer.py              # Renderer ABC — Strategy port for compositing backends
 │   ├── system.py                # SystemService — system sensor access and monitoring
 │   └── theme.py                 # ThemeService — theme loading/saving/export/import
 ├── core/
@@ -80,10 +84,10 @@ src/trcc/
     ├── uc_system_info.py        # Sensor dashboard
     ├── uc_sensor_picker.py      # Sensor selection dialog
     ├── uc_info_module.py        # Live system info display
-    ├── uc_led_control.py        # LED RGB control panel (all LED styles 1-13, inc. HR10)
+    ├── uc_led_control.py        # LED RGB control panel (LED styles 1-12)
     ├── uc_screen_led.py         # LED segment visualization (colored circles)
     ├── uc_color_wheel.py        # HSV color wheel for LED hue selection
-    ├── uc_seven_segment.py      # 7-segment display preview (HR10)
+    ├── uc_seven_segment.py      # 7-segment display preview
     ├── uc_activity_sidebar.py   # Sensor element picker
     └── uc_about.py              # Settings / about panel
 ```
@@ -124,7 +128,7 @@ The `DeviceProtocolFactory` in `device_factory.py` routes devices to the correct
 - **HID LCD devices** → `HidProtocol` (PyUSB/HIDAPI) — LCD displays via HID
 - **HID LED devices** → `LedProtocol` (PyUSB/HIDAPI) — RGB LED controllers
 
-The GUI auto-routes LED devices to `UCLedControl` (LED panel) instead of the LCD form. `LEDDeviceController` manages LED effects with a 30ms animation timer, matching Windows FormLED. The unified LED panel handles all device styles (1-13), including the HR10 2280 PRO Digital which shows a 7-segment preview, color wheel, and drive metrics instead of the standard LED segment circles.
+The GUI auto-routes LED devices to `UCLedControl` (LED panel) instead of the LCD form. `LEDDeviceController` manages LED effects with a 30ms animation timer, matching Windows FormLED. The unified LED panel handles all device styles (1-12).
 
 ### Shared UI Base Classes
 

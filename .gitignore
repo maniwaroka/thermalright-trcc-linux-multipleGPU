@@ -105,7 +105,10 @@ package.json
 
 # Old udev/systemd files (replaced by trcc setup-udev)
 99-trcc.rules
-trcc-quirk-fix.service
+
+# Root-level desktop/service files (canonical copies live in src/trcc/assets/)
+/trcc-linux.desktop
+/trcc-quirk-fix.service
 
 # Scan/audit reports
 clamscan_report.txt

@@ -53,7 +53,7 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 **HID LED devices** — RGB LED control:
 | USB ID | Devices |
 |--------|---------|
-| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL, Assassin X 120R Digital ARGB, Phantom Spirit 120 Digital EVO, HR10 2280 PRO DIGITAL, and others (model auto-detected via handshake) |
+| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL, Assassin X 120R Digital ARGB, Phantom Spirit 120 Digital EVO, and others (model auto-detected via handshake) |
 
 > HID devices are auto-detected. See the [Device Testing Guide](doc/DEVICE_TESTING.md) if you have one — I need testers.
 
@@ -157,22 +157,26 @@ See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 39 commands, options, 
 
 A big thanks to everyone who has contributed invaluable reports to this project:
 
-- **[Lcstyle](https://github.com/Lcstyle)** — HR10 2280 PRO Digital support (7-segment display, color wheel, NVMe temperature daemon)
+- **[Zeltergiest](https://github.com/Zeltergiest)** — Trofeo Vision 360 HID Type 2 testing, detailed bug reports & enhancement suggestions
+- **[Xentrino](https://github.com/Xentrino)** — Peerless Assassin 120 Digital ARGB White LED testing across 15+ versions
+- **[hexskrew](https://github.com/hexskrew)** — Assassin X 120R Digital ARGB HID testing & GUI layout feedback
+- **[javisaman](https://github.com/javisaman)** — Phantom Spirit 120 Digital EVO LED testing & GPU phase validation
+- **[Pikarz](https://github.com/Pikarz)** — Mjolnir Vision 360 bulk protocol testing
+- **[michael-spinelli](https://github.com/michael-spinelli)** — Assassin Spirit 120 Vision ARGB HID testing & font style bug report
+- **[Rizzzolo](https://github.com/Rizzzolo)** — Phantom Spirit 120 Digital EVO hardware testing
+- **[N8ghtz](https://github.com/N8ghtz)** — Trofeo Vision HID testing
+- **[Lcstyle](https://github.com/Lcstyle)** — HR10 2280 PRO Digital testing
 - **[PantherX12max](https://github.com/PantherX12max)** — Trofeo Vision LCD hardware testing
 - **[shadowepaxeor-glitch](https://github.com/shadowepaxeor-glitch)** — AX120 Digital hardware testing & USB descriptor dumps
-- **[Xentrino](https://github.com/Xentrino)** — Peerless Assassin 120 Digital ARGB White hardware testing
-- **[Pikarz](https://github.com/Pikarz)** — Mjolnir Vision 360 bulk protocol testing
 - **[bipobuilt](https://github.com/bipobuilt)** — GrandVision 360 AIO bulk protocol testing
 - **[cadeon](https://github.com/cadeon)** — GrandVision 360 AIO bulk protocol testing
-- **[michael-spinelli](https://github.com/michael-spinelli)** — Assassin Spirit 120 Vision ARGB HID testing
 - **[gizbo](https://github.com/gizbo)** — FROZEN WARFRAME SCSI color bug report
-- **[hexskrew](https://github.com/hexskrew)** — Assassin X 120R Digital ARGB HID testing
-- **[javisaman](https://github.com/javisaman)** — Phantom Spirit 120 Digital EVO LED testing & GPU phase validation
-- **[Rizzzolo](https://github.com/Rizzzolo)** — Phantom Spirit 120 Digital EVO hardware testing
 - **[apj202-ops](https://github.com/apj202-ops)** — Frozen Warframe SE HID testing
 - **[Edoardo-Rossi-EOS](https://github.com/Edoardo-Rossi-EOS)** — Frozen Warframe 360 HID testing
 - **[edoargo1996](https://github.com/edoargo1996)** — Frozen Warframe 360 HID testing
 - **[stephendesmond1-cmd](https://github.com/stephendesmond1-cmd)** — Frozen Warframe 360 HID Type 2 testing
+- **[acioannina-wq](https://github.com/acioannina-wq)** — Assassin Spirit 120 Vision HID testing
+- **[Civilgrain](https://github.com/Civilgrain)** — Wonder Vision Pro 360 bulk protocol testing
 
 ## License
 

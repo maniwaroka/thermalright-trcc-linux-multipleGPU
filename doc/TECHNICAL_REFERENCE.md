@@ -34,7 +34,7 @@ Bulk devices use raw USB vendor-specific transfers via PyUSB. Products: GrandVis
 
 | VID    | PID    | Protocol | Type | Notes |
 |--------|--------|----------|------|-------|
-| 0x0416 | 0x8001 | LED      | HID 64-byte | RGB LED controller (AX120 DIGITAL, PA120 DIGITAL, HR10 2280 PRO DIGITAL, Phantom Spirit 120 Digital EVO, Peerless Assassin 120 Digital ARGB White) |
+| 0x0416 | 0x8001 | LED      | HID 64-byte | RGB LED controller (AX120 DIGITAL, PA120 DIGITAL, Phantom Spirit 120 Digital EVO, Peerless Assassin 120 Digital ARGB White) |
 
 LED devices are distinguished from LCD HID devices by the `implementation` field (`hid_led`) set during device detection based on the Windows device model registry.
 
@@ -389,7 +389,7 @@ Hexagonal architecture (Ports & Adapters). Services are the core hexagon; CLI, G
 
 ```
 src/trcc/
-├── cli.py                       # Typer CLI adapter (39 commands, 6 command classes)
+├── cli/                         # Typer CLI adapter package (6 submodules: _device, _display, _theme, _led, _diag, _system)
 ├── api.py                       # FastAPI REST adapter (optional [api] extra)
 ├── conf.py                      # Settings singleton + persistence helpers
 ├── __version__.py               # Version info
@@ -398,7 +398,7 @@ src/trcc/
 │   │   ├── scsi.py              # SCSI protocol (sg_raw)
 │   │   ├── hid.py               # HID USB transport (PyUSB)
 │   │   ├── led.py               # LED RGB protocol (effects, HID sender)
-│   │   ├── led_hr10.py          # HR10 LED backend
+│   │   ├── led_effect.py        # LEDEffectEngine — strategy pattern for LED effects
 │   │   ├── led_kvm.py           # KVM LED backend
 │   │   ├── led_segment.py       # Segment display renderer (11 styles)
 │   │   ├── bulk.py              # Raw USB bulk protocol
@@ -456,10 +456,10 @@ src/trcc/
     ├── uc_system_info.py        # Sensor dashboard
     ├── uc_sensor_picker.py      # Sensor selection dialog
     ├── uc_info_module.py        # Live system info display
-    ├── uc_led_control.py        # LED RGB control panel (all LED styles 1-13, inc. HR10)
+    ├── uc_led_control.py        # LED RGB control panel (LED styles 1-12)
     ├── uc_screen_led.py         # LED segment visualization (colored circles)
     ├── uc_color_wheel.py        # HSV color wheel for LED hue selection
-    ├── uc_seven_segment.py      # 7-segment display preview (HR10)
+    ├── uc_seven_segment.py      # 7-segment display preview
     ├── uc_activity_sidebar.py   # Sensor element picker
     └── uc_about.py              # Settings / about panel
 ```

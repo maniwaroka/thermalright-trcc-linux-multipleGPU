@@ -1,6 +1,6 @@
 # Device Testing Guide
 
-All 4 protocols (SCSI, HID, LED, Bulk) are implemented with **2359 automated tests**. Several HID/LED devices have been validated by testers. If you have a device not listed below, please help test.
+All 4 protocols (SCSI, HID, LED, Bulk) are implemented with **2291 automated tests**. Several HID/LED devices have been validated by testers. If you have a device not listed below, please help test.
 
 ## Supported HID Devices
 
@@ -192,14 +192,68 @@ The handshake response contains a **PM (Product Mode)** byte that identifies the
 
 If your device reports a PM byte not in this table, we need to add it. The `trcc hid-debug` output tells us exactly what PM byte your device uses.
 
-### All Supported LCD Resolutions
+### FBL → Resolution Table
+
+The FBL (Feature Byte Length) byte determines the LCD resolution. This is the complete mapping from `core/models.py`:
+
+| FBL | Resolution | Encoding | Byte Order | Notes |
+|-----|------------|----------|------------|-------|
+| 36 | 240x240 | RGB565 | Little-endian | Small square |
+| 37 | 240x240 | RGB565 | Little-endian | Small square (alt) |
+| 50 | 320x240 | RGB565 | Little-endian | Portrait, PM=5 |
+| 51 | 320x240 | RGB565 | Big-endian | Portrait, SPIMode=2 |
+| 54 | 360x360 | JPEG | Little-endian | Medium square |
+| 64 | 640x480 | RGB565 | Little-endian | VGA, PM=7 |
+| 72 | 480x480 | RGB565 | Little-endian | Large square |
+| 100 | 320x320 | RGB565 | Big-endian | Most common |
+| 101 | 320x320 | RGB565 | Big-endian | FROZEN WARFRAME PRO |
+| 102 | 320x320 | RGB565 | Big-endian | ELITE VISION |
+| 114 | 1600x720 | JPEG | Little-endian | Ultrawide, PM=64 |
+| 128 | 1280x480 | JPEG | Little-endian | Trofeo Vision |
+| 192 | 1920x462 | JPEG | Little-endian | Ultrawide, PM=65 |
+| 224 | 854x480 | JPEG | Little-endian | Wide (default) |
+| 224 | 960x540 | JPEG | Little-endian | Wide, PM=10 |
+| 224 | 800x480 | JPEG | Little-endian | Wide, PM=12 |
+
+**FBL 224 disambiguation:** FBL 224 is shared by 3 resolutions. The PM byte determines the actual resolution: PM=10 → 960x540, PM=12 → 800x480, all others → 854x480.
+
+**JPEG mode FBLs:** 54, 114, 128, 192, 224 use JPEG encoding instead of raw RGB565. Header byte[6] = 0x00 (JPEG) vs 0x01 (RGB565).
+
+### PM → FBL Overrides
+
+For most devices, PM=FBL (the PM byte is the FBL directly). These PM values map to a different FBL:
+
+| PM | FBL | Resolution | Products |
+|----|-----|------------|----------|
+| 5 | 50 | 320x240 | |
+| 7 | 64 | 640x480 | |
+| 9 | 224 | 854x480 | |
+| 10 | 224 | 960x540 | |
+| 11 | 224 | 854x480 | |
+| 12 | 224 | 800x480 | |
+| 32 | 100 | 320x320 | |
+| 36 | 36 | 240x240 | AS120 VISION |
+| 50 | 50 | 320x240 | FROZEN WARFRAME |
+| 51 | 51 | 320x240 | FROZEN WARFRAME |
+| 52 | 52 | — | BA120 VISION |
+| 53 | 53 | — | BA120 VISION |
+| 58 | 58 | — | FROZEN WARFRAME SE |
+| 64 | 114 | 1600x720 | |
+| 65 | 192 | 1920x462 | |
+| 100 | 100 | 320x320 | FROZEN WARFRAME PRO |
+| 101 | 101 | 320x320 | ELITE VISION |
+| 128 | 128 | 1280x480 | Trofeo Vision |
+
+**Compound key:** PM=1 + SUB=48 → FBL 114 (1600x720), PM=1 + SUB=49 → FBL 192 (1920x462).
+
+### All Supported Theme Resolutions
 
 Theme data is bundled for all 15 resolutions. If a resolution's archive isn't included in the install, it downloads automatically from GitHub on first use.
 
-| Resolution | FBL | Notes |
-|------------|-----|-------|
+| Resolution | Source FBLs | Notes |
+|------------|-------------|-------|
 | 240x240 | 36, 37 | Small square |
-| 240x320 | 50 | Portrait |
+| 320x240 | 50, 51 | Portrait |
 | 320x320 | 100, 101, 102 | Most common |
 | 360x360 | 54 | Medium square |
 | 480x480 | 72 | Large square |
@@ -208,7 +262,7 @@ Theme data is bundled for all 15 resolutions. If a resolution's archive isn't in
 | 854x480 | 224 | Wide (default for FBL 224) |
 | 960x540 | 224 (PM=10) | Wide |
 | 1280x480 | 128 | Trofeo Vision |
-| 1600x720 | 114 | Ultrawide |
+| 1600x720 | 114 | Ultrawide, split mode |
 | 1920x462 | 192 | Ultrawide |
 | 480x800 | — | Portrait variant |
 | 480x854 | — | Portrait variant |

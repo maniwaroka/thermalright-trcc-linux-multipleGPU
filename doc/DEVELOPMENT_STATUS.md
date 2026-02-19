@@ -2,9 +2,9 @@
 
 TRCC Linux is **feature-complete** — all 45 features from the Windows TRCC 2.0.3 have been ported, with full CLI/GUI/API parity via hexagonal architecture.
 
-**Current version:** 5.0.8
+**Current version:** 5.3.2
 **Branch:** `stable`
-**Tests:** 2359 across 35 files
+**Tests:** 2291 across 34 files
 **PyPI:** [trcc-linux](https://pypi.org/project/trcc-linux/)
 
 ## What's Stable
@@ -14,8 +14,7 @@ All features are tested and working on the `stable` branch:
 - **4 protocol backends** — SCSI, HID, LED, Bulk (raw USB)
 - **Full GUI** — local/cloud/mask themes, overlays, video playback, carousel, image cropper, video trimmer
 - **System info overlays** — 77+ sensors (CPU, GPU, RAM, disk, network, fans)
-- **LED RGB control** — 6 effect modes (Static, Breathing, Colorful, Rainbow, Temp-linked, Load-linked), sensor-linked colors, 13 device styles
-- **HR10 support** — 7-segment display renderer, NVMe temperature daemon, color wheel
+- **LED RGB control** — 6 effect modes (Static, Breathing, Colorful, Rainbow, Temp-linked, Load-linked), sensor-linked colors, 12 device styles
 - **Per-device config** — each LCD remembers its theme, brightness, rotation, overlay, and carousel settings
 - **Autostart** — launches minimized to system tray on login, sends last-used theme
 - **Setup wizard** — CLI (`trcc setup`) and GUI (`trcc setup-gui`) with bootstrap script (`setup.sh`)
@@ -23,7 +22,7 @@ All features are tested and working on the `stable` branch:
 - **REST API** — optional FastAPI adapter for headless/remote control (`trcc serve`)
 - **Services layer** — 8 pure-Python service classes shared by GUI, CLI, and API
 - **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS, SteamOS, Bazzite
-- **96% test coverage** — 2359 tests across 35 test files
+- **96% test coverage** — 2291 tests across 34 test files
 
 ### Supported Devices
 
@@ -45,7 +44,7 @@ All features are tested and working on the `stable` branch:
 **HID LED devices** — RGB LED control:
 | USB ID | Devices |
 |--------|---------|
-| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL, Phantom Spirit 120 Digital EVO, Assassin X 120R Digital ARGB, HR10 2280 PRO DIGITAL |
+| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL, Phantom Spirit 120 Digital EVO, Assassin X 120R Digital ARGB |
 
 **Bulk USB devices** — raw USB protocol:
 | USB ID | Devices |
@@ -64,9 +63,9 @@ All features are tested and working on the `stable` branch:
 | 6 | Linting (ruff) | Done — 0 violations |
 | 7 | PyPI publish | Done — [trcc-linux](https://pypi.org/project/trcc-linux/) |
 | 8 | HID LCD support | Done — auto-detected |
-| 9 | LED RGB control | Done — 6 modes, 13 styles, sensor-linked |
+| 9 | LED RGB control | Done — 6 modes, 12 styles, sensor-linked |
 | 10 | Bulk USB protocol | Done — GrandVision/Mjolnir Vision |
-| 11 | HR10 7-segment display | Done — temp daemon + GUI |
+| 11 | HR10 7-segment display | Removed (v5.1.0) — Linux-only, not in C# reference |
 | 12 | On-demand download | Done — 15 resolutions + 33 web archives |
 | 13 | Diagnostic report (`trcc report`) | Done |
 | 14 | Hexagonal architecture (services layer) | Done — 8 services |
