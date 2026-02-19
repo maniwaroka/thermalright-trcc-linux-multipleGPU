@@ -64,7 +64,7 @@ src/trcc/
 │   └── theme.py                 # ThemeService — theme loading/saving/export/import
 ├── core/
 │   ├── models.py                # Domain constants, dataclasses, enums, resolution pipeline
-│   └── controllers.py           # LCDDeviceController, LEDDeviceController, MVC controllers
+│   └── controllers.py           # LCDDeviceController (Facade), LEDDeviceController (Facade)
 └── qt_components/               # PySide6 GUI adapter
     ├── qt_app_mvc.py            # Main window (1454x800)
     ├── base.py                  # BasePanel, BaseThemeBrowser, pil_to_pixmap
@@ -96,7 +96,7 @@ src/trcc/
 
 ### Hexagonal / MVC
 
-Controllers in `core/` are GUI-independent. Views subscribe via callbacks. All business logic lives in `services/`, making it possible to swap frontends (CLI, GUI, API all use the same services).
+Controllers in `core/` are Facades — `LCDDeviceController` orchestrates 4 services (theme, device, overlay, media), `LEDDeviceController` wraps `LEDService`. Views subscribe via callbacks. All business logic lives in `services/`, making it possible to swap frontends (CLI, GUI, API all use the same services). Law of Demeter: GUI→Facade→Services only.
 
 ### Per-Device Configuration
 

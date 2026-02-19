@@ -34,11 +34,16 @@ These devices have been tested on real Linux hardware by contributors:
 | FROZEN WARFRAME, WARFRAME SE | `0402:3922` | SCSI | Developer |
 | GrandVision 360 AIO | `87AD:70DB` | Bulk | [bipobuilt](https://github.com/bipobuilt) |
 | Mjolnir Vision 360 | `87AD:70DB` | Bulk | [Pikarz](https://github.com/Pikarz) |
-| Trofeo Vision LCD | `0416:5302` | HID Type 2 | [PantherX12max](https://github.com/PantherX12max) |
+| Trofeo Vision LCD | `0416:5302` | HID Type 2 | [PantherX12max](https://github.com/PantherX12max), [N8ghtz](https://github.com/N8ghtz) |
+| Assassin Spirit 120 Vision ARGB | `0416:5302` | HID Type 2 | [michael-spinelli](https://github.com/michael-spinelli) |
+| Frozen Warframe SE | `0402:3922` | SCSI | [apj202-ops](https://github.com/apj202-ops) |
+| FROZEN WARFRAME (SCSI) | `0402:3922` | SCSI | [gizbo](https://github.com/gizbo) |
+| Wonder Vision Pro 360 | `87AD:70DB` | Bulk | [Civilgrain](https://github.com/Civilgrain) |
 | HR10 2280 PRO Digital | `0416:8001` | HID LED | [Lcstyle](https://github.com/Lcstyle) |
 | AX120 Digital (LED) | `0416:8001` | HID LED | [shadowepaxeor-glitch](https://github.com/shadowepaxeor-glitch), [hexskrew](https://github.com/hexskrew) |
+| Assassin X 120R Digital ARGB (LED) | `0416:8001` | HID LED | [hexskrew](https://github.com/hexskrew) |
 | Peerless Assassin 120 Digital ARGB White (LED) | `0416:8001` | HID LED | [Xentrino](https://github.com/Xentrino) |
-| Phantom Spirit 120 Digital EVO (LED) | `0416:8001` | HID LED | [javisaman](https://github.com/javisaman) |
+| Phantom Spirit 120 Digital EVO (LED) | `0416:8001` | HID LED | [javisaman](https://github.com/javisaman), [Rizzzolo](https://github.com/Rizzzolo) |
 
 ## Need Testers — HID LCD Devices
 

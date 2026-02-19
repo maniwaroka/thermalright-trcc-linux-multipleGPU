@@ -210,9 +210,8 @@ When adding GUI assets:
 4. Run `PYTHONPATH=src pytest tests/ -x -q` — all tests must pass
 5. Squash or keep commits as-is, then push to `main`
 6. Tag and push: `git tag v{version} && git push origin v{version}` — this triggers CI to build + publish to PyPI. Do NOT run `twine upload` manually.
-7. GitHub Release: `gh release create v{version} --target stable --title "v{version}"` with release notes
+7. GitHub Release: `gh release create v{version} --target main --title "v{version}"` with release notes
 8. Comment on relevant GitHub issues if the release affects them
-9. Merge `stable` → `main` if needed
 
 ### Rules
 - **Version bump = release boundary** — no bump means still in development

@@ -1,5 +1,100 @@
 # Changelog
 
+## v6.0.0
+
+### GoF Refactoring — 5-Phase OOP Overhaul
+- **Phase 1**: Segment display collapse — `led_segment.py` 1109→687 lines (-38%). Properties→class attrs, 4 encode methods→unified `_encode_digits()` + `_encode_7seg()`, LF12 delegates to LF8. Flyweight + Strategy patterns.
+- **Phase 2**: HID subclasses — SKIPPED (logic genuinely differs between Type2/Type3, ~20 line savings not worth it)
+- **Phase 3**: Controller layer elimination — `controllers.py` 699→608 lines (-91). Deleted 5 thin wrapper controllers (ThemeController, DeviceController, VideoController, OverlayController, LEDController). LCDDeviceController = Facade over 4 services (~35 methods). LEDDeviceController absorbed LEDController. ~50 GUI call sites rewritten, 7 test files updated. Law of Demeter enforced: GUI→Facade→Services only. Facade pattern.
+- **Phase 4**: UsbProtocol base — `factory.py` 874→846 lines (-28). Extracted shared transport lifecycle (open/close/ensure) from HidProtocol + LedProtocol into `UsbProtocol` base class. Template Method pattern.
+- **Phase 5**: LED config serialization — `services/led.py` save/load driven by `_PERSIST_FIELDS` dict + `_ALIASES` dict. Single source of truth for which fields persist. Memento pattern.
+- **Total**: 24 files changed, -1203 net lines
+- 2306 tests across 34 files
+
+## v5.3.3
+
+### Polkit & Sudo Fix
+- **Fixed**: `_sudo_reexec` now includes user site-packages in PYTHONPATH (sudo strips `~/.local/lib/`)
+- **Fixed**: `os.path.realpath()` for binary paths in polkit (UsrMerge symlink canonicalization)
+- **Fixed**: JavaScript `.rules` file for cross-DE polkit support (XFCE `allow_active=yes` doesn't work)
+- **Fixed**: `restorecon` after file writes for SELinux context reset
+- **Fixed**: `pkexec` uses absolute binary paths
+- 2291 tests across 34 files
+
+## v5.3.2
+
+### DRY Refactor
+- Extract shared helpers from 7 duplicate patterns across 5 files
+- -67 net lines
+- 2291 tests across 34 files
+
+## v5.3.1
+
+### LED Mask & Zone Fix
+- **Fixed**: LED mask_size (AK120 64, LC1 31) — was wrong for some device models
+- **Fixed**: LED zone_count for styles 9/12 → 0 (no zone cycling)
+- 2291 tests across 34 files
+
+## v5.3.0
+
+### Full Data Flow Audit
+- **Fixed**: API encoding path for REST adapter
+- **Fixed**: SCSI FBL 50 byte order correction
+- **Fixed**: FBL code propagation from handshake through entire pipeline
+- 2291 tests across 34 files
+
+## v5.2.3
+
+### FBL Propagation Fix
+- **Fixed**: `fbl_code` not propagated from handshake to device info — resolution was falling back to default
+- 2288 tests across 34 files
+
+## v5.2.2
+
+### HID Diagnostics
+- HID frame timeout scaling for large-resolution devices
+- `--test-frame` flag for `hid-debug` — sends a solid color test frame
+- SCSI raw bytes in `trcc report` for protocol debugging
+- 2286 tests across 34 files
+
+## v5.1.1
+
+### OOP/KISS Refactor
+- `cli.py` → `cli/` package (6 submodules)
+- DcWriter class → module functions
+- Controller `__getattr__` delegation (LEDController 26→6 methods, OverlayController 19→5)
+- LEDEffectEngine Strategy extraction
+- Hardware info → `adapters/system/hardware.py`
+- Net -69 lines
+- 2286 tests across 34 files
+
+## v5.1.0
+
+### Remove HR10 NVMe Support
+- Removed HR10 NVMe temperature daemon — Linux-only feature, not in C# reference, broken preview
+- -1762 lines removed
+- LED styles 1-12 (13 removed)
+- 2286 tests across 34 files
+
+## v5.0.10
+
+### LED & Bulk Fixes
+- **Fixed**: LED static/load-linked timeout (remove skip-unchanged keepalive)
+- **Fixed**: Font style bold/italic passthrough from QFontDialog
+- **Fixed**: Bulk rotation regression (skip pre-rotation for JPEG)
+- 2372 tests across 35 files
+
+## v5.0.9
+
+### LED GUI Overhaul
+- Match C# FormLED exactly — memory/disk panels at C# positions with golden text
+- Fix LF13 background_base localization
+- Fix sensor gauge visibility (only hide for styles 4/10)
+- Remove Linux-only CPU/GPU source toggle
+- HR10 renders as standard LED panel
+- GPU LED phase rotation fix
+- 2372 tests across 35 files
+
 ## v5.0.8
 
 ### HID Type 2 Color & Rotation Fix

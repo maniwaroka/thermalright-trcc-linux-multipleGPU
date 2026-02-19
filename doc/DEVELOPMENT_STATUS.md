@@ -2,9 +2,9 @@
 
 TRCC Linux is **feature-complete** — all 45 features from the Windows TRCC 2.0.3 have been ported, with full CLI/GUI/API parity via hexagonal architecture.
 
-**Current version:** 5.3.2
+**Current version:** 6.0.0
 **Branch:** `main`
-**Tests:** 2291 across 34 files
+**Tests:** 2306 across 34 files
 **PyPI:** [trcc-linux](https://pypi.org/project/trcc-linux/)
 
 ## What's Stable
@@ -22,7 +22,7 @@ All features are tested and working on the `main` branch:
 - **REST API** — optional FastAPI adapter for headless/remote control (`trcc serve`)
 - **Services layer** — 8 pure-Python service classes shared by GUI, CLI, and API
 - **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS, SteamOS, Bazzite
-- **96% test coverage** — 2291 tests across 34 test files
+- **96% test coverage** — 2306 tests across 34 test files
 
 ### Supported Devices
 
@@ -56,7 +56,7 @@ All features are tested and working on the `main` branch:
 | # | Item | Status |
 |---|------|--------|
 | 1 | Full GUI port of Windows TRCC 2.0.3 | Done |
-| 2 | Test coverage 96%+ | Done (2359 tests) |
+| 2 | Test coverage 96%+ | Done (2306 tests) |
 | 3 | CI/CD (GitHub Actions) | Done |
 | 4 | Type checking (pyright basic) | Done |
 | 5 | Cross-distro compatibility | Done |
@@ -76,7 +76,8 @@ All features are tested and working on the `main` branch:
 | 19 | Setup wizard (CLI + GUI) | Done — `trcc setup` + `trcc setup-gui` + `setup.sh` |
 | 20 | SELinux support | Done — `trcc setup-selinux` + policy module + wizard integration |
 | 21 | Windows C# feature parity audit | Done — 45/49 ported, 4 hidden/unreleased |
-| 22 | Type annotation hardening (pyright strict) | Planned |
+| 22 | GoF refactoring (5-phase OOP overhaul) | Done — -1203 lines, Facade/Flyweight/Strategy/Template Method/Memento |
+| 23 | Type annotation hardening (pyright strict) | Planned |
 
 ## Reporting Issues
 
@@ -92,6 +93,6 @@ If something breaks:
 - [DEVICE_TESTING.md](DEVICE_TESTING.md) — how to help test devices
 - [INSTALL_GUIDE.md](INSTALL_GUIDE.md) — installation for all distros
 - [CLI_REFERENCE.md](CLI_REFERENCE.md) — all 39 commands
-- [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — SCSI protocol (from USBLCD.exe reverse engineering)
-- [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB bulk protocol (from USBLCDNEW.exe reverse engineering)
-- [USBLED_PROTOCOL.md](USBLED_PROTOCOL.md) — HID LED protocol (from FormLED.cs reverse engineering)
+- [USBLCD_PROTOCOL.md](audit/USBLCD_PROTOCOL.md) — SCSI protocol (from USBLCD.exe reverse engineering)
+- [USBLCDNEW_PROTOCOL.md](audit/USBLCDNEW_PROTOCOL.md) — USB bulk protocol (from USBLCDNEW.exe reverse engineering)
+- [USBLED_PROTOCOL.md](audit/USBLED_PROTOCOL.md) — HID LED protocol (from FormLED.cs reverse engineering)

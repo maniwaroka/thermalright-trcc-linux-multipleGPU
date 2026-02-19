@@ -622,7 +622,7 @@ sudo modprobe sg
 
 ## See Also
 
-- [USBLCD_PROTOCOL.md](USBLCD_PROTOCOL.md) — Full SCSI protocol reverse-engineered from USBLCD.exe (handles `0402:3922`)
-- [USBLCDNEW_PROTOCOL.md](USBLCDNEW_PROTOCOL.md) — USB protocol reverse-engineered from USBLCDNEW.exe (handles `87CD:70DB`, `0416:5302`, `0416:5406`, `87AD:70DB`)
-- [USBLED_PROTOCOL.md](USBLED_PROTOCOL.md) — HID LED protocol reverse-engineered from FormLED.cs (handles `0416:8001`)
+- [USBLCD_PROTOCOL.md](audit/USBLCD_PROTOCOL.md) — Full SCSI protocol reverse-engineered from USBLCD.exe (handles `0402:3922`)
+- [USBLCDNEW_PROTOCOL.md](audit/USBLCDNEW_PROTOCOL.md) — USB protocol reverse-engineered from USBLCDNEW.exe (handles `87CD:70DB`, `0416:5302`, `0416:5406`, `87AD:70DB`)
+- [USBLED_PROTOCOL.md](audit/USBLED_PROTOCOL.md) — HID LED protocol reverse-engineered from FormLED.cs (handles `0416:8001`)
 - [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) — Full device compatibility list with tester credits

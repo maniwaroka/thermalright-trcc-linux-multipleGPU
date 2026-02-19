@@ -146,9 +146,9 @@ See the **[CLI Reference](doc/CLI_REFERENCE.md)** for all 39 commands, options, 
 | [Changelog](doc/CHANGELOG.md) | Version history |
 | [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
 | [Technical Reference](doc/TECHNICAL_REFERENCE.md) | SCSI protocol and file formats |
-| [USBLCD Protocol](doc/USBLCD_PROTOCOL.md) | SCSI protocol reverse-engineered from USBLCD.exe |
-| [USBLCDNEW Protocol](doc/USBLCDNEW_PROTOCOL.md) | USB bulk protocol reverse-engineered from USBLCDNEW.exe |
-| [USBLED Protocol](doc/USBLED_PROTOCOL.md) | HID LED protocol reverse-engineered from FormLED.cs |
+| [USBLCD Protocol](doc/audit/USBLCD_PROTOCOL.md) | SCSI protocol reverse-engineered from USBLCD.exe |
+| [USBLCDNEW Protocol](doc/audit/USBLCDNEW_PROTOCOL.md) | USB bulk protocol reverse-engineered from USBLCDNEW.exe |
+| [USBLED Protocol](doc/audit/USBLED_PROTOCOL.md) | HID LED protocol reverse-engineered from FormLED.cs |
 | [Testers Wanted](doc/TESTERS_WANTED.md) | Devices that need hardware validation |
 | [Device Testing Guide](doc/DEVICE_TESTING.md) | Device support and troubleshooting |
 | [Supported Devices](doc/SUPPORTED_DEVICES.md) | Full device list with USB IDs |
