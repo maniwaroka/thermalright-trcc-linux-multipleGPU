@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
-If this project helped you, consider [![Buy Me A Beer](https://img.shields.io/badge/buying%20me%20a%20beer-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/Lexonight1)
+If this project helped you, consider <a href="https://buymeacoffee.com/Lexonight1"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a beer&emoji=🍺&slug=Lexonight1&button_colour=FF5F5F&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00" height="28"></a>
 
 Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.0.3). Control and customize the LCD displays on Thermalright CPU coolers, AIO pump heads, and fan hubs — entirely from Linux.
 
