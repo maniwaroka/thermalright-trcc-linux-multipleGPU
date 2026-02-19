@@ -65,9 +65,11 @@ class TestSegmentEncoding:
     def test_space_is_blank(self):
         assert SegmentDisplay.CHAR_7SEG[' '] == set()
 
-    def test_13seg_0_is_blank(self):
-        """13-seg '0' = blank (leading zero suppression for hundreds)."""
-        assert SegmentDisplay.CHAR_13SEG['0'] == set()
+    def test_13seg_0_has_segments(self):
+        """13-seg '0' has digit-zero glyph; leading-zero suppression is in the method."""
+        assert SegmentDisplay.CHAR_13SEG['0'] == {
+            'a', 'b', 'c', 'd', 'e', 'f', 'h', 'i', 'j', 'k', 'l',
+        }
 
 
 # =========================================================================
@@ -117,6 +119,26 @@ class TestRegistry:
     ])
     def test_display_types(self, style_id, expected_type):
         assert isinstance(DISPLAYS[style_id], expected_type)
+
+    @pytest.mark.parametrize("style_id,expected_zones", [
+        (1, None), (2, 4), (3, None), (4, None), (5, None),
+        (6, None), (7, 3), (8, None), (9, None), (10, None), (11, None),
+    ])
+    def test_zone_led_map_across_styles(self, style_id, expected_zones):
+        """zone_led_map returns correct zone count or None for all styles."""
+        d = DISPLAYS[style_id]
+        zmap = d.zone_led_map
+        if expected_zones is None:
+            assert zmap is None
+        else:
+            assert zmap is not None
+            assert len(zmap) == expected_zones
+            # No overlaps
+            seen: set = set()
+            for zone in zmap:
+                zone_set = set(zone)
+                assert not (seen & zone_set)
+                seen |= zone_set
 
 
 # =========================================================================
@@ -274,6 +296,67 @@ class TestPA120Display:
         mask = self.d.compute_mask(HardwareMetrics(gpu_usage=99), 0, "C")
         assert mask[82] is False
         assert mask[83] is False
+
+    def test_zone_led_map_exists(self):
+        """PA120 has 4 physical zones: CPU temp, CPU usage, GPU temp, GPU usage."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        assert len(zmap) == 4
+
+    def test_zone_led_map_covers_active_leds(self):
+        """All active LED indices appear exactly once. Gaps 0, 1, 30 excluded."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        all_indices = sorted(idx for zone in zmap for idx in zone)
+        expected = sorted(set(range(84)) - {0, 1, 30})
+        assert all_indices == expected
+
+    def test_zone1_cpu_temp(self):
+        """Zone 1: CPU indicators + °C/°F + 3 temp digits."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        z1 = set(zmap[0])
+        assert {2, 3, 6, 7} <= z1  # CPU1, CPU2, SSD, HSD
+        for digit in self.d.CPU_TEMP_DIGITS:
+            assert set(digit) <= z1
+
+    def test_zone2_cpu_usage(self):
+        """Zone 2: % indicator + 2 usage digits + partial overflow."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        z2 = set(zmap[1])
+        assert 8 in z2  # BFB
+        for digit in self.d.CPU_USE_DIGITS:
+            assert set(digit) <= z2
+        assert {80, 81} <= z2  # CPU_USE_PARTIAL
+
+    def test_zone3_gpu_temp(self):
+        """Zone 3: GPU indicators + 3 temp digits."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        z3 = set(zmap[2])
+        assert {4, 5} <= z3  # GPU1, GPU2
+        for digit in self.d.GPU_TEMP_DIGITS:
+            assert set(digit) <= z3
+
+    def test_zone4_gpu_usage(self):
+        """Zone 4: 2 usage digits + partial overflow."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        z4 = set(zmap[3])
+        for digit in self.d.GPU_USE_DIGITS:
+            assert set(digit) <= z4
+        assert {82, 83} <= z4  # GPU_USE_PARTIAL
+
+    def test_no_zone_overlap(self):
+        """No LED index appears in more than one zone."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        seen: set = set()
+        for zone in zmap:
+            zone_set = set(zone)
+            assert not (seen & zone_set), f"Overlap: {seen & zone_set}"
+            seen |= zone_set
 
 
 # =========================================================================
@@ -498,6 +581,51 @@ class TestLF10Display:
         for led in self.d.DIGIT_LEDS_13[0]:
             assert mask[led] is False
 
+    def test_zone_led_map_exists(self):
+        """LF10 has 3 physical zones: CPU, GPU, accent."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        assert len(zmap) == 3
+
+    def test_zone_led_map_covers_all_leds(self):
+        """All 116 LED indices appear exactly once across zones."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        all_indices = sorted(idx for zone in zmap for idx in zone)
+        assert all_indices == list(range(116))
+
+    def test_zone1_cpu_side(self):
+        """Zone 1 owns CPU indicator, digits 1-3, °C/°F, decorative 1-10."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        z1 = set(zmap[0])
+        assert 0 in z1   # CPU1
+        assert 1 in z1   # SSD
+        assert 2 in z1   # HSD
+        for i in range(6, 45):
+            assert i in z1   # digits 1-3
+        for i in range(84, 94):
+            assert i in z1   # decorative 1-10
+
+    def test_zone2_gpu_side(self):
+        """Zone 2 owns GPU indicator, digits 4-6, °C/°F, decorative 11-20."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        z2 = set(zmap[1])
+        assert 3 in z2   # GPU1
+        assert 4 in z2   # SSD1
+        assert 5 in z2   # HSD1
+        for i in range(45, 84):
+            assert i in z2   # digits 4-6
+        for i in range(94, 104):
+            assert i in z2   # decorative 11-20
+
+    def test_zone3_accent(self):
+        """Zone 3 owns decorative 21-32 (accent LEDs only)."""
+        zmap = self.d.zone_led_map
+        assert zmap is not None
+        assert set(zmap[2]) == set(range(104, 116))
+
 
 # =========================================================================
 # Style 8 — CZ1 (18 LEDs, 2 digits, 4-phase)
@@ -627,7 +755,7 @@ class TestLC2Display:
 
 
 # =========================================================================
-# Style 10 — LF11 (38 LEDs, 3-phase hard-disk sensor)
+# Style 10 — LF11 (38 LEDs, 4-phase hard-disk sensor)
 # =========================================================================
 
 class TestLF11Display:
@@ -638,7 +766,7 @@ class TestLF11Display:
         assert self.d.mask_size == 38
 
     def test_phase_count(self):
-        assert self.d.phase_count == 3
+        assert self.d.phase_count == 4
 
     def test_disk_temp_phase(self):
         """Phase 0: disk_temp → SSD indicator on, 3-digit + C/F unit."""
@@ -658,6 +786,13 @@ class TestLF11Display:
         mask = self.d.compute_mask(HardwareMetrics(disk_read=500), 2, "C")
         assert mask[2] is True   # MHz
         assert mask[0] is False  # SSD
+
+    def test_disk_write_phase(self):
+        """Phase 3: disk_write → MHz indicator on, 5-digit value."""
+        mask = self.d.compute_mask(HardwareMetrics(disk_write=300), 3, "C")
+        assert mask[2] is True   # MHz (same mode as read)
+        assert mask[0] is False  # SSD
+        assert mask[1] is False  # BFB
 
     def test_temp_phase_has_unit(self):
         """Temperature phase shows unit symbol in digit 4."""
@@ -739,26 +874,32 @@ class TestLEDServiceSegmentMode:
         svc = self._make_service(12)
         assert svc._segment_mode is False
 
-    def test_tick_advances_rotation(self):
+    def test_phase_follows_selected_zone(self):
+        """Phase locks to selected zone when circulate is off."""
         svc = self._make_service(1)
-        svc._seg_phase_ticks = 5
-        for _ in range(5):
-            svc.tick()
-        assert svc._seg_phase == 1
+        assert svc._seg_phase == 0
+        svc.set_selected_zone(2)
+        svc.tick()
+        assert svc._seg_phase == 2
 
-    def test_tick_wraps_at_phase_count(self):
-        """Phase wraps using display's phase_count, not hardcoded 4."""
-        svc = self._make_service(3)  # AK120: 2 phases
-        svc._seg_phase_ticks = 1
-        for _ in range(2):
-            svc.tick()
-        assert svc._seg_phase == 0  # Wrapped from 1 back to 0
+    def test_phase_follows_carousel(self):
+        """Phase follows carousel rotation when circulate is on."""
+        svc = self._make_service(1)
+        svc.state.zone_sync = True
+        svc.state.zone_sync_zones = [True, False, True, False]
+        svc.state.zone_sync_current = 0
+        svc.state.zone_sync_interval = 1
+        svc.tick()
+        assert svc._seg_phase == 2
 
-    def test_tick_wraps_4_phase(self):
-        svc = self._make_service(1)  # AX120: 4 phases
-        svc._seg_phase_ticks = 1
-        for _ in range(4):
-            svc.tick()
+    def test_phase_carousel_wraps(self):
+        """Carousel wraps around enabled zones."""
+        svc = self._make_service(1)
+        svc.state.zone_sync = True
+        svc.state.zone_sync_zones = [True, False, False, True]
+        svc.state.zone_sync_current = 3
+        svc.state.zone_sync_interval = 1
+        svc.tick()
         assert svc._seg_phase == 0
 
     def test_update_segment_mask(self):

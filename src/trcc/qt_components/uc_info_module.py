@@ -107,8 +107,9 @@ class UCInfoModule(QWidget):
                 value = getattr(metrics, key, None)
                 if value is not None and isinstance(value, (int, float)):
                     if 'temp' in key:
+                        from ..core.models import celsius_to_fahrenheit
                         if self._temp_unit == '\u00b0F':
-                            value = value * 9 / 5 + 32
+                            value = celsius_to_fahrenheit(value)
                         box.value_label.setText(f"{int(value)}{self._temp_unit}")
                     elif 'usage' in key or 'percent' in key:
                         box.value_label.setText(f"{int(value)}%")

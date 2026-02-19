@@ -15,17 +15,13 @@ import inspect
 import unittest
 from dataclasses import fields
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from PIL import Image
 
 from trcc.core.controllers import (
-    DeviceController,
     LCDDeviceController,
-    LEDController,
-    OverlayController,
-    ThemeController,
-    VideoController,
+    LEDDeviceController,
     create_controller,
 )
 from trcc.core.models import (
@@ -50,28 +46,7 @@ SERVICES_DIR = Path(__file__).resolve().parent.parent / 'src' / 'trcc' / 'servic
 
 
 class TestDependencyInjection(unittest.TestCase):
-    """Controllers accept injected services — never create their own."""
-
-    def test_theme_controller_accepts_injected_service(self):
-        """ThemeController uses the injected ThemeService, not a new one."""
-        svc = ThemeService()
-        ctrl = ThemeController(svc)
-        self.assertIs(ctrl.svc, svc)
-
-    def test_device_controller_accepts_injected_service(self):
-        svc = DeviceService()
-        ctrl = DeviceController(svc)
-        self.assertIs(ctrl.svc, svc)
-
-    def test_video_controller_accepts_injected_service(self):
-        svc = MediaService()
-        ctrl = VideoController(svc)
-        self.assertIs(ctrl.svc, svc)
-
-    def test_overlay_controller_accepts_injected_service(self):
-        svc = OverlayService()
-        ctrl = OverlayController(svc)
-        self.assertIs(ctrl.svc, svc)
+    """Services accept injected sub-services — never create their own."""
 
     def test_display_service_accepts_injected_sub_services(self):
         """DisplayService receives DeviceService, OverlayService, MediaService."""
@@ -83,21 +58,19 @@ class TestDependencyInjection(unittest.TestCase):
         self.assertIs(svc.overlay, ovl)
         self.assertIs(svc.media, med)
 
-    def test_controllers_default_to_fresh_service(self):
-        """When no service injected, controllers create their own."""
-        self.assertIsInstance(ThemeController().svc, ThemeService)
-        self.assertIsInstance(DeviceController().svc, DeviceService)
-        self.assertIsInstance(VideoController().svc, MediaService)
-        self.assertIsInstance(OverlayController().svc, OverlayService)
-
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_shared_services_across_controllers(self, _):
-        """LCDDeviceController shares service instances with sub-controllers."""
+    def test_facade_exposes_service_instances(self, _):
+        """LCDDeviceController shares its services via accessor properties."""
         ctrl = LCDDeviceController()
-        # Sub-controllers reference the same service objects as DisplayService
-        self.assertIs(ctrl.devices.svc, ctrl._display.devices)
-        self.assertIs(ctrl.overlay.svc, ctrl._display.overlay)
-        self.assertIs(ctrl.video.svc, ctrl._display.media)
+        self.assertIsInstance(ctrl.theme_svc, ThemeService)
+        self.assertIsInstance(ctrl.device_svc, DeviceService)
+        self.assertIsInstance(ctrl.overlay_svc, OverlayService)
+        self.assertIsInstance(ctrl.media_svc, MediaService)
+        self.assertIsInstance(ctrl.lcd_svc, DisplayService)
+        # Service accessors point to the same objects as DisplayService
+        self.assertIs(ctrl.device_svc, ctrl._display.devices)
+        self.assertIs(ctrl.overlay_svc, ctrl._display.overlay)
+        self.assertIs(ctrl.media_svc, ctrl._display.media)
 
 
 # =============================================================================
@@ -106,60 +79,53 @@ class TestDependencyInjection(unittest.TestCase):
 
 
 class TestObserverPattern(unittest.TestCase):
-    """Controllers broadcast state changes via callbacks (Observer pattern)."""
+    """Facade controllers broadcast state changes via callbacks (Observer)."""
 
-    def test_theme_controller_fires_on_theme_selected(self):
-        ctrl = ThemeController()
-        fired = []
-        ctrl.on_theme_selected = lambda t: fired.append(t)
-        theme = ThemeInfo(name='test')
-        ctrl.select_theme(theme)
-        self.assertEqual(len(fired), 1)
-        self.assertEqual(fired[0].name, 'test')
+    def setUp(self):
+        self.patches = [
+            patch('trcc.adapters.infra.data_repository.DataManager.ensure_all'),
+            patch('trcc.conf.Settings._save_resolution'),
+        ]
+        for p in self.patches:
+            p.start()
 
-    def test_theme_controller_fires_on_filter_changed(self):
-        ctrl = ThemeController()
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+
+    def test_facade_fires_on_filter_changed(self):
+        ctrl = LCDDeviceController()
         fired = []
         ctrl.on_filter_changed = lambda m: fired.append(m)
-        ctrl.set_filter('user')
+        ctrl.set_theme_filter('user')
         self.assertEqual(fired, ['user'])
 
-    def test_device_controller_fires_on_devices_changed(self):
-        svc = DeviceService()
-        ctrl = DeviceController(svc)
-        fired = []
-        ctrl.on_devices_changed = lambda devs: fired.append(devs)
-        with patch.object(svc, 'detect', return_value=[]):
-            ctrl.detect_devices()
-        self.assertEqual(len(fired), 1)
-
-    def test_device_controller_fires_on_device_selected(self):
-        ctrl = DeviceController()
+    def test_facade_fires_on_device_selected(self):
+        ctrl = LCDDeviceController()
         fired = []
         ctrl.on_device_selected = lambda d: fired.append(d)
         dev = DeviceInfo(name='test', path='/dev/sg0')
         ctrl.select_device(dev)
         self.assertEqual(len(fired), 1)
 
-    def test_overlay_controller_fires_on_config_changed(self):
-        ctrl = OverlayController()
+    def test_facade_fires_on_overlay_config_changed(self):
+        ctrl = LCDDeviceController()
         fired = []
-        ctrl.on_config_changed = lambda: fired.append(True)
-        ctrl.set_config({'elements': []})
+        ctrl.on_overlay_config_changed = lambda: fired.append(True)
+        ctrl.set_overlay_config({'elements': []})
         self.assertEqual(len(fired), 1)
 
     def test_no_callback_no_crash(self):
         """When no callback registered, operations don't raise."""
-        ctrl = ThemeController()
-        ctrl.select_theme(ThemeInfo(name='test'))  # no on_theme_selected set
-        ctrl.set_filter('all')                     # no on_filter_changed set
+        ctrl = LCDDeviceController()
+        ctrl.set_theme_filter('all')       # no on_filter_changed set
+        ctrl.set_overlay_config({})         # no on_overlay_config_changed set
 
     def test_led_controller_observer_wiring(self):
-        """LEDController wires model callbacks to its own."""
-        ctrl = LEDController()
+        """LEDDeviceController wires model callbacks to its own."""
+        ctrl = LEDDeviceController()
         fired = []
         ctrl.on_state_changed = lambda s: fired.append(s)
-        # Trigger model state change
         ctrl.set_color(255, 0, 0)
         self.assertTrue(len(fired) > 0)
 
@@ -173,23 +139,15 @@ class TestFactoryPattern(unittest.TestCase):
     """Factory methods create fully wired object graphs."""
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_create_controller_returns_wired_graph(self, _):
-        """create_controller() builds the complete controller tree."""
+    def test_create_controller_returns_facade(self, _):
+        """create_controller() builds a fully wired LCDDeviceController."""
         ctrl = create_controller()
         self.assertIsInstance(ctrl, LCDDeviceController)
-        self.assertIsInstance(ctrl.themes, ThemeController)
-        self.assertIsInstance(ctrl.devices, DeviceController)
-        self.assertIsInstance(ctrl.video, VideoController)
-        self.assertIsInstance(ctrl.overlay, OverlayController)
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_create_controller_callbacks_wired(self, _):
-        """Factory wires internal callbacks between sub-controllers."""
-        ctrl = create_controller()
-        # _on_theme_selected, _on_video_frame, _on_device_selected
-        self.assertIsNotNone(ctrl.themes.on_theme_selected)
-        self.assertIsNotNone(ctrl.video.on_frame_ready)
-        self.assertIsNotNone(ctrl.devices.on_device_selected)
+        # Facade has internal services wired up
+        self.assertIsNotNone(ctrl.theme_svc)
+        self.assertIsNotNone(ctrl.device_svc)
+        self.assertIsNotNone(ctrl.overlay_svc)
+        self.assertIsNotNone(ctrl.media_svc)
 
 
 # =============================================================================
@@ -366,63 +324,69 @@ class TestServiceIsolation(unittest.TestCase):
 
 
 # =============================================================================
-# Controller Thinness — controllers delegate, don't compute
+# Controller Thinness — facade delegates, doesn't compute
 # =============================================================================
 
 
 class TestControllerThinness(unittest.TestCase):
-    """Controllers are thin waiters — call service, fire callback."""
+    """Facade controllers delegate to services — no business logic."""
 
-    def test_theme_controller_delegates_filter(self):
-        svc = MagicMock(spec=ThemeService)
-        ctrl = ThemeController(svc)
-        ctrl.set_filter('user')
-        svc.set_filter.assert_called_once_with('user')
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_filter(self, _):
+        ctrl = LCDDeviceController()
+        with patch.object(ctrl.theme_svc, 'set_filter') as m:
+            ctrl.set_theme_filter('user')
+            m.assert_called_once_with('user')
 
-    def test_theme_controller_delegates_select(self):
-        svc = MagicMock(spec=ThemeService)
-        ctrl = ThemeController(svc)
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_select(self, _):
+        ctrl = LCDDeviceController()
         theme = ThemeInfo(name='test')
-        ctrl.select_theme(theme)
-        svc.select.assert_called_once_with(theme)
+        with patch.object(ctrl.theme_svc, 'select') as m, \
+             patch.object(ctrl, 'load_local_theme'):
+            ctrl.select_theme(theme)
+            m.assert_called_once_with(theme)
 
-    def test_device_controller_delegates_detect(self):
-        svc = MagicMock(spec=DeviceService)
-        svc.devices = []
-        svc.selected = None
-        ctrl = DeviceController(svc)
-        ctrl.detect_devices()
-        svc.detect.assert_called_once()
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_detect(self, _):
+        ctrl = LCDDeviceController()
+        with patch.object(ctrl.device_svc, 'detect') as m:
+            ctrl.detect_devices()
+            m.assert_called_once()
 
-    def test_video_controller_delegates_play(self):
-        svc = MagicMock(spec=MediaService)
-        ctrl = VideoController(svc)
-        ctrl.play()
-        svc.play.assert_called_once()
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_play(self, _):
+        ctrl = LCDDeviceController()
+        with patch.object(ctrl.media_svc, 'play') as m:
+            ctrl.play_video()
+            m.assert_called_once()
 
-    def test_video_controller_delegates_pause(self):
-        svc = MagicMock(spec=MediaService)
-        ctrl = VideoController(svc)
-        ctrl.pause()
-        svc.pause.assert_called_once()
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_pause(self, _):
+        ctrl = LCDDeviceController()
+        with patch.object(ctrl.media_svc, 'pause') as m:
+            ctrl.pause_video()
+            m.assert_called_once()
 
-    def test_video_controller_delegates_stop(self):
-        svc = MagicMock(spec=MediaService)
-        ctrl = VideoController(svc)
-        ctrl.stop()
-        svc.stop.assert_called_once()
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_stop(self, _):
+        ctrl = LCDDeviceController()
+        with patch.object(ctrl.media_svc, 'stop') as m:
+            ctrl.stop_video()
+            m.assert_called_once()
 
-    def test_overlay_controller_delegates_enable(self):
-        svc = OverlayService()
-        ctrl = OverlayController(svc)
-        ctrl.enable(True)
-        self.assertTrue(svc.enabled)
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_overlay_enable(self, _):
+        ctrl = LCDDeviceController()
+        ctrl.enable_overlay(True)
+        self.assertTrue(ctrl.overlay_svc.enabled)
 
-    def test_overlay_controller_delegates_render(self):
-        svc = MagicMock(spec=OverlayService)
-        ctrl = OverlayController(svc)
-        ctrl.render(force=True)
-        svc.render.assert_called_once()
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_facade_delegates_overlay_render(self, _):
+        ctrl = LCDDeviceController()
+        with patch.object(ctrl.overlay_svc, 'render') as m:
+            ctrl.render_overlay(force=True)
+            m.assert_called_once()
 
 
 # =============================================================================

@@ -229,6 +229,56 @@ class DeviceProtocol(ABC):
 
 
 # =========================================================================
+# UsbProtocol — shared USB transport lifecycle for HID + LED
+# =========================================================================
+
+class UsbProtocol(DeviceProtocol):
+    """Base for USB-transport protocols (HID LCD, LED).
+
+    Manages lazy transport lifecycle: open on first use, close on cleanup.
+    Subclasses implement protocol-specific handshake, send, and info.
+    """
+
+    def __init__(self, vid: int, pid: int):
+        super().__init__()
+        self._vid = vid
+        self._pid = pid
+        self._transport = None
+
+    def _ensure_transport(self) -> None:
+        """Lazily open USB transport on first use."""
+        if self._transport is None:
+            log.debug("Opening %s transport: %04X:%04X",
+                      self.protocol_name, self._vid, self._pid)
+            self._transport = DeviceProtocolFactory.create_usb_transport(
+                self._vid, self._pid)
+            self._transport.open()
+            self._notify_state_changed("transport_open", True)
+
+    def _close_transport(self) -> None:
+        """Close USB transport and notify observers."""
+        if self._transport is not None:
+            try:
+                self._transport.close()
+            except Exception:
+                pass
+            self._transport = None
+            self._notify_state_changed("transport_open", False)
+
+    def close(self) -> None:
+        self._close_transport()
+
+    @property
+    def _handshake_label(self) -> str:
+        return f"{self.protocol_name.upper()} {self._vid:04X}:{self._pid:04X}"
+
+    @property
+    def is_available(self) -> bool:
+        backends = DeviceProtocolFactory._get_hid_backends()
+        return backends["pyusb"] or backends["hidapi"]
+
+
+# =========================================================================
 # ScsiProtocol — SCSI/sg_raw implementation
 # =========================================================================
 
@@ -288,7 +338,7 @@ class ScsiProtocol(DeviceProtocol):
 # HidProtocol — HID/USB bulk implementation
 # =========================================================================
 
-class HidProtocol(DeviceProtocol):
+class HidProtocol(UsbProtocol):
     """LCD communication via HID USB bulk protocol (pyusb or hidapi).
 
     Wraps hid_device.py. Transport opens lazily on first send.
@@ -296,19 +346,8 @@ class HidProtocol(DeviceProtocol):
     """
 
     def __init__(self, vid: int, pid: int, device_type: int):
-        super().__init__()
-        self._vid = vid
-        self._pid = pid
+        super().__init__(vid, pid)
         self._device_type = device_type
-        self._transport = None
-
-    def _ensure_transport(self) -> None:
-        """Lazily open USB transport on first use."""
-        if self._transport is None:
-            log.debug("Opening HID transport: %04X:%04X (type %d)", self._vid, self._pid, self._device_type)
-            self._transport = self._create_transport()
-            self._transport.open()
-            self._notify_state_changed("transport_open", True)
 
     def _do_handshake(self) -> Optional[HandshakeResult]:
         """Open HID transport and perform type-specific handshake."""
@@ -347,19 +386,6 @@ class HidProtocol(DeviceProtocol):
             )
         return self._guarded_send("HID", _do_send)
 
-    def _close_transport(self) -> None:
-        """Close USB transport and notify observers."""
-        if self._transport is not None:
-            try:
-                self._transport.close()
-            except Exception:
-                pass
-            self._transport = None
-            self._notify_state_changed("transport_open", False)
-
-    def close(self) -> None:
-        self._close_transport()
-
     def get_info(self) -> 'ProtocolInfo':
         return self._build_usb_protocol_info(
             "hid", self._device_type, "HID (USB bulk)",
@@ -367,18 +393,9 @@ class HidProtocol(DeviceProtocol):
             self._transport is not None and getattr(self._transport, 'is_open', False),
         )
 
-    def _create_transport(self):
-        """Create the best available USB transport."""
-        return DeviceProtocolFactory.create_usb_transport(self._vid, self._pid)
-
     @property
     def protocol_name(self) -> str:
         return "hid"
-
-    @property
-    def is_available(self) -> bool:
-        backends = DeviceProtocolFactory._get_hid_backends()
-        return backends["pyusb"] or backends["hidapi"]
 
     def __repr__(self) -> str:
         return (
@@ -391,7 +408,7 @@ class HidProtocol(DeviceProtocol):
 # LedProtocol — HID LED RGB controller
 # =========================================================================
 
-class LedProtocol(DeviceProtocol):
+class LedProtocol(UsbProtocol):
     """LED device communication via HID 64-byte reports (FormLED equivalent).
 
     Unlike HidProtocol (LCD images), LedProtocol sends LED color arrays
@@ -399,10 +416,7 @@ class LedProtocol(DeviceProtocol):
     """
 
     def __init__(self, vid: int, pid: int):
-        super().__init__()
-        self._vid = vid
-        self._pid = pid
-        self._transport = None
+        super().__init__(vid, pid)
         self._sender = None
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
@@ -416,17 +430,7 @@ class LedProtocol(DeviceProtocol):
         global_on: bool = True,
         brightness: int = 100,
     ) -> bool:
-        """Send LED color data to the device.
-
-        Args:
-            led_colors: List of (R, G, B) tuples, one per LED.
-            is_on: Per-LED on/off state. None means all on.
-            global_on: Global on/off switch.
-            brightness: Global brightness 0-100.
-
-        Returns:
-            True if the send succeeded.
-        """
+        """Send LED color data to the device."""
         def _do_send() -> bool:
             self._ensure_transport()
             assert self._transport is not None
@@ -437,7 +441,6 @@ class LedProtocol(DeviceProtocol):
 
             from .led import LedPacketBuilder, remap_led_colors
 
-            # Remap logical LED order → physical wire order (per-style).
             hr = self._handshake_result
             style = getattr(hr, 'style', None) if hr else None
             remapped = remap_led_colors(led_colors, style.style_id) if style else led_colors
@@ -447,13 +450,6 @@ class LedProtocol(DeviceProtocol):
             )
             return self._sender.send_led_data(packet)
         return self._guarded_send("LED", _do_send)
-
-    def _ensure_transport(self) -> None:
-        """Lazily open USB transport on first use."""
-        if self._transport is None:
-            self._transport = self._create_transport()
-            self._transport.open()
-            self._notify_state_changed("transport_open", True)
 
     def _do_handshake(self) -> Optional[HandshakeResult]:
         """LED handshake — cached after first call (firmware ignores re-handshakes)."""
@@ -471,20 +467,6 @@ class LedProtocol(DeviceProtocol):
         self._notify_state_changed("handshake_complete", True)
         return result
 
-    @property
-    def _handshake_label(self) -> str:
-        return f"LED {self._vid:04X}:{self._pid:04X}"
-
-    def _close_transport(self) -> None:
-        """Close USB transport and notify observers."""
-        if self._transport is not None:
-            try:
-                self._transport.close()
-            except Exception:
-                pass
-            self._transport = None
-            self._notify_state_changed("transport_open", False)
-
     def close(self) -> None:
         self._close_transport()
         self._sender = None
@@ -495,18 +477,9 @@ class LedProtocol(DeviceProtocol):
             self._transport is not None and getattr(self._transport, 'is_open', False),
         )
 
-    def _create_transport(self):
-        """Create the best available USB transport."""
-        return DeviceProtocolFactory.create_usb_transport(self._vid, self._pid)
-
     @property
     def protocol_name(self) -> str:
         return "led"
-
-    @property
-    def is_available(self) -> bool:
-        backends = DeviceProtocolFactory._get_hid_backends()
-        return backends["pyusb"] or backends["hidapi"]
 
     @property
     def is_led(self) -> bool:

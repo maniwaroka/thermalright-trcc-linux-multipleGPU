@@ -14,7 +14,7 @@ class LEDEffectEngine:
     """Compute per-segment RGB colors for LED animation effects.
 
     Holds references to LEDState and HardwareMetrics. Mutates state timers
-    (rgb_timer, test_timer, zone_carousel_ticks) as side effects of computation.
+    (rgb_timer, test_timer, zone_sync_ticks) as side effects of computation.
     """
 
     _TEST_COLORS = [(1, 1, 1), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
@@ -60,49 +60,38 @@ class LEDEffectEngine:
         color = self._TEST_COLORS[st.test_color]
         return [color] * st.led_count
 
-    def _tick_multi_zone(self) -> List[Tuple[int, int, int]]:
-        """Compute per-zone colors for multi-zone devices.
+    def _tick_multi_zone(
+        self, zone_map: tuple[tuple[int, ...], ...],
+    ) -> List[Tuple[int, int, int]]:
+        """Compute per-zone colors using physical LED index mapping.
 
-        When carousel (LunBo) is enabled, only the currently active zone
-        lights up and the device cycles through selected zones on a timer.
+        Each zone's LEDs are placed at their mapped indices.
+        Zone map comes from SegmentDisplay.zone_led_map.
         """
         st = self._state
-        total = st.segment_count
-        zone_count = len(st.zones)
-        colors: List[Tuple[int, int, int]] = []
-
-        # Advance carousel timer
-        if st.zone_carousel:
-            st.zone_carousel_ticks += 1
-            if st.zone_carousel_ticks >= st.zone_carousel_interval:
-                st.zone_carousel_ticks = 0
-                st.zone_carousel_current = self._next_carousel_zone(
-                    st.zone_carousel_current)
-
-        active_zone = st.zone_carousel_current if st.zone_carousel else None
-
-        for zi, zone in enumerate(st.zones):
-            base = total // zone_count
-            n_segs = base + (1 if zi < total % zone_count else 0)
-
-            # Zone off, or carousel active and not this zone's turn
-            if not zone.on or (active_zone is not None and zi != active_zone):
-                colors.extend([(0, 0, 0)] * n_segs)
-            else:
-                zone_colors = self._tick_single_mode(zone.mode, zone.color, n_segs)
-                if zone.brightness < 100:
-                    scale = zone.brightness / 100.0
-                    zone_colors = [
-                        (int(r * scale), int(g * scale), int(b * scale))
-                        for r, g, b in zone_colors
-                    ]
-                colors.extend(zone_colors)
-
+        zones = st.zones
+        total = st.led_count
+        colors: List[Tuple[int, int, int]] = [(0, 0, 0)] * total
+        for zi, led_indices in enumerate(zone_map):
+            if zi >= len(zones):
+                break
+            z = zones[zi]
+            if not z.on:
+                continue
+            n = len(led_indices)
+            zc = self._tick_single_mode(z.mode, z.color, n)
+            if z.brightness < 100:
+                scale = z.brightness / 100.0
+                zc = [(int(r * scale), int(g * scale), int(b * scale))
+                      for r, g, b in zc]
+            for i, idx in enumerate(led_indices):
+                if idx < total:
+                    colors[idx] = zc[i]
         return colors
 
-    def _next_carousel_zone(self, current: int) -> int:
-        """Find next enabled zone in carousel, wrapping around."""
-        zones = self._state.zone_carousel_zones
+    def _next_sync_zone(self, current: int) -> int:
+        """Find next enabled zone in sync rotation, wrapping around."""
+        zones = self._state.zone_sync_zones
         n = len(zones)
         for offset in range(1, n + 1):
             candidate = (current + offset) % n

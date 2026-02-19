@@ -12,6 +12,24 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 from ..adapters.infra.data_repository import ThemeDir
 
 # =============================================================================
+# Temperature conversion — single source of truth
+# =============================================================================
+
+
+def celsius_to_fahrenheit(celsius: float) -> float:
+    """Convert Celsius to Fahrenheit. C#: value * 9 / 5 + 32."""
+    return celsius * 9 / 5 + 32
+
+
+def display_temp(celsius: float, unit: str = "C") -> int:
+    """Convert temperature for display. Returns int for segment digits."""
+    v = int(celsius)
+    if unit == "F":
+        v = int(celsius_to_fahrenheit(celsius))
+    return v
+
+
+# =============================================================================
 # Browser Item Dataclasses (replace raw dicts in theme/mask panels)
 # =============================================================================
 
@@ -421,12 +439,15 @@ class LEDState:
     # Segment carousel interval (ticks per phase, ~30ms per tick → 100 = ~3s)
     carousel_interval: int = 100
 
-    # Zone carousel (LunBo) — C# isLunBo + LunBo1-4 + nowLunbo
-    zone_carousel: bool = False          # isLunBo: rotate between zones
-    zone_carousel_zones: List[bool] = field(default_factory=list)  # LunBo1-4
-    zone_carousel_current: int = 0       # nowLunbo: current active zone
-    zone_carousel_ticks: int = 0         # ValCount: tick counter
-    zone_carousel_interval: int = 36     # 6 * textBoxTimer (default 6s)
+    # Zone sync (C# isLunBo) — one checkbox, behavior depends on style:
+    #   Styles 2/7: "Select all" — sync all zones to same mode/color/brightness
+    #   Other styles: "Circulate" — timer-rotate through enabled zones
+    selected_zone: int = 0               # Currently selected zone (UI)
+    zone_sync: bool = False              # isLunBo: checkbox state
+    zone_sync_zones: List[bool] = field(default_factory=list)  # LunBo1-4
+    zone_sync_current: int = 0           # nowLunbo: current active zone
+    zone_sync_ticks: int = 0             # ValCount: tick counter
+    zone_sync_interval: int = 36         # 6 * textBoxTimer (default 6s)
 
     # LC2 clock settings (style 9)
     is_timer_24h: bool = True
@@ -437,8 +458,8 @@ class LEDState:
             self.segment_on = [True] * self.segment_count
         if not self.zones and self.zone_count > 1:
             self.zones = [LEDZoneState() for _ in range(self.zone_count)]
-        if not self.zone_carousel_zones and self.zone_count > 1:
-            self.zone_carousel_zones = [True] + [False] * (self.zone_count - 1)
+        if not self.zone_sync_zones and self.zone_count > 1:
+            self.zone_sync_zones = [True] + [False] * (self.zone_count - 1)
 
 
 # =============================================================================

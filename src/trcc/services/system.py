@@ -293,9 +293,9 @@ class SystemService:
         elif metric.startswith('time_') or metric.startswith('date_'):
             return f"{int(value):02d}"
         elif 'temp' in metric:
+            from ..core.models import celsius_to_fahrenheit
             if temp_unit == 1:  # Fahrenheit
-                fahrenheit = value * 9 / 5 + 32
-                return f"{fahrenheit:.0f}°F"
+                return f"{celsius_to_fahrenheit(value):.0f}°F"
             else:
                 return f"{value:.0f}°C"
         elif 'percent' in metric or 'usage' in metric or 'activity' in metric:

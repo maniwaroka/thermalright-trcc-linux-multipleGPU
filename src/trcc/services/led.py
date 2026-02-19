@@ -14,6 +14,31 @@ from .led_effects import LEDEffectEngine
 
 log = logging.getLogger(__name__)
 
+# Config persistence field map: config_key → LEDState attribute.
+# One map drives both save_config() and load_config() — add a field here once.
+_PERSIST_FIELDS: Dict[str, str] = {
+    'mode': 'mode',
+    'color': 'color',
+    'brightness': 'brightness',
+    'global_on': 'global_on',
+    'segments_on': 'segment_on',
+    'temp_source': 'temp_source',
+    'load_source': 'load_source',
+    'is_timer_24h': 'is_timer_24h',
+    'is_week_sunday': 'is_week_sunday',
+    'disk_index': 'disk_index',
+    'memory_ratio': 'memory_ratio',
+    'zone_sync': 'zone_sync',
+    'zone_sync_interval': 'zone_sync_interval',
+}
+
+# Backward-compat aliases (v5.0.x config keys → current keys)
+_ALIASES: Dict[str, str] = {
+    'zone_carousel': 'zone_sync',
+    'zone_carousel_zones': 'zone_sync_zones',
+    'zone_carousel_interval': 'zone_sync_interval',
+}
+
 
 class LEDService:
     """LED state management, effect computation, config persistence, device send.
@@ -26,11 +51,15 @@ class LEDService:
     - Style resolution (model_name -> style_id)
     """
 
+    # Styles where the checkbox means "Select all" (sync all zones)
+    # instead of "Circulate" (timer rotation). C# FormLED.cs buttonLB_Click.
+    SELECT_ALL_STYLES = frozenset({2, 7})
+
     # Methods delegated to LEDEffectEngine via __getattr__
     _ENGINE_METHODS = frozenset({
         '_tick_single_mode', '_tick_test_mode', '_tick_multi_zone',
         '_tick_breathing_for', '_tick_colorful_for', '_tick_rainbow_for',
-        '_tick_temp_linked_for', '_tick_load_linked_for', '_next_carousel_zone',
+        '_tick_temp_linked_for', '_tick_load_linked_for', '_next_sync_zone',
     })
 
     def __init__(self, state: LEDState | None = None) -> None:
@@ -111,41 +140,68 @@ class LEDService:
         self.state.test_timer = 0
         self.state.test_color = 0
 
-    def set_zone_carousel(self, enabled: bool) -> None:
-        """Enable/disable zone carousel (C# isLunBo)."""
-        self.state.zone_carousel = enabled
-        if enabled:
-            self.state.zone_carousel_ticks = 0
-            self.state.zone_carousel_current = self._next_carousel_zone(-1)
+    def set_selected_zone(self, zone: int) -> None:
+        """Set the currently selected zone (drives segment display phase)."""
+        self.state.selected_zone = zone
 
-    def set_zone_carousel_zone(self, zone: int, selected: bool) -> None:
-        """Toggle a zone's participation in carousel (C# LunBo1-4)."""
-        if 0 <= zone < len(self.state.zone_carousel_zones):
-            # Ensure at least one zone remains selected
+    def set_zone_sync(self, enabled: bool) -> None:
+        """Enable/disable zone sync (C# isLunBo).
+
+        One checkbox, one flag. Style determines behavior:
+        Styles 2/7: "Select all" — sync all zones to selected zone's settings.
+        Other styles: "Circulate" — timer-based rotation through enabled zones.
+        """
+        self.state.zone_sync = enabled
+        if enabled:
+            if self._led_style in self.SELECT_ALL_STYLES:
+                self._sync_all_zones_to_selected()
+            else:
+                self.state.zone_sync_ticks = 0
+                self.state.zone_sync_current = self._next_sync_zone(-1)
+
+    def set_zone_sync_zone(self, zone: int, selected: bool) -> None:
+        """Toggle a zone's participation in sync rotation (C# LunBo1-4)."""
+        if 0 <= zone < len(self.state.zone_sync_zones):
             if not selected:
-                active = sum(self.state.zone_carousel_zones)
+                active = sum(self.state.zone_sync_zones)
                 if active <= 1:
                     return
-            self.state.zone_carousel_zones[zone] = selected
+            self.state.zone_sync_zones[zone] = selected
 
-    def set_zone_carousel_interval(self, seconds: int) -> None:
-        """Set carousel interval in seconds (C# textBoxTimer)."""
-        self.state.zone_carousel_interval = max(1, seconds) * 6
+    def set_zone_sync_interval(self, seconds: int) -> None:
+        """Set sync interval in seconds (C# textBoxTimer)."""
+        self.state.zone_sync_interval = max(1, seconds) * 6
+
+    @property
+    def _select_all_active(self) -> bool:
+        """True when zone_sync is on AND style uses select-all behavior."""
+        return self.state.zone_sync and self._led_style in self.SELECT_ALL_STYLES
 
     def set_zone_mode(self, zone: int, mode: LEDMode) -> None:
-        """Set mode for a specific zone."""
-        if 0 <= zone < len(self.state.zones):
-            self.state.zones[zone].mode = LEDMode(mode) if not isinstance(mode, LEDMode) else mode
+        """Set mode for a specific zone. Propagates to all if select-all active."""
+        resolved = LEDMode(mode) if not isinstance(mode, LEDMode) else mode
+        if self._select_all_active:
+            for z in self.state.zones:
+                z.mode = resolved
+        elif 0 <= zone < len(self.state.zones):
+            self.state.zones[zone].mode = resolved
 
     def set_zone_color(self, zone: int, r: int, g: int, b: int) -> None:
-        """Set color for a specific zone."""
-        if 0 <= zone < len(self.state.zones):
+        """Set color for a specific zone. Propagates to all if select-all active."""
+        if self._select_all_active:
+            for z in self.state.zones:
+                z.color = (r, g, b)
+        elif 0 <= zone < len(self.state.zones):
             self.state.zones[zone].color = (r, g, b)
 
     def set_zone_brightness(self, zone: int, brightness: int) -> None:
-        """Set brightness for a specific zone."""
-        if 0 <= zone < len(self.state.zones):
-            self.state.zones[zone].brightness = max(0, min(100, brightness))
+        """Set brightness for a specific zone. Propagates to all if select-all active."""
+        val = max(0, min(100, brightness))
+        if self._select_all_active:
+            for z in self.state.zones:
+                z.brightness = val
+        elif 0 <= zone < len(self.state.zones):
+            self.state.zones[zone].brightness = val
 
     def set_disk_index(self, index: int) -> None:
         """Set which disk to monitor (C# hardDiskCount, 0-based)."""
@@ -219,25 +275,66 @@ class LEDService:
         if self.state.test_mode:
             return self._tick_test_mode()
 
-        # Advance segment display rotation (all digit-display styles)
+        # Segment display phase = active zone
+        # Circulate ON: cycle through enabled zones on timer (C# GetVal + ValCount)
+        # Circulate OFF: lock to selected zone (C# LunBo1-4 radio select)
         if self._segment_mode and self._seg_display:
-            self._seg_tick_count += 1
-            if self._seg_tick_count >= self._seg_phase_ticks:
-                self._seg_tick_count = 0
-                self._seg_phase = self._next_phase()
+            if self.state.zone_sync and self._led_style not in self.SELECT_ALL_STYLES:
+                # Circulate: advance timer, rotate through enabled zones
+                self.state.zone_sync_ticks += 1
+                if self.state.zone_sync_ticks >= self.state.zone_sync_interval:
+                    self.state.zone_sync_ticks = 0
+                    self.state.zone_sync_current = self._next_sync_zone(
+                        self.state.zone_sync_current)
+                self._seg_phase = self.state.zone_sync_current
+            else:
+                self._seg_phase = self.state.selected_zone
             self._update_segment_mask()
 
-        if self.state.zone_count > 1 and self.state.zones:
-            return self._tick_multi_zone()
+        # Multi-zone segment displays
+        if self._segment_mode and self.state.zones and self._seg_display:
+            zone_map = self._seg_display.zone_led_map
+            if zone_map:
+                # Physical zones: each zone colors its own mapped LED indices
+                return self._tick_multi_zone(zone_map)
+            # Phase-rotating: active zone's color/mode for ALL LEDs
+            active = self._seg_phase
+            if 0 <= active < len(self.state.zones):
+                z = self.state.zones[active]
+                colors = self._tick_single_mode(z.mode, z.color,
+                                                self.state.segment_count)
+                if z.brightness < 100:
+                    scale = z.brightness / 100.0
+                    colors = [(int(r * scale), int(g * scale), int(b * scale))
+                              for r, g, b in colors]
+                return colors
+
         return self._tick_single_mode(self.state.mode, self.state.color,
                                       self.state.segment_count)
 
     # ── Segment display (all styles 1-11) ────────────────────────
 
-    def _next_phase(self) -> int:
-        """Advance to the next segment display phase (round-robin)."""
-        total = self._seg_display.phase_count
-        return (self._seg_phase + 1) % total
+    def _sync_all_zones_to_selected(self) -> None:
+        """Copy selected zone's mode/color/brightness to all zones (Select all)."""
+        zones = self.state.zones
+        sel = self.state.selected_zone
+        if not zones or sel < 0 or sel >= len(zones):
+            return
+        src = zones[sel]
+        for z in zones:
+            z.mode = src.mode
+            z.color = src.color
+            z.brightness = src.brightness
+
+    def _next_sync_zone(self, current: int) -> int:
+        """Find next enabled zone in carousel, wrapping around."""
+        zones = self.state.zone_sync_zones
+        n = len(zones)
+        for offset in range(1, n + 1):
+            candidate = (current + offset) % n
+            if zones[candidate]:
+                return candidate
+        return current
 
     def _update_segment_mask(self) -> None:
         """Recompute segment mask from current metrics + rotation phase.
@@ -268,10 +365,17 @@ class LEDService:
         preview rendering — one entry per physical LED position.
         """
         if self._segment_mode and self._segment_mask:
+            n = len(self._segment_mask)
+            if len(colors) == n:
+                # Per-LED colors (physical zone mapping)
+                return [
+                    colors[i] if self._segment_mask[i] else (0, 0, 0)
+                    for i in range(n)
+                ]
             base = colors[0] if colors else (0, 0, 0)
             return [
                 base if self._segment_mask[i] else (0, 0, 0)
-                for i in range(len(self._segment_mask))
+                for i in range(n)
             ]
         return colors
 
@@ -338,6 +442,15 @@ class LEDService:
 
     # ── Config persistence ──────────────────────────────────────────
 
+    @staticmethod
+    def _serialize(val: Any) -> Any:
+        """Convert a state value for JSON-safe config storage."""
+        if isinstance(val, LEDMode):
+            return val.value
+        if isinstance(val, tuple):
+            return list(val)
+        return val
+
     def save_config(self) -> None:
         """Serialize LEDState to config file."""
         if not self._device_key:
@@ -345,33 +458,17 @@ class LEDService:
         try:
             from ..conf import Settings
 
+            ser = self._serialize
             config: Dict[str, Any] = {
-                'mode': self.state.mode.value,
-                'color': list(self.state.color),
-                'brightness': self.state.brightness,
-                'global_on': self.state.global_on,
-                'segments_on': self.state.segment_on,
-                'temp_source': self.state.temp_source,
-                'load_source': self.state.load_source,
-                'is_timer_24h': self.state.is_timer_24h,
-                'is_week_sunday': self.state.is_week_sunday,
-                'disk_index': self.state.disk_index,
-                'memory_ratio': self.state.memory_ratio,
+                ck: ser(getattr(self.state, sa))
+                for ck, sa in _PERSIST_FIELDS.items()
             }
-            if self.state.zones:
-                config['zones'] = [
-                    {
-                        'mode': z.mode.value,
-                        'color': list(z.color),
-                        'brightness': z.brightness,
-                        'on': z.on,
-                    }
-                    for z in self.state.zones
-                ]
-            if self.state.zone_carousel_zones:
-                config['zone_carousel'] = self.state.zone_carousel
-                config['zone_carousel_zones'] = self.state.zone_carousel_zones
-                config['zone_carousel_interval'] = self.state.zone_carousel_interval
+            config['zone_sync_zones'] = self.state.zone_sync_zones
+            config['zones'] = [
+                {'mode': z.mode.value, 'color': list(z.color),
+                 'brightness': z.brightness, 'on': z.on}
+                for z in self.state.zones
+            ]
             Settings.save_device_setting(self._device_key, 'led_config', config)
         except Exception as e:
             log.error("Failed to save LED config: %s", e)
@@ -388,43 +485,37 @@ class LEDService:
             if not led_config:
                 return
 
-            if 'mode' in led_config:
-                self.state.mode = LEDMode(led_config['mode'])
-            if 'color' in led_config:
-                self.state.color = tuple(led_config['color'])
-            if 'brightness' in led_config:
-                self.state.brightness = led_config['brightness']
-            if 'global_on' in led_config:
-                self.state.global_on = led_config['global_on']
-            if 'segments_on' in led_config:
-                self.state.segment_on = led_config['segments_on']
-            if 'temp_source' in led_config:
-                self.state.temp_source = led_config['temp_source']
-            if 'load_source' in led_config:
-                self.state.load_source = led_config['load_source']
+            # Backward-compat aliases (v5.0.x: zone_carousel → zone_sync)
+            for old, new in _ALIASES.items():
+                if old in led_config and new not in led_config:
+                    led_config[new] = led_config[old]
+
+            # Scalar and simple-list fields
+            for ck, sa in _PERSIST_FIELDS.items():
+                if ck in led_config:
+                    val = led_config[ck]
+                    cur = getattr(self.state, sa)
+                    if isinstance(cur, LEDMode):
+                        val = LEDMode(val)
+                    elif isinstance(cur, tuple):
+                        val = tuple(val)
+                    setattr(self.state, sa, val)
+
+            # Zone sync zones: partial update (saved length may differ from current)
+            if 'zone_sync_zones' in led_config:
+                saved = led_config['zone_sync_zones']
+                for i in range(min(len(saved), len(self.state.zone_sync_zones))):
+                    self.state.zone_sync_zones[i] = saved[i]
+
+            # Per-zone states
             if 'zones' in led_config and self.state.zones:
-                for i, z_config in enumerate(led_config['zones']):
+                for i, zc in enumerate(led_config['zones']):
                     if i < len(self.state.zones):
-                        self.state.zones[i].mode = LEDMode(z_config.get('mode', 0))
-                        self.state.zones[i].color = tuple(z_config.get('color', (255, 0, 0)))
-                        self.state.zones[i].brightness = z_config.get('brightness', 100)
-                        self.state.zones[i].on = z_config.get('on', True)
-            if 'zone_carousel' in led_config:
-                self.state.zone_carousel = led_config['zone_carousel']
-            if 'zone_carousel_zones' in led_config:
-                saved = led_config['zone_carousel_zones']
-                for i in range(min(len(saved), len(self.state.zone_carousel_zones))):
-                    self.state.zone_carousel_zones[i] = saved[i]
-            if 'zone_carousel_interval' in led_config:
-                self.state.zone_carousel_interval = led_config['zone_carousel_interval']
-            if 'is_timer_24h' in led_config:
-                self.state.is_timer_24h = led_config['is_timer_24h']
-            if 'is_week_sunday' in led_config:
-                self.state.is_week_sunday = led_config['is_week_sunday']
-            if 'disk_index' in led_config:
-                self.state.disk_index = led_config['disk_index']
-            if 'memory_ratio' in led_config:
-                self.state.memory_ratio = led_config['memory_ratio']
+                        z = self.state.zones[i]
+                        z.mode = LEDMode(zc.get('mode', 0))
+                        z.color = tuple(zc.get('color', (255, 0, 0)))
+                        z.brightness = zc.get('brightness', 100)
+                        z.on = zc.get('on', True)
         except Exception as e:
             log.error("Failed to load LED config: %s", e)
 

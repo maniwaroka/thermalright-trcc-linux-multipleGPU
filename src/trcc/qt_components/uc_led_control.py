@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.models import HardwareMetrics
+from ..core.models import HardwareMetrics, celsius_to_fahrenheit
+from ..services.led import LEDService
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -273,7 +274,8 @@ class UCLedControl(QWidget):
     mode_changed = Signal(int)              # LEDMode value
     color_changed = Signal(int, int, int)   # R, G, B
     brightness_changed = Signal(int)         # 0-100
-    global_toggled = Signal(bool)            # on/off
+    global_toggled = Signal(bool)            # on/off (from color wheel center button)
+    close_requested = Signal()               # close/hide LED panel (C# cmd 255)
     segment_clicked = Signal(int)            # segment index
     # Zone signals
     zone_selected = Signal(int)              # zone index (0-based)
@@ -293,6 +295,12 @@ class UCLedControl(QWidget):
     # Test mode
     test_mode_changed = Signal(bool)         # test mode toggled
 
+    # Header drag area — C# FormLED uses delegate cmds 241/242/243 for
+    # MouseDown/Move/Up so the user can drag the window from the header.
+    # The tan header area extends from the top of the panel down to just
+    # above the UCScreenLED preview (Y=128) and mode buttons (Y=227).
+    _DRAG_MAX_Y = 200
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(PANEL_WIDTH, PANEL_HEIGHT)
@@ -304,6 +312,9 @@ class UCLedControl(QWidget):
         # Zone state
         self._selected_zone = 0
         self._carousel_mode = False
+
+        # Window drag state (C# delegate cmds 241/242/243)
+        self._drag_pos = None
 
         # Temp unit for display
         self._temp_unit = "\u00b0C"
@@ -372,9 +383,11 @@ class UCLedControl(QWidget):
             self._mode_buttons[0].setChecked(True)
 
         # -- Color Wheel (C# ucColorA1 — shown for ALL styles) --
+        # Includes center on/off button matching C# UCColorA.buttonDSHX
         self._color_wheel = UCColorWheel(self)
         self._color_wheel.setGeometry(WHEEL_X, WHEEL_Y, WHEEL_W, WHEEL_H)
         self._color_wheel.hue_changed.connect(self._on_hue_changed)
+        self._color_wheel.onoff_changed.connect(self._on_wheel_onoff)
 
         # -- RGB Controls (C# ucScrollAR/G/B + textBoxR/G/B) --
         # Background PNG provides R/G/B letter labels — no Qt labels needed.
@@ -504,26 +517,25 @@ class UCLedControl(QWidget):
         )
 
         # -- Power/close button (C# buttonPower at (1212, 24) 40x40) --
-        # Uses Alogout默認 (normal) / Alogout选中 (hover/pressed)
-        self._onoff_btn = QPushButton(self)
-        self._onoff_btn.setGeometry(POWER_X, POWER_Y, POWER_W, POWER_H)
-        self._onoff_btn.setCheckable(True)
-        self._onoff_btn.setChecked(True)
-        self._onoff_btn.setFlat(True)
+        # C# sends delegate cmd 255 = close the LED form.
+        # Uses Alogout默认 (normal) / Alogout选中 (hover/pressed)
+        self._close_btn = QPushButton(self)
+        self._close_btn.setGeometry(POWER_X, POWER_Y, POWER_W, POWER_H)
+        self._close_btn.setFlat(True)
         _pwr_normal = Assets.get('Alogout默认')
         _pwr_active = Assets.get('Alogout选中')
         if _pwr_normal and _pwr_active:
-            self._onoff_btn.setStyleSheet(
+            self._close_btn.setStyleSheet(
                 f"QPushButton {{ border: none; "
                 f"background-image: url({_pwr_normal}); "
                 f"background-repeat: no-repeat; }}"
-                f"QPushButton:checked {{ "
+                f"QPushButton:hover {{ "
                 f"background-image: url({_pwr_active}); }}"
             )
         else:
-            self._onoff_btn.setStyleSheet(_STYLE_FLAT_CHECKABLE_BTN)
-        self._onoff_btn.setToolTip("Turn LED on / off")
-        self._onoff_btn.clicked.connect(self._on_toggle_clicked)
+            self._close_btn.setStyleSheet(_STYLE_FLAT_BTN)
+        self._close_btn.setToolTip("Close LED panel")
+        self._close_btn.clicked.connect(self.close_requested.emit)
 
         # -- Test mode checkbox (C# checkBox1 at (36, 78)) --
         self._test_cb = QCheckBox("", self)
@@ -847,7 +859,12 @@ class UCLedControl(QWidget):
         self._apply_zone_images(style_id)
         for i, btn in enumerate(self._zone_buttons):
             btn.setVisible(i < zone_count and zone_count > 1)
+        self._is_select_all_style = style_id in LEDService.SELECT_ALL_STYLES
         self._carousel_btn.setVisible(zone_count > 1)
+        self._carousel_btn.setToolTip(
+            "Select all zones" if self._is_select_all_style
+            else "Cycle through selected zones"
+        )
         self._carousel_interval.setVisible(False)
         self._selected_zone = 0
         self._carousel_mode = False
@@ -942,7 +959,7 @@ class UCLedControl(QWidget):
         self._brightness_label.setGeometry(
             BRIGHT_X + BRIGHT_W + 5, BRIGHT_Y, 40, 20)
 
-        self._onoff_btn.setVisible(True)
+        self._close_btn.setVisible(True)
 
         self._status.setGeometry(STATUS_X, STATUS_Y, STATUS_W, 24)
 
@@ -1007,23 +1024,24 @@ class UCLedControl(QWidget):
         self._color_wheel.set_hue(hue)
         self._color_wheel.blockSignals(False)
 
-    def _on_toggle_clicked(self):
-        """Handle on/off toggle."""
-        on = self._onoff_btn.isChecked()
-        self._onoff_btn.setText("ON" if on else "OFF")
-        self.global_toggled.emit(on)
-
-    def _update_color_swatch(self):
-        """No-op — color swatch removed (color wheel shows selected hue)."""
+    def _on_wheel_onoff(self, val: int):
+        """Handle color wheel center on/off toggle (C# ucColor2Delegate)."""
+        self.global_toggled.emit(val == 1)
 
     # -- Zone selection --
 
     def _on_zone_clicked(self, zone_index: int):
         """Handle zone button click.
 
-        Carousel OFF: radio-select (one zone at a time).
+        Select all (styles 2/7): all buttons stay checked, clicks ignored.
         Carousel ON: multi-select (toggle zone in/out of rotation).
+        Carousel OFF: radio-select (one zone at a time).
         """
+        if self._is_select_all_style and self._carousel_mode:
+            # Select all: keep all buttons checked, ignore click (C# early return)
+            for btn in self._zone_buttons[:self._zone_count]:
+                btn.setChecked(True)
+            return
         if self._carousel_mode:
             # Multi-select: toggle this zone's carousel participation
             btn = self._zone_buttons[zone_index]
@@ -1037,13 +1055,28 @@ class UCLedControl(QWidget):
             self.zone_selected.emit(zone_index)
 
     def _on_sync_toggled(self, carousel: bool):
-        """Handle carousel checkbox toggle (C# buttonLB_Click)."""
+        """Handle carousel/select-all checkbox toggle (C# buttonLB_Click).
+
+        Styles 2/7: "Select all" — all zone buttons checked, no interval.
+        Other styles: "Circulate" — multi-select zones with timer interval.
+        """
         self._carousel_mode = carousel
-        self._carousel_interval.setVisible(carousel and self._zone_count > 1)
-        if not carousel:
-            # Revert to radio-select: only selected zone checked
-            for i, btn in enumerate(self._zone_buttons):
-                btn.setChecked(i == self._selected_zone)
+        if self._is_select_all_style:
+            # Select all: check all zone buttons, never show interval
+            self._carousel_interval.setVisible(False)
+            if carousel:
+                for btn in self._zone_buttons[:self._zone_count]:
+                    btn.setChecked(True)
+            else:
+                for i, btn in enumerate(self._zone_buttons):
+                    btn.setChecked(i == self._selected_zone)
+        else:
+            # Circulate: show interval input when active
+            self._carousel_interval.setVisible(
+                carousel and self._zone_count > 1)
+            if not carousel:
+                for i, btn in enumerate(self._zone_buttons):
+                    btn.setChecked(i == self._selected_zone)
         self.carousel_changed.emit(carousel)
 
     def _on_carousel_interval_changed(self):
@@ -1082,7 +1115,9 @@ class UCLedControl(QWidget):
             spinbox.blockSignals(False)
         self._brightness_slider.blockSignals(False)
 
-        self._update_color_swatch()
+        # Sync color wheel indicator + on/off button with zone state
+        self._sync_wheel_from_rgb(r, g, b)
+        self._color_wheel.set_onoff(1 if on else 0)
 
     @property
     def selected_zone(self) -> int:
@@ -1155,7 +1190,7 @@ class UCLedControl(QWidget):
         unit = self._temp_unit
         t = metrics.cpu_temp
         if unit == "\u00b0F":
-            t = t * 9 / 5 + 32
+            t = celsius_to_fahrenheit(t)
         self._info_images['cpu_temp'].set_value(t, f"{t:.0f}", unit)
         self._info_images['cpu_clock'].set_value(
             metrics.cpu_freq, f"{metrics.cpu_freq:.0f}", "MHz")
@@ -1163,7 +1198,7 @@ class UCLedControl(QWidget):
             metrics.cpu_percent, f"{metrics.cpu_percent:.0f}", "%")
         t = metrics.gpu_temp
         if unit == "\u00b0F":
-            t = t * 9 / 5 + 32
+            t = celsius_to_fahrenheit(t)
         self._info_images['gpu_temp'].set_value(t, f"{t:.0f}", unit)
         self._info_images['gpu_clock'].set_value(
             metrics.gpu_clock, f"{metrics.gpu_clock:.0f}", "MHz")
@@ -1175,7 +1210,7 @@ class UCLedControl(QWidget):
         unit = self._temp_unit
         t = metrics.mem_temp
         if unit == "\u00b0F":
-            t = t * 9 / 5 + 32
+            t = celsius_to_fahrenheit(t)
         if t == 0:
             self._mem_labels['mem_temp'].setText("NC")
         else:
@@ -1254,7 +1289,7 @@ class UCLedControl(QWidget):
         unit = self._temp_unit
         t = metrics.disk_temp
         if unit == "\u00b0F":
-            t = t * 9 / 5 + 32
+            t = celsius_to_fahrenheit(t)
         if t == 0:
             self._disk_labels['lf11_disk_temp'].setText("NC")
         else:
@@ -1266,6 +1301,32 @@ class UCLedControl(QWidget):
             f"{metrics.disk_read:.0f}MB/S")
         self._disk_labels['lf11_disk_write'].setText(
             f"{metrics.disk_write:.0f}MB/S")
+
+    # ================================================================
+    # Window drag (C# delegate cmds 241/242/243)
+    # ================================================================
+
+    def mousePressEvent(self, event):
+        """Start window drag from header area (C# FormLED_MouseDown)."""
+        if (event.button() == Qt.MouseButton.LeftButton
+                and event.position().y() < self._DRAG_MAX_Y):
+            window = self.window()
+            self._drag_pos = (
+                event.globalPosition().toPoint() - window.frameGeometry().topLeft()
+            )
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Move window while dragging (C# FormLED_MouseMove)."""
+        if self._drag_pos is not None:
+            window = self.window()
+            window.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """End window drag (C# FormLED_MouseUp)."""
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
 
     # ================================================================
     # Styles

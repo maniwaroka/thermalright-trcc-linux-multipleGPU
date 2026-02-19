@@ -158,7 +158,7 @@ class TestCloudVideoPlayback:
         controller.load_cloud_theme(theme)
 
         # Simulate what _on_video_state_changed does
-        controller.video.on_state_changed = MagicMock()
+        controller.on_video_state_changed = MagicMock()
 
         # Run 20 ticks
         for _ in range(20):

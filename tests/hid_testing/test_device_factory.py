@@ -792,41 +792,41 @@ class TestProtocolInfo:
 
 
 # =========================================================================
-# Tests: DeviceController.get_protocol_info()
+# Tests: DeviceService.get_protocol_info()
 # =========================================================================
 
-class TestDeviceControllerProtocolInfo:
-    """Test the controller API the GUI calls."""
+class TestDeviceServiceProtocolInfo:
+    """Test the protocol info API used by the GUI."""
 
     def test_no_device_selected(self):
-        from trcc.core.controllers import DeviceController
-        ctrl = DeviceController()
-        info = ctrl.get_protocol_info()
+        from trcc.services.device import DeviceService
+        svc = DeviceService()
+        info = svc.get_protocol_info()
         assert info is not None
         assert info.protocol == "none"
 
     def test_scsi_device_selected(self):
-        from trcc.core.controllers import DeviceController
         from trcc.core.models import DeviceInfo
-        ctrl = DeviceController()
-        ctrl.select_device(DeviceInfo(
+        from trcc.services.device import DeviceService
+        svc = DeviceService()
+        svc.select(DeviceInfo(
             name="LCD", path="/dev/sg0",
             protocol="scsi", device_type=1,
         ))
-        info = ctrl.get_protocol_info()
+        info = svc.get_protocol_info()
         assert info.protocol == "scsi"
         assert info.is_scsi is True
 
     def test_hid_device_selected(self):
-        from trcc.core.controllers import DeviceController
         from trcc.core.models import DeviceInfo
-        ctrl = DeviceController()
-        ctrl.select_device(DeviceInfo(
+        from trcc.services.device import DeviceService
+        svc = DeviceService()
+        svc.select(DeviceInfo(
             name="HID LCD", path="hid:0416:5302",
             vid=0x0416, pid=0x5302,
             protocol="hid", device_type=2,
         ))
-        info = ctrl.get_protocol_info()
+        info = svc.get_protocol_info()
         assert info.protocol == "hid"
         assert info.is_hid is True
         assert info.device_type == 2

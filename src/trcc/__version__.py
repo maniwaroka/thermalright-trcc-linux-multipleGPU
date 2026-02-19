@@ -1,9 +1,17 @@
 """TRCC Linux version information."""
 
-__version__ = "5.3.3"
+__version__ = "6.0.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.0.0 - GoF refactoring: 5-phase OOP overhaul. Phase 1: Flyweight+Strategy
+#         collapse led_segment.py 1109→687 (-38%). Phase 3: eliminate 5 thin
+#         controller wrappers (ThemeController, DeviceController, VideoController,
+#         OverlayController, LEDController) — LCDDeviceController + LEDDeviceController
+#         Facades absorb all methods. Phase 4: UsbProtocol base class (Template Method).
+#         Phase 5: data-driven LED config serialization (Memento). Law of Demeter
+#         enforced: GUI→Facade→Services, no reaching through sub-objects. Delete 3
+#         protocol doc files (moved to memory). 2306 tests.
 # 5.3.3 - Fix polkit setup: _sudo_reexec includes site-packages in PYTHONPATH,
 #         realpath resolves UsrMerge symlinks, JS rules file for cross-DE support,
 #         SELinux restorecon, pkexec uses absolute binary paths. 2291 tests.

@@ -591,16 +591,24 @@ class UCScreenLED(QWidget):
 
         self._paint_led_rects(painter)
 
+    _DIM_GRAY = QColor(40, 40, 40)  # Unlit segment backlight
+
     def _paint_led_rects(self, painter: QPainter) -> None:
-        """Fill colored rectangles at ledPosition coordinates."""
+        """Fill colored rectangles at ledPosition coordinates.
+
+        Two-pass: grey underlay for all positions, then colored overlay for lit ones.
+        """
         painter.setPen(Qt.PenStyle.NoPen)
+        # Pass 1: grey underlay — shows every segment position
+        for pos in self._positions:
+            painter.fillRect(QRect(*pos), self._DIM_GRAY)
+        # Pass 2: colored overlay — lit segments only
         for i, pos in enumerate(self._positions):
             if i >= len(self._colors):
                 break
-            is_on = self._is_on[i] if i < len(self._is_on) else True
-            if not is_on:
-                continue
             r, g, b = self._colors[i]
+            if r == 0 and g == 0 and b == 0:
+                continue
             painter.fillRect(QRect(*pos), QColor(r, g, b))
 
     # ================================================================

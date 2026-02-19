@@ -1,8 +1,9 @@
 """
-TRCC Controllers — Thin driving adapters for PyQt6 GUI.
+TRCC Controllers — Driving adapters for PyQt6 GUI.
 
-Controllers are waiters: take requests from the view, call the service
-layer, and fire callbacks to update the GUI. No business logic lives here.
+Two Facades: LCDDeviceController (LCD display pipeline) and
+LEDDeviceController (LED RGB effects). All business logic lives
+in the service layer; controllers route GUI calls and fire callbacks.
 """
 from __future__ import annotations
 
@@ -28,251 +29,14 @@ from .models import (
 log = logging.getLogger(__name__)
 
 
-class ThemeController:
-    """Thin waiter for theme discovery and selection.
+class LCDDeviceController:
+    """LCD controller — Facade over DisplayService + ThemeService.
 
-    Delegates all logic to ThemeService, fires callbacks to GUI.
+    Routes GUI calls to the right service, fires callbacks to update
+    the view. No business logic — pure delegation + notification.
     """
 
     CATEGORIES = ThemeService.CATEGORIES
-
-    def __init__(self, svc: ThemeService | None = None):
-        self._svc = svc or ThemeService()
-
-        # View callbacks
-        self.on_themes_loaded: Optional[Callable[[List[ThemeInfo]], None]] = None
-        self.on_theme_selected: Optional[Callable[[ThemeInfo], None]] = None
-        self.on_filter_changed: Optional[Callable[[str], None]] = None
-
-    @property
-    def svc(self) -> ThemeService:
-        return self._svc
-
-    def set_directories(self,
-                        local_dir: Optional[Path] = None,
-                        web_dir: Optional[Path] = None,
-                        masks_dir: Optional[Path] = None):
-        self._svc.set_directories(local_dir, web_dir, masks_dir)
-
-    def load_local_themes(self, resolution: Tuple[int, int] = (320, 320)):
-        themes = self._svc.load_local_themes(resolution)
-        if self.on_themes_loaded:
-            self.on_themes_loaded(themes)
-
-    def load_cloud_themes(self):
-        themes = self._svc.load_cloud_themes()
-        if self.on_themes_loaded:
-            self.on_themes_loaded(themes)
-
-    def set_filter(self, mode: str):
-        self._svc.set_filter(mode)
-        if self.on_filter_changed:
-            self.on_filter_changed(mode)
-
-    def set_category(self, category: str):
-        self._svc.set_category(category)
-
-    def select_theme(self, theme: ThemeInfo):
-        self._svc.select(theme)
-        if self.on_theme_selected and theme:
-            self.on_theme_selected(theme)
-
-    def get_themes(self) -> List[ThemeInfo]:
-        return self._svc.themes
-
-    def get_selected(self) -> Optional[ThemeInfo]:
-        return self._svc.selected
-
-
-class DeviceController:
-    """Thin waiter for device detection and selection.
-
-    Delegates to DeviceService, fires callbacks to GUI.
-    """
-
-    def __init__(self, svc: DeviceService | None = None):
-        self._svc = svc or DeviceService()
-
-        # View callbacks
-        self.on_devices_changed: Optional[Callable[[List[DeviceInfo]], None]] = None
-        self.on_device_selected: Optional[Callable[[DeviceInfo], None]] = None
-        self.on_send_started: Optional[Callable[[], None]] = None
-        self.on_send_complete: Optional[Callable[[bool], None]] = None
-
-    @property
-    def svc(self) -> DeviceService:
-        return self._svc
-
-    def detect_devices(self):
-        self._svc.detect()
-        if self.on_devices_changed:
-            self.on_devices_changed(self._svc.devices)
-        if self._svc.selected and self.on_device_selected:
-            self.on_device_selected(self._svc.selected)
-
-    def select_device(self, device: DeviceInfo):
-        self._svc.select(device)
-        if self.on_device_selected:
-            self.on_device_selected(device)
-
-    def get_devices(self) -> List[DeviceInfo]:
-        return self._svc.devices
-
-    def get_selected(self) -> Optional[DeviceInfo]:
-        return self._svc.selected
-
-    def send_image_async(self, rgb565_data: bytes, width: int, height: int):
-        if self._svc.is_busy:
-            log.debug("send_image_async: busy, skipping")
-            return
-        log.debug("send_image_async: dispatching %d bytes (%dx%d)",
-                  len(rgb565_data), width, height)
-        if self.on_send_started:
-            self.on_send_started()
-        self._svc.send_rgb565_async(rgb565_data, width, height)
-
-    def send_pil_async(self, image: Any, width: int, height: int,
-                       byte_order: str = '>'):
-        if self._svc.is_busy:
-            return
-        if self.on_send_started:
-            self.on_send_started()
-        self._svc.send_pil_async(image, width, height)
-
-    def get_protocol_info(self):
-        return self._svc.get_protocol_info()
-
-
-class VideoController:
-    """Thin waiter for video playback.
-
-    Delegates to MediaService, fires callbacks to GUI.
-    """
-
-    def __init__(self, svc: MediaService | None = None):
-        self._svc = svc or MediaService()
-
-        # View callbacks
-        self.on_video_loaded: Optional[Callable[[VideoState], None]] = None
-        self.on_frame_ready: Optional[Callable[[Any], None]] = None
-        self.on_progress_update: Optional[Callable[[float, str, str], None]] = None
-        self.on_state_changed: Optional[Callable[[PlaybackState], None]] = None
-        self.on_send_frame: Optional[Callable[[Any], None]] = None
-
-    @property
-    def svc(self) -> MediaService:
-        return self._svc
-
-    def set_target_size(self, width: int, height: int):
-        self._svc.set_target_size(width, height)
-
-    def load(self, path: Path) -> bool:
-        success = self._svc.load(path)
-        if success and self.on_video_loaded:
-            self.on_video_loaded(self._svc.state)
-        return success
-
-    def play(self):
-        self._svc.play()
-        if self.on_state_changed:
-            self.on_state_changed(self._svc.state.state)
-
-    def pause(self):
-        self._svc.pause()
-        if self.on_state_changed:
-            self.on_state_changed(self._svc.state.state)
-
-    def stop(self):
-        self._svc.stop()
-        if self.on_state_changed:
-            self.on_state_changed(self._svc.state.state)
-
-    def toggle_play_pause(self):
-        self._svc.toggle()
-        if self.on_state_changed:
-            self.on_state_changed(self._svc.state.state)
-
-    def seek(self, percent: float):
-        self._svc.seek(percent)
-
-    def tick(self) -> Optional[Any]:
-        frame, should_send, progress = self._svc.tick()
-        if not frame:
-            return None
-        if self.on_frame_ready:
-            self.on_frame_ready(frame)
-        if progress and self.on_progress_update:
-            self.on_progress_update(*progress)
-        if should_send and self.on_send_frame:
-            self.on_send_frame(frame)
-        return frame
-
-    def get_frame_interval(self) -> int:
-        return self._svc.frame_interval_ms
-
-    def is_playing(self) -> bool:
-        return self._svc.is_playing
-
-    def has_frames(self) -> bool:
-        return self._svc.has_frames
-
-    def get_frame(self, index: Optional[int] = None) -> Optional[Any]:
-        return self._svc.get_frame(index)
-
-    @property
-    def source_path(self) -> Optional[Path]:
-        return self._svc.source_path
-
-
-class OverlayController:
-    """Thin waiter for overlay rendering.
-
-    Delegates to OverlayService, fires callbacks to GUI.
-    Most methods auto-delegate via __getattr__; only methods that
-    add value (name mapping, callbacks) are defined explicitly.
-    """
-
-    _NAME_MAP: dict[str, str] = {
-        'set_target_size': 'set_resolution',
-        'set_theme_mask': 'set_mask',
-        'get_theme_mask': 'get_mask',
-    }
-
-    def __init__(self, svc: OverlayService | None = None):
-        self._svc = svc or OverlayService()
-
-        # View callbacks
-        self.on_config_changed: Optional[Callable[[], None]] = None
-
-    @property
-    def svc(self) -> OverlayService:
-        return self._svc
-
-    def enable(self, enabled: bool = True):
-        self._svc.enabled = enabled
-
-    def is_enabled(self) -> bool:
-        return self._svc.enabled
-
-    def set_config(self, config: dict):
-        self._svc.set_config(config)
-        if self.on_config_changed:
-            self.on_config_changed()
-
-    def __getattr__(self, name: str):
-        try:
-            svc = object.__getattribute__(self, '_svc')
-        except AttributeError:
-            raise AttributeError(name) from None
-        svc_name = self._NAME_MAP.get(name, name)
-        return getattr(svc, svc_name)
-
-
-class LCDDeviceController:
-    """Main LCD controller — thin waiter coordinating sub-controllers.
-
-    Delegates all business logic to DisplayService.
-    """
 
     def __init__(self):
         # Create shared services
@@ -283,23 +47,56 @@ class LCDDeviceController:
         # The head chef
         self._display = DisplayService(device_svc, overlay_svc, media_svc)
 
-        # Sub-controllers (thin waiters over the same services)
-        self.themes = ThemeController()
-        self.devices = DeviceController(device_svc)
-        self.video = VideoController(media_svc)
-        self.overlay = OverlayController(overlay_svc)
+        # Theme service (standalone — DisplayService uses static methods)
+        self._theme_svc = ThemeService()
 
-        # View callbacks
+        # View callbacks — LCD
         self.on_preview_update: Optional[Callable[[Any], None]] = None
         self.on_status_update: Optional[Callable[[str], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
         self.on_resolution_changed: Optional[Callable[[int, int], None]] = None
 
-        self._setup_callbacks()
+        # View callbacks — Theme
+        self.on_themes_loaded: Optional[Callable[[List[ThemeInfo]], None]] = None
+        self.on_filter_changed: Optional[Callable[[str], None]] = None
+
+        # View callbacks — Device
+        self.on_devices_changed: Optional[Callable[[List[DeviceInfo]], None]] = None
+        self.on_device_selected: Optional[Callable[[DeviceInfo], None]] = None
+        self.on_send_started: Optional[Callable[[], None]] = None
+        self.on_send_complete: Optional[Callable[[bool], None]] = None
+
+        # View callbacks — Video
+        self.on_video_loaded: Optional[Callable[[VideoState], None]] = None
+        self.on_video_progress_update: Optional[Callable[[float, str, str], None]] = None
+        self.on_video_state_changed: Optional[Callable[[PlaybackState], None]] = None
+
+        # View callbacks — Overlay
+        self.on_overlay_config_changed: Optional[Callable[[], None]] = None
+
+    # ── Service accessors ─────────────────────────────────────────────
 
     @property
     def lcd_svc(self) -> DisplayService:
         return self._display
+
+    @property
+    def theme_svc(self) -> ThemeService:
+        return self._theme_svc
+
+    @property
+    def device_svc(self) -> DeviceService:
+        return self._display.devices
+
+    @property
+    def overlay_svc(self) -> OverlayService:
+        return self._display.overlay
+
+    @property
+    def media_svc(self) -> MediaService:
+        return self._display.media
+
+    # ── Display properties ────────────────────────────────────────────
 
     @property
     def working_dir(self) -> Path:
@@ -353,34 +150,194 @@ class LCDDeviceController:
     def brightness(self, value: int):
         self._display.brightness = value
 
-    def _setup_callbacks(self):
-        self.themes.on_theme_selected = self._on_theme_selected
-        self.video.on_frame_ready = self._on_video_frame
-        self.devices.on_device_selected = self._on_device_selected
-
     # ── Initialization ────────────────────────────────────────────────
 
     def initialize(self, data_dir: Path):
         log.debug("Initializing controller, data_dir=%s", data_dir)
         self._display.initialize(data_dir)
 
-        # Set up theme directories from service
-        self.themes.set_directories(
+        self.set_theme_directories(
             local_dir=self._display.local_dir,
             web_dir=self._display.web_dir,
             masks_dir=self._display.masks_dir,
         )
 
-        self.video.set_target_size(self.lcd_width, self.lcd_height)
-        self.overlay.set_target_size(self.lcd_width, self.lcd_height)
+        self._display.media.set_target_size(self.lcd_width, self.lcd_height)
+        self._display.overlay.set_resolution(self.lcd_width, self.lcd_height)
 
         if self.lcd_width and self.lcd_height:
-            self.themes.load_local_themes((self.lcd_width, self.lcd_height))
+            self.load_local_themes((self.lcd_width, self.lcd_height))
 
-        self.devices.detect_devices()
+        self.detect_devices()
 
     def cleanup(self):
         self._display.cleanup()
+
+    # ── Theme operations ──────────────────────────────────────────────
+
+    def set_theme_directories(self,
+                              local_dir: Optional[Path] = None,
+                              web_dir: Optional[Path] = None,
+                              masks_dir: Optional[Path] = None):
+        self._theme_svc.set_directories(local_dir, web_dir, masks_dir)
+
+    def load_local_themes(self, resolution: Tuple[int, int] = (320, 320)):
+        themes = self._theme_svc.load_local_themes(resolution)
+        if self.on_themes_loaded:
+            self.on_themes_loaded(themes)
+
+    def load_cloud_themes(self):
+        themes = self._theme_svc.load_cloud_themes()
+        if self.on_themes_loaded:
+            self.on_themes_loaded(themes)
+
+    def set_theme_filter(self, mode: str):
+        self._theme_svc.set_filter(mode)
+        if self.on_filter_changed:
+            self.on_filter_changed(mode)
+
+    def set_theme_category(self, category: str):
+        self._theme_svc.set_category(category)
+
+    def select_theme(self, theme: ThemeInfo):
+        """Select a theme — routes to local or cloud loader."""
+        self._theme_svc.select(theme)
+        if theme:
+            if theme.theme_type == ThemeType.CLOUD:
+                self.load_cloud_theme(theme)
+            else:
+                self.load_local_theme(theme)
+
+    def get_themes(self) -> List[ThemeInfo]:
+        return self._theme_svc.themes
+
+    def get_selected_theme(self) -> Optional[ThemeInfo]:
+        return self._theme_svc.selected
+
+    # ── Device operations ─────────────────────────────────────────────
+
+    def detect_devices(self):
+        self._display.devices.detect()
+        if self.on_devices_changed:
+            self.on_devices_changed(self._display.devices.devices)
+        if self._display.devices.selected and self.on_device_selected:
+            self.on_device_selected(self._display.devices.selected)
+
+    def select_device(self, device: DeviceInfo):
+        self._display.devices.select(device)
+        if self.on_device_selected:
+            self.on_device_selected(device)
+
+    def get_devices(self) -> List[DeviceInfo]:
+        return self._display.devices.devices
+
+    def get_selected_device(self) -> Optional[DeviceInfo]:
+        return self._display.devices.selected
+
+    def send_image_async(self, rgb565_data: bytes, width: int, height: int):
+        if self._display.devices.is_busy:
+            log.debug("send_image_async: busy, skipping")
+            return
+        log.debug("send_image_async: dispatching %d bytes (%dx%d)",
+                  len(rgb565_data), width, height)
+        if self.on_send_started:
+            self.on_send_started()
+        self._display.devices.send_rgb565_async(rgb565_data, width, height)
+
+    def send_pil_async(self, image: Any, width: int, height: int,
+                       byte_order: str = '>'):
+        if self._display.devices.is_busy:
+            return
+        if self.on_send_started:
+            self.on_send_started()
+        self._display.devices.send_pil_async(image, width, height)
+
+    def get_protocol_info(self):
+        return self._display.devices.get_protocol_info()
+
+    # ── Video operations ──────────────────────────────────────────────
+
+    def load_video(self, path: Path) -> bool:
+        success = self._display.media.load(path)
+        if success and self.on_video_loaded:
+            self.on_video_loaded(self._display.media.state)
+        return success
+
+    def play_video(self):
+        self._display.media.play()
+        if self.on_video_state_changed:
+            self.on_video_state_changed(self._display.media.state.state)
+
+    def pause_video(self):
+        self._display.media.pause()
+        if self.on_video_state_changed:
+            self.on_video_state_changed(self._display.media.state.state)
+
+    def stop_video(self):
+        self._display.media.stop()
+        if self.on_video_state_changed:
+            self.on_video_state_changed(self._display.media.state.state)
+
+    def toggle_play_pause(self):
+        self._display.media.toggle()
+        if self.on_video_state_changed:
+            self.on_video_state_changed(self._display.media.state.state)
+
+    def video_has_frames(self) -> bool:
+        return self._display.media.has_frames
+
+    def get_video_frame(self, index: Optional[int] = None) -> Optional[Any]:
+        return self._display.media.get_frame(index)
+
+    @property
+    def video_source_path(self) -> Optional[Path]:
+        return self._display.media.source_path
+
+    # ── Overlay operations ────────────────────────────────────────────
+
+    def enable_overlay(self, enabled: bool = True):
+        self._display.overlay.enabled = enabled
+
+    def is_overlay_enabled(self) -> bool:
+        return self._display.overlay.enabled
+
+    def set_overlay_config(self, config: dict):
+        self._display.overlay.set_config(config)
+        if self.on_overlay_config_changed:
+            self.on_overlay_config_changed()
+
+    def set_overlay_background(self, image: Any):
+        self._display.overlay.set_background(image)
+
+    def set_overlay_theme_mask(self, image: Any = None,
+                               position: tuple[int, int] | None = None):
+        self._display.overlay.set_theme_mask(image, position)
+
+    def get_overlay_theme_mask(self) -> tuple[Any, tuple[int, int] | None]:
+        return self._display.overlay.get_mask()
+
+    def set_overlay_mask_visible(self, visible: bool):
+        self._display.overlay.set_mask_visible(visible)
+
+    def set_overlay_temp_unit(self, unit: int):
+        self._display.overlay.set_temp_unit(unit)
+
+    def update_overlay_metrics(self, metrics: Any):
+        self._display.overlay.update_metrics(metrics)
+
+    def render_overlay(self, background: Any = None, **kwargs) -> Any:
+        """Render overlay onto background. No-arg = use current image."""
+        if background is None and not kwargs:
+            return self._display.render_overlay()
+        return self._display.overlay.render(background, **kwargs)
+
+    @property
+    def overlay_flash_skip_index(self) -> int:
+        return self._display.overlay.flash_skip_index
+
+    @overlay_flash_skip_index.setter
+    def overlay_flash_skip_index(self, value: int):
+        self._display.overlay.flash_skip_index = value
 
     # ── Resolution ────────────────────────────────────────────────────
 
@@ -389,18 +346,17 @@ class LCDDeviceController:
             return
         self._display.set_resolution(width, height, persist=persist)
 
-        # Re-sync theme dirs after resolution change
-        self.themes.set_directories(
+        self.set_theme_directories(
             local_dir=self._display.local_dir,
             web_dir=self._display.web_dir,
             masks_dir=self._display.masks_dir,
         )
 
-        self.video.set_target_size(width, height)
-        self.overlay.set_target_size(width, height)
+        self._display.media.set_target_size(width, height)
+        self._display.overlay.set_resolution(width, height)
 
         if width and height:
-            self.themes.load_local_themes((width, height))
+            self.load_local_themes((width, height))
 
         if self.on_resolution_changed:
             self.on_resolution_changed(width, height)
@@ -446,8 +402,8 @@ class LCDDeviceController:
             if self.auto_send and not (skip_send_if_animated and is_animated):
                 self._send_frame_to_lcd(image)
         if is_animated and self._display.is_video_playing():
-            if self.video.on_state_changed:
-                self.video.on_state_changed(PlaybackState.PLAYING)
+            if self.on_video_state_changed:
+                self.on_video_state_changed(PlaybackState.PLAYING)
         self._fire_status(result.get('status', ''))
 
     def apply_mask(self, mask_dir: Path):
@@ -474,7 +430,7 @@ class LCDDeviceController:
     def import_config(self, import_path: Path, data_dir: Path) -> Tuple[bool, str]:
         return self._display.import_config(import_path, data_dir)
 
-    # ── Video Operations ──────────────────────────────────────────────
+    # ── Video Operations (facade) ─────────────────────────────────────
 
     def set_video_fit_mode(self, mode: str):
         """Set video fit mode (C# buttonTPJCW/buttonTPJCH)."""
@@ -485,10 +441,10 @@ class LCDDeviceController:
                 self._send_frame_to_lcd(image)
 
     def play_pause(self):
-        self.video.toggle_play_pause()
+        self.toggle_play_pause()
 
     def seek_video(self, percent: float):
-        self.video.seek(percent)
+        self._display.media.seek(percent)
 
     def video_tick(self):
         result = self._display.video_tick()
@@ -499,8 +455,7 @@ class LCDDeviceController:
 
         send_img = result.get('send_image')
         if send_img:
-            self.devices.send_pil_async(
-                send_img, self.lcd_width, self.lcd_height)
+            self.send_pil_async(send_img, self.lcd_width, self.lcd_height)
 
     def get_video_interval(self) -> int:
         return self._display.get_video_interval()
@@ -513,8 +468,7 @@ class LCDDeviceController:
     def send_current_image(self):
         rgb565 = self._display.send_current_image()
         if rgb565:
-            self.devices.send_image_async(
-                rgb565, self.lcd_width, self.lcd_height)
+            self.send_image_async(rgb565, self.lcd_width, self.lcd_height)
             self._fire_status("Sent to LCD")
 
     def render_overlay_and_preview(self):
@@ -523,24 +477,7 @@ class LCDDeviceController:
             self._fire_preview(image)
         return image
 
-    # ── Callbacks from sub-controllers ────────────────────────────────
-
-    def _on_theme_selected(self, theme: ThemeInfo):
-        if theme.theme_type == ThemeType.CLOUD:
-            self.load_cloud_theme(theme)
-        else:
-            self.load_local_theme(theme)
-
-    def _on_video_frame(self, frame: Any):
-        self._display.current_image = frame
-
-    def _on_device_selected(self, device: DeviceInfo):
-        w, h = device.resolution
-        if (w, h) != (0, 0) and (w, h) != (self.lcd_width, self.lcd_height):
-            self.set_resolution(w, h)
-        self._fire_status(f"Device: {device.path}")
-
-    # ── Private helpers (fire callbacks, send to LCD) ─────────────────
+    # ── Private helpers ───────────────────────────────────────────────
 
     def _fire_preview(self, image: Any):
         if self.on_preview_update:
@@ -556,23 +493,16 @@ class LCDDeviceController:
             self.on_error(message)
 
     def _send_frame_to_lcd(self, image: Any):
-        """Send a processed image to the LCD via DeviceService.
-
-        Encodes and sends in a background thread to avoid blocking the
-        main Qt thread (JPEG encoding for bulk devices can take 50-200ms).
-        """
-        device = self.devices.get_selected()
+        """Send a processed image to the LCD via DeviceService."""
+        device = self.get_selected_device()
         if not device:
             log.debug("Send skipped — no device selected")
             return
-        self.devices.send_pil_async(
-            image, self.lcd_width, self.lcd_height)
-
-    # ── Compat shim: _setup_theme_dirs (used by qt_app_mvc) ──────────
+        self.send_pil_async(image, self.lcd_width, self.lcd_height)
 
     def _setup_theme_dirs(self, width: int, height: int):
         self._display._setup_dirs(width, height)
-        self.themes.set_directories(
+        self.set_theme_directories(
             local_dir=self._display.local_dir,
             web_dir=self._display.web_dir,
             masks_dir=self._display.masks_dir,
@@ -580,15 +510,15 @@ class LCDDeviceController:
 
 
 # =============================================================================
-# LED Controller (FormLED equivalent) — needs LEDService (future)
+# LED Controller (FormLED equivalent)
 # =============================================================================
 
-class LEDController:
-    """Thin waiter for LED state and device communication.
+class LEDDeviceController:
+    """LED controller — Facade for LEDService + device protocol.
 
-    Delegates all logic to LEDService, fires callbacks to GUI.
-    Most methods auto-delegate via __getattr__; methods in
-    _NOTIFY_METHODS also fire on_state_changed after delegation.
+    Combines lifecycle management (initialize, save, load, cleanup) with
+    animation tick + notification pattern. Methods in _NOTIFY_METHODS
+    auto-fire on_state_changed after delegation to LEDService.
     """
 
     _NOTIFY_METHODS = frozenset({
@@ -597,14 +527,15 @@ class LEDController:
         'set_zone_brightness', 'toggle_zone', 'configure_for_style',
     })
 
-    def __init__(self, svc: Any = None):
+    def __init__(self, svc=None):
         from ..services.led import LEDService
-        self._svc: LEDService = svc or LEDService()
+        self._svc = svc or LEDService()
 
         # View callbacks
         self.on_state_changed: Optional[Callable] = None
         self.on_preview_update: Optional[Callable] = None
         self.on_send_complete: Optional[Callable[[bool], None]] = None
+        self.on_status_update: Optional[Callable[[str], None]] = None
 
     @property
     def svc(self) -> Any:
@@ -614,10 +545,16 @@ class LEDController:
     def state(self) -> Any:
         return self._svc.state
 
+    @property
+    def _device_key(self) -> Any:
+        return self._svc._device_key
+
+    @_device_key.setter
+    def _device_key(self, value: Any) -> None:
+        self._svc._device_key = value
+
     def tick(self) -> None:
         colors = self._svc.tick()
-        # Apply segment mask so preview shows per-LED colors
-        # (same array that gets sent to hardware).
         display_colors = self._svc.apply_mask(colors)
         if self.on_preview_update:
             self.on_preview_update(display_colors)
@@ -629,6 +566,20 @@ class LEDController:
     def _fire_state_changed(self) -> None:
         if self.on_state_changed:
             self.on_state_changed(self._svc.state)
+
+    def initialize(self, device_info: Any, led_style: int = 1) -> None:
+        status = self._svc.initialize(device_info, led_style)
+        if self.on_status_update:
+            self.on_status_update(status)
+
+    def save_config(self) -> None:
+        self._svc.save_config()
+
+    def load_config(self) -> None:
+        self._svc.load_config()
+
+    def cleanup(self) -> None:
+        self._svc.cleanup()
 
     def __getattr__(self, name: str):
         try:
@@ -643,47 +594,6 @@ class LEDController:
                 return result
             return _notifying
         return attr
-
-
-class LEDDeviceController:
-    """Main LED controller — thin waiter coordinating LEDController with device.
-
-    Delegates all business logic to LEDService.
-    """
-
-    def __init__(self):
-        from ..services.led import LEDService
-        self._svc = LEDService()
-        self.led = LEDController(self._svc)
-
-        # View callbacks
-        self.on_status_update: Optional[Callable[[str], None]] = None
-
-    @property
-    def svc(self) -> Any:
-        return self._svc
-
-    @property
-    def _device_key(self) -> Any:
-        return self._svc._device_key
-
-    @_device_key.setter
-    def _device_key(self, value: Any) -> None:
-        self._svc._device_key = value
-
-    def initialize(self, device_info, led_style: int = 1) -> None:
-        status = self._svc.initialize(device_info, led_style)
-        if self.on_status_update:
-            self.on_status_update(status)
-
-    def save_config(self) -> None:
-        self._svc.save_config()
-
-    def load_config(self) -> None:
-        self._svc.load_config()
-
-    def cleanup(self) -> None:
-        self._svc.cleanup()
 
 
 # =============================================================================

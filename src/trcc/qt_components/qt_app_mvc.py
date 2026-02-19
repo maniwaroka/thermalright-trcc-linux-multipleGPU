@@ -115,10 +115,10 @@ class LEDHandler:
                 led_style, style_info.segment_count, style_info.zone_count,
                 model=model,
             )
-        self._panel.set_memory_ratio(self._controller.led.state.memory_ratio)
+        self._panel.set_memory_ratio(self._controller.state.memory_ratio)
 
         seg_unit = "F" if settings.temp_unit == 1 else "C"
-        self._controller.led.set_seg_temp_unit(seg_unit)
+        self._controller.set_seg_temp_unit(seg_unit)
 
         self._active = True
         self._timer.start(150)
@@ -139,7 +139,7 @@ class LEDHandler:
     def set_temp_unit(self, unit: str):
         """Forward temperature unit change to segment display."""
         if self._controller:
-            self._controller.led.set_seg_temp_unit(unit)
+            self._controller.set_seg_temp_unit(unit)
 
     # ── Signal wiring ────────────────────────────────────────────────
 
@@ -155,34 +155,34 @@ class LEDHandler:
         panel.color_changed.connect(self._on_color_changed)
         panel.brightness_changed.connect(self._on_brightness_changed)
         panel.global_toggled.connect(
-            lambda on: ctrl.led.toggle_global(on))
+            lambda on: ctrl.toggle_global(on))
         panel.segment_clicked.connect(
-            lambda idx: ctrl.led.toggle_segment(idx, not ctrl.led.state.segment_on[idx]))
+            lambda idx: ctrl.toggle_segment(idx, not ctrl.state.segment_on[idx]))
 
         panel.zone_selected.connect(self._on_zone_selected)
         panel.zone_toggled.connect(
-            lambda zi, on: ctrl.led.toggle_zone(zi, on))
+            lambda zi, on: ctrl.toggle_zone(zi, on))
         panel.carousel_changed.connect(
-            lambda on: ctrl.led.set_zone_carousel(on))
+            lambda on: ctrl.set_zone_sync(on))
         panel.carousel_zone_changed.connect(
-            lambda zi, sel: ctrl.led.set_zone_carousel_zone(zi, sel))
+            lambda zi, sel: ctrl.set_zone_sync_zone(zi, sel))
         panel.carousel_interval_changed.connect(
-            lambda secs: ctrl.led.set_zone_carousel_interval(secs))
+            lambda secs: ctrl.set_zone_sync_interval(secs))
 
         panel.clock_format_changed.connect(
-            lambda is_24h: ctrl.led.set_clock_format(is_24h))
+            lambda is_24h: ctrl.set_clock_format(is_24h))
         panel.week_start_changed.connect(
-            lambda is_sun: ctrl.led.set_week_start(is_sun))
+            lambda is_sun: ctrl.set_week_start(is_sun))
 
         panel.temp_unit_changed.connect(self._on_temp_unit_changed)
         panel.disk_index_changed.connect(
-            lambda idx: ctrl.led.set_disk_index(idx))
+            lambda idx: ctrl.set_disk_index(idx))
         panel.memory_ratio_changed.connect(
-            lambda ratio: ctrl.led.set_memory_ratio(ratio))
+            lambda ratio: ctrl.set_memory_ratio(ratio))
         panel.test_mode_changed.connect(
-            lambda on: ctrl.led.set_test_mode(on))
+            lambda on: ctrl.set_test_mode(on))
 
-        ctrl.led.on_preview_update = self._on_colors_update
+        ctrl.on_preview_update = self._on_colors_update
         ctrl.on_status_update = lambda text: panel.set_status(text)
 
     # ── Zone-aware routing ───────────────────────────────────────────
@@ -191,34 +191,35 @@ class LEDHandler:
         ctrl = self._controller
         if not ctrl:
             return
-        if ctrl.led.state.zones:
-            ctrl.led.set_zone_mode(self._panel.selected_zone, mode)
+        if ctrl.state.zones:
+            ctrl.set_zone_mode(self._panel.selected_zone, mode)
         else:
-            ctrl.led.set_mode(mode)
+            ctrl.set_mode(mode)
 
     def _on_color_changed(self, r, g, b):
         ctrl = self._controller
         if not ctrl:
             return
-        if ctrl.led.state.zones:
-            ctrl.led.set_zone_color(self._panel.selected_zone, r, g, b)
+        if ctrl.state.zones:
+            ctrl.set_zone_color(self._panel.selected_zone, r, g, b)
         else:
-            ctrl.led.set_color(r, g, b)
+            ctrl.set_color(r, g, b)
 
     def _on_brightness_changed(self, val):
         ctrl = self._controller
         if not ctrl:
             return
-        if ctrl.led.state.zones:
-            ctrl.led.set_zone_brightness(self._panel.selected_zone, val)
+        if ctrl.state.zones:
+            ctrl.set_zone_brightness(self._panel.selected_zone, val)
         else:
-            ctrl.led.set_brightness(val)
+            ctrl.set_brightness(val)
 
     def _on_zone_selected(self, zone_index):
         ctrl = self._controller
-        if not ctrl or not ctrl.led.state.zones:
+        if not ctrl or not ctrl.state.zones:
             return
-        zones = ctrl.led.state.zones
+        ctrl.set_selected_zone(zone_index)
+        zones = ctrl.state.zones
         if 0 <= zone_index < len(zones):
             z = zones[zone_index]
             self._panel.load_zone_state(
@@ -229,7 +230,7 @@ class LEDHandler:
     def _on_tick(self):
         if not (self._controller and self._active):
             return
-        self._controller.led.tick()
+        self._controller.tick()
 
         self._sensor_counter += 1
         if self._sensor_counter >= 7:
@@ -244,7 +245,7 @@ class LEDHandler:
         except Exception:
             return
 
-        self._controller.led.update_metrics(metrics)
+        self._controller.update_metrics(metrics)
         panel = self._panel
         style = self._style_id
 
@@ -257,7 +258,7 @@ class LEDHandler:
         if style == 9:
             import datetime
             now = datetime.datetime.now()
-            state = self._controller.led.state
+            state = self._controller.state
             hour = now.hour
             if not state.is_timer_24h and hour > 12:
                 hour -= 12
@@ -398,8 +399,8 @@ class ScreencastHandler:
         lcd_w, lcd_h = ctrl.lcd_width, ctrl.lcd_height
         pil_img = pil_img.resize((lcd_w, lcd_h), PILImage.Resampling.LANCZOS)
 
-        if ctrl.overlay.is_enabled():
-            pil_img = ctrl.overlay.render(pil_img)
+        if ctrl.is_overlay_enabled():
+            pil_img = ctrl.render_overlay(pil_img)
 
         self._on_frame(pil_img)
 
@@ -483,7 +484,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
         # Restore saved temperature unit preference
         saved_unit = settings.temp_unit
-        self.controller.overlay.set_temp_unit(saved_unit)
+        self.controller.set_overlay_temp_unit(saved_unit)
         self.uc_system_info.set_temp_unit(saved_unit)
         self.uc_led_control.set_temp_unit(saved_unit)
         if saved_unit == 1:
@@ -508,7 +509,7 @@ class TRCCMainWindowMVC(QMainWindow):
         # view callbacks were wired. Re-trigger the view's _on_device_selected
         # directly so _active_device_key gets set and saved theme is restored.
         if not self._active_device_key:
-            selected = self.controller.devices.get_selected()
+            selected = self.controller.get_selected_device()
             if selected:
                 self._on_device_selected(selected)
 
@@ -836,7 +837,7 @@ class TRCCMainWindowMVC(QMainWindow):
     def _on_temp_unit_changed(self, unit: str):
         """Handle temperature unit change from Control Center."""
         temp_int = 1 if unit == 'F' else 0
-        self.controller.overlay.set_temp_unit(temp_int)
+        self.controller.set_overlay_temp_unit(temp_int)
         self.uc_system_info.set_temp_unit(temp_int)
         self.uc_led_control.set_temp_unit(temp_int)
         self._led.set_temp_unit(unit)
@@ -1099,16 +1100,16 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.on_error = lambda msg: self.uc_preview.set_status(f"Error: {msg}")
 
         # Video
-        self.controller.video.on_state_changed = self._on_video_state_changed
-        self.controller.video.on_progress_update = self.uc_preview.set_progress
-        self.controller.video.on_video_loaded = lambda _: self.uc_preview.show_video_controls(True)
+        self.controller.on_video_state_changed = self._on_video_state_changed
+        self.controller.on_video_progress_update = self.uc_preview.set_progress
+        self.controller.on_video_loaded = lambda _: self.uc_preview.show_video_controls(True)
 
         # Devices
-        self.controller.devices.on_device_selected = self._on_device_selected
-        self.controller.devices.on_send_complete = self._on_send_complete
+        self.controller.on_device_selected = self._on_device_selected
+        self.controller.on_send_complete = self._on_send_complete
 
         # Overlay
-        self.controller.overlay.on_config_changed = self.controller.render_overlay_and_preview
+        self.controller.on_overlay_config_changed = self.controller.render_overlay_and_preview
 
     def _on_video_state_changed(self, state: PlaybackState):
         """Handle video state change."""
@@ -1222,7 +1223,7 @@ class TRCCMainWindowMVC(QMainWindow):
                     preview = theme_path.parent / f"{theme_path.stem}.png"
                     theme = ThemeInfo.from_video(
                         theme_path, preview if preview.exists() else None)
-                    self.controller.themes.select_theme(theme)
+                    self.controller.select_theme(theme)
                 else:
                     self._select_theme_from_path(theme_path)
                 theme_loaded = True
@@ -1268,9 +1269,9 @@ class TRCCMainWindowMVC(QMainWindow):
             log.debug("Restoring overlay: enabled=%s, %d elements", enabled, len(config))
             if config:
                 self.uc_theme_setting.load_from_overlay_config(config)
-                self.controller.overlay.set_config(config)
+                self.controller.set_overlay_config(config)
             self.uc_theme_setting.set_overlay_enabled(enabled)
-            self.controller.overlay.enable(enabled)
+            self.controller.enable_overlay(enabled)
             if enabled:
                 self.uc_info_module.setVisible(True)
                 self.uc_info_module.start_updates(3000)
@@ -1294,7 +1295,7 @@ class TRCCMainWindowMVC(QMainWindow):
         img = self.controller.render_overlay_and_preview()
         if not img or not self.controller.auto_send:
             return
-        if skip_if_video and self.controller.video.is_playing():
+        if skip_if_video and self.controller.is_video_playing():
             return
         self.controller._send_frame_to_lcd(img)
 
@@ -1370,6 +1371,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_device.about_clicked.connect(self._show_about)
         # Note: _on_device_widget_clicked handles routing to form vs LED view
         self.uc_about.close_requested.connect(self._show_form)
+        self.uc_led_control.close_requested.connect(self._show_form)
         self.uc_about.language_changed.connect(self.set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
@@ -1387,7 +1389,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self._animation_timer.stop()
             self._slideshow_timer.stop()
             self._screencast.stop()
-            self.controller.video.stop()
+            self.controller.stop_video()
             self._led.show(device)
             self._show_view('led')
         else:
@@ -1396,10 +1398,10 @@ class TRCCMainWindowMVC(QMainWindow):
                 self._led.stop()
             self._show_view('form')
             # Skip full reload if same device already selected
-            current = self.controller.devices.get_selected()
+            current = self.controller.get_selected_device()
             if current and current.path == device.path:
                 return
-            self.controller.devices.select_device(device)
+            self.controller.select_device(device)
 
     def _select_theme_from_path(self, path: Path):
         """Load a local/mask theme by directory path.
@@ -1423,7 +1425,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_theme_setting.screencast_panel.set_enabled(False)
         self.uc_theme_setting.video_panel.set_enabled(False)
         theme = ThemeInfo.from_directory(path)
-        self.controller.themes.select_theme(theme)
+        self.controller.select_theme(theme)
         self._load_theme_overlay_config(path)
         if self._active_device_key:
             Settings.save_device_setting(self._active_device_key, 'theme_path', str(path))
@@ -1454,7 +1456,7 @@ class TRCCMainWindowMVC(QMainWindow):
             video_path = Path(theme_info.video)
             preview_path = video_path.parent / f"{video_path.stem}.png"
             theme = ThemeInfo.from_video(video_path, preview_path if preview_path.exists() else None)
-            self.controller.themes.select_theme(theme)
+            self.controller.select_theme(theme)
             if self._active_device_key:
                 Settings.save_device_setting(self._active_device_key, 'theme_path',
                                     str(video_path))
@@ -1475,10 +1477,10 @@ class TRCCMainWindowMVC(QMainWindow):
         # Ensure overlay is enabled when user is actively editing elements
         # (grid toggle is ON — to_overlay_config() returns {} when OFF,
         #  caught by the empty check above)
-        if not self.controller.overlay.is_enabled():
-            self.controller.overlay.enable(True)
+        if not self.controller.is_overlay_enabled():
+            self.controller.enable_overlay(True)
             self.start_metrics()
-        self.controller.overlay.set_config(element_data)
+        self.controller.set_overlay_config(element_data)
         self._render_and_send(skip_if_video=True)
 
         # Save overlay config per-device
@@ -1500,7 +1502,7 @@ class TRCCMainWindowMVC(QMainWindow):
         if enabled:
             # Stop other modes (C# exclusive toggle — only one mode active)
             self._animation_timer.stop()
-            self.controller.video.stop()
+            self.controller.stop_video()
             self._screencast.stop()
             self._render_and_send()
             # Start continuous rendering (C# isToTimer=true — timer sends every tick)
@@ -1508,11 +1510,11 @@ class TRCCMainWindowMVC(QMainWindow):
                 self._metrics_timer.start(1000)
         else:
             # C# toggle OFF: myBjxs=false → black canvas + overlays
-            self.controller.overlay.set_background(None)
+            self.controller.set_overlay_background(None)
             self.controller._display._create_black_background()
             self._render_and_send()
             # Stop continuous background sending if overlay isn't independently enabled
-            if not self.controller.overlay.is_enabled():
+            if not self.controller.is_overlay_enabled():
                 self._metrics_timer.stop()
         self.uc_preview.set_status(f"Background: {'On' if enabled else 'Off'}")
 
@@ -1520,13 +1522,13 @@ class TRCCMainWindowMVC(QMainWindow):
         """Handle screencast toggle — delegate to ScreencastHandler."""
         if enabled:
             self._animation_timer.stop()
-            self.controller.video.stop()
+            self.controller.stop_video()
         self._screencast.toggle(enabled)
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
 
     def _on_mask_display_toggle(self, enabled):
         """Toggle mask visibility on preview/LCD (Windows SetDrawMengBan)."""
-        self.controller.overlay.set_mask_visible(enabled)
+        self.controller.set_overlay_mask_visible(enabled)
         self._render_and_send()
         self.uc_preview.set_status(f"Mask: {'On' if enabled else 'Off'}")
 
@@ -1536,7 +1538,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
     def _on_mask_reset(self):
         """Clear mask from preview (Windows buttonYDMB_Click / cmd 99)."""
-        self.controller.overlay.set_theme_mask(None)
+        self.controller.set_overlay_theme_mask(None)
         self._render_and_send()
         self.uc_preview.set_status("Mask cleared")
 
@@ -1544,11 +1546,11 @@ class TRCCMainWindowMVC(QMainWindow):
         """Toggle video playback mode (Windows cmd 3 / myMode=48)."""
         if enabled:
             # Resume playback if video is loaded (Windows: ucBoFangQiKongZhi1.Player())
-            if self.controller.video.has_frames():
+            if self.controller.video_has_frames():
                 self.controller.play_pause()
             self.uc_preview.set_status("Video mode: On")
         else:
-            self.controller.video.stop()
+            self.controller.stop_video()
             self._animation_timer.stop()
             self.uc_preview.set_status("Video mode: Off")
 
@@ -1692,7 +1694,7 @@ class TRCCMainWindowMVC(QMainWindow):
             bg_path = self.controller.working_dir / '00.png'
             result.save(str(bg_path))
             # Set as overlay background so mask/overlays render on top
-            self.controller.overlay.set_background(result)
+            self.controller.set_overlay_background(result)
             self._render_and_send()
             self.uc_preview.set_status("Image cropped and saved")
         else:
@@ -1711,8 +1713,8 @@ class TRCCMainWindowMVC(QMainWindow):
             dest_path = self.controller.working_dir / 'Theme.zt'
             shutil.copy(zt_path, dest_path)
             # Load and play
-            self.controller.video.load(dest_path)
-            self.controller.video.play()
+            self.controller.load_video(dest_path)
+            self.controller.play_video()
             self.uc_preview.set_status("Video exported and saved")
         else:
             self.uc_preview.set_status("Video cut cancelled")
@@ -1755,13 +1757,13 @@ class TRCCMainWindowMVC(QMainWindow):
 
         Hides the element for ~1 second so the user can spot its position.
         """
-        self.controller.overlay.flash_skip_index = index  # type: ignore[attr-defined]
+        self.controller.overlay_flash_skip_index = index
         self._flash_timer.start(980)  # 14 ticks * 70ms = 980ms
         self.controller.render_overlay_and_preview()
 
     def _on_flash_timeout(self):
         """End element flash — restore normal rendering."""
-        self.controller.overlay.flash_skip_index = -1  # type: ignore[attr-defined]
+        self.controller.overlay_flash_skip_index = -1
         self.controller.render_overlay_and_preview()
 
     # ── Preview drag → overlay element position (C# UCScreenImage.SetTextPos) ──
@@ -1965,7 +1967,7 @@ class TRCCMainWindowMVC(QMainWindow):
         path = Path(theme_info.path)
         if path.exists():
             theme = ThemeInfo.from_directory(path)
-            self.controller.themes.select_theme(theme)
+            self.controller.select_theme(theme)
             self._load_theme_overlay_config(path)
 
     def _on_screencast_frame(self, pil_img):
@@ -2043,8 +2045,8 @@ class TRCCMainWindowMVC(QMainWindow):
 
             self.uc_theme_setting.set_overlay_enabled(True)
             self.uc_theme_setting.load_from_overlay_config(overlay_config)
-            self.controller.overlay.set_config(overlay_config)
-            self.controller.overlay.enable(True)
+            self.controller.set_overlay_config(overlay_config)
+            self.controller.enable_overlay(True)
             self.start_metrics()
 
             # Persist to per-device config so overlay survives device re-selection
@@ -2071,18 +2073,18 @@ class TRCCMainWindowMVC(QMainWindow):
             self.uc_device.update_devices(devices)
 
             # Auto-select first device if none selected
-            if devices and not self.controller.devices.get_selected() and not self._led.active:
+            if devices and not self.controller.get_selected_device() and not self._led.active:
                 device = DeviceInfo.from_dict(devices[0])
                 if device.implementation == 'hid_led':
                     self._led.show(device)
                     self._show_view('led')
                 else:
-                    self.controller.devices.select_device(device)
+                    self.controller.select_device(device)
                     self.uc_preview.set_status(f"Device: {device.path}")
 
             # Adaptive poll: slow when connected, fast when searching
             has_device = bool(
-                self.controller.devices.get_selected() or self._led.active)
+                self.controller.get_selected_device() or self._led.active)
             interval = 15000 if has_device else 5000
             if self._device_timer.interval() != interval:
                 self._device_timer.start(interval)
@@ -2162,9 +2164,9 @@ class TRCCMainWindowMVC(QMainWindow):
             metrics = get_all_metrics()
         except Exception:
             return
-        self.controller.overlay.update_metrics(metrics)
+        self.controller.update_overlay_metrics(metrics)
         should_render = (
-            (self.controller.current_image and self.controller.overlay.is_enabled())
+            (self.controller.current_image and self.controller.is_overlay_enabled())
             or self._background_active
         )
         if not should_render:
@@ -2174,13 +2176,13 @@ class TRCCMainWindowMVC(QMainWindow):
     def start_metrics(self):
         """Start live metrics collection for overlay display."""
         log.info("Metrics timer started (1s interval)")
-        self.controller.overlay.enable(True)
+        self.controller.enable_overlay(True)
         self._metrics_timer.start(1000)
 
     def stop_metrics(self):
         """Stop live metrics collection."""
         log.info("Metrics timer stopped")
-        self.controller.overlay.enable(False)
+        self.controller.enable_overlay(False)
         self._metrics_timer.stop()
 
     # =========================================================================
@@ -2234,7 +2236,7 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_system_info.stop_updates()
         self.uc_info_module.stop_updates()
         self.uc_activity_sidebar.stop_updates()
-        self.controller.video.stop()
+        self.controller.stop_video()
         self.controller.cleanup()
         TRCCMainWindowMVC._instance = None
         event.accept()

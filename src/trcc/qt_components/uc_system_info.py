@@ -204,8 +204,9 @@ class SystemInfoPanel(QWidget):
     def _format_value(self, value: float, unit: str) -> str:
         """Format a sensor value with its unit."""
         if unit == '°C':
+            from ..core.models import celsius_to_fahrenheit
             if self._temp_unit == 1:
-                return f"{value * 9 / 5 + 32:.0f}°F"
+                return f"{celsius_to_fahrenheit(value):.0f}°F"
             return f"{value:.0f}°C"
         elif unit in ('%', 'RPM', 'W'):
             return f"{value:.0f}{unit}"
