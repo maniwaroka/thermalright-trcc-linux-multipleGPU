@@ -46,23 +46,23 @@ Thumbs.db
 # Extracted dirs are regenerated at runtime via on-demand download.
 # ──────────────────────────────────────────────
 
-# Extracted theme dirs (from Theme*.7z archives)
-src/trcc/data/Theme*/Theme[1-5]/
-src/trcc/data/Theme*/Custom_*/
-src/trcc/data/Theme*/[0-9]*/
-src/trcc/data/Theme*/Theme.zt
-src/trcc/data/Theme*/Theme.dc
-src/trcc/data/Theme*/01.png
+# Extracted theme dirs (from theme*.7z archives)
+src/trcc/data/theme*/Theme[1-5]/
+src/trcc/data/theme*/Custom_*/
+src/trcc/data/theme*/[0-9]*/
+src/trcc/data/theme*/Theme.zt
+src/trcc/data/theme*/Theme.dc
+src/trcc/data/theme*/01.png
 
 # Extracted Web dirs (from *.7z and zt*.7z archives)
-src/trcc/data/Web/[0-9]*/
-src/trcc/data/Web/zt*/[0-9]*/
-src/trcc/data/Web/**/*.mp4
-src/trcc/data/Web/**/*.png
+src/trcc/data/web/[0-9]*/
+src/trcc/data/web/zt*/[0-9]*/
+src/trcc/data/web/**/*.mp4
+src/trcc/data/web/**/*.png
 
 # Keep all .7z archives tracked
-!src/trcc/data/Theme*.7z
-!src/trcc/data/Web/*.7z
+!src/trcc/data/theme*.7z
+!src/trcc/data/web/*.7z
 
 # Runtime data
 src/trcc/data/web_cache/
@@ -75,55 +75,15 @@ src/trcc/data/ui_*.json
 # Dev / reference files (not for distribution)
 # ──────────────────────────────────────────────
 
-# Decompiled Windows code
-decompiled/
-TRCC_decompiled/
-TRCC_decompiled
-*.dll.c
-*.exe.c
-trcc_setup.c
-trcc_setup.h
-
-# Extracted Windows resources at root level
-/assets/
-
 # Dev scripts at root
 /test_*.py
 /probe_*.py
-/core.py
-/src/core.py
 /*.sh
 !install.sh
 !setup.sh
 
 # Dev tooling
-setup_tools/
 tools/
-node_modules/
-package-lock.json
-package.json
-
-# Old udev/systemd files (replaced by trcc setup-udev)
-99-trcc.rules
-
-# Root-level desktop/service files (canonical copies live in src/trcc/assets/)
-/trcc-linux.desktop
-/trcc-quirk-fix.service
-
-# Scan/audit reports
-clamscan_report.txt
-
-# Test screenshots
-expected_photos/
-
-# Built theme packages
-packages/
-
-# Root-level data dir
-/data/
-
-# Call graph images
-trcc_callgraph*
 
 # Large binary docs
 doc/*.pdf
