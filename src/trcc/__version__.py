@@ -1,9 +1,17 @@
 """TRCC Linux version information."""
 
-__version__ = "6.0.3"
+__version__ = "6.0.4"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.0.4 - Fix LED circulate (zone carousel): zone buttons now toggle zones
+#         in/out when circulate is active (C# radio-select sets clicked zone,
+#         user adds more by clicking buttons). Interval input fires on every
+#         keystroke (textChanged, not editingFinished), default 2 seconds
+#         matching C#. Accurate seconds-to-ticks formula (round(s*1000/150ms)).
+#         Zone uncheck guard (can't disable last zone). Fix Select All not
+#         propagating mode changes to all zones (PA120/LF10). Fix
+#         zone_sync_interval default (36→13 ticks = 2 seconds). 2349 tests.
 # 6.0.3 - Fix LF13 (style 12) LED preview: DLF13 overlay had opaque black
 #         center covering the LED color fill — made center transparent so
 #         colors show through. Fix LF13 mode numbering: D0rgblf13 rainbow

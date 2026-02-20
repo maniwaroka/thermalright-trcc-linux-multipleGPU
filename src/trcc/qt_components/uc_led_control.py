@@ -592,14 +592,14 @@ class UCLedControl(QWidget):
         # Background PNG has "⏱ ___ S" baked in — just the number input
         self._carousel_interval = QLineEdit(self)
         self._carousel_interval.setGeometry(843, 678, 36, 16)
-        self._carousel_interval.setText("6")
+        self._carousel_interval.setText("2")
         self._carousel_interval.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._carousel_interval.setValidator(QIntValidator(1, 60, self))
         self._carousel_interval.setStyleSheet(
             "QLineEdit { background: rgb(67, 67, 67); color: white; "
             "border: none; font-size: 11px; }")
         self._carousel_interval.setToolTip("Carousel rotation interval (seconds)")
-        self._carousel_interval.editingFinished.connect(
+        self._carousel_interval.textChanged.connect(
             self._on_carousel_interval_changed)
         self._carousel_interval.setVisible(False)
 
@@ -1043,10 +1043,20 @@ class UCLedControl(QWidget):
                 btn.setChecked(True)
             return
         if self._carousel_mode:
-            # Multi-select: toggle this zone's carousel participation
+            # Multi-select: toggle zone in/out of rotation (C# button1-4_Click).
+            # Guard: can't disable the last remaining zone.
             btn = self._zone_buttons[zone_index]
-            selected = btn.isChecked()
-            self.carousel_zone_changed.emit(zone_index, selected)
+            is_now_checked = btn.isChecked()
+            if is_now_checked:
+                self.carousel_zone_changed.emit(zone_index, True)
+            else:
+                others = sum(1 for i in range(self._zone_count)
+                             if i != zone_index
+                             and self._zone_buttons[i].isChecked())
+                if others > 0:
+                    self.carousel_zone_changed.emit(zone_index, False)
+                else:
+                    btn.setChecked(True)  # Keep last zone enabled
         else:
             # Radio-select: one zone at a time
             self._selected_zone = zone_index
@@ -1079,9 +1089,10 @@ class UCLedControl(QWidget):
                     btn.setChecked(i == self._selected_zone)
         self.carousel_changed.emit(carousel)
 
-    def _on_carousel_interval_changed(self):
-        """Handle carousel interval input change."""
-        text = self._carousel_interval.text()
+    def _on_carousel_interval_changed(self, text: str = ""):
+        """Handle carousel interval input change (C# textBoxTimer_TextChanged)."""
+        if not text:
+            text = self._carousel_interval.text()
         if text.isdigit() and int(text) > 0:
             self.carousel_interval_changed.emit(int(text))
 

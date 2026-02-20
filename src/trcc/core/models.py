@@ -447,7 +447,7 @@ class LEDState:
     zone_sync_zones: List[bool] = field(default_factory=list)  # LunBo1-4
     zone_sync_current: int = 0           # nowLunbo: current active zone
     zone_sync_ticks: int = 0             # ValCount: tick counter
-    zone_sync_interval: int = 36         # 6 * textBoxTimer (default 6s)
+    zone_sync_interval: int = 13         # round(2s * 1000 / 150ms tick)
 
     # LC2 clock settings (style 9)
     is_timer_24h: bool = True

@@ -14,6 +14,10 @@ from .led_effects import LEDEffectEngine
 
 log = logging.getLogger(__name__)
 
+# LED animation tick period (ms) — matches qt_app_mvc.py LEDHandler._timer.
+# C# Timer_event runs at ~167ms; our QTimer runs at 150ms.
+_LED_TICK_MS = 150
+
 # Config persistence field map: config_key → LEDState attribute.
 # One map drives both save_config() and load_config() — add a field here once.
 _PERSIST_FIELDS: Dict[str, str] = {
@@ -141,8 +145,15 @@ class LEDService:
         self.state.test_color = 0
 
     def set_selected_zone(self, zone: int) -> None:
-        """Set the currently selected zone (drives segment display phase)."""
+        """Set the currently selected zone (drives segment display phase).
+
+        Also syncs zone_sync_zones: C# radio-select sets clicked zone's
+        LunBo=true and others false. When circulate enables, rotation
+        starts from whichever zones are in zone_sync_zones.
+        """
         self.state.selected_zone = zone
+        for i in range(len(self.state.zone_sync_zones)):
+            self.state.zone_sync_zones[i] = (i == zone)
 
     def set_zone_sync(self, enabled: bool) -> None:
         """Enable/disable zone sync (C# isLunBo).
@@ -150,6 +161,10 @@ class LEDService:
         One checkbox, one flag. Style determines behavior:
         Styles 2/7: "Select all" — sync all zones to selected zone's settings.
         Other styles: "Circulate" — timer-based rotation through enabled zones.
+
+        C# does NOT auto-enable zones. Radio-select mode keeps only the
+        selected zone in zone_sync_zones. User adds more zones by clicking
+        zone buttons while circulate is active.
         """
         self.state.zone_sync = enabled
         if enabled:
@@ -169,8 +184,12 @@ class LEDService:
             self.state.zone_sync_zones[zone] = selected
 
     def set_zone_sync_interval(self, seconds: int) -> None:
-        """Set sync interval in seconds (C# textBoxTimer)."""
-        self.state.zone_sync_interval = max(1, seconds) * 6
+        """Set sync interval in seconds (C# textBoxTimer).
+
+        C# uses ``6 * seconds`` for its ~167ms tick. We compute from our
+        actual tick period for accuracy: 1 second = round(1000/150) = 7 ticks.
+        """
+        self.state.zone_sync_interval = max(1, round(seconds * 1000 / _LED_TICK_MS))
 
     @property
     def _select_all_active(self) -> bool:
