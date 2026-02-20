@@ -1,9 +1,15 @@
 """TRCC Linux version information."""
 
-__version__ = "6.0.5"
+__version__ = "6.0.6"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.0.6 - Fix triple/overlapping images on Frozen Warframe SE (PM=58, FBL=58):
+#         FBL 58 was missing from FBL_TO_RESOLUTION table, defaulting to
+#         320x320 instead of 320x240. Wrong resolution cascaded into: no
+#         pre-rotation (square displays skip it), big-endian byte order
+#         (320x320 triggers it for HID), and 33% too much pixel data sent.
+#         Added FBL 58 → (320, 240). Addresses #24. 2349 tests.
 # 6.0.5 - Fix LED circulate not rotating zones: zone_sync_zones was never
 #         initialized in configure_for_style() — stayed empty [], so zone
 #         toggles during circulate silently failed and _next_sync_zone found
