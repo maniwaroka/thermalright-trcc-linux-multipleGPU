@@ -2,8 +2,8 @@
 
 Business logic shared by all driving adapters:
 - controllers.py (PySide6 GUI)
-- cli.py (Typer CLI)
-- api.py (FastAPI REST)
+- cli/ (Typer CLI)
+- api/ (FastAPI REST)
 """
 
 from .device import DeviceService
