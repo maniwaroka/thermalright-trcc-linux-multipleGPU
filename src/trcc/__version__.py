@@ -1,9 +1,18 @@
 """TRCC Linux version information."""
 
-__version__ = "6.0.6"
+__version__ = "6.1.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.1.0 - REST API full CLI parity: refactor api.py → api/ package (7 modules),
+#         28 new endpoints. Display (8): color, brightness, rotation, split,
+#         reset, mask upload, overlay, status. LED (14): color, mode, brightness,
+#         off, sensor source, zone color/mode/brightness/toggle, sync, segment
+#         toggle, clock format, temp unit, status. Themes (3): load, save,
+#         import. System (3): metrics, metrics by category, diagnostic report.
+#         Reuses DisplayDispatcher + LEDDispatcher (single authority pattern).
+#         Device select auto-initializes the right dispatcher. 409 Conflict
+#         for unselected device. 67 API tests (44 new). 2393 tests.
 # 6.0.6 - Fix triple/overlapping images on Frozen Warframe SE (PM=58, FBL=58):
 #         FBL 58 was missing from FBL_TO_RESOLUTION table, defaulting to
 #         320x320 instead of 320x240. Wrong resolution cascaded into: no
