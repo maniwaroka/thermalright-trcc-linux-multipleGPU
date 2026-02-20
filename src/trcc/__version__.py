@@ -1,9 +1,15 @@
 """TRCC Linux version information."""
 
-__version__ = "6.0.1"
+__version__ = "6.0.2"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.0.2 - Fix video background not persisting after reboot: ThemeService.save()
+#         stored video path pointing to temp dir (/tmp/trcc_work_*/Theme.zt),
+#         now copies video into theme directory as Theme.zt so it survives
+#         reboots. CLI graceful errors: catch typos and usage errors (missing
+#         args, bad types, unknown commands) with clean one-liner + "Did you
+#         mean?" suggestions instead of Python tracebacks. 2349 tests.
 # 6.0.1 - Fix SCSI 320x240 chunk size (0x10000→0xE100 matching C# USBLCD.exe
 #         Mode 1/2). Fixes garbled display on FBL 50 devices (Frozen Warframe
 #         240, #17). Terminal preview: --preview/-p flag on all LCD and LED CLI

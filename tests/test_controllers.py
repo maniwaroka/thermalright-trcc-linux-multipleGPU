@@ -1078,18 +1078,24 @@ class TestReferenceThemeSaveLoad(unittest.TestCase):
         self.ctrl._display.current_theme_path = Path(self.tmp) / 'src'
         self.ctrl._display.current_theme_path.mkdir()
 
+        # Create a real video file (save copies it into the theme dir)
+        video_file = Path(self.tmp) / 'clip.mp4'
+        video_file.write_bytes(b'fake-video-data')
+
         with patch.object(type(self.ctrl._display.media), 'is_playing',
                           new_callable=PropertyMock, return_value=True), \
              patch.object(type(self.ctrl._display.media), 'source_path',
                           new_callable=PropertyMock,
-                          return_value=Path('/videos/clip.mp4')):
+                          return_value=video_file):
             ok, msg = self.ctrl.save_theme('VidRef', Path(self.tmp))
 
         self.assertTrue(ok)
         theme_path = Path(self.tmp) / 'theme320320' / 'Custom_VidRef'
         with open(str(theme_path / 'config.json')) as f:
             config = json.load(f)
-        self.assertEqual(config['background'], '/videos/clip.mp4')
+        # Video should be copied into theme dir as Theme.zt
+        self.assertEqual(config['background'], str(theme_path / 'Theme.zt'))
+        self.assertTrue((theme_path / 'Theme.zt').exists())
 
     def test_save_theme_with_mask(self):
         self.ctrl._display.current_image = _make_test_image()

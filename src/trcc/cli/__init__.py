@@ -16,6 +16,7 @@ import functools
 import logging
 from typing import Annotated, Optional
 
+import click.exceptions
 import typer
 
 # =========================================================================
@@ -751,6 +752,17 @@ def main():
         return result if isinstance(result, int) else 0
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else 0
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        return 130
+    except click.exceptions.UsageError as e:
+        print(f"Error: {e.format_message()}")
+        if hasattr(e, 'ctx') and e.ctx:
+            print("Try 'trcc --help' for usage info.")
+        return 2
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
 
 
 # =========================================================================

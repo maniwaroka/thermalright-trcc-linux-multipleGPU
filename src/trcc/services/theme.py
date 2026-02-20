@@ -304,10 +304,16 @@ class ThemeService:
             # Save current frame as 00.png
             background.save(str(td.bg))
 
-            # Determine background source path
+            # Determine background source path (copy video into theme dir
+            # so it survives reboots — source may be in a temp directory)
             background_path = None
             if video_path:
-                background_path = str(video_path)
+                video_src = Path(video_path)
+                if video_src.exists():
+                    dest = td.zt
+                    if video_src.resolve() != dest.resolve():
+                        shutil.copy2(str(video_src), str(dest))
+                    background_path = str(dest)
             elif current_theme_path:
                 orig_bg = ThemeDir(current_theme_path).bg
                 if orig_bg.exists():
