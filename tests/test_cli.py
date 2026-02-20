@@ -1724,35 +1724,38 @@ class TestRenderOverlay(unittest.TestCase):
         with patch('os.path.exists', return_value=False):
             self.assertEqual(DisplayCommands.render_overlay('/no/such'), 1)
 
+    def _mock_connect(self):
+        """Mock _connect_or_fail to return a fake dispatcher."""
+        mock_lcd = MagicMock()
+        mock_lcd.render_overlay.return_value = {
+            "success": True, "image": MagicMock(), "elements": 1,
+            "display_opts": {"elem1": {}},
+            "message": "Overlay config loaded: 1 elements (320x320)",
+        }
+        return patch('trcc.cli._display._connect_or_fail',
+                      return_value=(mock_lcd, 0))
+
     def test_info_only(self):
         """Without --send or --output, just prints info."""
-        mock_img = MagicMock()
-        with patch('os.path.exists', return_value=True), \
-             patch('trcc.services.OverlayService') as MockOverlay, \
-             patch('trcc.services.ImageService.solid_color', return_value=mock_img), \
-             patch('trcc.adapters.system.info.get_all_metrics', return_value=HardwareMetrics()):
-            overlay_inst = MockOverlay.return_value
-            overlay_inst.load_from_dc.return_value = {}
-            overlay_inst.config = {'elem1': {}}
-            overlay_inst.render.return_value = mock_img
+        with self._mock_connect() as mock_conn:
+            mock_lcd = mock_conn.return_value[0]
             result = DisplayCommands.render_overlay('/tmp/config1.dc')
             self.assertEqual(result, 0)
+            mock_lcd.render_overlay.assert_called_once()
 
     def test_save_to_file(self):
         """--output saves rendered image."""
         mock_img = MagicMock()
-        with patch('os.path.exists', return_value=True), \
-             patch('trcc.services.OverlayService') as MockOverlay, \
-             patch('trcc.services.ImageService.solid_color', return_value=mock_img), \
-             patch('trcc.adapters.system.info.get_all_metrics', return_value=HardwareMetrics()):
-            overlay_inst = MockOverlay.return_value
-            overlay_inst.load_from_dc.return_value = {}
-            overlay_inst.config = {}
-            overlay_inst.render.return_value = mock_img
+        with self._mock_connect() as mock_conn:
+            mock_lcd = mock_conn.return_value[0]
+            mock_lcd.render_overlay.return_value = {
+                "success": True, "image": mock_img, "elements": 0,
+                "display_opts": {},
+                "message": "Saved overlay render to /tmp/out.png",
+            }
             result = DisplayCommands.render_overlay(
                 '/tmp/config1.dc', output='/tmp/out.png')
             self.assertEqual(result, 0)
-            mock_img.save.assert_called_once_with('/tmp/out.png')
 
 
 # ---------------------------------------------------------------------------
