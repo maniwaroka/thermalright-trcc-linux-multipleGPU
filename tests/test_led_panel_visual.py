@@ -8,7 +8,8 @@ Fake metrics pumped every second so sensor gauges are live.
 All panel buttons wired: mode, color, brightness, zones, on/off.
 
 Usage:
-    PYTHONPATH=src python3 tests/test_led_panel_visual.py
+    PYTHONPATH=src python3 tests/test_led_panel_visual.py          # real metrics
+    PYTHONPATH=src python3 tests/test_led_panel_visual.py --fake    # fake cycling
 """
 
 import math
@@ -35,11 +36,17 @@ from trcc.core.models import LED_STYLES, HardwareMetrics
 from trcc.qt_components.uc_led_control import PREVIEW_X, PREVIEW_Y, UCLedControl
 from trcc.qt_components.uc_screen_led import STYLE_POSITIONS
 
-# ── Fake metrics that cycle so gauges animate ──────────────────────
+# ── Metrics source ────────────────────────────────────────────────
+_use_fake = '--fake' in sys.argv
 _tick = 0
 
 
-def _fake_metrics() -> HardwareMetrics:
+def _get_metrics() -> HardwareMetrics:
+    """Return real system metrics, or fake cycling ones with --fake."""
+    if not _use_fake:
+        from trcc.adapters.system.info import get_all_metrics
+        return get_all_metrics()
+
     global _tick
     _tick += 1
     phase = (_tick % 100) / 100.0  # 0.0 → 1.0 sawtooth
@@ -360,7 +367,7 @@ class LEDPanelTestHarness(QWidget):
         self._tick_count += 1
 
         # Update metrics
-        m = _fake_metrics()
+        m = _get_metrics()
         self._led_panel.update_metrics(m)
         self._metrics_label.setText(
             f"CPU: {m.cpu_temp:.0f}°C {m.cpu_freq:.0f}MHz {m.cpu_percent:.0f}% | "
@@ -459,7 +466,8 @@ class LEDPanelTestHarness(QWidget):
 
 
 def main():
-    app = QApplication(sys.argv)
+    argv = [a for a in sys.argv if a != '--fake']
+    app = QApplication(argv)
     app.setStyle('Fusion')
 
     dark = QPalette()

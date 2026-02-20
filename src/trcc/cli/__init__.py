@@ -38,7 +38,7 @@ def _cli_handler(func):
     return wrapper
 
 
-def _parse_hex(hex_color: str) -> tuple[int, int, int] | None:
+def _parse_hex(hex_color: str) -> Optional[tuple[int, int, int]]:
     """Parse hex color string → (r, g, b) or None. Shared by _led and _display."""
     hex_color = hex_color.lstrip('#')
     if len(hex_color) != 6:

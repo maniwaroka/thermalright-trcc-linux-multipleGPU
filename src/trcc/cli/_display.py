@@ -40,6 +40,13 @@ class DisplayDispatcher:
         return self._svc.selected if self._svc else None
 
     @property
+    def _dev(self) -> Any:
+        """Return selected device, assert not None (call after connect())."""
+        dev = self._svc.selected if self._svc else None
+        assert dev is not None, "connect() must succeed before calling methods"
+        return dev
+
+    @property
     def resolution(self) -> tuple[int, int]:
         dev = self.device
         return dev.resolution if dev else (0, 0)
@@ -63,7 +70,7 @@ class DisplayDispatcher:
         self._svc = _device._get_service(device)
         if not self._svc.selected:
             return {"success": False, "error": "No device found"}
-        dev = self._svc.selected
+        dev = self._dev
         return {
             "success": True,
             "resolution": dev.resolution,
@@ -81,7 +88,7 @@ class DisplayDispatcher:
 
         from trcc.services import ImageService
 
-        dev = self._svc.selected
+        dev = self._dev
         w, h = dev.resolution
         img = Image.open(image_path).convert('RGB')
         img = ImageService.resize(img, w, h)
@@ -96,7 +103,7 @@ class DisplayDispatcher:
         """Send solid color to LCD. Returns rendered PIL image."""
         from trcc.services import ImageService
 
-        dev = self._svc.selected
+        dev = self._dev
         w, h = dev.resolution
         img = ImageService.solid_color(r, g, b, w, h)
         self._svc.send_pil(img, w, h)
@@ -110,7 +117,7 @@ class DisplayDispatcher:
         """Reset device by sending solid red frame."""
         from trcc.services import ImageService
 
-        dev = self._svc.selected
+        dev = self._dev
         w, h = dev.resolution
         img = ImageService.solid_color(255, 0, 0, w, h)
         self._svc.send_pil(img, w, h)
@@ -130,7 +137,7 @@ class DisplayDispatcher:
 
         from trcc.conf import Settings
 
-        dev = self._svc.selected
+        dev = self._dev
         key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
         Settings.save_device_setting(key, 'brightness_level', level)
         return {
@@ -145,7 +152,7 @@ class DisplayDispatcher:
 
         from trcc.conf import Settings
 
-        dev = self._svc.selected
+        dev = self._dev
         key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
         Settings.save_device_setting(key, 'rotation', degrees)
         return {
@@ -160,7 +167,7 @@ class DisplayDispatcher:
 
         from trcc.conf import Settings
 
-        dev = self._svc.selected
+        dev = self._dev
         w, h = dev.resolution
 
         from trcc.core.models import SPLIT_MODE_RESOLUTIONS
@@ -192,7 +199,7 @@ class DisplayDispatcher:
         if not os.path.exists(mask_path):
             return {"success": False, "error": f"Path not found: {mask_path}"}
 
-        dev = self._svc.selected
+        dev = self._dev
         w, h = dev.resolution
 
         p = Path(mask_path)
@@ -232,7 +239,7 @@ class DisplayDispatcher:
         if not os.path.exists(dc_path):
             return {"success": False, "error": f"Path not found: {dc_path}"}
 
-        dev = self._svc.selected if self._svc else None
+        dev = self._dev if self._svc else None
         w, h = dev.resolution if dev else (320, 320)
 
         overlay = OverlayService(w, h)
