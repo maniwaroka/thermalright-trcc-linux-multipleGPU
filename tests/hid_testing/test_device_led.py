@@ -1304,33 +1304,44 @@ class TestRemapLedColors:
         assert len(LED_REMAP_TABLES[4]) == 31
 
     def test_style_2_remaps_correctly(self):
-        """Style 2 first physical positions get Cpu2 then Cpu1 colors."""
-        # Logical indices: Cpu2=3, Cpu1=2
+        """Style 2 first physical positions get Cpu2 then Cpu1 colors.
+
+        PA120 uses ReSetUCScreenLED2() indices: Cpu1=0, Cpu2=1.
+        """
         colors = [(0, 0, 0)] * 84
-        colors[2] = (10, 20, 30)   # Cpu1 at logical 2
-        colors[3] = (40, 50, 60)   # Cpu2 at logical 3
+        colors[0] = (10, 20, 30)   # Cpu1 at logical 0
+        colors[1] = (40, 50, 60)   # Cpu2 at logical 1
         remapped = remap_led_colors(colors, style_id=2)
         assert remapped[0] == (40, 50, 60)  # Physical 0 = Cpu2
         assert remapped[1] == (10, 20, 30)  # Physical 1 = Cpu1
 
     def test_style_2_gpu_and_indicators(self):
-        """Style 2: Gpu1/Gpu2 at wire 82-83, SSD/HSD at 23-24, C11/B11 at 25-26."""
+        """Style 2: PA120 indicators use ReSetUCScreenLED2() indices.
+
+        Gpu1=2, Gpu2=3, SSD=4, HSD=5, BFB=6, SSD1=7, HSD1=8, BFB1=9.
+        """
         colors = [(0, 0, 0)] * 84
-        colors[4] = (100, 0, 0)    # Gpu1 at logical 4
-        colors[5] = (0, 100, 0)    # Gpu2 at logical 5
-        colors[6] = (0, 0, 100)    # SSD at logical 6 (appears at wire 23 AND 59)
-        colors[7] = (50, 50, 0)    # HSD at logical 7 (appears at wire 24 AND 60)
+        colors[2] = (100, 0, 0)    # Gpu1 at logical 2
+        colors[3] = (0, 100, 0)    # Gpu2 at logical 3
+        colors[4] = (0, 0, 100)    # SSD at logical 4
+        colors[5] = (50, 50, 0)    # HSD at logical 5
+        colors[6] = (10, 10, 10)   # BFB at logical 6
+        colors[7] = (20, 20, 20)   # SSD1 at logical 7
+        colors[8] = (30, 30, 30)   # HSD1 at logical 8
+        colors[9] = (40, 40, 40)   # BFB1 at logical 9
         colors[81] = (0, 50, 50)   # LEDC11 at logical 81
         colors[80] = (50, 0, 50)   # LEDB11 at logical 80
         remapped = remap_led_colors(colors, style_id=2)
-        assert remapped[82] == (100, 0, 0)  # Physical 82 = Gpu1
-        assert remapped[83] == (0, 100, 0)  # Physical 83 = Gpu2
-        assert remapped[23] == (0, 0, 100)  # Physical 23 = SSD
-        assert remapped[59] == (0, 0, 100)  # Physical 59 = SSD1 (same index as SSD)
-        assert remapped[24] == (50, 50, 0)  # Physical 24 = HSD
-        assert remapped[60] == (50, 50, 0)  # Physical 60 = HSD1 (same index as HSD)
-        assert remapped[25] == (0, 50, 50)  # Physical 25 = LEDC11
-        assert remapped[26] == (50, 0, 50)  # Physical 26 = LEDB11
+        assert remapped[82] == (100, 0, 0)    # Physical 82 = Gpu1
+        assert remapped[83] == (0, 100, 0)    # Physical 83 = Gpu2
+        assert remapped[23] == (0, 0, 100)    # Physical 23 = SSD
+        assert remapped[24] == (50, 50, 0)    # Physical 24 = HSD
+        assert remapped[41] == (10, 10, 10)   # Physical 41 = BFB (%)
+        assert remapped[42] == (40, 40, 40)   # Physical 42 = BFB1 (GPU %)
+        assert remapped[59] == (20, 20, 20)   # Physical 59 = SSD1
+        assert remapped[60] == (30, 30, 30)   # Physical 60 = HSD1
+        assert remapped[25] == (0, 50, 50)    # Physical 25 = LEDC11
+        assert remapped[26] == (50, 0, 50)    # Physical 26 = LEDB11
 
     def test_style_2_uniform_color_unchanged_count(self):
         """Uniform color (all same) remaps to same colors in different order."""
@@ -1356,7 +1367,7 @@ class TestRemapLedColors:
         remapped = remap_led_colors(colors, style_id=2)
         # Most entries will be black since indices > 9 aren't in colors
         assert len(remapped) == 84
-        # Index 3 (Cpu2) → physical 0 should still have the color
+        # PA120 Cpu2=1, so index 1 → physical 0 should have the color
         assert remapped[0] == (255, 0, 0)
         # Index 81 (LEDC11) → physical 25 should be black
         assert remapped[25] == (0, 0, 0)
@@ -1366,10 +1377,10 @@ class TestRemapLedColors:
         # Give each logical LED a unique color
         colors = [(i, i, i) for i in range(84)]
         remapped = remap_led_colors(colors, style_id=2)
-        # Physical 0 should have logical 3's color (Cpu2)
-        assert remapped[0] == (3, 3, 3)
-        # Physical 2 should have logical 14's color (LEDF1)
-        assert remapped[2] == (14, 14, 14)
+        # PA120: Physical 0 should have logical 1's color (Cpu2)
+        assert remapped[0] == (1, 1, 1)
+        # PA120: Physical 2 should have logical 15's color (LEDF1)
+        assert remapped[2] == (15, 15, 15)
 
     def test_all_remap_tables_nonempty(self):
         """Each remap table has a reasonable number of entries."""

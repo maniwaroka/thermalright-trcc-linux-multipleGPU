@@ -614,27 +614,29 @@ PRESET_COLORS: List[Tuple[int, int, int]] = [
 # =============================================================================
 
 # Style 2: PA120_DIGITAL (84 LEDs, 4 zones)
-# Wire order from C# FormLED.cs SendHidVal (line 4391):
+# Wire order from C# FormLED.cs SendHidVal (line 4391).
+# IMPORTANT: PA120 uses ReSetUCScreenLED2() indices (Cpu1=0, Cpu2=1, ...,
+# BFB1=9, digits start at 10), NOT the UCScreenLED class defaults (Cpu1=2).
 # Cpu2,Cpu1, digit1(FABGEDC), digit2, digit3,
 # SSD,HSD,LEDC11,LEDB11,  digit4, digit5,
 # BFB,BFB1,  digit10(CDEGBAF), digit9,
 # LEDB12,LEDC12,SSD1,HSD1,  digit8, digit7, digit6,
 # Gpu1,Gpu2
 _REMAP_STYLE_2: tuple[int, ...] = (
-    3, 2, 14, 9, 10, 15, 13, 12, 11,
-    21, 16, 17, 22, 20, 19, 18,
-    28, 23, 24, 29, 27, 26, 25,
-    6, 7, 81, 80,
+    1, 0, 15, 10, 11, 16, 14, 13, 12,
+    22, 17, 18, 23, 21, 20, 19,
+    29, 24, 25, 30, 28, 27, 26,
+    4, 5, 81, 80,
     36, 31, 32, 37, 35, 34, 33,
     43, 38, 39, 44, 42, 41, 40,
-    8, 8,
+    6, 9,
     75, 76, 77, 79, 74, 73, 78,
     68, 69, 70, 72, 67, 66, 71,
-    82, 83, 6, 7,
+    82, 83, 7, 8,
     61, 62, 63, 65, 60, 59, 64,
     54, 55, 56, 58, 53, 52, 57,
     47, 48, 49, 51, 46, 45, 50,
-    4, 5,
+    2, 3,
 )
 
 # Style 3: AK120_DIGITAL (64 LEDs, 2 zones)

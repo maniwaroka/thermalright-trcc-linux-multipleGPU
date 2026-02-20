@@ -1,9 +1,16 @@
 """TRCC Linux version information."""
 
-__version__ = "6.1.0"
+__version__ = "6.1.1"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.1.1 - Fix PA120 (style 2) LED wire remap table: was built using default
+#         UCScreenLED class indices (Cpu1=2, Cpu2=3, SSD=6, HSD=7, BFB=8,
+#         digits start at 9) instead of PA120-specific ReSetUCScreenLED2()
+#         indices (Cpu1=0, Cpu2=1, SSD=4, HSD=5, BFB=6, digits start at 10).
+#         Every indicator and first 3 digit segments mapped to wrong wire
+#         positions — cut-off numbers and missing % signs on physical display.
+#         Addresses #15. 2393 tests.
 # 6.1.0 - REST API full CLI parity: refactor api.py → api/ package (7 modules),
 #         28 new endpoints. Display (8): color, brightness, rotation, split,
 #         reset, mask upload, overlay, status. LED (14): color, mode, brightness,
