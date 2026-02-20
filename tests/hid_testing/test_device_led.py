@@ -1351,14 +1351,41 @@ class TestRemapLedColors:
         assert len(remapped) == 84
         assert all(c == color for c in remapped)
 
+    def test_style_3_remaps_correctly(self):
+        """Style 3 (AK120) first positions use ReSetUCScreenLED3() indices.
+
+        Cpu1=0, WATT=1, SSD=2, HSD=3, BFB=4, Gpu1=5, LEDA1=6.
+        Wire order: WATT, LEDC3, ..., Cpu1 at physical 9, ..., SSD/HSD/BFB
+        at physical 44/45/46, Gpu1 at physical 49.
+        """
+        colors = [(0, 0, 0)] * 64
+        colors[0] = (10, 20, 30)   # Cpu1 at logical 0
+        colors[1] = (40, 50, 60)   # WATT at logical 1
+        colors[2] = (70, 80, 90)   # SSD at logical 2
+        colors[3] = (100, 0, 0)    # HSD at logical 3
+        colors[4] = (0, 100, 0)    # BFB at logical 4
+        colors[5] = (0, 0, 100)    # Gpu1 at logical 5
+        remapped = remap_led_colors(colors, style_id=3)
+        assert remapped[0] == (40, 50, 60)    # Physical 0 = WATT
+        assert remapped[9] == (10, 20, 30)    # Physical 9 = Cpu1
+        assert remapped[44] == (70, 80, 90)   # Physical 44 = SSD
+        assert remapped[45] == (100, 0, 0)    # Physical 45 = HSD
+        assert remapped[46] == (0, 100, 0)    # Physical 46 = BFB
+        assert remapped[55] == (0, 0, 100)    # Physical 55 = Gpu1
+
     def test_style_4_first_positions(self):
-        """Style 4 (LC1) first physical positions: GNo=2, MTNo=1."""
-        colors = [(0, 0, 0)] * 34  # Need up to index 37
+        """Style 4 (LC1) first physical positions use ReSetUCScreenLED4() indices.
+
+        SSD=0, MTNo=1, GNo=2, LEDA1=3..LEDG4=30.
+        """
+        colors = [(0, 0, 0)] * 31
+        colors[0] = (70, 70, 70)   # SSD at logical 0
         colors[1] = (10, 10, 10)   # MTNo at logical 1
         colors[2] = (20, 20, 20)   # GNo at logical 2
         remapped = remap_led_colors(colors, style_id=4)
         assert remapped[0] == (20, 20, 20)  # Physical 0 = GNo
         assert remapped[1] == (10, 10, 10)  # Physical 1 = MTNo
+        assert remapped[8] == (70, 70, 70)  # Physical 8 = SSD
 
     def test_out_of_range_index_returns_black(self):
         """If remap table references an index beyond colors list, return black."""
@@ -1391,10 +1418,11 @@ class TestRemapLedColors:
             )
 
     def test_all_remap_indices_in_range(self):
-        """All remap table indices are non-negative and within a sane bound."""
+        """All remap indices within led_count for their style."""
         for style_id, table in LED_REMAP_TABLES.items():
+            style = LED_STYLES[style_id]
             for i, idx in enumerate(table):
-                assert 0 <= idx < 200, (
-                    f"Style {style_id} position {i}: "
-                    f"index {idx} out of range"
+                assert 0 <= idx < style.led_count, (
+                    f"Style {style_id} ({style.model_name}) position {i}: "
+                    f"index {idx} >= led_count {style.led_count}"
                 )

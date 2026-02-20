@@ -1,9 +1,16 @@
 """TRCC Linux version information."""
 
-__version__ = "6.1.1"
+__version__ = "6.1.2"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.1.2 - Fix AK120 (style 3) and LC1 (style 4) LED wire remap tables: same
+#         root cause as v6.1.1 — remap tables built using constructor default
+#         UCScreenLED indices instead of style-specific ReSetUCScreenLED3/4()
+#         overrides. Style 3: all 64 entries wrong (indices up to 68, beyond
+#         valid range 0-63). Style 4: 29 of 31 entries wrong (indices up to 37,
+#         beyond valid range 0-30). Tightened remap range test to catch this
+#         class of bug automatically. 2394 tests.
 # 6.1.1 - Fix PA120 (style 2) LED wire remap table: was built using default
 #         UCScreenLED class indices (Cpu1=2, Cpu2=3, SSD=6, HSD=7, BFB=8,
 #         digits start at 9) instead of PA120-specific ReSetUCScreenLED2()
