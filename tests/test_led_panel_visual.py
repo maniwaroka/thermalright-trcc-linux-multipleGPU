@@ -2,9 +2,11 @@
 """
 Visual test harness for LED panel — all 12 device styles.
 
-Buttons across the top to switch devices. Gray backdrop behind
-UCScreenLED so missing/misplaced LEDs are immediately obvious.
-Fake metrics pumped every second so sensor gauges are live.
+Uses the real LEDService to compute LED colors (segment masks,
+mode effects, metrics-linked gradients). Buttons across the top
+to switch devices. Gray backdrop behind UCScreenLED so
+missing/misplaced LEDs are immediately obvious.
+
 All panel buttons wired: mode, color, brightness, zones, on/off.
 
 Usage:
@@ -12,7 +14,6 @@ Usage:
     PYTHONPATH=src python3 tests/test_led_panel_visual.py --fake    # fake cycling
 """
 
-import math
 import os
 import sys
 
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
 from trcc.core.models import LED_STYLES, HardwareMetrics
 from trcc.qt_components.uc_led_control import PREVIEW_X, PREVIEW_Y, UCLedControl
 from trcc.qt_components.uc_screen_led import STYLE_POSITIONS
+from trcc.services.led import LEDService
 
 # ── Metrics source ────────────────────────────────────────────────
 _use_fake = '--fake' in sys.argv
@@ -119,14 +121,8 @@ class LEDPanelTestHarness(QWidget):
 
         # ── State ─────────────────────────────────────────────────
         self._current_style = 0
-        self._mode = 0           # 0=static 1=breathing 2=colorful 3=rainbow 4=temp 5=load
-        self._color = (255, 0, 0)  # user-chosen RGB
-        self._brightness = 100     # 0-100
-        self._global_on = True
-        self._selected_zone = 0
-        self._zone_count = 1
+        self._svc = LEDService()  # real effect engine
         self._tick_count = 0
-        self._segment_on: list[bool] = []  # per-LED on/off
 
         # Dark background
         self.setAutoFillBackground(True)
@@ -241,42 +237,46 @@ class LEDPanelTestHarness(QWidget):
         self._timer.start(100)
 
     # ================================================================
-    # Signal handlers — buttons actually work now
+    # Signal handlers — delegate to LEDService
     # ================================================================
 
     def _on_mode(self, mode: int):
-        self._mode = mode
+        self._svc.set_mode(mode)
         self._update_status()
 
     def _on_color(self, r: int, g: int, b: int):
-        self._color = (r, g, b)
+        self._svc.set_color(r, g, b)
         self._update_status()
 
     def _on_brightness(self, val: int):
-        self._brightness = val
+        self._svc.set_brightness(val)
         self._update_status()
 
     def _on_global_toggle(self, on: bool):
-        self._global_on = on
+        self._svc.toggle_global(on)
         self._update_status()
 
     def _on_segment_click(self, idx: int):
-        if 0 <= idx < len(self._segment_on):
-            self._segment_on[idx] = not self._segment_on[idx]
-            self._led_panel._preview.set_segment_on(idx, self._segment_on[idx])
+        seg_on = self._svc.state.segment_on
+        if 0 <= idx < len(seg_on):
+            self._svc.toggle_segment(idx, not seg_on[idx])
+            self._led_panel._preview.set_segment_on(idx, seg_on[idx])
         self._update_status()
 
     def _on_zone_selected(self, zone: int):
-        self._selected_zone = zone
+        self._svc.set_selected_zone(zone)
         self._update_status()
 
     def _on_zone_toggled(self, zone: int, on: bool):
+        self._svc.toggle_zone(zone, on)
         self._update_status()
 
     def _on_carousel(self, on: bool):
+        self._svc.set_zone_sync(on)
         self._update_status()
 
     def _on_carousel_interval(self, secs: int):
+        self._svc.set_zone_sync_interval(secs)
         self._update_status()
 
     def _on_temp_unit(self, unit: str):
@@ -286,6 +286,7 @@ class LEDPanelTestHarness(QWidget):
         self._update_status()
 
     def _on_test_mode(self, on: bool):
+        self._svc.state.test_mode = on
         self._update_status()
 
     # ================================================================
@@ -295,10 +296,11 @@ class LEDPanelTestHarness(QWidget):
     def _switch_style(self, style_id: int):
         self._current_style = style_id
         style = LED_STYLES[style_id]
-        self._zone_count = style.zone_count
-        self._selected_zone = 0
-        self._mode = 0
-        self._global_on = True
+
+        # Reset LEDService for this style
+        self._svc = LEDService()
+        self._svc.configure_for_style(style_id)
+        self._svc.set_color(255, 0, 0)
 
         # Update button checked state
         sorted_styles = sorted(LED_STYLES.keys())
@@ -313,9 +315,8 @@ class LEDPanelTestHarness(QWidget):
             model=style.model_name,
         )
 
-        # Reset segment on/off state
+        # Reset overlay positions
         positions = STYLE_POSITIONS.get(style_id, ())
-        self._segment_on = [True] * len(positions)
         self._index_overlay.set_positions(positions)
 
         # Position metrics
@@ -351,23 +352,26 @@ class LEDPanelTestHarness(QWidget):
     MODE_NAMES = ["Static", "Breathing", "Colorful", "Rainbow", "Temp Link", "Load Link"]
 
     def _update_status(self):
-        mode_name = self.MODE_NAMES[self._mode] if self._mode < len(self.MODE_NAMES) else "?"
-        r, g, b = self._color
-        on_count = sum(self._segment_on) if self._segment_on else 0
-        total = len(self._segment_on)
+        s = self._svc.state
+        mv = s.mode.value if hasattr(s.mode, 'value') else int(s.mode)
+        mode_name = self.MODE_NAMES[mv] if mv < len(self.MODE_NAMES) else "?"
+        r, g, b = s.color
+        on_count = sum(s.segment_on) if s.segment_on else 0
+        total = len(s.segment_on)
         self._status_label.setText(
-            f"Mode: {self._mode} ({mode_name}) | "
-            f"Color: ({r},{g},{b}) | Bright: {self._brightness}% | "
-            f"On: {'YES' if self._global_on else 'OFF'} | "
-            f"Zone: {self._selected_zone}/{self._zone_count} | "
+            f"Mode: {mv} ({mode_name}) | "
+            f"Color: ({r},{g},{b}) | Bright: {s.brightness}% | "
+            f"On: {'YES' if s.global_on else 'OFF'} | "
+            f"Zone: {s.selected_zone}/{s.zone_count} | "
             f"Segments: {on_count}/{total} on"
         )
 
     def _tick(self):
         self._tick_count += 1
 
-        # Update metrics
+        # Update metrics → service + panel gauges
         m = _get_metrics()
+        self._svc.update_metrics(m)
         self._led_panel.update_metrics(m)
         self._metrics_label.setText(
             f"CPU: {m.cpu_temp:.0f}°C {m.cpu_freq:.0f}MHz {m.cpu_percent:.0f}% | "
@@ -377,92 +381,10 @@ class LEDPanelTestHarness(QWidget):
             f"R:{m.disk_read:.0f}MB/s W:{m.disk_write:.0f}MB/s"
         )
 
-        # Generate colors based on current mode
-        positions = STYLE_POSITIONS.get(self._current_style, ())
-        count = len(positions)
-        if count == 0:
-            return
-
-        colors = self._generate_colors(count, m)
-
-        # Apply brightness scaling
-        bri = self._brightness / 100.0
-        colors = [(int(r * bri), int(g * bri), int(b * bri)) for r, g, b in colors]
-
-        # Global off → all black
-        if not self._global_on:
-            colors = [(0, 0, 0)] * count
-
-        # Segment on/off → black out individual LEDs
-        for i in range(min(count, len(self._segment_on))):
-            if not self._segment_on[i]:
-                colors[i] = (0, 0, 0)
-
-        self._led_panel.set_led_colors(colors)
-
-    def _generate_colors(self, count: int, m: HardwareMetrics) -> list[tuple[int, int, int]]:
-        """Generate LED colors based on current mode."""
-        r, g, b = self._color
-        t = self._tick_count
-
-        if self._mode == 0:
-            # Static — solid user color
-            return [(r, g, b)] * count
-
-        elif self._mode == 1:
-            # Breathing — pulse user color via sine wave
-            pulse = (math.sin(t * 0.1) + 1) / 2  # 0.0 → 1.0
-            pr = int(r * pulse)
-            pg = int(g * pulse)
-            pb = int(b * pulse)
-            return [(pr, pg, pb)] * count
-
-        elif self._mode == 2:
-            # Colorful — each LED gets a different static hue
-            colors = []
-            for i in range(count):
-                hue = (i * 360 // max(count, 1)) % 360
-                c = QColor.fromHsv(hue, 255, 255)
-                colors.append((c.red(), c.green(), c.blue()))
-            return colors
-
-        elif self._mode == 3:
-            # Rainbow — shifting hues
-            colors = []
-            for i in range(count):
-                hue = ((i + t) * 360 // max(count, 1)) % 360
-                c = QColor.fromHsv(hue, 255, 255)
-                colors.append((c.red(), c.green(), c.blue()))
-            return colors
-
-        elif self._mode == 4:
-            # Temp link — blue→green→yellow→red based on CPU temp
-            temp = m.cpu_temp
-            return [self._temp_color(temp)] * count
-
-        elif self._mode == 5:
-            # Load link — blue→green→yellow→red based on CPU usage
-            load = m.cpu_percent
-            return [self._temp_color(load)] * count
-
-        return [(r, g, b)] * count
-
-    @staticmethod
-    def _temp_color(value: float) -> tuple[int, int, int]:
-        """Map 0-100 value to blue→cyan→green→yellow→red gradient."""
-        value = max(0, min(100, value))
-        if value < 25:
-            t = value / 25
-            return (0, int(255 * t), 255)          # blue → cyan
-        elif value < 50:
-            t = (value - 25) / 25
-            return (0, 255, int(255 * (1 - t)))     # cyan → green
-        elif value < 75:
-            t = (value - 50) / 25
-            return (int(255 * t), 255, 0)           # green → yellow
-        else:
-            t = (value - 75) / 25
-            return (255, int(255 * (1 - t)), 0)     # yellow → red
+        # Real LEDService tick → segment masks + mode effects
+        colors = self._svc.tick()
+        display_colors = self._svc.apply_mask(colors)
+        self._led_panel.set_led_colors(display_colors)
 
 
 def main():
