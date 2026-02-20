@@ -56,9 +56,11 @@ def _get_metrics() -> HardwareMetrics:
         cpu_temp=30 + phase * 60,
         cpu_freq=800 + phase * 4200,
         cpu_percent=phase * 100,
+        cpu_power=30 + phase * 120,
         gpu_temp=25 + phase * 70,
         gpu_clock=300 + phase * 1700,
         gpu_usage=phase * 100,
+        gpu_power=50 + phase * 250,
         mem_temp=35 + phase * 30,
         mem_clock=1600 + phase * 1200,
         mem_percent=20 + phase * 60,
@@ -251,25 +253,22 @@ class LEDPanelTestHarness(QWidget):
     # ================================================================
 
     def _on_mode(self, mode: int):
-        """Route mode to zone or global, matching LEDHandler._on_mode_changed."""
+        """Route mode: always global + also zone (matches qt_app_mvc LEDHandler)."""
+        self._svc.set_mode(mode)
         if self._svc.state.zones:
             self._svc.set_zone_mode(self._led_panel.selected_zone, mode)
-        else:
-            self._svc.set_mode(mode)
 
     def _on_color(self, r: int, g: int, b: int):
-        """Route color to zone or global, matching LEDHandler._on_color_changed."""
+        """Route color: always global + also zone (matches qt_app_mvc LEDHandler)."""
+        self._svc.set_color(r, g, b)
         if self._svc.state.zones:
             self._svc.set_zone_color(self._led_panel.selected_zone, r, g, b)
-        else:
-            self._svc.set_color(r, g, b)
 
     def _on_brightness(self, val: int):
-        """Route brightness to zone or global, matching LEDHandler._on_brightness_changed."""
+        """Route brightness: always global + also zone (matches qt_app_mvc LEDHandler)."""
+        self._svc.set_brightness(val)
         if self._svc.state.zones:
             self._svc.set_zone_brightness(self._led_panel.selected_zone, val)
-        else:
-            self._svc.set_brightness(val)
 
     def _on_segment_click(self, idx: int):
         seg_on = self._svc.state.segment_on
