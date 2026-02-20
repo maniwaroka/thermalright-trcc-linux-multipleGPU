@@ -264,20 +264,24 @@ class TestPA120Display:
 
     def test_always_on_indicators(self):
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
-        # C# indices: CPU1=2, CPU2=3, GPU1=4, GPU2=5, BFB=BFB1=8
-        for idx in (2, 3, 4, 5, 8):
+        # C# indices: CPU1=0, CPU2=1, GPU1=2, GPU2=3, BFB=6, BFB1=9
+        for idx in (0, 1, 2, 3, 6, 9):
             assert mask[idx] is True
 
     def test_celsius_indicators(self):
         mask = self.d.compute_mask(HardwareMetrics(), 0, "C")
-        # C# indices: SSD=SSD1=6 (°C), HSD=HSD1=7 (°F)
-        assert mask[6] is True   # SSD/SSD1 (°C)
-        assert mask[7] is False  # HSD/HSD1 (°F)
+        # C# indices: SSD=4(°C), HSD=5(°F), SSD1=7(GPU °C), HSD1=8(GPU °F)
+        assert mask[4] is True   # SSD (CPU °C)
+        assert mask[7] is True   # SSD1 (GPU °C)
+        assert mask[5] is False  # HSD (CPU °F)
+        assert mask[8] is False  # HSD1 (GPU °F)
 
     def test_fahrenheit_indicators(self):
         mask = self.d.compute_mask(HardwareMetrics(), 0, "F")
-        assert mask[7] is True   # HSD/HSD1 (°F)
-        assert mask[6] is False  # SSD/SSD1 (°C)
+        assert mask[5] is True   # HSD (CPU °F)
+        assert mask[8] is True   # HSD1 (GPU °F)
+        assert mask[4] is False  # SSD (CPU °C)
+        assert mask[7] is False  # SSD1 (GPU °C)
 
     def test_simultaneous_all_metrics(self):
         metrics = HardwareMetrics(cpu_temp=65, cpu_percent=80, gpu_temp=70, gpu_usage=50)
@@ -303,20 +307,19 @@ class TestPA120Display:
         assert zmap is not None
         assert len(zmap) == 4
 
-    def test_zone_led_map_covers_active_leds(self):
-        """All active LED indices appear exactly once. Gaps 0, 1, 30 excluded."""
+    def test_zone_led_map_covers_all_leds(self):
+        """All 84 LED indices appear exactly once across zones."""
         zmap = self.d.zone_led_map
         assert zmap is not None
         all_indices = sorted(idx for zone in zmap for idx in zone)
-        expected = sorted(set(range(84)) - {0, 1, 30})
-        assert all_indices == expected
+        assert all_indices == list(range(84))
 
     def test_zone1_cpu_temp(self):
         """Zone 1: CPU indicators + °C/°F + 3 temp digits."""
         zmap = self.d.zone_led_map
         assert zmap is not None
         z1 = set(zmap[0])
-        assert {2, 3, 6, 7} <= z1  # CPU1, CPU2, SSD, HSD
+        assert {0, 1, 4, 5} <= z1  # CPU1, CPU2, SSD, HSD
         for digit in self.d.CPU_TEMP_DIGITS:
             assert set(digit) <= z1
 
@@ -325,25 +328,26 @@ class TestPA120Display:
         zmap = self.d.zone_led_map
         assert zmap is not None
         z2 = set(zmap[1])
-        assert 8 in z2  # BFB
+        assert 6 in z2  # BFB
         for digit in self.d.CPU_USE_DIGITS:
             assert set(digit) <= z2
         assert {80, 81} <= z2  # CPU_USE_PARTIAL
 
     def test_zone3_gpu_temp(self):
-        """Zone 3: GPU indicators + 3 temp digits."""
+        """Zone 3: GPU indicators + °C/°F + 3 temp digits."""
         zmap = self.d.zone_led_map
         assert zmap is not None
         z3 = set(zmap[2])
-        assert {4, 5} <= z3  # GPU1, GPU2
+        assert {2, 3, 7, 8} <= z3  # GPU1, GPU2, SSD1, HSD1
         for digit in self.d.GPU_TEMP_DIGITS:
             assert set(digit) <= z3
 
     def test_zone4_gpu_usage(self):
-        """Zone 4: 2 usage digits + partial overflow."""
+        """Zone 4: % indicator + 2 usage digits + partial overflow."""
         zmap = self.d.zone_led_map
         assert zmap is not None
         z4 = set(zmap[3])
+        assert 9 in z4  # BFB1
         for digit in self.d.GPU_USE_DIGITS:
             assert set(digit) <= z4
         assert {82, 83} <= z4  # GPU_USE_PARTIAL

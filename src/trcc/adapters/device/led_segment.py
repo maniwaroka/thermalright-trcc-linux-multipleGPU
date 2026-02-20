@@ -253,15 +253,17 @@ class AX120Display(SegmentDisplay):
 class PA120Display(SegmentDisplay):
     mask_size = 84
     phase_count = 1
-    CPU1, CPU2 = 2, 3
-    GPU1, GPU2 = 4, 5
-    SSD, HSD = 6, 7
-    BFB = 8
-    SSD1, HSD1, BFB1 = 6, 7, 8
+    # C# UCScreenLED: Cpu1=0, Cpu2=1, Gpu1=2, Gpu2=3,
+    # SSD=4(°C), HSD=5(°F), BFB=6(%), SSD1=7, HSD1=8, BFB1=9
+    CPU1, CPU2 = 0, 1
+    GPU1, GPU2 = 2, 3
+    SSD, HSD = 4, 5
+    BFB = 6
+    SSD1, HSD1, BFB1 = 7, 8, 9
     CPU_TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
-        (9, 10, 11, 12, 13, 14, 15),
-        (16, 17, 18, 19, 20, 21, 22),
-        (23, 24, 25, 26, 27, 28, 29),
+        (10, 11, 12, 13, 14, 15, 16),
+        (17, 18, 19, 20, 21, 22, 23),
+        (24, 25, 26, 27, 28, 29, 30),
     )
     CPU_USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
         (31, 32, 33, 34, 35, 36, 37),
@@ -279,10 +281,10 @@ class PA120Display(SegmentDisplay):
     )
     GPU_USE_PARTIAL = (82, 83)
     ZONE_LEDS: Tuple[Tuple[int, ...], ...] = (
-        (CPU1, CPU2, SSD, HSD) + tuple(range(9, 30)),
+        (CPU1, CPU2, SSD, HSD) + tuple(range(10, 31)),
         (BFB,) + tuple(range(31, 45)) + (80, 81),
-        (GPU1, GPU2) + tuple(range(45, 66)),
-        tuple(range(66, 80)) + (82, 83),
+        (GPU1, GPU2, SSD1, HSD1) + tuple(range(45, 66)),
+        (BFB1,) + tuple(range(66, 80)) + (82, 83),
     )
     zone_led_map = ZONE_LEDS
 
