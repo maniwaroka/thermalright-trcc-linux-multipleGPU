@@ -1,9 +1,10 @@
 """TRCC Linux version information."""
 
-__version__ = "6.1.3"
+__version__ = "6.1.4"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.1.4 - Re-release of v6.1.3 (PyPI rejects reuse of version+filename).
 # 6.1.3 - Fix LED GUI settings not syncing on startup: load_config() restored
 #         LED state from config.json correctly (effects worked), but panel
 #         controls (mode buttons, color wheel, brightness slider, on/off)
