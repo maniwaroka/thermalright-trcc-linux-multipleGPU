@@ -1,9 +1,15 @@
 """TRCC Linux version information."""
 
-__version__ = "6.1.4"
+__version__ = "6.1.5"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.1.5 - Fix portrait cloud directory switching: non-square displays (1280x480,
+#         1600x720, 1920x462, 640x480, etc.) now load cloud backgrounds and
+#         masks from portrait-oriented directories (e.g., 4801280/ instead of
+#         1280480/) when rotation is set to 90° or 270°. Matches C#
+#         GetWebBackgroundImageDirectory / GetFileListMBDir behavior. Local
+#         themes stay landscape (same as Windows TRCC). Addresses #1. 2399 tests.
 # 6.1.4 - Re-release of v6.1.3 (PyPI rejects reuse of version+filename).
 # 6.1.3 - Fix LED GUI settings not syncing on startup: load_config() restored
 #         LED state from config.json correctly (effects worked), but panel

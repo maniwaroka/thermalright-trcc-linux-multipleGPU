@@ -686,3 +686,69 @@ class TestFindResourceDefault(unittest.TestCase):
         with patch('os.path.exists', return_value=False):
             result = Resources.find('nonexistent.file')
             self.assertIsNone(result)
+
+
+class TestResolveCloudDirs(unittest.TestCase):
+    """Test Settings.resolve_cloud_dirs() portrait directory switching.
+
+    C# GetWebBackgroundImageDirectory / GetFileListMBDir: non-square displays
+    swap width/height when directionB is 90 or 270.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.config_path = os.path.join(self.tmp, 'config.json')
+        _patcher = patch('trcc.conf.CONFIG_PATH', self.config_path)
+        _patcher.start()
+        self.addCleanup(_patcher.stop)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_landscape_rotation_keeps_landscape_dirs(self):
+        """Rotation 0 or 180 keeps original w×h for cloud dirs."""
+        s = Settings()
+        s._width, s._height = 1280, 480
+        s.resolve_cloud_dirs(0)
+        self.assertIn('1280480', str(s.web_dir))
+        self.assertIn('zt1280480', str(s.masks_dir))
+
+        s.resolve_cloud_dirs(180)
+        self.assertIn('1280480', str(s.web_dir))
+        self.assertIn('zt1280480', str(s.masks_dir))
+
+    def test_portrait_rotation_swaps_dims(self):
+        """Rotation 90 or 270 swaps to h×w for cloud dirs."""
+        s = Settings()
+        s._width, s._height = 1280, 480
+        s.resolve_cloud_dirs(90)
+        self.assertIn('4801280', str(s.web_dir))
+        self.assertIn('zt4801280', str(s.masks_dir))
+
+        s.resolve_cloud_dirs(270)
+        self.assertIn('4801280', str(s.web_dir))
+        self.assertIn('zt4801280', str(s.masks_dir))
+
+    def test_square_display_no_swap(self):
+        """Square displays never swap, regardless of rotation."""
+        s = Settings()
+        s._width, s._height = 320, 320
+        s.resolve_cloud_dirs(90)
+        self.assertIn('320320', str(s.web_dir))
+        self.assertIn('zt320320', str(s.masks_dir))
+
+    def test_1600x720_portrait(self):
+        """1600x720 swaps to 7201600 on portrait rotation."""
+        s = Settings()
+        s._width, s._height = 1600, 720
+        s.resolve_cloud_dirs(90)
+        self.assertIn('7201600', str(s.web_dir))
+        self.assertIn('zt7201600', str(s.masks_dir))
+
+    def test_640x480_portrait(self):
+        """640x480 swaps to 480640 on portrait rotation."""
+        s = Settings()
+        s._width, s._height = 640, 480
+        s.resolve_cloud_dirs(270)
+        self.assertIn('480640', str(s.web_dir))

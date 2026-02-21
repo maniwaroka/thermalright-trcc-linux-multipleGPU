@@ -1209,7 +1209,9 @@ class TRCCMainWindowMVC(QMainWindow):
         self.rotation_combo.blockSignals(True)
         self.rotation_combo.setCurrentIndex(rotation_index)
         self.rotation_combo.blockSignals(False)
-        self.controller.set_rotation(rotation_index * 90)
+        rotation = rotation_index * 90
+        self.controller.set_rotation(rotation)
+        self._resolve_cloud_dirs_for_rotation(rotation)
 
         # Restore split mode for widescreen devices
         self._split_mode = cfg.get('split_mode', 2)  # Default style B
@@ -2110,7 +2112,26 @@ class TRCCMainWindowMVC(QMainWindow):
         self.controller.set_rotation(rotation)
         if self._active_device_key:
             Settings.save_device_setting(self._active_device_key, 'rotation', rotation)
+        # C# GetWebBackgroundImageDirectory: swap dims for portrait rotation
+        self._resolve_cloud_dirs_for_rotation(rotation)
         self.uc_preview.set_status(f"Rotation: {rotation}°")
+
+    def _resolve_cloud_dirs_for_rotation(self, rotation: int):
+        """Re-resolve cloud background/mask dirs and reload panels.
+
+        C# GetWebBackgroundImageDirectory / GetFileListMBDir: non-square
+        displays swap width/height when directionB is 90 or 270.
+        """
+        settings.resolve_cloud_dirs(rotation)
+        w, h = settings.width, settings.height
+        if w != h and rotation in (90, 270):
+            w, h = h, w
+        if settings.web_dir:
+            self.uc_theme_web.set_web_directory(settings.web_dir)
+        self.uc_theme_web.set_resolution(f'{w}x{h}')
+        if settings.masks_dir:
+            self.uc_theme_mask.set_mask_directory(settings.masks_dir)
+        self.uc_theme_mask.set_resolution(f'{w}x{h}')
 
     def _on_ldd_click(self):
         """Handle buttonLDD click — split mode for widescreen, brightness for others."""

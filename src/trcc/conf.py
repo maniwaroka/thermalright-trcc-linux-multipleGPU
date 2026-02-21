@@ -375,6 +375,19 @@ class Settings:
         self.web_dir = Path(DataManager.get_web_dir(w, h))
         self.masks_dir = Path(DataManager.get_web_masks_dir(w, h))
 
+    def resolve_cloud_dirs(self, rotation: int = 0) -> None:
+        """Re-resolve cloud background/mask dirs for rotation.
+
+        C# GetWebBackgroundImageDirectory / GetFileListMBDir:
+        non-square displays swap width/height when directionB is 90 or 270.
+        Local themes (theme_dir) stay landscape — only cloud dirs switch.
+        """
+        w, h = self._width, self._height
+        if w != h and rotation in (90, 270):
+            w, h = h, w
+        self.web_dir = Path(DataManager.get_web_dir(w, h))
+        self.masks_dir = Path(DataManager.get_web_masks_dir(w, h))
+
 
 # Module-level singleton — import and use directly
 settings = Settings()
