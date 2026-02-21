@@ -1,9 +1,16 @@
 """TRCC Linux version information."""
 
-__version__ = "6.1.2"
+__version__ = "6.1.3"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.1.3 - Fix LED GUI settings not syncing on startup: load_config() restored
+#         LED state from config.json correctly (effects worked), but panel
+#         controls (mode buttons, color wheel, brightness slider, on/off)
+#         showed defaults after panel.initialize() reset them. Added
+#         _sync_ui_from_state() to push loaded state into UI controls after
+#         initialization. Handles both zone devices (zone 0 state) and
+#         single-zone devices (global state). Addresses #15. 2394 tests.
 # 6.1.2 - Fix AK120 (style 3) and LC1 (style 4) LED wire remap tables: same
 #         root cause as v6.1.1 — remap tables built using constructor default
 #         UCScreenLED indices instead of style-specific ReSetUCScreenLED3/4()

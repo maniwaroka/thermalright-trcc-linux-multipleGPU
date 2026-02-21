@@ -116,6 +116,7 @@ class LEDHandler:
                 model=model,
             )
         self._panel.set_memory_ratio(self._controller.state.memory_ratio)
+        self._sync_ui_from_state()
 
         seg_unit = "F" if settings.temp_unit == 1 else "C"
         self._controller.set_seg_temp_unit(seg_unit)
@@ -140,6 +141,28 @@ class LEDHandler:
         """Forward temperature unit change to segment display."""
         if self._controller:
             self._controller.set_seg_temp_unit(unit)
+
+    def _sync_ui_from_state(self):
+        """Sync panel controls to loaded LED state after initialization.
+
+        load_config() populates the service state from config.json, but
+        panel.initialize() creates controls with defaults.  This pushes
+        the loaded state into the UI so controls reflect the saved config.
+        """
+        if not self._controller:
+            return
+        state = self._controller.state
+
+        # For zone devices, sync zone 0 (default selected zone after init)
+        if state.zones:
+            z = state.zones[0]
+            self._panel.load_zone_state(
+                0, z.mode.value, z.color, z.brightness, z.on)
+        else:
+            # Single-zone: sync global state
+            self._panel.load_zone_state(
+                0, state.mode.value, state.color, state.brightness,
+                state.global_on)
 
     # ── Signal wiring ────────────────────────────────────────────────
 
