@@ -12,8 +12,9 @@ These devices have been tested on real hardware and confirmed working with TRCC 
 | FROZEN MAGIC PRO | SCSI (87CD:70DB) | 320x320 | Developer |
 | FROZEN VISION V2 | SCSI (87CD:70DB) | 320x320 | Developer |
 | FROZEN WARFRAME | SCSI (0402:3922) | 320x320 | Developer |
+| FROZEN WARFRAME 240 | SCSI (0402:3922) | 320x240 | [gizbo](https://github.com/gizbo) |
 | FROZEN WARFRAME SE | HID (0416:5302) | 320x240 | [apj202-ops](https://github.com/apj202-ops) |
-| FROZEN WARFRAME 360 | HID (0416:5302) | — | [Edoardo-Rossi-EOS](https://github.com/Edoardo-Rossi-EOS), [stephendesmond1-cmd](https://github.com/stephendesmond1-cmd) |
+| FROZEN WARFRAME 360 | HID (0416:5302) | — | [Edoardo-Rossi-EOS](https://github.com/Edoardo-Rossi-EOS), [edoargo1996](https://github.com/edoargo1996), [stephendesmond1-cmd](https://github.com/stephendesmond1-cmd) |
 | LC1, LC2, LC3, LC5 | SCSI (0416:5406) | 320x320 | Developer |
 | GrandVision 360 AIO | Bulk (87AD:70DB) | 480x480 | [bipobuilt](https://github.com/bipobuilt), [cadeon](https://github.com/cadeon) |
 | Mjolnir Vision 360 | Bulk (87AD:70DB) | 480x480 | [Pikarz](https://github.com/Pikarz) |
@@ -38,11 +39,8 @@ These devices have reported issues that have been addressed in recent releases. 
 
 | Product | Connection | Issue | Status |
 |---------|-----------|-------|--------|
-| FROZEN WARFRAME 240 | SCSI (0402:3922) | [#17](https://github.com/Lexonight1/thermalright-trcc-linux/issues/17) | Resolution + chunk size fix in v6.0.1, awaiting confirmation |
-| Frozen Warframe SE | HID (0416:5302) | [#24](https://github.com/Lexonight1/thermalright-trcc-linux/issues/24) | FBL resolution fix in v6.0.6, awaiting confirmation |
-| Mjolnir Vision 360 | Bulk (87AD:70DB) | [#22](https://github.com/Lexonight1/thermalright-trcc-linux/issues/22) | GIF persistence after reboot — video fix in v6.0.2, awaiting confirmation |
-| Trofeo Vision | HID (0416:5302) | [#34](https://github.com/Lexonight1/thermalright-trcc-linux/issues/34) | Video bg persistence fix in v6.0.2, awaiting confirmation |
-| PA120 Digital | HID (0416:8001) | [#15](https://github.com/Lexonight1/thermalright-trcc-linux/issues/15) | LED segment fixes in v5.0.7+, nudged to v6.0.1 |
+| Trofeo Vision LCD | HID (0416:5302) | [#1](https://github.com/Lexonight1/thermalright-trcc-linux/issues/1), [#34](https://github.com/Lexonight1/thermalright-trcc-linux/issues/34) | Video bg persistence fix in v6.0.2, nudged to v6.1.4 |
+| PA120 Digital | HID (0416:8001) | [#15](https://github.com/Lexonight1/thermalright-trcc-linux/issues/15) | LED wire remap fixed in v6.1.1, settings persistence fixed in v6.1.3 |
 
 ---
 
