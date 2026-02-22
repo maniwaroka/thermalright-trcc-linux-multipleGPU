@@ -1,9 +1,10 @@
 ---
 name: Device support request
 about: Request support for a new Thermalright device
-title: '[DEVICE] '
-labels: enhancement, hardware
+title: "[DEVICE] "
+labels: enhancement
 assignees: ''
+
 ---
 
 **Device model**
