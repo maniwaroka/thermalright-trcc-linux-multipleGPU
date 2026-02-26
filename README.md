@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 [![Buy Me a Beer](https://img.shields.io/badge/Buy_Me_a_Beer-🍺-FF5F5F?style=flat)](https://buymeacoffee.com/Lexonight1)
 
-> If this helped you, could you **[buy me a nice frosty cold one](https://buymeacoffee.com/Lexonight1)**? Huge thanks to **[@javisaman](https://github.com/javisaman)** and **[@Xentrino](https://github.com/Xentrino)** for buying me a beer — you guys are legends.
+> If this helped you, could you **[buy me a nice frosty cold one](https://buymeacoffee.com/Lexonight1)**? Huge thanks to **[@javisaman](https://github.com/javisaman)**, **[@Xentrino](https://github.com/Xentrino)**, and **[@loosethoughts19-hash](https://github.com/loosethoughts19-hash)** for buying me a beer — you guys are legends.
 
 Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.0.3). Control and customize the LCD displays and LED segment displays on Thermalright CPU coolers, AIO pump heads, and fan hubs — entirely from Linux.
 
@@ -180,6 +180,7 @@ A big thanks to everyone who has contributed invaluable reports to this project:
 - **[stephendesmond1-cmd](https://github.com/stephendesmond1-cmd)** — Frozen Warframe 360 HID Type 2 testing
 - **[acioannina-wq](https://github.com/acioannina-wq)** — Assassin Spirit 120 Vision HID testing
 - **[Civilgrain](https://github.com/Civilgrain)** — Wonder Vision Pro 360 bulk protocol testing
+- **[loosethoughts19-hash](https://github.com/loosethoughts19-hash)** — Frozen Warframe Pro bulk protocol testing
 
 ## License
 
