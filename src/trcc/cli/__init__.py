@@ -716,6 +716,31 @@ def _cmd_download(
         pack=pack, show_list=show_list, force=force, show_info=show_info)
 
 
+@app.command("api")
+def _cmd_api() -> int:
+    """List all REST API endpoints."""
+    from trcc.api import app as api_app
+
+    routes = []
+    for route in api_app.routes:
+        methods = getattr(route, 'methods', None)
+        path = getattr(route, 'path', None)
+        if not methods or not path:
+            continue
+        summary = getattr(route, 'summary', '') or getattr(route, 'name', '') or ''
+        for method in sorted(methods):
+            if method == 'HEAD':
+                continue
+            routes.append((method, path, summary))
+
+    routes.sort(key=lambda r: (r[1], r[0]))
+    for method, path, summary in routes:
+        desc = f"  {summary}" if summary else ""
+        print(f"  {method:6s} {path}{desc}")
+    print(f"\n  {len(routes)} endpoints. Docs at http://<host>:<port>/docs")
+    return 0
+
+
 @app.command("serve")
 def _cmd_serve(
     host: Annotated[str, typer.Option(

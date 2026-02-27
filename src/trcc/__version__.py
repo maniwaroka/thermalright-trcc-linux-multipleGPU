@@ -1,9 +1,11 @@
 """TRCC Linux version information."""
 
-__version__ = "6.2.0"
+__version__ = "6.2.1"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.2.1  - Add `trcc api` CLI command: lists all REST API endpoints with method,
+#          path, and description. 2445 tests.
 # 6.2.0  - Serve theme/web/mask images via REST API static files. Android app can
 #          now load thumbnails and previews by URL. Resolution-aware StaticFiles
 #          mounts (/static/themes/, /static/web/, /static/masks/) auto-mounted on
