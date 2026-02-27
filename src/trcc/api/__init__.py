@@ -12,6 +12,7 @@ Package structure mirrors cli/ — one module per domain:
 Security:
     - Localhost-only by default (bind 127.0.0.1)
     - Optional token auth via --token flag (X-API-Token header)
+    - Optional TLS via --tls flag (auto-generates self-signed cert)
     - 10 MB upload limit with PIL format validation
 """
 from __future__ import annotations

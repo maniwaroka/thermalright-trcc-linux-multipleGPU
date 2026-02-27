@@ -727,6 +727,15 @@ def _cmd_serve(
     token: Annotated[Optional[str], typer.Option(
         "--token", "-t", help="API token for auth",
     )] = None,
+    tls: Annotated[bool, typer.Option(
+        "--tls", help="Enable HTTPS (auto-generates self-signed cert if needed)",
+    )] = False,
+    cert: Annotated[Optional[str], typer.Option(
+        "--cert", help="Path to TLS certificate file (.pem)",
+    )] = None,
+    key: Annotated[Optional[str], typer.Option(
+        "--key", help="Path to TLS private key file (.pem)",
+    )] = None,
 ) -> int:
     """Start REST API server (requires trcc-linux[api])."""
     try:
@@ -734,11 +743,66 @@ def _cmd_serve(
 
         from trcc.api import app as api_app, configure_auth
         configure_auth(token)
-        uvicorn.run(api_app, host=host, port=port)
+
+        ssl_kwargs: dict = {}
+        if cert and key:
+            ssl_kwargs = {"ssl_certfile": cert, "ssl_keyfile": key}
+        elif tls:
+            certs = _ensure_self_signed_cert()
+            if not certs:
+                return 1
+            ssl_kwargs = {"ssl_certfile": certs[0], "ssl_keyfile": certs[1]}
+
+        # Warn if token travels in plaintext over LAN
+        if token and host != "127.0.0.1" and not ssl_kwargs:
+            print("WARNING: --token without --tls exposes your API key in plaintext on the network.")
+            print("         Add --tls for HTTPS, or use --cert/--key for a custom certificate.")
+
+        scheme = "https" if ssl_kwargs else "http"
+        print(f"Serving on {scheme}://{host}:{port}")
+        uvicorn.run(api_app, host=host, port=port, **ssl_kwargs)
         return 0
     except ImportError:
         print("REST API requires: pip install trcc-linux[api]")
         return 1
+
+
+def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
+    """Auto-generate a self-signed TLS cert in ~/.config/trcc/tls/ if missing."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from trcc.conf import CONFIG_DIR
+
+    tls_dir = Path(CONFIG_DIR) / 'tls'
+    certfile = tls_dir / 'cert.pem'
+    keyfile = tls_dir / 'key.pem'
+
+    if certfile.is_file() and keyfile.is_file():
+        return str(certfile), str(keyfile)
+
+    if not shutil.which('openssl'):
+        print("ERROR: openssl not found. Install openssl or provide --cert/--key manually.")
+        return None
+
+    tls_dir.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [
+            'openssl', 'req', '-x509', '-newkey', 'rsa:2048',
+            '-keyout', str(keyfile), '-out', str(certfile),
+            '-days', '3650', '-nodes',
+            '-subj', '/CN=trcc-linux/O=TRCC',
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"ERROR: Failed to generate TLS certificate: {result.stderr.strip()}")
+        return None
+
+    keyfile.chmod(0o600)
+    print(f"Generated self-signed TLS certificate in {tls_dir}/")
+    return str(certfile), str(keyfile)
 
 
 # =========================================================================
