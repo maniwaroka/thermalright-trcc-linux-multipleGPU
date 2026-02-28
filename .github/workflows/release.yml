@@ -49,3 +49,185 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  distro-packages:
+    name: Build distro packages
+    runs-on: ubuntu-latest
+    needs: build-and-publish
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download wheel from release
+        uses: actions/download-artifact@v6
+        with:
+          name: dist-${{ github.ref_name }}
+          path: dist/
+
+      - name: Extract version
+        id: version
+        run: echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build RPM (Fedora)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -v "${{ github.workspace }}/packages:/output" \
+            fedora:latest bash -c '
+          set -e
+          dnf install -y python3-devel python3-hatchling python3-pip python3-installer rpm-build >/dev/null 2>&1
+          VER=${{ steps.version.outputs.ver }}
+          WHL=$(ls /src/dist/trcc_linux-*.whl)
+          PKG=/tmp/buildroot
+          mkdir -p "$PKG"
+          python3 -m installer --destdir="$PKG" --prefix=/usr "$WHL"
+
+          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/etc/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
+          install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
+
+          PYVER=$(python3 -c "import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")")
+          SITELIB="/usr/lib/python${PYVER}/site-packages"
+
+          cat > /tmp/trcc.spec << SPEC
+          Name:       trcc-linux
+          Version:    ${VER}
+          Release:    1%{?dist}
+          Summary:    Thermalright LCD/LED Control Center for Linux
+          License:    GPL-3.0-or-later
+          URL:        https://github.com/Lexonight1/thermalright-trcc-linux
+          BuildArch:  noarch
+          %description
+          Controls LCD displays and LED segment displays on Thermalright CPU coolers.
+          %files
+          /etc/udev/rules.d/99-trcc-lcd.rules
+          /etc/modprobe.d/trcc-lcd.conf
+          /etc/modules-load.d/trcc-sg.conf
+          /usr/share/applications/trcc-linux.desktop
+          /usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy
+          /usr/lib/systemd/system/trcc-quirk-fix.service
+          ${SITELIB}/trcc/
+          ${SITELIB}/trcc_linux-*.dist-info/
+          /usr/bin/trcc
+          /usr/bin/trcc-gui
+          /usr/bin/trcc-detect
+          /usr/bin/trcc-test
+          /usr/bin/trcc-lcd
+          %post
+          udevadm control --reload-rules 2>/dev/null || :
+          udevadm trigger 2>/dev/null || :
+          modprobe sg 2>/dev/null || :
+          SPEC
+
+          rpmbuild -bb --buildroot="$PKG" --define "_rpmdir /output" /tmp/trcc.spec
+          '
+
+      - name: Build DEB (Ubuntu/Debian)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -v "${{ github.workspace }}/packages:/output" \
+            ubuntu:24.04 bash -c '
+          set -e
+          apt-get update -qq >/dev/null 2>&1
+          apt-get install -y -qq python3 python3-pip python3-installer >/dev/null 2>&1
+          VER=${{ steps.version.outputs.ver }}
+          WHL=$(ls /src/dist/trcc_linux-*.whl)
+          PKG=/tmp/deb-root
+          mkdir -p "$PKG/DEBIAN"
+          python3 -m installer --destdir="$PKG" --prefix=/usr "$WHL"
+
+          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/etc/modprobe.d/trcc-lcd.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/etc/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
+          install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/lib/systemd/system/trcc-quirk-fix.service"
+
+          cat > "$PKG/DEBIAN/control" << CTRL
+          Package: trcc-linux
+          Version: ${VER}-1
+          Section: utils
+          Priority: optional
+          Architecture: all
+          Depends: python3 (>= 3.9), python3-pil, python3-numpy, python3-psutil, python3-usb, libusb-1.0-0, sg3-utils, p7zip-full
+          Recommends: python3-pyside6, python3-typer, python3-fastapi, python3-uvicorn
+          Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
+          Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
+          Description: Thermalright LCD/LED Control Center for Linux
+           Controls LCD displays and LED segment displays on Thermalright CPU coolers
+           and AIO liquid coolers. GUI, CLI, and REST API interfaces.
+          CTRL
+
+          cat > "$PKG/DEBIAN/postinst" << POST
+          #!/bin/sh
+          set -e
+          udevadm control --reload-rules 2>/dev/null || true
+          udevadm trigger 2>/dev/null || true
+          modprobe sg 2>/dev/null || true
+          POST
+          chmod 755 "$PKG/DEBIAN/postinst"
+
+          dpkg-deb --build "$PKG" "/output/trcc-linux_${VER}-1_all.deb"
+          '
+
+      - name: Build Arch package
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" \
+            -v "${{ github.workspace }}/packages:/output" \
+            archlinux bash -c '
+          set -e
+          pacman -Sy --noconfirm python python-installer python-packaging zstd >/dev/null 2>&1
+          VER=${{ steps.version.outputs.ver }}
+          WHL=$(ls /src/dist/trcc_linux-*.whl)
+          PKG=/tmp/pkg-root
+          mkdir -p "$PKG/usr"
+          python -m installer --destdir="$PKG" --prefix=/usr "$WHL"
+
+          install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/99-trcc-lcd.rules"
+          install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
+          install -Dm644 /src/packaging/modprobe/trcc-sg.conf "$PKG/usr/lib/modules-load.d/trcc-sg.conf"
+          install -Dm644 /src/src/trcc/assets/trcc-linux.desktop "$PKG/usr/share/applications/trcc-linux.desktop"
+          install -Dm644 /src/src/trcc/assets/com.github.lexonight1.trcc.policy "$PKG/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy"
+          install -Dm644 /src/src/trcc/assets/trcc-quirk-fix.service "$PKG/usr/lib/systemd/system/trcc-quirk-fix.service"
+          install -Dm644 /src/LICENSE "$PKG/usr/share/licenses/trcc-linux/LICENSE"
+
+          INSTALLED_SIZE=$(du -sk "$PKG" | cut -f1)
+          cat > "$PKG/.PKGINFO" << INFO
+          pkgname = trcc-linux
+          pkgver = ${VER}-1
+          pkgdesc = Thermalright LCD/LED Control Center for Linux
+          url = https://github.com/Lexonight1/thermalright-trcc-linux
+          builddate = $(date +%s)
+          packager = TRCC Linux CI <siembabdavid@gmail.com>
+          size = ${INSTALLED_SIZE}
+          arch = any
+          license = GPL-3.0-or-later
+          depend = python
+          depend = python-pillow
+          depend = python-numpy
+          depend = python-psutil
+          depend = python-pyusb
+          depend = libusb
+          depend = sg3_utils
+          depend = p7zip
+          INFO
+
+          cd "$PKG"
+          tar -cf - .PKGINFO * | zstd -o "/output/trcc-linux-${VER}-1-any.pkg.tar.zst"
+          '
+
+      - name: Upload distro packages to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RPM=$(find packages -name "*.rpm" | head -1)
+          DEB=$(find packages -name "*.deb" | head -1)
+          ARCH=$(find packages -name "*.pkg.tar.zst" | head -1)
+          gh release upload "${{ github.ref_name }}" \
+            "$RPM" "$DEB" "$ARCH" \
+            --clobber
