@@ -221,7 +221,18 @@ jobs:
           tar -cf - .PKGINFO * | zstd -o "/output/trcc-linux-${VER}-1-any.pkg.tar.zst"
           '
 
-      - name: Upload distro packages to release
+      - name: Generate SHA256 checksums
+        run: |
+          cd packages
+          find . -type f \( -name "*.rpm" -o -name "*.deb" -o -name "*.pkg.tar.zst" \) \
+            -exec sh -c 'sha256sum "$1" >> SHA256SUMS.txt' _ {} \;
+          # Also checksum the wheel and sdist
+          for f in ../dist/*; do
+            sha256sum "$f" >> SHA256SUMS.txt
+          done
+          cat SHA256SUMS.txt
+
+      - name: Upload distro packages + checksums to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -230,4 +241,5 @@ jobs:
           ARCH=$(find packages -name "*.pkg.tar.zst" | head -1)
           gh release upload "${{ github.ref_name }}" \
             "$RPM" "$DEB" "$ARCH" \
+            packages/SHA256SUMS.txt \
             --clobber

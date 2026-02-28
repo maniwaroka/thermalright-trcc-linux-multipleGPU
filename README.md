@@ -122,6 +122,16 @@ sudo pacman -U trcc-linux-*-any.pkg.tar.zst
 
 Then **unplug and replug the USB cable** and run `trcc gui`.
 
+### Verify your download
+
+Every release includes a `SHA256SUMS.txt` file. After downloading, verify the package hasn't been tampered with:
+
+```bash
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+All packages are built in CI from source using GitHub Actions — the [build logs are public](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/release.yml). Source code is GPL-3.0, fully auditable — no binaries, no obfuscation.
+
 ### PyPI
 
 ```bash
