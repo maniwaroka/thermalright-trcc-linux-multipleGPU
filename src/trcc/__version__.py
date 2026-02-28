@@ -1,9 +1,13 @@
 """TRCC Linux version information."""
 
-__version__ = "6.3.2"
+__version__ = "6.3.3"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.3.3  - Single-instance window raise: second `trcc gui` launch now brings
+#          the existing window to the foreground instead of silently exiting.
+#          SIGUSR1 signal from second process → socketpair bridge → Qt raises
+#          window via showNormal() + raise_() + activateWindow(). 2523 tests.
 # 6.3.2  - PM-based device button image + product name resolution matching C#
 #          SetButtonImage(). Handshake resolves correct product from PM byte via
 #          get_button_image(), updates sidebar button icon dynamically, and persists

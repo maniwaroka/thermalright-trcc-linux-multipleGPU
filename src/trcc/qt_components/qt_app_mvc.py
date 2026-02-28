@@ -2317,6 +2317,11 @@ class TRCCMainWindowMVC(QMainWindow):
             app.quit()
 
 
+def _lock_path() -> Path:
+    """Lock file path for single-instance guard."""
+    return Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "trcc-linux.lock"
+
+
 def _acquire_instance_lock() -> object | None:
     """Try to acquire a single-instance lock file.
 
@@ -2325,15 +2330,24 @@ def _acquire_instance_lock() -> object | None:
     automatically when the process exits, even on crash/SIGKILL.
     """
     import fcntl
-    lock_path = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "trcc-linux.lock"
     try:
-        fh = open(lock_path, "w")  # noqa: SIM115
+        fh = open(_lock_path(), "w")  # noqa: SIM115
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fh.write(str(os.getpid()))
         fh.flush()
         return fh  # caller must keep a reference so the lock stays held
     except OSError:
         return None
+
+
+def _raise_existing_instance() -> None:
+    """Send SIGUSR1 to the running instance so it raises its window."""
+    import signal
+    try:
+        pid = int(_lock_path().read_text().strip())
+        os.kill(pid, signal.SIGUSR1)
+    except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+        pass
 
 
 def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
@@ -2348,7 +2362,7 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
     import os
     lock = _acquire_instance_lock()
     if lock is None:
-        print("[TRCC] Another instance is already running.")
+        _raise_existing_instance()
         return 0
 
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
@@ -2370,6 +2384,37 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
     app.setFont(font)
 
     window = TRCCMainWindowMVC(data_dir, decorated=decorated)
+
+    # SIGUSR1 handler: second launch raises the existing window.
+    # Unix signals can't call Qt directly — bridge via socketpair.
+    import signal
+    import socket
+    rsock, wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    rsock.setblocking(False)
+    wsock.setblocking(False)
+
+    def _on_sigusr1(signum, frame):
+        try:
+            wsock.send(b'\x01')
+        except OSError:
+            pass
+
+    signal.signal(signal.SIGUSR1, _on_sigusr1)
+
+    from PySide6.QtCore import QSocketNotifier
+    notifier = QSocketNotifier(rsock.fileno(), QSocketNotifier.Type.Read, app)
+
+    def _raise_window():
+        try:
+            rsock.recv(1)
+        except OSError:
+            pass
+        window.showNormal()
+        window.raise_()
+        window.activateWindow()
+
+    notifier.activated.connect(_raise_window)
+
     if not start_hidden:
         window.show()
 
