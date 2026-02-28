@@ -130,7 +130,7 @@ sudo pacman -U trcc-linux-*-any.pkg.tar.zst
 ```
 Then run `sudo nixos-rebuild switch`.
 
-**Step 3:** Unplug and replug the USB cable (this reloads the device permissions).
+**Step 3:** Unplug and replug the USB cable, or reboot (this reloads the device permissions).
 
 **Step 4:** Launch the app:
 ```bash
