@@ -90,7 +90,39 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 
 ## Install
 
-### Quick install (PyPI)
+### Native packages (recommended)
+
+Download from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) and install with your package manager:
+
+**Fedora / openSUSE:**
+```bash
+sudo dnf install ./trcc-linux-*.noarch.rpm
+```
+
+**Ubuntu / Debian:**
+```bash
+sudo dpkg -i trcc-linux_*_all.deb
+sudo apt-get install -f    # install any missing deps
+```
+
+**Arch / CachyOS / Manjaro:**
+```bash
+sudo pacman -U trcc-linux-*-any.pkg.tar.zst
+```
+
+**NixOS** — add to your `configuration.nix`:
+```nix
+{
+  inputs.trcc-linux.url = "github:Lexonight1/thermalright-trcc-linux";
+
+  # In your system configuration:
+  programs.trcc-linux.enable = true;
+}
+```
+
+Then **unplug and replug the USB cable** and run `trcc gui`.
+
+### PyPI
 
 ```bash
 pip install trcc-linux
