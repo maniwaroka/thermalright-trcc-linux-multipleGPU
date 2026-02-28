@@ -8,6 +8,7 @@ Shows connected LCD devices as clickable buttons.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
 from ..adapters.device.scsi import find_lcd_devices
@@ -274,6 +275,31 @@ class UCDevice(BasePanel):
         self._deselect_all_devices()
         self.about_clicked.emit()
         self.invoke_delegate(self.CMD_ABOUT)
+
+    def update_device_button(self, device_info: dict) -> None:
+        """Update button image after handshake resolves real product (C# SetButtonImage).
+
+        Called from _on_handshake_done() when PM determines the actual product.
+        Swaps the button icon from generic to product-specific.
+        """
+        for btn in self.device_buttons:
+            if getattr(btn, 'device_info', None) is not device_info:
+                continue
+            normal_name, active_name = _get_device_images(device_info)
+            if not normal_name:
+                break
+            normal_pix = Assets.load_pixmap(normal_name, btn.width(), btn.height())
+            active_pix = (Assets.load_pixmap(active_name, btn.width(), btn.height())
+                          if active_name else None)
+            if normal_pix and not normal_pix.isNull():
+                icon = QIcon(normal_pix)
+                if active_pix and not active_pix.isNull():
+                    icon.addPixmap(active_pix, QIcon.Mode.Normal, QIcon.State.On)
+                btn.setIcon(icon)
+                btn.setIconSize(btn.size())
+                btn._img_refs = [normal_pix, active_pix]  # type: ignore[attr-defined]
+                btn.setText("")  # Clear text fallback
+            break
 
     def update_devices(self, devices: list[dict]) -> None:
         """Update device list from hot-plug poller.

@@ -1,9 +1,17 @@
 """TRCC Linux version information."""
 
-__version__ = "6.3.1"
+__version__ = "6.3.2"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.3.2  - PM-based device button image + product name resolution matching C#
+#          SetButtonImage(). Handshake resolves correct product from PM byte via
+#          get_button_image(), updates sidebar button icon dynamically, and persists
+#          resolved identity (button_image + product name) to config. Subsequent
+#          launches load saved identity immediately — no generic placeholder. If
+#          user swaps cooler (different PM on same VID:PID), handshake detects
+#          mismatch and updates. Reverts 0402:3922 to generic A1CZTV until PM
+#          resolves. 2523 tests.
 # 6.3.1  - Fix device naming for 0402:3922: shared by Frozen Warframe (SE/PRO/Ultra)
 #          and Elite Vision 360 — was hardcoded as "FROZEN WARFRAME" from initial
 #          development. Vendor corrected from "ALi Corp" to "Thermalright". Product

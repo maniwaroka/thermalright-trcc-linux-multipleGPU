@@ -105,11 +105,12 @@ class TestKnownDevices(unittest.TestCase):
         self.assertEqual(device_info.vendor, "Winbond")
 
     def test_frozen_warframe_device_in_known(self):
-        """Test FROZEN WARFRAME device is in KNOWN_DEVICES."""
+        """Test 0402:3922 SCSI device is in KNOWN_DEVICES (generic until PM resolves)."""
         self.assertIn((0x0402, 0x3922), KNOWN_DEVICES)
         device_info = KNOWN_DEVICES[(0x0402, 0x3922)]
         self.assertEqual(device_info.model, "FROZEN_WARFRAME")
-        self.assertEqual(device_info.button_image, "A1FROZEN_WARFRAME")
+        # Generic button_image — real product resolved after handshake via PM
+        self.assertEqual(device_info.button_image, "A1CZTV")
 
     def test_known_devices_have_required_attrs(self):
         """Test all KNOWN_DEVICES have required attributes."""
@@ -208,7 +209,8 @@ class TestFindUsbDevices(unittest.TestCase):
         self.assertEqual(devices[0].vid, 0x0402)
         self.assertEqual(devices[0].pid, 0x3922)
         self.assertEqual(devices[0].model, "FROZEN_WARFRAME")
-        self.assertEqual(devices[0].button_image, "A1FROZEN_WARFRAME")
+        # Generic until handshake resolves real product via PM
+        self.assertEqual(devices[0].button_image, "A1CZTV")
 
     @patch(f'{_CLS}.run_command')
     def test_multiple_devices_found(self, mock_run):
@@ -565,9 +567,9 @@ class TestDeviceModelMapping(unittest.TestCase):
         self.assertEqual(device_info.button_image, "A1CZTV")
 
     def test_frozen_warframe_button_image(self):
-        """Test FROZEN WARFRAME has unique button image prefix."""
+        """Test 0402:3922 has generic button image (PM resolves real product)."""
         device_info = KNOWN_DEVICES[(0x0402, 0x3922)]
-        self.assertEqual(device_info.button_image, "A1FROZEN_WARFRAME")
+        self.assertEqual(device_info.button_image, "A1CZTV")
         self.assertEqual(device_info.model, "FROZEN_WARFRAME")
 
 

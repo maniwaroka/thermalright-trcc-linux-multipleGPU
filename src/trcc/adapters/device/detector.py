@@ -83,10 +83,12 @@ KNOWN_DEVICES: dict[tuple[int, int], DeviceEntry] = {
         vendor="Winbond", product="LCD Display",
         implementation="ali_corp_lcd_v1",
     ),
-    # USB 0402:3922 - shared by Frozen Warframe (SE/PRO/Ultra) + Elite Vision 360
+    # USB 0402:3922 - shared by multiple products (Frozen Warframe SE/PRO/Ultra,
+    # Elite Vision 360, AS120, BA120, etc). Real product resolved after handshake
+    # via PM→DEVICE_BUTTON_IMAGE (C# SetButtonImage).
     (0x0402, 0x3922): DeviceEntry(
-        vendor="Thermalright", product="Frozen Warframe / Elite Vision",
-        model="FROZEN_WARFRAME", button_image="A1FROZEN_WARFRAME",
+        vendor="Thermalright", product="LCD Display",
+        model="FROZEN_WARFRAME", button_image="A1CZTV",
         implementation="ali_corp_lcd_v1",
     ),
 }

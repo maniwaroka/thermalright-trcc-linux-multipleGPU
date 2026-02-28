@@ -1195,7 +1195,44 @@ class TRCCMainWindowMVC(QMainWindow):
             device.fbl_code = fbl
         if rest:
             device.use_jpeg = rest[0]
+
+        # Resolve product button image from PM/FBL (C# SetButtonImage)
+        if fbl:
+            self._resolve_device_identity(device, fbl)
+
         self._apply_device_config(device, *resolution)
+
+    def _resolve_device_identity(self, device: DeviceInfo, fbl: int) -> None:
+        """Resolve product button image + name from PM/FBL (C# SetButtonImage).
+
+        After handshake, the PM byte identifies the specific product (e.g. Elite
+        Vision vs Frozen Warframe). Updates the sidebar button and persists to
+        config so next launch shows the correct image immediately.
+        """
+        from ..core.models import get_button_image
+
+        btn_img = get_button_image(fbl)
+        if not btn_img:
+            return
+
+        # Derive product name: "A1ELITE VISION" → "ELITE VISION"
+        product = btn_img.replace('A1', '', 1).replace('_', ' ')
+
+        # Update device dict in sidebar
+        for dev in self.uc_device.devices:
+            if dev.get('path') == device.path:
+                dev['button_image'] = btn_img
+                dev['product'] = product
+                dev['name'] = f"Thermalright {product}"
+                self.uc_device.update_device_button(dev)
+                break
+
+        # Persist for next launch
+        Settings.save_device_setting(
+            self._active_device_key, 'resolved_button_image', btn_img)
+        Settings.save_device_setting(
+            self._active_device_key, 'resolved_product', product)
+        log.info("Device identity: FBL=%d → %s (%s)", fbl, product, btn_img)
 
     def _apply_device_config(self, device: DeviceInfo, w: int, h: int):
         """Apply device resolution, theme, overlay, and carousel config."""
