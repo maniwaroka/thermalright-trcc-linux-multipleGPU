@@ -197,6 +197,10 @@ class DisplayService:
         bg_ref = display_opts.get('background_path')
         if bg_ref:
             bg_path = Path(bg_ref)
+            # Fall back to 00.png in theme dir if saved path is stale
+            # (e.g. user reinstalled to different location)
+            if not bg_path.exists() and td.bg.exists():
+                bg_path = td.bg
             if bg_path.exists():
                 if bg_path.suffix in ('.mp4', '.avi', '.mkv', '.webm', '.zt'):
                     self._load_and_play_video(bg_path)
@@ -205,6 +209,10 @@ class DisplayService:
                 else:
                     self._load_static_image(bg_path)
                     result['image'] = self._render_and_process()
+        elif td.bg.exists():
+            # No background_path in config but 00.png exists — load it
+            self._load_static_image(td.bg)
+            result['image'] = self._render_and_process()
 
         return result
 

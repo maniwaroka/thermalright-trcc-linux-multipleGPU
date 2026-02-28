@@ -1,9 +1,15 @@
 """TRCC Linux version information."""
 
-__version__ = "6.2.2"
+__version__ = "6.2.3"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.2.3  - Fix HiDPI scaling override: force-set QT_ENABLE_HIGHDPI_SCALING=0
+#          instead of setdefault, so desktop environments and system updates
+#          (e.g. CachyOS Qt6 packages) can't re-enable it. Fix black background
+#          on custom theme restore: fall back to 00.png in theme directory when
+#          saved absolute path is stale (e.g. after reinstall to different
+#          location). Addresses #42. 2481 tests.
 # 6.2.2  - Fix LY protocol integration gaps: GUI device poll, JPEG encoding,
 #          CLI display path, udev rules, and debug report all missed `ly` protocol.
 #          Add missing PM→FBL overrides (PM 13-17, 50, 66, 68, 69) and FBL 192/224

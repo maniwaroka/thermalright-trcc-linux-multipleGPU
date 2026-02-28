@@ -2319,7 +2319,9 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
     # positioning with image backgrounds (like the C# Windows app).
     # Without this, HiDPI displays (e.g. 2x scale) double all coordinates,
     # clipping the 1454x800 window to show only a quarter.
-    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
+    # Force-set (not setdefault) — desktop environments and system updates
+    # (e.g. CachyOS Qt6 packages) may set this to "1" in the environment.
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
     QApplication.setDesktopFileName("trcc-linux")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
