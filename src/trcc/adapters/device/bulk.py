@@ -136,7 +136,9 @@ class BulkDevice(FrameDevice):
         try:
             cfg = dev.get_active_configuration()  # type: ignore[union-attr]
             log.debug("Device already configured, skipping set_configuration()")
-        except usb.core.USBError:
+        except usb.core.USBError as e:
+            if e.errno == 13:  # EACCES — permission denied
+                raise
             log.debug("No active configuration, calling set_configuration()")
             try:
                 dev.set_configuration()  # type: ignore[union-attr]

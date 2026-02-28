@@ -365,7 +365,12 @@ class DebugReport:
             protocol.close()
 
     def _handshake_hid_lcd(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import HidProtocol, _is_ebusy
+        from trcc.adapters.device.factory import (
+            _ERRNO_EACCES,
+            _ERRNO_EBUSY,
+            HidProtocol,
+            _has_usb_errno,
+        )
         from trcc.adapters.device.hid import HidHandshakeInfo
         from trcc.core.models import fbl_to_resolution, pm_to_fbl
 
@@ -374,7 +379,10 @@ class DebugReport:
             info = protocol.handshake()
             if info is None:
                 error = protocol.last_error
-                if error and _is_ebusy(error):
+                if error and _has_usb_errno(error, _ERRNO_EACCES):
+                    sec.lines.append(
+                        "    Permission denied — run 'trcc setup-udev'")
+                elif error and _has_usb_errno(error, _ERRNO_EBUSY):
                     self._ebusy_fallback(sec)
                 else:
                     sec.lines.append(
@@ -396,7 +404,12 @@ class DebugReport:
             protocol.close()
 
     def _handshake_led(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import LedProtocol, _is_ebusy
+        from trcc.adapters.device.factory import (
+            _ERRNO_EACCES,
+            _ERRNO_EBUSY,
+            LedProtocol,
+            _has_usb_errno,
+        )
         from trcc.adapters.device.led import LedHandshakeInfo, PmRegistry
 
         protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
@@ -404,7 +417,10 @@ class DebugReport:
             info = protocol.handshake()
             if info is None:
                 error = protocol.last_error
-                if error and _is_ebusy(error):
+                if error and _has_usb_errno(error, _ERRNO_EACCES):
+                    sec.lines.append(
+                        "    Permission denied — run 'trcc setup-udev'")
+                elif error and _has_usb_errno(error, _ERRNO_EBUSY):
                     self._ebusy_fallback(sec)
                 else:
                     sec.lines.append(
@@ -427,14 +443,22 @@ class DebugReport:
             protocol.close()
 
     def _handshake_bulk(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import BulkProtocol, _is_ebusy
+        from trcc.adapters.device.factory import (
+            _ERRNO_EACCES,
+            _ERRNO_EBUSY,
+            BulkProtocol,
+            _has_usb_errno,
+        )
 
         protocol = BulkProtocol(vid=dev.vid, pid=dev.pid)
         try:
             result = protocol.handshake()
             if result is None:
                 error = protocol.last_error
-                if error and _is_ebusy(error):
+                if error and _has_usb_errno(error, _ERRNO_EACCES):
+                    sec.lines.append(
+                        "    Permission denied — run 'trcc setup-udev'")
+                elif error and _has_usb_errno(error, _ERRNO_EBUSY):
                     self._ebusy_fallback(sec)
                 else:
                     sec.lines.append(
@@ -450,14 +474,22 @@ class DebugReport:
             protocol.close()
 
     def _handshake_ly(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import LyProtocol, _is_ebusy
+        from trcc.adapters.device.factory import (
+            _ERRNO_EACCES,
+            _ERRNO_EBUSY,
+            LyProtocol,
+            _has_usb_errno,
+        )
 
         protocol = LyProtocol(vid=dev.vid, pid=dev.pid)
         try:
             result = protocol.handshake()
             if result is None:
                 error = protocol.last_error
-                if error and _is_ebusy(error):
+                if error and _has_usb_errno(error, _ERRNO_EACCES):
+                    sec.lines.append(
+                        "    Permission denied — run 'trcc setup-udev'")
+                elif error and _has_usb_errno(error, _ERRNO_EBUSY):
                     self._ebusy_fallback(sec)
                 else:
                     sec.lines.append(

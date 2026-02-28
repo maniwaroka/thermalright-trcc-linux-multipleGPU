@@ -698,7 +698,9 @@ class PyUsbTransport(UsbTransport):
             cfg: Any = self._device.get_active_configuration()  # type: ignore[union-attr]
             if cfg.bConfigurationValue != USB_CONFIGURATION:
                 self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
-        except usb.core.USBError:
+        except usb.core.USBError as e:
+            if e.errno == 13:  # EACCES — permission denied
+                raise
             self._device.set_configuration(USB_CONFIGURATION)  # type: ignore[union-attr]
         usb.util.claim_interface(self._device, USB_INTERFACE)  # type: ignore[union-attr]
         self._is_open = True

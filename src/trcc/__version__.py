@@ -1,9 +1,18 @@
 """TRCC Linux version information."""
 
-__version__ = "6.3.3"
+__version__ = "6.3.4"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history:
+# 6.3.4  - Fix USB permission error handling: blanket `except USBError` in HID,
+#          Bulk, and LY transport open() caught EACCES (errno 13) and fell through
+#          to set_configuration() retry — producing confusing double-traceback
+#          ("During handling...another exception occurred"). Now re-raises
+#          permission errors immediately. Unified _has_usb_errno() helper replaces
+#          duplicated _is_ebusy()/_is_permission_denied(). Handshake logs clear
+#          "run 'trcc setup-udev'" message. Debug report shows actionable
+#          "Permission denied — run 'trcc setup-udev'" instead of raw error.
+#          Addresses #47. 2523 tests.
 # 6.3.3  - Single-instance window raise: second `trcc gui` launch now brings
 #          the existing window to the foreground instead of silently exiting.
 #          SIGUSR1 signal from second process → socketpair bridge → Qt raises

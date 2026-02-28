@@ -110,7 +110,9 @@ class LyDevice(FrameDevice):
         cfg = None
         try:
             cfg = dev.get_active_configuration()  # type: ignore[union-attr]
-        except usb.core.USBError:
+        except usb.core.USBError as e:
+            if e.errno == 13:  # EACCES — permission denied
+                raise
             try:
                 dev.set_configuration()  # type: ignore[union-attr]
             except usb.core.USBError:

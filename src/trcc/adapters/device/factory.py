@@ -32,16 +32,16 @@ from trcc.core.models import (
 
 log = logging.getLogger(__name__)
 
-# Errno 16 = EBUSY — device interface claimed by another process (e.g. GUI).
-_ERRNO_EBUSY = 16
+# USB errno constants.
+_ERRNO_EACCES = 13  # Permission denied — udev rules missing.
+_ERRNO_EBUSY = 16   # Device claimed by another process (e.g. GUI).
 
 
-def _is_ebusy(exc: Exception) -> bool:
-    """Check if exception is a USB EBUSY (device in use by another process)."""
-    # Walk the exception chain — EBUSY may be wrapped in RuntimeError
+def _has_usb_errno(exc: Exception, errno_val: int) -> bool:
+    """Check if exception chain contains a USB error with the given errno."""
     cur: Optional[BaseException] = exc
     while cur is not None:
-        if getattr(cur, "errno", None) == _ERRNO_EBUSY:
+        if getattr(cur, "errno", None) == errno_val:
             return True
         cur = cur.__cause__
     return False
@@ -129,7 +129,12 @@ class DeviceProtocol(ABC):
                 self._cache_handshake(result)
             return result
         except Exception as e:
-            if _is_ebusy(e):
+            if _has_usb_errno(e, _ERRNO_EACCES):
+                log.warning(
+                    "%s permission denied — run 'trcc setup-udev' to "
+                    "configure USB device permissions",
+                    self._handshake_label)
+            elif _has_usb_errno(e, _ERRNO_EBUSY):
                 log.warning("%s in use by another process",
                             self._handshake_label)
             else:
