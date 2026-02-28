@@ -1,5 +1,129 @@
 # Changelog
 
+## v6.3.3
+
+### Single-Instance Window Raise
+- **Improved**: Second `trcc gui` launch raises existing window instead of silently exiting — uses lock file + signal
+- 2523 tests across 39 files
+
+## v6.3.2
+
+### Device Button Image & Product Name Resolution
+- **Improved**: PM-based device button image selection after handshake (C# `SetButtonImage` parity)
+- **Improved**: Product name resolution from PM byte — sidebar button shows correct product name instead of generic VID:PID label
+- 2523 tests across 39 files
+
+## v6.3.1
+
+### Device Naming Fix
+- **Fixed**: Device naming for `0402:3922` — now shows "Frozen Warframe / Elite Vision" instead of hardcoded "FROZEN WARFRAME". Both products share the same USB ID. Vendor corrected from "ALi Corp" to "Thermalright".
+- Addresses #46
+- 2523 tests across 39 files
+
+## v6.3.0
+
+### SOLID Refactoring
+- **Refactored**: Data-driven protocol configuration — protocol parameters (chunk sizes, headers, encoding modes) stored as data instead of scattered across code branches
+- **Refactored**: Dependency inversion across adapters — constructor injection, ABC ports at boundaries
+- **Refactored**: SRP splits across oversized modules
+- 2523 tests across 39 files
+
+## v6.2.5
+
+### SCSI Detection Fix (CachyOS/Arch)
+- **Fixed**: SCSI detection on distros without `sg` kernel module — CachyOS, Arch, and others don't autoload `sg`, so `/dev/sg*` doesn't exist even when the device is connected
+- **Added**: Block device fallback — detector now tries `/dev/sd*` with USBLCD vendor check when `/dev/sg*` is unavailable (`SG_IO` ioctl works on both)
+- **Added**: `trcc setup-udev` writes `/etc/modules-load.d/trcc-sg.conf` to autoload `sg` on boot + loads it immediately
+- **Refactored**: `_resolve_usblcd_vid_pid()` extracted to DRY the vendor/product check
+- Addresses #46
+- 2517 tests across 39 files
+
+## v6.2.4
+
+### DRY Refactoring
+- **Refactored**: `parse_hex_color()` → `core/models.py` — was duplicated in CLI, API display, and API LED modules
+- **Refactored**: `dispatch_result()` → `api/models.py` — was duplicated in API display and API LED modules
+- **Refactored**: `ImageService.encode_for_device()` → `services/image.py` — Strategy pattern, was duplicated in device service and display service
+- 16 files changed, -50 net lines of duplicated logic, +28 tests with fixtures
+- 2509 tests across 39 files
+
+## v6.2.3
+
+### HiDPI Scaling & Theme Restore Fix
+- **Fixed**: HiDPI scaling override — force-set `QT_ENABLE_HIGHDPI_SCALING=0` to prevent GUI layout corruption on HiDPI displays (CachyOS, KDE Plasma)
+- **Fixed**: Stale background path on custom theme restore — saved themes with deleted backgrounds showed black instead of falling back gracefully
+- Addresses #42
+- 2481 tests across 39 files
+
+## v6.2.2
+
+### LY Protocol Integration & PM/FBL Overrides
+- **Fixed**: LY protocol integration gaps — GUI poll, JPEG encoding, udev rules, display path, and debug report all missed `ly` protocol type. 7 code paths that branched on protocol string now include LY.
+- **Added**: PM→FBL overrides (PM 13-17, 50, 66, 68, 69) + FBL 192/224 disambiguation from C# v2.1.2
+- **Refactored**: `discover_resolution()` extracted for unified PM→FBL→resolution pipeline
+- Addresses #45
+- 2481 tests across 39 files
+
+## v6.2.1
+
+### `trcc api` CLI Command
+- **New**: `trcc api` command — lists all 41 REST API endpoints with method, path, and description
+- 2445 tests across 39 files
+
+## v6.2.0
+
+### REST API Static File Serving
+- **New**: Serve theme/web/mask images via REST API `StaticFiles` — resolution-aware mounts on device select
+- **New**: `GET /themes/web` and `GET /themes/masks` endpoints
+- **New**: `ThemeResponse` includes `preview_url`, `WebThemeResponse` and `MaskResponse` models
+- 2445 tests across 39 files
+
+## v6.1.10
+
+### FastAPI Base Dependencies
+- **Changed**: Moved `fastapi` + `uvicorn` from optional `[api]` extra to base dependencies — REST API is always available, no separate install needed
+- Prepares for Android companion app integration
+- 2439 tests across 39 files
+
+## v6.1.9
+
+### TLS Support for REST API
+- **New**: `--tls` flag auto-generates self-signed certificate for HTTPS
+- **New**: `--cert` / `--key` flags for custom TLS certificates
+- **New**: Plaintext token warning when running without TLS
+- 2439 tests across 39 files
+
+## v6.1.8
+
+### LY Protocol Support
+- **New**: LY protocol handler for `0416:5408` (Peerless Vision) and `0416:5409` (variant) — chunked 512-byte bulk transfer with 16-byte header + 496 data bytes
+- **New**: `LyDevice` class with handshake, PM extraction, and JPEG frame encoding from TRCC v2.1.2 `USBLCDNEW.dll`
+- **New**: Two PID variants with different PM formulas (LY: `64+resp[20]`, LY1: `50+resp[36]`)
+- Addresses #45
+- 2439 tests across 39 files
+
+## v6.1.7
+
+### Bulk Encoding, HiDPI & Theme Background Fix
+- **Fixed**: Bulk PM=32 distorted colors — `use_jpeg` DTO field wasn't propagated, raw RGB565 sent when device expected JPEG
+- **Fixed**: HiDPI GUI scaling — set `QT_ENABLE_HIGHDPI_SCALING=0` environment variable before Qt init
+- **Fixed**: Black background on saved custom themes — `background_path` was null when theme had no explicit background
+- 2408 tests across 39 files
+
+## v6.1.6
+
+### RAPL Power Sensor Permissions
+- **Added**: RAPL power sensor permission check and fix in `trcc setup` pipeline — Intel CPU power sensors (`/sys/class/powercap/intel-rapl/`) need read permission for non-root users
+- 2399 tests across 39 files
+
+## v6.1.5
+
+### Portrait Cloud Directory Fix
+- **Fixed**: Non-square displays (e.g. 1280x480 Trofeo Vision) mounted vertically were loading cloud backgrounds/masks from the landscape directory instead of portrait directory
+- **Added**: `Settings.resolve_cloud_dirs(rotation)` — swaps width/height for web_dir and masks_dir when rotation is 90/270 on non-square displays
+- Addresses #1
+- 2399 tests across 39 files
+
 ## v6.1.4
 
 ### LED GUI Settings & Theme Restore Fix

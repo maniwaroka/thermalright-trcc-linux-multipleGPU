@@ -95,6 +95,45 @@ See the **[Device Testing Guide](DEVICE_TESTING.md)** for supported devices and 
 
 ---
 
+## Native Packages (Recommended)
+
+Pre-built packages are available for every major distro — no pip, no venv, no PEP 668 headaches. Download from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) page:
+
+**Fedora / openSUSE / Nobara:**
+```bash
+cd ~/Downloads
+sudo dnf install ./trcc-linux-*.noarch.rpm
+```
+
+**Ubuntu / Debian / Mint / Pop!_OS / Zorin:**
+```bash
+cd ~/Downloads
+sudo dpkg -i trcc-linux_*_all.deb
+sudo apt-get install -f    # pulls in any missing dependencies
+```
+
+**Arch / CachyOS / Manjaro / EndeavourOS / Garuda:**
+```bash
+cd ~/Downloads
+sudo pacman -U trcc-linux-*-any.pkg.tar.zst
+```
+
+**NixOS:**
+```nix
+{
+  inputs.trcc-linux.url = "github:Lexonight1/thermalright-trcc-linux";
+  # In your system configuration:
+  programs.trcc-linux.enable = true;
+}
+```
+Then run `sudo nixos-rebuild switch`.
+
+After installing: **unplug and replug the USB cable** (or reboot), then run `trcc gui`.
+
+Every release includes a `SHA256SUMS.txt` file — download it from the same page and run `sha256sum -c SHA256SUMS.txt --ignore-missing` to verify your package is clean.
+
+> If your distro isn't listed above, use one of the methods below.
+
 ## Quick Install from PyPI
 
 ```bash
@@ -103,6 +142,13 @@ trcc setup        # interactive wizard — checks deps, udev, desktop entry
 ```
 
 Then **unplug and replug the USB cable** and run `trcc gui`.
+
+On Arch-based distros (Arch, CachyOS, Manjaro, EndeavourOS, Garuda) use pipx instead:
+```bash
+sudo pacman -S python-pipx
+pipx install trcc-linux
+trcc setup
+```
 
 > **Note:** Some distros need system packages for Qt6 and SCSI (`sg3_utils`). The setup wizard will detect and offer to install them.
 

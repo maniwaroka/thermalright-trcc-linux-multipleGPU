@@ -402,19 +402,34 @@ Reports status of: Python version, PySide6, PIL/Pillow, numpy, pyusb, sg_raw, ud
 
 ### `trcc serve`
 
-Start a REST API server for remote LCD control (requires `trcc-linux[api]` extras).
+Start the REST API server for remote LCD/LED control.
 
 ```bash
-trcc serve                              # localhost:8080
-trcc serve --host 0.0.0.0 --port 9090  # LAN-accessible
+trcc serve                              # localhost:9876
+trcc serve --host 0.0.0.0 --port 8080  # LAN-accessible
 trcc serve --token mysecret             # require auth token
+trcc serve --tls                        # HTTPS with auto-generated self-signed cert
+trcc serve --cert cert.pem --key key.pem  # custom TLS certificate
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--host` | Bind address (default: `127.0.0.1`, use `0.0.0.0` for LAN) |
-| `--port` | Listen port (default: `8080`) |
+| `--port` | Listen port (default: `9876`) |
 | `--token` | API bearer token for authentication |
+| `--tls` | Enable HTTPS with auto-generated self-signed certificate |
+| `--cert` | Path to custom TLS certificate (PEM) |
+| `--key` | Path to custom TLS private key (PEM) |
+
+---
+
+### `trcc api`
+
+List all REST API endpoints with method, path, and description.
+
+```bash
+trcc api
+```
 
 ---
 
