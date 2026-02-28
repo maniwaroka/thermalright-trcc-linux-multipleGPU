@@ -198,6 +198,8 @@ A big thanks to everyone who has contributed invaluable reports to this project:
 - **[Mr-Renegade](https://github.com/Mr-Renegade)** — Peerless Vision LY protocol testing & portrait rotation feedback
 - **[Reborn627](https://github.com/Reborn627)** — GrandVision 360 AIO HiDPI scaling & CachyOS testing
 - **[tensaiteki](https://github.com/tensaiteki)** — Elite Vision 360 SCSI detection on CachyOS (sg module bug)
+- **[wrightbyname](https://github.com/wrightbyname)** — CLI compatibility testing & bug report
+- **[Scifiguygaming](https://github.com/Scifiguygaming)** — Frozen Warframe HID testing on CachyOS
 
 ## License
 
