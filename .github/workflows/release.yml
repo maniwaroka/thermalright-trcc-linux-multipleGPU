@@ -221,6 +221,9 @@ jobs:
           tar -cf - .PKGINFO * | zstd -o "/output/trcc-linux-${VER}-1-any.pkg.tar.zst"
           '
 
+      - name: Fix package directory permissions
+        run: sudo chown -R "$(id -u):$(id -g)" packages/
+
       - name: Generate SHA256 checksums
         run: |
           cd packages
