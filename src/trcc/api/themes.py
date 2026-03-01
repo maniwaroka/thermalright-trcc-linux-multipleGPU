@@ -11,6 +11,7 @@ from trcc.api.models import (
     ThemeLoadRequest,
     ThemeResponse,
     ThemeSaveRequest,
+    WebThemeDownloadResponse,
     WebThemeResponse,
 )
 from trcc.services import ThemeService
@@ -89,8 +90,82 @@ def list_web_themes(resolution: str = "320x320") -> list[WebThemeResponse]:
             category=category,
             preview_url=f"/static/web/{fname}",
             has_video=has_video,
+            download_url=f"/themes/web/{theme_id}/download",
         ))
     return results
+
+
+@router.post("/web/{theme_id}/download")
+def download_web_theme(
+    theme_id: str,
+    resolution: str | None = None,
+    send: bool = False,
+) -> WebThemeDownloadResponse:
+    """Download a cloud theme MP4 to local cache.
+
+    Optionally sends its first frame to the LCD device if ``send=True``.
+    """
+    from trcc.adapters.infra.data_repository import DataManager
+    from trcc.adapters.infra.theme_cloud import CloudThemeDownloader
+    from trcc.api import _device_svc, _display_dispatcher
+
+    # Resolve resolution from device or parameter
+    w, h = 320, 320
+    if resolution:
+        w, h = _parse_resolution(resolution)
+    elif _display_dispatcher and _display_dispatcher.connected:
+        w, h = _display_dispatcher.resolution  # type: ignore[union-attr]
+
+    if send and (not _display_dispatcher or not _display_dispatcher.connected):
+        raise HTTPException(
+            status_code=409,
+            detail="No LCD device selected. POST /devices/{id}/select first.",
+        )
+
+    # Download (or use cache)
+    web_dir = DataManager.get_web_dir(w, h)
+    downloader = CloudThemeDownloader(
+        resolution=f"{w}x{h}", cache_dir=web_dir,
+    )
+
+    already_cached = downloader.is_cached(theme_id)
+    result_path = downloader.download_theme(theme_id)
+    if not result_path:
+        raise HTTPException(status_code=404, detail=f"Cloud theme '{theme_id}' not found on server")
+
+    # Optionally send first frame to device
+    if send:
+        import subprocess
+        import tempfile
+
+        from PIL import Image
+
+        from trcc.services import ImageService
+
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            subprocess.run(
+                ['ffmpeg', '-i', result_path, '-frames:v', '1',
+                 '-y', tmp_path],
+                capture_output=True, timeout=10,
+            )
+            img = Image.open(tmp_path).convert('RGB')
+        finally:
+            os.unlink(tmp_path)
+
+        img = ImageService.resize(img, w, h)
+        _device_svc.send_pil(img, w, h)
+
+        from trcc.api import set_current_image
+        set_current_image(img)
+
+    return WebThemeDownloadResponse(
+        id=theme_id,
+        cached_path=result_path,
+        resolution=f"{w}x{h}",
+        already_cached=already_cached,
+    )
 
 
 @router.get("/masks")
@@ -166,6 +241,9 @@ def load_theme(body: ThemeLoadRequest) -> dict:
     ok = _device_svc.send_pil(img, w, h)
     if not ok:
         raise HTTPException(status_code=500, detail="Send failed (device busy or error)")
+
+    from trcc.api import set_current_image
+    set_current_image(img)
 
     return {"success": True, "theme": body.name, "resolution": (w, h)}
 

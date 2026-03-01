@@ -1,9 +1,14 @@
-"""LCD display control endpoints — brightness, rotation, color, mask, overlay."""
+"""LCD display control endpoints — brightness, rotation, color, mask, overlay, preview."""
 from __future__ import annotations
 
+import asyncio
+import hmac
+import io
+import json
 import logging
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 
 from trcc.api.models import (
     BrightnessRequest,
@@ -29,8 +34,12 @@ def _get_display():
 
 
 def _display_route(method: str, *args, **kwargs) -> dict:
-    """Generic: get display dispatcher, call method, return dispatch result."""
-    return dispatch_result(getattr(_get_display(), method)(*args, **kwargs))
+    """Generic: get display dispatcher, call method, capture image, return result."""
+    result = getattr(_get_display(), method)(*args, **kwargs)
+    if result.get("image"):
+        from trcc.api import set_current_image
+        set_current_image(result["image"])
+    return dispatch_result(result)
 
 
 @router.post("/color")
@@ -110,3 +119,85 @@ def display_status() -> dict:
         "resolution": lcd.resolution,
         "device_path": lcd.device_path,
     }
+
+
+# ── Preview endpoints ─────────────────────────────────────────────────
+
+
+@router.get("/preview")
+def display_preview() -> Response:
+    """Return the current LCD frame as a PNG image."""
+    from trcc.api import _current_image
+
+    if _current_image is None:
+        raise HTTPException(status_code=503, detail="No image available")
+
+    buf = io.BytesIO()
+    _current_image.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@router.websocket("/preview/stream")
+async def preview_stream(websocket: WebSocket):
+    """Live JPEG stream of the current LCD frame.
+
+    Auth: ``?token=`` query param (checked against configured API token).
+    Change detection: only sends when the PIL Image object changes (``id()``).
+    Client control: send JSON ``{"fps": N}``, ``{"quality": N}``, ``{"pause": bool}``.
+    """
+    from trcc.api import _api_token
+
+    # ── Auth ──────────────────────────────────────────────────────────
+    if _api_token:
+        query_token = websocket.query_params.get("token", "")
+        if not hmac.compare_digest(query_token, _api_token):
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+
+    await websocket.accept()
+
+    last_image_id: int | None = None
+    fps = 10
+    quality = 85
+    paused = False
+
+    try:
+        while True:
+            # ── Check for client control messages (non-blocking) ──────
+            try:
+                raw = await asyncio.wait_for(
+                    websocket.receive_text(), timeout=1.0 / fps,
+                )
+                try:
+                    msg = json.loads(raw)
+                    if "fps" in msg:
+                        fps = max(1, min(30, int(msg["fps"])))
+                    if "quality" in msg:
+                        quality = max(10, min(100, int(msg["quality"])))
+                    if "pause" in msg:
+                        paused = bool(msg["pause"])
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass
+                continue  # restart loop after processing message
+            except asyncio.TimeoutError:
+                pass  # no message — proceed to frame check
+
+            if paused:
+                continue
+
+            # ── Read current image (re-import to get latest ref) ──────
+            from trcc.api import _current_image as current  # noqa: F811
+
+            if current is None or id(current) == last_image_id:
+                continue  # no change — wait for next tick
+
+            # ── Encode and send new frame ─────────────────────────────
+            buf = io.BytesIO()
+            current.save(buf, format="JPEG", quality=quality)
+            await websocket.send_bytes(buf.getvalue())
+            last_image_id = id(current)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.debug("Preview stream closed", exc_info=True)

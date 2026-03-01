@@ -418,6 +418,73 @@ class TestDisplayEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.mock_lcd.load_mask.assert_called_once()
 
+    def test_display_route_captures_current_image(self):
+        """_display_route() updates _current_image when dispatcher returns image."""
+        test_img = Image.new('RGB', (320, 320), (0, 255, 0))
+        self.mock_lcd.send_color.return_value = {
+            "success": True, "message": "Sent color", "image": test_img}
+        api_module._current_image = None
+
+        self.client.post("/display/color", json={"hex": "00ff00"})
+        self.assertIs(api_module._current_image, test_img)
+        api_module._current_image = None
+
+
+class TestPreviewEndpoints(unittest.TestCase):
+    """GET /display/preview and WebSocket /display/preview/stream."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        api_module._current_image = None
+        api_module._display_dispatcher = None
+
+    def test_preview_no_image(self):
+        api_module._current_image = None
+        resp = self.client.get("/display/preview")
+        self.assertEqual(resp.status_code, 503)
+
+    def test_preview_returns_png(self):
+        api_module._current_image = Image.new('RGB', (320, 320), (255, 0, 0))
+        resp = self.client.get("/display/preview")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["content-type"], "image/png")
+        # Verify it's a valid PNG (starts with PNG magic bytes)
+        self.assertTrue(resp.content[:4] == b'\x89PNG')
+
+    def test_preview_stream_rejects_bad_token(self):
+        from starlette.websockets import WebSocketDisconnect as WSDisconnect
+
+        configure_auth("secret123")
+        with pytest.raises(WSDisconnect) as exc_info:
+            with self.client.websocket_connect(
+                "/display/preview/stream?token=wrong"
+            ):
+                pass
+        self.assertEqual(exc_info.value.code, 4001)
+        configure_auth(None)
+
+    def test_preview_stream_sends_frame(self):
+        api_module._current_image = Image.new('RGB', (100, 100), (0, 0, 255))
+        with self.client.websocket_connect("/display/preview/stream") as ws:
+            data = ws.receive_bytes()
+            # Should be JPEG (starts with FF D8)
+            self.assertTrue(data[:2] == b'\xff\xd8')
+
+    def test_preview_stream_accepts_control_message(self):
+        api_module._current_image = Image.new('RGB', (100, 100), (0, 0, 255))
+        with self.client.websocket_connect("/display/preview/stream") as ws:
+            # Read the first frame
+            ws.receive_bytes()
+            # Send control message
+            ws.send_text('{"fps": 5, "quality": 50}')
+            # Change image to trigger another frame
+            api_module._current_image = Image.new('RGB', (100, 100), (255, 0, 0))
+            data = ws.receive_bytes()
+            self.assertTrue(data[:2] == b'\xff\xd8')
+
 
 # ── LED endpoints ──────────────────────────────────────────────────────
 
@@ -737,6 +804,90 @@ class TestWebThemeEndpoints(unittest.TestCase):
     def test_list_masks_invalid_resolution(self):
         resp = self.client.get("/themes/masks?resolution=nope")
         self.assertEqual(resp.status_code, 400)
+
+    @patch('trcc.api.themes.os.listdir', return_value=['a001.png'])
+    @patch('trcc.api.themes.os.path.isfile', return_value=False)
+    @patch('trcc.api.themes.os.path.isdir', return_value=True)
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/tmp/web')
+    def test_list_web_themes_includes_download_url(self, *_mocks):
+        resp = self.client.get("/themes/web?resolution=320x320")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data[0]["download_url"], "/themes/web/a001/download")
+
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme', return_value='/tmp/web/a001.mp4')
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached', return_value=False)
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/tmp/web')
+    def test_download_web_theme_success(self, *_mocks):
+        resp = self.client.post("/themes/web/a001/download?resolution=320x320")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["id"], "a001")
+        self.assertEqual(data["cached_path"], "/tmp/web/a001.mp4")
+        self.assertEqual(data["resolution"], "320x320")
+        self.assertFalse(data["already_cached"])
+
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme', return_value='/tmp/web/a001.mp4')
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached', return_value=True)
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/tmp/web')
+    def test_download_web_theme_already_cached(self, *_mocks):
+        resp = self.client.post("/themes/web/a001/download?resolution=320x320")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["already_cached"])
+
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme', return_value=None)
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached', return_value=False)
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/tmp/web')
+    def test_download_web_theme_not_found(self, *_mocks):
+        resp = self.client.post("/themes/web/z999/download?resolution=320x320")
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("not found", resp.json()["detail"])
+
+    def test_download_web_theme_send_no_device(self):
+        api_module._display_dispatcher = None
+        resp = self.client.post("/themes/web/a001/download?resolution=320x320&send=true")
+        self.assertEqual(resp.status_code, 409)
+
+    def test_download_web_theme_invalid_resolution(self):
+        resp = self.client.post("/themes/web/a001/download?resolution=bad")
+        self.assertEqual(resp.status_code, 400)
+
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme', return_value='/tmp/web/a001.mp4')
+    @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached', return_value=False)
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/tmp/web')
+    def test_download_web_theme_with_send(self, *_mocks):
+        import tempfile
+
+        # Set up mock display dispatcher
+        mock_disp = MagicMock()
+        mock_disp.connected = True
+        mock_disp.resolution = (320, 320)
+        api_module._display_dispatcher = mock_disp
+
+        # Create a real PNG that the endpoint will open after "ffmpeg" runs
+        img = Image.new('RGB', (320, 320), (255, 0, 0))
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            img.save(tmp, 'PNG')
+            fake_png = tmp.name
+
+        # Patch subprocess.run (ffmpeg) to write our fake PNG to the temp path,
+        # and os.unlink to clean up our fake file instead
+        def fake_ffmpeg(cmd, **_kw):
+            # cmd contains [... '-y', tmp_path] — copy our pre-made PNG there
+            import shutil
+            dest = cmd[-1]  # last arg is the output path
+            shutil.copy2(fake_png, dest)
+
+        with patch('subprocess.run', side_effect=fake_ffmpeg), \
+             patch.object(_device_svc, 'send_pil', return_value=True) as mock_send:
+            resp = self.client.post("/themes/web/a001/download?resolution=320x320&send=true")
+
+        self.assertEqual(resp.status_code, 200)
+        mock_send.assert_called_once()
+        api_module._display_dispatcher = None
+        import os
+        if os.path.exists(fake_png):
+            os.unlink(fake_png)
 
 
 class TestStaticMounts(unittest.TestCase):

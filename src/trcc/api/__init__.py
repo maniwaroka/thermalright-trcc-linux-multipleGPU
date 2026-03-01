@@ -43,6 +43,15 @@ _display_dispatcher = None  # DisplayDispatcher | None
 _led_dispatcher = None      # LEDDispatcher | None
 _system_svc = None          # SystemService | None
 
+# Last frame sent to LCD — updated by display/theme endpoints for preview
+_current_image = None  # PIL Image | None
+
+
+def set_current_image(img) -> None:
+    """Update the tracked LCD frame (called by display/theme endpoints)."""
+    global _current_image  # noqa: PLW0603
+    _current_image = img
+
 # ── Static file mounts (resolution-aware, remounted on device select) ─
 
 _mounted_routes: list[str] = []  # Track mounted paths for remount

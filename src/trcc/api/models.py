@@ -53,6 +53,14 @@ class WebThemeResponse(BaseModel):
     category: str
     preview_url: str
     has_video: bool = False
+    download_url: str = ""
+
+
+class WebThemeDownloadResponse(BaseModel):
+    id: str
+    cached_path: str
+    resolution: str
+    already_cached: bool = False
 
 
 class MaskResponse(BaseModel):
