@@ -347,6 +347,18 @@ A big thanks to everyone who has contributed invaluable reports to this project:
 - **[Scifiguygaming](https://github.com/Scifiguygaming)** — Frozen Warframe HID testing on CachyOS
 - **[mog199](https://github.com/mog199)** — HID Type 2 permission error bug report
 
+## Stargazers
+
+Thanks to everyone who took a moment to star this project — it means the world.
+
+**[alessa-lara](https://github.com/alessa-lara)** · **[BrunoLeguizamon05](https://github.com/BrunoLeguizamon05)** · **[cancos1](https://github.com/cancos1)** · **[codeflitting](https://github.com/codeflitting)** · **[dabombUSA](https://github.com/dabombUSA)** · **[damachine](https://github.com/damachine)** · **[emaspa](https://github.com/emaspa)** · **[jezzaw007](https://github.com/jezzaw007)** · **[jmo808](https://github.com/jmo808)** · **[Lcstyle](https://github.com/Lcstyle)** · **[ligmaSec](https://github.com/ligmaSec)** · **[mgaruccio](https://github.com/mgaruccio)** · **[michael-spinelli](https://github.com/michael-spinelli)** · **[nathanielhernandez](https://github.com/nathanielhernandez)** · **[oddajpierscien](https://github.com/oddajpierscien)** · **[Pikarz](https://github.com/Pikarz)** · **[Rehaell](https://github.com/Rehaell)** · **[rslater](https://github.com/rslater)** · **[Smokemic](https://github.com/Smokemic)** · **[spiritofjon](https://github.com/spiritofjon)** · **[Vydon](https://github.com/Vydon)** · **[Xentrino](https://github.com/Xentrino)** · **[Ziusz](https://github.com/Ziusz)**
+
+## Faulkers
+
+Thanks for carrying the torch — these folks forked the repo to build on it.
+
+**[dabombUSA](https://github.com/dabombUSA)** · **[jezzaw007](https://github.com/jezzaw007)** · **[taillis](https://github.com/taillis)**
+
 ## Donations
 
 If this project saved you from keeping a Windows partition around, consider **[buying me a cold one](https://buymeacoffee.com/Lexonight1)**.
