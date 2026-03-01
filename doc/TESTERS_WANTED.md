@@ -139,13 +139,6 @@ The following models are listed on [Thermalright's official download page](https
 | TR-A70 Vision | HID LCD or LED | Need tester |
 | Wonder Vision | HID LCD or LED | Need tester |
 
-**Separate software (TR-VISION HOME):**
-
-| Device | Status |
-|--------|--------|
-| Frozen Vision (original) | Different software — may use different protocol |
-| Frozen Guardian | Different software — may use different protocol |
-
 > A single `lsusb` line from any of these devices tells us exactly which protocol it uses and whether it should work out of the box.
 
 ## Not Sure If Your Device Is Listed?
