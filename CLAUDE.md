@@ -189,7 +189,7 @@ When adding GUI assets:
 ## Deployment
 - **Default branch: `main`** — all development, releases, and user-facing clones happen here
 - **Never push without explicit user instruction**
-- Dev repo: `~/Desktop/projects/thermalright/windows_created/trcc_linux`
+- Dev repo: `~/Desktop/projects/thermalright/trcc-linux`
 - Testing repo: `~/Desktop/trcc_testing/thermalright-trcc-linux/`
 - PyPI: `trcc-linux` (published)
 

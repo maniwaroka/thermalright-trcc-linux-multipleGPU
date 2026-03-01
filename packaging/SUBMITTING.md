@@ -27,8 +27,8 @@ git clone ssh://aur@aur.archlinux.org/trcc-linux.git /tmp/aur-trcc-linux
 cd /tmp/aur-trcc-linux
 
 # Copy files
-cp ~/Desktop/projects/thermalright/windows_created/trcc_linux/packaging/arch/PKGBUILD .
-cp ~/Desktop/projects/thermalright/windows_created/trcc_linux/packaging/arch/.SRCINFO .
+cp ~/Desktop/projects/thermalright/trcc-linux/packaging/arch/PKGBUILD .
+cp ~/Desktop/projects/thermalright/trcc-linux/packaging/arch/.SRCINFO .
 
 # Push
 git add PKGBUILD .SRCINFO
@@ -81,7 +81,7 @@ sudo dnf install trcc-linux
    ```bash
    osc checkout home:YourUsername:trcc-linux
    cd home:YourUsername:trcc-linux/trcc-linux
-   cp ~/Desktop/projects/thermalright/windows_created/trcc_linux/packaging/rpm/trcc-linux.spec .
+   cp ~/Desktop/projects/thermalright/trcc-linux/packaging/rpm/trcc-linux.spec .
    wget https://github.com/Lexonight1/thermalright-trcc-linux/archive/v6.3.3.tar.gz -O trcc-linux-6.3.3.tar.gz
    osc add trcc-linux.spec trcc-linux-6.3.3.tar.gz
    osc commit -m "Initial submit: trcc-linux 6.3.3"
@@ -108,7 +108,7 @@ sudo zypper install trcc-linux
 
 ### Submit
 ```bash
-cd ~/Desktop/projects/thermalright/windows_created/trcc_linux
+cd ~/Desktop/projects/thermalright/trcc-linux
 
 # Build source package
 dpkg-source -b .
@@ -143,7 +143,7 @@ cd /tmp/guru
 mkdir -p app-misc/trcc-linux
 
 # Copy ebuild
-cp ~/Desktop/projects/thermalright/windows_created/trcc_linux/packaging/gentoo/trcc-linux-6.3.3.ebuild \
+cp ~/Desktop/projects/thermalright/trcc-linux/packaging/gentoo/trcc-linux-6.3.3.ebuild \
    app-misc/trcc-linux/
 
 # Create metadata
