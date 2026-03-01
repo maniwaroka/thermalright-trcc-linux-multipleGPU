@@ -503,22 +503,10 @@ class TestProbe:
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = fake_info
 
-        mock_factory = MagicMock()
-        mock_factory.get_protocol.return_value = mock_protocol
-
-        mock_hid_mod = MagicMock()
-        mock_hid_mod.HidHandshakeInfo = FakeHidHandshakeInfo
-
-        with patch.dict("sys.modules", {
-            "trcc.adapters.device.factory": mock_factory,
-            "trcc.adapters.device.hid": mock_hid_mod,
-        }):
-            # patch the imports inside _probe
-            with patch("trcc.adapters.device.factory.DeviceProtocolFactory",
-                       mock_factory), \
-                 patch("trcc.adapters.device.hid.HidHandshakeInfo",
-                       FakeHidHandshakeInfo):
-                result = _probe(dev)
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory") as mock_factory_cls, \
+             patch("trcc.adapters.device.hid.HidHandshakeInfo", FakeHidHandshakeInfo):
+            mock_factory_cls.get_protocol.return_value = mock_protocol
+            result = _probe(dev)
 
         assert result.get("pm") == 54
         assert result.get("resolution") == (360, 360)
