@@ -3,7 +3,7 @@
 %global srcname trcc-linux
 
 Name:           trcc-linux
-Version:        6.5.2
+Version:        6.5.3
 Release:        1%{?dist}
 Summary:        Thermalright LCD/LED Control Center for Linux
 
