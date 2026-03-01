@@ -473,6 +473,10 @@ class TRCCMainWindowMVC(QMainWindow):
         # Per-device config tracking
         self._active_device_key = ''
 
+        # IPC server (set by run_mvc_app after window creation)
+        from ..ipc import IPCServer
+        self._ipc_server: IPCServer | None = None
+
         # Pixmap references to prevent GC
         self._pixmap_refs = []
 
@@ -1139,6 +1143,11 @@ class TRCCMainWindowMVC(QMainWindow):
         if device.implementation == 'hid_led':
             self._led.show(device)
             self._show_view('led')
+            # Sync IPC LED dispatcher with the active controller's service
+            ctrl = self._led._controller
+            if self._ipc_server and ctrl:
+                from ..cli._led import LEDDispatcher
+                self._ipc_server.led = LEDDispatcher(svc=ctrl.svc)
             return
 
         self.uc_preview.set_status(f"Device: {device.path}")
@@ -2308,6 +2317,8 @@ class TRCCMainWindowMVC(QMainWindow):
         self.uc_activity_sidebar.stop_updates()
         self.controller.stop_video()
         self.controller.cleanup()
+        if self._ipc_server:
+            self._ipc_server.shutdown()
         TRCCMainWindowMVC._instance = None
         event.accept()
         app = QApplication.instance()
@@ -2382,6 +2393,16 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
     app.setFont(font)
 
     window = TRCCMainWindowMVC(data_dir, decorated=decorated)
+
+    # IPC server — CLI commands route through here when GUI is running.
+    from ..cli._display import DisplayDispatcher
+    from ..cli._led import LEDDispatcher
+    from ..ipc import IPCServer
+    ipc_display = DisplayDispatcher(device_svc=window.controller.device_svc)
+    ipc_led = LEDDispatcher()
+    ipc_server = IPCServer(ipc_display, ipc_led)
+    ipc_server.start()
+    window._ipc_server = ipc_server  # ref for device updates + shutdown
 
     # SIGUSR1 handler: second launch raises the existing window.
     # Unix signals can't call Qt directly — bridge via socketpair.

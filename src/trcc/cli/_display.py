@@ -277,7 +277,15 @@ class DisplayDispatcher:
 # =========================================================================
 
 def _connect_or_fail(device: str | None = None) -> tuple[DisplayDispatcher, int]:
-    """Create dispatcher, connect. Returns (dispatcher, exit_code)."""
+    """Create dispatcher, connect. Returns (dispatcher, exit_code).
+
+    When the GUI daemon is running and no explicit device path is given,
+    returns an IPC proxy that routes all commands through the daemon.
+    """
+    if device is None:
+        from trcc.ipc import IPCClient, IPCDisplayProxy
+        if IPCClient.available():
+            return IPCDisplayProxy(), 0  # type: ignore[return-value]
     lcd = DisplayDispatcher()
     result = lcd.connect(device)
     if not result["success"]:

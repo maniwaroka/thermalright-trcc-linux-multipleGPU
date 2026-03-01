@@ -292,8 +292,13 @@ class LEDDispatcher:
 def _connect_or_fail() -> tuple[LEDDispatcher, int]:
     """Create dispatcher from _get_led_service. Returns (dispatcher, exit_code).
 
+    When the GUI daemon is running, returns an IPC proxy that routes
+    all commands through the daemon.
     Uses _get_led_service() so test mocks that patch it still work.
     """
+    from trcc.ipc import IPCClient, IPCLEDProxy
+    if IPCClient.available():
+        return IPCLEDProxy(), 0  # type: ignore[return-value]
     svc, status = _get_led_service()
     if not svc:
         print("No LED device found.")
