@@ -22,6 +22,7 @@ class DeviceService:
         self._selected: DeviceInfo | None = None
         self._send_lock = threading.Lock()
         self._send_busy = False
+        self.on_frame_sent: Any = None  # callback(PIL Image) — called after every send_pil
 
     # ── Detection ────────────────────────────────────────────────────
 
@@ -174,7 +175,10 @@ class DeviceService:
         use_jpeg = device.use_jpeg if device else True
 
         data = ImageService.encode_for_device(image, protocol, resolution, fbl, use_jpeg)
-        return self.send_rgb565(data, width, height)
+        ok = self.send_rgb565(data, width, height)
+        if ok and self.on_frame_sent:
+            self.on_frame_sent(image)
+        return ok
 
     def send_rgb565_async(self, data: bytes, width: int, height: int) -> None:
         """Send RGB565 bytes in a background thread. Thread-safe."""

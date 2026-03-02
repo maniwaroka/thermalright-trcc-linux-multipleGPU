@@ -69,6 +69,7 @@ class IPCServer:
         self._led = led_dispatcher
         self._sock: socket.socket | None = None
         self._notifier: Any = None  # QSocketNotifier
+        self._current_frame: Any = None  # PIL Image — last frame sent to LCD
 
     @property
     def display(self) -> Any:
@@ -85,6 +86,10 @@ class IPCServer:
     @led.setter
     def led(self, value: Any) -> None:
         self._led = value
+
+    def capture_frame(self, image: Any) -> None:
+        """Store the latest frame sent to LCD (called by on_frame_sent callback)."""
+        self._current_frame = image
 
     def start(self) -> None:
         """Bind and listen on Unix domain socket."""
@@ -162,6 +167,8 @@ class IPCServer:
         domain, method = parts
 
         if domain == "display":
+            if method == "get_frame":
+                return self._get_frame()
             if method not in _DISPLAY_METHODS:
                 return {"success": False, "error": f"Unknown command: {cmd}"}
             if not self._display or not self._display.connected:
@@ -176,6 +183,20 @@ class IPCServer:
             return _sanitize(getattr(self._led, method)(*args, **kwargs))
 
         return {"success": False, "error": f"Unknown domain: {domain}"}
+
+    def _get_frame(self) -> dict:
+        """Return the current LCD frame as base64 JPEG."""
+        import base64
+        import io
+
+        if self._current_frame is None:
+            return {"success": False, "error": "No frame available"}
+        buf = io.BytesIO()
+        self._current_frame.save(buf, format="JPEG", quality=85)
+        return {
+            "success": True,
+            "frame": base64.b64encode(buf.getvalue()).decode("ascii"),
+        }
 
     def _status(self) -> dict:
         """Return current device status."""

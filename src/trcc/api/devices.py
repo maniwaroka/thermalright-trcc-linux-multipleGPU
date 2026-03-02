@@ -67,29 +67,56 @@ def select_device(device_id: int) -> dict:
     from trcc.api import _device_svc
 
     dev = _get_device_by_id(device_id)
+
+    # Skip teardown if re-selecting the same device that's already active
+    already_active = (
+        _device_svc.selected is not None
+        and _device_svc.selected is dev
+        and (api._display_dispatcher or api._led_dispatcher)
+    )
+    if already_active:
+        return {"selected": dev.name, "resolution": dev.resolution}
+
     _device_svc.select(dev)
 
-    # Initialize dispatcher based on device type
-    from trcc.core.models import PROTOCOL_TRAITS
-    traits = PROTOCOL_TRAITS.get(dev.protocol or 'scsi')
-    if (traits and traits.is_led) or getattr(dev, 'implementation', '') == 'hid_led':
-        from trcc.cli._led import LEDDispatcher
+    # Stop any running background threads from previous device
+    api.stop_video_playback()
+    api.stop_overlay_loop()
 
-        api._led_dispatcher = LEDDispatcher()
-        result = api._led_dispatcher.connect()
-        if not result["success"]:
-            api._led_dispatcher = None
+    # Check if GUI daemon is running — if so, route through IPC
+    from trcc.ipc import IPCClient
+
+    if IPCClient.available():
+        from trcc.ipc import IPCDisplayProxy, IPCLEDProxy
+
+        api._display_dispatcher = IPCDisplayProxy()
+        api._led_dispatcher = IPCLEDProxy()
+
+        log.info("Using GUI daemon for device %s", dev.name)
     else:
-        # Discover resolution via handshake if not yet known (all LCD protocols)
-        from trcc.cli._device import discover_resolution
-        discover_resolution(dev)
+        # Standalone mode — API manages device directly
+        _device_svc.on_frame_sent = api.set_current_image
 
-        from trcc.cli._display import DisplayDispatcher
+        from trcc.core.models import PROTOCOL_TRAITS
+        traits = PROTOCOL_TRAITS.get(dev.protocol or 'scsi')
+        if (traits and traits.is_led) or getattr(dev, 'implementation', '') == 'hid_led':
+            from trcc.cli._led import LEDDispatcher
 
-        api._display_dispatcher = DisplayDispatcher(device_svc=_device_svc)
+            api._led_dispatcher = LEDDispatcher()
+            result = api._led_dispatcher.connect()
+            if not result["success"]:
+                api._led_dispatcher = None
+        else:
+            from trcc.cli._device import discover_resolution
+            discover_resolution(dev)
 
-        # Restore last theme as _current_image for preview endpoints
-        _restore_last_theme(dev)
+            from trcc.cli._display import DisplayDispatcher
+
+            api._display_dispatcher = DisplayDispatcher(device_svc=_device_svc)
+
+            w_res, h_res = dev.resolution or (320, 320)
+            api.set_current_image(Image.new('RGB', (w_res, h_res), (0, 0, 0)))
+            _restore_last_theme(dev)
 
     # Mount static file directories for this device's resolution
     w, h = dev.resolution or (0, 0)
@@ -198,12 +225,10 @@ async def send_image(device_id: int, image: UploadFile, rotation: int = 0,
     img = ImageService.resize(img, w, h)
 
     # Encode and send via service (handles JPEG vs RGB565, rotation, byte order)
+    # Frame capture is automatic via on_frame_sent callback
     ok = _device_svc.send_pil(img, w, h)
 
     if not ok:
         raise HTTPException(status_code=500, detail="Send failed (device busy or error)")
-
-    from trcc.api import set_current_image
-    set_current_image(img)
 
     return {"sent": True, "resolution": (w, h)}

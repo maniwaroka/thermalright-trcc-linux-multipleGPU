@@ -63,6 +63,17 @@ class WebThemeDownloadResponse(BaseModel):
     already_cached: bool = False
 
 
+class VideoStatusResponse(BaseModel):
+    playing: bool = False
+    paused: bool = False
+    progress: float = 0.0
+    current_time: str = ""
+    total_time: str = ""
+    fps: float = 0.0
+    source: str = ""
+    loop: bool = False
+
+
 class MaskResponse(BaseModel):
     name: str
     preview_url: str

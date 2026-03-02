@@ -130,6 +130,21 @@ class TestDeviceEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         mock_discover.assert_not_called()
 
+    @patch('trcc.api.stop_overlay_loop')
+    @patch('trcc.api.stop_video_playback')
+    def test_reselect_same_device_preserves_overlay(self, mock_stop_video, mock_stop_overlay):
+        """Re-selecting the already-active device does NOT tear down overlay/video."""
+        dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
+                         protocol="scsi", resolution=(320, 320))
+        _device_svc._devices = [dev]
+        _device_svc._selected = dev
+        api_module._display_dispatcher = MagicMock()
+
+        resp = self.client.post("/devices/0/select")
+        self.assertEqual(resp.status_code, 200)
+        mock_stop_video.assert_not_called()
+        mock_stop_overlay.assert_not_called()
+
     def test_select_device_not_found(self):
         resp = self.client.post("/devices/99/select")
         self.assertEqual(resp.status_code, 404)
@@ -418,15 +433,17 @@ class TestDisplayEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.mock_lcd.load_mask.assert_called_once()
 
-    def test_display_route_captures_current_image(self):
-        """_display_route() updates _current_image when dispatcher returns image."""
+    def test_on_frame_sent_callback_updates_current_image(self):
+        """DeviceService.on_frame_sent callback updates _current_image."""
         test_img = Image.new('RGB', (320, 320), (0, 255, 0))
-        self.mock_lcd.send_color.return_value = {
-            "success": True, "message": "Sent color", "image": test_img}
         api_module._current_image = None
 
-        self.client.post("/display/color", json={"hex": "00ff00"})
+        # Simulate the callback that select_device() wires up
+        _device_svc.on_frame_sent = api_module.set_current_image
+        _device_svc.on_frame_sent(test_img)
+
         self.assertIs(api_module._current_image, test_img)
+        _device_svc.on_frame_sent = None
         api_module._current_image = None
 
 
@@ -852,42 +869,25 @@ class TestWebThemeEndpoints(unittest.TestCase):
         resp = self.client.post("/themes/web/a001/download?resolution=bad")
         self.assertEqual(resp.status_code, 400)
 
+    @patch('trcc.api.start_video_playback', return_value=True)
+    @patch('trcc.api.stop_video_playback')
     @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.download_theme', return_value='/tmp/web/a001.mp4')
     @patch('trcc.adapters.infra.theme_cloud.CloudThemeDownloader.is_cached', return_value=False)
     @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/tmp/web')
     def test_download_web_theme_with_send(self, *_mocks):
-        import tempfile
-
         # Set up mock display dispatcher
         mock_disp = MagicMock()
         mock_disp.connected = True
         mock_disp.resolution = (320, 320)
         api_module._display_dispatcher = mock_disp
 
-        # Create a real PNG that the endpoint will open after "ffmpeg" runs
-        img = Image.new('RGB', (320, 320), (255, 0, 0))
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            img.save(tmp, 'PNG')
-            fake_png = tmp.name
-
-        # Patch subprocess.run (ffmpeg) to write our fake PNG to the temp path,
-        # and os.unlink to clean up our fake file instead
-        def fake_ffmpeg(cmd, **_kw):
-            # cmd contains [... '-y', tmp_path] — copy our pre-made PNG there
-            import shutil
-            dest = cmd[-1]  # last arg is the output path
-            shutil.copy2(fake_png, dest)
-
-        with patch('subprocess.run', side_effect=fake_ffmpeg), \
-             patch.object(_device_svc, 'send_pil', return_value=True) as mock_send:
-            resp = self.client.post("/themes/web/a001/download?resolution=320x320&send=true")
+        resp = self.client.post("/themes/web/a001/download?resolution=320x320&send=true")
 
         self.assertEqual(resp.status_code, 200)
-        mock_send.assert_called_once()
+        # Video playback should have been started with the downloaded file
+        from trcc.api import start_video_playback
+        start_video_playback.assert_called_once()  # type: ignore[union-attr]
         api_module._display_dispatcher = None
-        import os
-        if os.path.exists(fake_png):
-            os.unlink(fake_png)
 
 
 class TestStaticMounts(unittest.TestCase):
@@ -916,6 +916,376 @@ class TestStaticMounts(unittest.TestCase):
             # Verify at least the theme mount was created
             from trcc.api import _mounted_routes
             self.assertIn("/static/themes", _mounted_routes)
+
+
+# ── Video playback endpoints ─────────────────────────────────────────
+
+class TestVideoPlaybackEndpoints(unittest.TestCase):
+    """Video playback control endpoints (POST /display/video/*)."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        api_module._media_service = None
+        api_module._video_thread = None
+        api_module._video_stop_event = None
+
+    def test_video_status_no_video(self):
+        api_module._media_service = None
+        resp = self.client.get("/display/video/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data["playing"])
+        self.assertFalse(data["paused"])
+
+    def test_video_status_with_media(self):
+        from trcc.core.models import PlaybackState, VideoState
+
+        mock_media = MagicMock()
+        mock_state = VideoState()
+        mock_state.state = PlaybackState.PLAYING
+        mock_state.fps = 24
+        mock_state.total_frames = 100
+        mock_state.current_frame = 50
+        mock_state.loop = True
+        mock_media.state = mock_state
+        mock_media.source_path = "/tmp/video.mp4"
+        api_module._media_service = mock_media
+
+        resp = self.client.get("/display/video/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["playing"])
+        self.assertFalse(data["paused"])
+        self.assertEqual(data["fps"], 24)
+        self.assertTrue(data["loop"])
+
+    def test_video_stop(self):
+        api_module._media_service = MagicMock()
+        api_module._video_stop_event = MagicMock()
+        api_module._video_thread = MagicMock()
+        api_module._video_thread.is_alive.return_value = False
+
+        resp = self.client.post("/display/video/stop")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+        # Should have been cleaned up
+        self.assertIsNone(api_module._media_service)
+
+    def test_video_pause_no_video(self):
+        api_module._media_service = None
+        resp = self.client.post("/display/video/pause")
+        self.assertEqual(resp.status_code, 409)
+
+    def test_video_pause_with_video(self):
+        mock_media = MagicMock()
+        mock_media.is_playing = False  # After toggle
+        api_module._media_service = mock_media
+
+        resp = self.client.post("/display/video/pause")
+        self.assertEqual(resp.status_code, 200)
+        mock_media.toggle.assert_called_once()
+
+    @patch('trcc.api.start_video_playback', return_value=True)
+    @patch('trcc.api.stop_video_playback')
+    @patch('trcc.api.themes.ThemeService.discover_local')
+    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution',
+           return_value=MagicMock(__str__=lambda s: '/tmp/themes'))
+    def test_load_animated_theme_starts_video(self, mock_dir, mock_discover,
+                                               mock_stop, mock_start):
+        """Loading an animated theme starts background video playback."""
+        import tempfile
+        from pathlib import Path
+
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        mock_lcd.resolution = (320, 320)
+        api_module._display_dispatcher = mock_lcd
+
+        mock_theme = MagicMock()
+        mock_theme.name = "VideoTheme"
+        mock_theme.is_animated = True
+        mock_discover.return_value = [mock_theme]
+
+        # Create a temp dir with a fake video file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            theme_path = Path(tmpdir) / "VideoTheme"
+            theme_path.mkdir()
+            (theme_path / "Theme.mp4").write_bytes(b"fake")
+            mock_dir.return_value = MagicMock(__str__=lambda s: tmpdir)
+
+            resp = self.client.post("/themes/load", json={"name": "VideoTheme"})
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data.get("animated"))
+        mock_start.assert_called_once()
+        api_module._display_dispatcher = None
+
+    def test_display_route_stops_video_on_static_send(self):
+        """Sending a static color stops any running video playback."""
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        mock_lcd.send_color.return_value = {
+            "success": True, "message": "Sent"}
+        api_module._display_dispatcher = mock_lcd
+
+        # Simulate running video
+        api_module._media_service = MagicMock()
+        api_module._video_stop_event = MagicMock()
+        api_module._video_thread = MagicMock()
+        api_module._video_thread.is_alive.return_value = False
+
+        self.client.post("/display/color", json={"hex": "ff0000"})
+
+        # Video should be stopped
+        self.assertIsNone(api_module._media_service)
+        api_module._display_dispatcher = None
+
+
+# =============================================================================
+# Overlay metrics loop
+# =============================================================================
+
+class TestOverlayLoop(unittest.TestCase):
+    """Overlay metrics loop (background thread for static themes)."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        api_module._overlay_svc = None
+        api_module._overlay_thread = None
+        api_module._overlay_stop_event = None
+        api_module._display_dispatcher = None
+
+    @patch('trcc.api.stop_overlay_loop')
+    @patch('trcc.api.stop_video_playback')
+    def test_display_route_stops_overlay_on_static_send(self, mock_stop_video, mock_stop_overlay):
+        """Sending a static color stops any running overlay loop."""
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        mock_lcd.send_color.return_value = {"success": True, "message": "Sent"}
+        api_module._display_dispatcher = mock_lcd
+
+        self.client.post("/display/color", json={"hex": "ff0000"})
+        mock_stop_overlay.assert_called_once()
+
+    @patch('trcc.api.start_overlay_loop', return_value=True)
+    @patch('trcc.api.stop_overlay_loop')
+    @patch('trcc.api.stop_video_playback')
+    @patch('trcc.api._device_svc')
+    @patch('trcc.api.themes.ThemeService.discover_local')
+    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution')
+    def test_load_static_theme_with_dc_starts_overlay(
+        self, mock_dir, mock_discover, mock_svc,
+        mock_stop_video, mock_stop_overlay, mock_start_overlay,
+    ):
+        """Loading a static theme with config1.dc starts overlay loop."""
+        import tempfile
+        from pathlib import Path
+
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        mock_lcd.resolution = (320, 320)
+        api_module._display_dispatcher = mock_lcd
+        mock_svc.send_pil.return_value = True
+
+        mock_theme = MagicMock()
+        mock_theme.name = "StaticWithDC"
+        mock_theme.is_animated = False
+        mock_discover.return_value = [mock_theme]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            theme_path = Path(tmpdir) / "StaticWithDC"
+            theme_path.mkdir()
+            # Create image + DC file
+            img = Image.new('RGB', (320, 320), 'blue')
+            img.save(str(theme_path / "01.png"))
+            (theme_path / "config1.dc").write_bytes(b"\x00" * 64)
+            mock_dir.return_value = MagicMock(__str__=lambda s: tmpdir)
+
+            resp = self.client.post("/themes/load", json={"name": "StaticWithDC"})
+
+        self.assertEqual(resp.status_code, 200)
+        mock_start_overlay.assert_called_once()
+
+    @patch('trcc.api.start_overlay_loop', return_value=True)
+    @patch('trcc.api.stop_overlay_loop')
+    @patch('trcc.api.stop_video_playback')
+    @patch('trcc.api._device_svc')
+    @patch('trcc.api.themes.ThemeService.discover_local')
+    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution')
+    def test_load_static_theme_without_dc_no_overlay(
+        self, mock_dir, mock_discover, mock_svc,
+        mock_stop_video, mock_stop_overlay, mock_start_overlay,
+    ):
+        """Loading a static theme without DC config does NOT start overlay loop."""
+        import tempfile
+        from pathlib import Path
+
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        mock_lcd.resolution = (320, 320)
+        api_module._display_dispatcher = mock_lcd
+        mock_svc.send_pil.return_value = True
+
+        mock_theme = MagicMock()
+        mock_theme.name = "PlainTheme"
+        mock_theme.is_animated = False
+        mock_discover.return_value = [mock_theme]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            theme_path = Path(tmpdir) / "PlainTheme"
+            theme_path.mkdir()
+            img = Image.new('RGB', (320, 320), 'red')
+            img.save(str(theme_path / "01.png"))
+            mock_dir.return_value = MagicMock(__str__=lambda s: tmpdir)
+
+            resp = self.client.post("/themes/load", json={"name": "PlainTheme"})
+
+        self.assertEqual(resp.status_code, 200)
+        mock_start_overlay.assert_not_called()
+
+    def test_stop_overlay_loop_cleans_up(self):
+        """stop_overlay_loop() clears all overlay state."""
+        api_module._overlay_svc = MagicMock()
+        api_module._overlay_stop_event = MagicMock()
+        api_module._overlay_thread = MagicMock()
+        api_module._overlay_thread.is_alive.return_value = False
+
+        api_module.stop_overlay_loop()
+
+        self.assertIsNone(api_module._overlay_svc)
+        self.assertIsNone(api_module._overlay_thread)
+        self.assertIsNone(api_module._overlay_stop_event)
+
+    @patch('trcc.services.system.get_all_metrics')
+    @patch('trcc.api._device_svc')
+    def test_start_overlay_loop_runs(self, mock_svc, mock_metrics):
+        """start_overlay_loop() starts a daemon thread that renders."""
+        import time
+
+        from trcc.core.models import HardwareMetrics
+
+        mock_metrics.return_value = HardwareMetrics()
+        mock_svc.send_pil.return_value = True
+
+        bg = Image.new('RGB', (320, 320), 'black')
+
+        # Use a non-existent DC path — overlay will load empty config
+        ok = api_module.start_overlay_loop(bg, "/nonexistent/config1.dc", 320, 320)
+        self.assertTrue(ok)
+        self.assertIsNotNone(api_module._overlay_thread)
+        self.assertTrue(api_module._overlay_thread.is_alive())
+
+        # Let it run briefly then stop
+        time.sleep(0.1)
+        api_module.stop_overlay_loop()
+        self.assertIsNone(api_module._overlay_thread)
+
+
+# =============================================================================
+# IPC frame sharing (GUI daemon mode)
+# =============================================================================
+
+class TestIPCFrameSharing(unittest.TestCase):
+    """IPC daemon detection and direct frame reading."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        api_module._display_dispatcher = None
+        api_module._led_dispatcher = None
+        api_module._current_image = None
+
+    def test_ipc_server_get_frame(self):
+        """IPCServer._get_frame() returns base64 JPEG when frame is available."""
+        import base64
+
+        from trcc.ipc import IPCServer
+
+        server = IPCServer(None, None)
+        img = Image.new('RGB', (320, 320), 'blue')
+        server.capture_frame(img)
+
+        result = server._get_frame()
+        self.assertTrue(result["success"])
+        self.assertIn("frame", result)
+        # Verify it's valid JPEG
+        raw = base64.b64decode(result["frame"])
+        self.assertTrue(raw[:2] == b'\xff\xd8')  # JPEG magic
+
+    def test_ipc_server_get_frame_no_image(self):
+        """IPCServer._get_frame() returns error when no frame captured."""
+        from trcc.ipc import IPCServer
+
+        server = IPCServer(None, None)
+        result = server._get_frame()
+        self.assertFalse(result["success"])
+
+    @patch('trcc.ipc.IPCClient')
+    def test_select_device_uses_ipc_when_daemon_available(self, mock_ipc):
+        """select_device() uses IPC proxies when GUI daemon is running."""
+        mock_ipc.available.return_value = True
+
+        dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
+                         protocol="scsi", resolution=(320, 320))
+        _device_svc._devices = [dev]
+
+        resp = self.client.post("/devices/0/select")
+        self.assertEqual(resp.status_code, 200)
+        # Should have IPC proxies, not direct dispatchers
+        from trcc.ipc import IPCDisplayProxy
+        self.assertIsInstance(api_module._display_dispatcher, IPCDisplayProxy)
+
+        api_module._display_dispatcher = None
+        api_module._led_dispatcher = None
+
+    @patch('trcc.ipc.IPCClient')
+    @patch('trcc.cli._device.discover_resolution')
+    def test_select_device_standalone_when_no_daemon(self, mock_discover, mock_ipc):
+        """select_device() uses direct USB when no GUI daemon."""
+        mock_ipc.available.return_value = False
+
+        dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
+                         protocol="scsi", resolution=(320, 320))
+        _device_svc._devices = [dev]
+
+        resp = self.client.post("/devices/0/select")
+        self.assertEqual(resp.status_code, 200)
+        # Standalone mode — not using IPC proxies
+        from trcc.ipc import IPCDisplayProxy
+        self.assertNotIsInstance(api_module._display_dispatcher, IPCDisplayProxy)
+
+        api_module._display_dispatcher = None
+
+    def test_preview_fetches_from_ipc_when_daemon_active(self):
+        """GET /preview reads frame from IPC daemon when proxy is active."""
+        from trcc.ipc import IPCDisplayProxy
+
+        api_module._display_dispatcher = IPCDisplayProxy()
+
+        with patch('trcc.api.display._fetch_ipc_frame') as mock_fetch:
+            mock_fetch.return_value = Image.new('RGB', (320, 320), 'red')
+            resp = self.client.get("/display/preview")
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.headers["content-type"], "image/png")
+            mock_fetch.assert_called_once()
+
+    def test_preview_uses_local_image_in_standalone(self):
+        """GET /preview reads _current_image when no IPC proxy."""
+        api_module._display_dispatcher = None
+        api_module._current_image = Image.new('RGB', (320, 320), 'green')
+
+        resp = self.client.get("/display/preview")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.content[:4] == b'\x89PNG')
 
 
 # =============================================================================

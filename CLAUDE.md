@@ -113,7 +113,7 @@ Every piece of data has exactly ONE owner. Violations = bugs.
 - **Logging**: Use `log = logging.getLogger(__name__)` — never `print()` for diagnostics
 - **Paths**: Use `pathlib.Path` where possible; `os.path` only in `data_repository.py` (legacy, perf)
 - **Thread safety**: Use Qt signals to communicate from background threads to GUI — never `QTimer.singleShot` from non-main threads
-- **Tests**: `pytest` with `PYTHONPATH=src`; 4475 tests across 54 files
+- **Tests**: `pytest` with `PYTHONPATH=src`; 4494 tests across 54 files
 - **Linting**: `ruff check .` + `pyright` must pass before any commit (0 errors, 0 warnings)
 - **Assets**: All GUI asset access goes through `Assets` class (`qt_components/assets.py`). Auto-appends `.png` for base names. Never manually build asset paths with `f"{name}.png"`.
 - **Language**: Single source of truth is `settings.lang` (in `conf.py`). Widgets call `Assets.get_localized(name, settings.lang)` — never store `self._lang`.
@@ -366,7 +366,7 @@ Current FBL table (16 entries, full C# parity):
 - **v4.0** — Adapters restructure, domain data consolidation, setup wizard, SELinux support
 - **v5.0** — Full C# feature parity audit (35 items), video fit-mode, all LED wire remaps, JPEG encoding for large displays
 - **v6.0** — GoF refactoring (-1203 lines), CLI dispatchers, metrics observer, LED test harness, circulate fix, FBL table completion
-- **v6.6** — Cloud theme download endpoint (`POST /themes/web/{id}/download`), display preview (`GET /display/preview` PNG snapshot), WebSocket live stream (`/display/preview/stream` with JPEG change detection, fps/quality/pause control, token auth), `_current_image` tracking across all display/theme endpoints, 4475 tests
+- **v6.6** — LCD preview stream (direct IPC frame read from GUI daemon, steady-fps WebSocket, no poll thread), overlay metrics loop for standalone themes, video playback background thread, API spec + Flutter remote guide, `on_frame_sent` callback on DeviceService, 4494 tests
 - **v6.5** — IPC daemon (GUI-as-server, CLI auto-routes through Unix socket), info module decoupling, video background save fix, 4440 tests
 - **v6.3–v6.4** — Codebase minimization, DRY refactoring, test suite expansion (2509→4440 tests, 39→54 files, 76% coverage)
 - **v6.2** — REST API static files, `trcc api` command, LY protocol integration, HiDPI fix, DRY refactoring (3 duplications eliminated, Strategy pattern), 2509 tests

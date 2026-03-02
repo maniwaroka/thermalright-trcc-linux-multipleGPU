@@ -2404,6 +2404,9 @@ def run_mvc_app(data_dir: Path | None = None, decorated: bool = False,
     ipc_server.start()
     window._ipc_server = ipc_server  # ref for device updates + shutdown
 
+    # Capture every frame sent to LCD for API preview stream
+    window.controller.device_svc.on_frame_sent = ipc_server.capture_frame
+
     # SIGUSR1 handler: second launch raises the existing window.
     # Unix signals can't call Qt directly — bridge via socketpair.
     import signal

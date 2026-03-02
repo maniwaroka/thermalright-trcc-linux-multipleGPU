@@ -33,6 +33,23 @@ def _parse_resolution(resolution: str) -> tuple[int, int]:
     return w, h
 
 
+def _find_video_file(theme_path):
+    """Find first video/animation file in a theme directory."""
+    from pathlib import Path
+
+    p = Path(theme_path)
+    # Check Theme.zt first (Thermalright animation format)
+    zt = p / 'Theme.zt'
+    if zt.exists():
+        return zt
+    # Then check for video files
+    for ext in ('.mp4', '.avi', '.mkv', '.webm', '.gif'):
+        matches = list(p.glob(f'*{ext}'))
+        if matches:
+            return matches[0]
+    return None
+
+
 def _preview_url(theme_name: str, theme_dir: str) -> str:
     """Resolve preview URL for a local theme — Theme.png or 00.png fallback."""
     theme_path = os.path.join(theme_dir, theme_name)
@@ -107,7 +124,7 @@ def download_web_theme(
     """
     from trcc.adapters.infra.data_repository import DataManager
     from trcc.adapters.infra.theme_cloud import CloudThemeDownloader
-    from trcc.api import _device_svc, _display_dispatcher
+    from trcc.api import _display_dispatcher
 
     # Resolve resolution from device or parameter
     w, h = 320, 320
@@ -133,32 +150,15 @@ def download_web_theme(
     if not result_path:
         raise HTTPException(status_code=404, detail=f"Cloud theme '{theme_id}' not found on server")
 
-    # Optionally send first frame to device
+    # Optionally start video playback on device
     if send:
-        import subprocess
-        import tempfile
+        from trcc.api import start_video_playback, stop_overlay_loop, stop_video_playback
 
-        from PIL import Image
-
-        from trcc.services import ImageService
-
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            tmp_path = tmp.name
-        try:
-            subprocess.run(
-                ['ffmpeg', '-i', result_path, '-frames:v', '1',
-                 '-y', tmp_path],
-                capture_output=True, timeout=10,
-            )
-            img = Image.open(tmp_path).convert('RGB')
-        finally:
-            os.unlink(tmp_path)
-
-        img = ImageService.resize(img, w, h)
-        _device_svc.send_pil(img, w, h)
-
-        from trcc.api import set_current_image
-        set_current_image(img)
+        stop_video_playback()
+        stop_overlay_loop()
+        ok = start_video_playback(result_path, w, h, loop=True)
+        if not ok:
+            log.warning("Failed to start video playback for %s", theme_id)
 
     return WebThemeDownloadResponse(
         id=theme_id,
@@ -221,10 +221,31 @@ def load_theme(body: ThemeLoadRequest) -> dict:
     if not match:
         raise HTTPException(status_code=404, detail=f"Theme '{body.name}' not found")
 
-    # Load theme image and send to device
-    from PIL import Image
+    from trcc.api import (
+        _device_svc,
+        start_overlay_loop,
+        start_video_playback,
+        stop_overlay_loop,
+        stop_video_playback,
+    )
+
+    # Stop any running video/overlay before loading a new theme
+    stop_video_playback()
+    stop_overlay_loop()
 
     theme_path = theme_dir / match.name
+
+    # Check for animated theme (video files)
+    video_file = _find_video_file(theme_path)
+    if match.is_animated and video_file:
+        ok = start_video_playback(str(video_file), w, h, loop=True)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to start video playback")
+        return {"success": True, "theme": body.name, "resolution": (w, h), "animated": True}
+
+    # Static theme — load first image and send
+    from PIL import Image
+
     img_file = theme_path / "01.png"
     if not img_file.exists():
         img_file = next(theme_path.glob("*.png"), None)
@@ -236,14 +257,17 @@ def load_theme(body: ThemeLoadRequest) -> dict:
     img = Image.open(img_file).convert('RGB')
     img = ImageService.resize(img, w, h)
 
-    from trcc.api import _device_svc
-
     ok = _device_svc.send_pil(img, w, h)
     if not ok:
         raise HTTPException(status_code=500, detail="Send failed (device busy or error)")
 
-    from trcc.api import set_current_image
-    set_current_image(img)
+    # Start overlay metrics loop if theme has overlay config
+    td = ThemeDir(theme_path)
+    dc_path = td.dc if td.dc.exists() else None
+    if dc_path is None and td.json.exists():
+        dc_path = td.json  # config.json also triggers overlay
+    if dc_path:
+        start_overlay_loop(img, str(dc_path), w, h)
 
     return {"success": True, "theme": body.name, "resolution": (w, h)}
 

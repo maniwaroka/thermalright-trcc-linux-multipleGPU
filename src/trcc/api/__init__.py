@@ -20,13 +20,15 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import threading
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from trcc.__version__ import __version__
-from trcc.services import DeviceService
+from trcc.services import DeviceService, MediaService, OverlayService
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +53,135 @@ def set_current_image(img) -> None:
     """Update the tracked LCD frame (called by display/theme endpoints)."""
     global _current_image  # noqa: PLW0603
     _current_image = img
+
+
+# ── Video playback (background thread) ───────────────────────────────
+
+_media_service: MediaService | None = None
+_video_thread: threading.Thread | None = None
+_video_stop_event: threading.Event | None = None
+
+
+def start_video_playback(
+    video_path: str, width: int, height: int, *, loop: bool = True,
+) -> bool:
+    """Start background video playback — pumps frames to LCD and _current_image.
+
+    Uses MediaService to decode frames, DeviceService to send to LCD,
+    and set_current_image() to feed the WebSocket preview stream.
+    """
+    global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
+
+    stop_video_playback()  # Stop any existing playback
+
+    media = MediaService()
+    media.set_target_size(width, height)
+    if not media.load(Path(video_path)):
+        return False
+
+    media._state.loop = loop
+    media.play()
+
+    _media_service = media
+    _video_stop_event = threading.Event()
+    stop_event = _video_stop_event  # Local ref for closure
+
+    def _pump() -> None:
+        interval = media.frame_interval_ms / 1000.0
+        while not stop_event.is_set() and media.is_playing:
+            frame, should_send, _ = media.tick()
+            if frame is None:
+                break
+            if should_send:
+                _device_svc.send_pil(frame, width, height)
+            stop_event.wait(interval)
+
+    _video_thread = threading.Thread(target=_pump, daemon=True, name="api-video")
+    _video_thread.start()
+    log.info("Video playback started: %s (%dx%d)", video_path, width, height)
+    return True
+
+
+def stop_video_playback() -> None:
+    """Stop background video playback if running."""
+    global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
+
+    if _video_stop_event:
+        _video_stop_event.set()
+    if _video_thread and _video_thread.is_alive():
+        _video_thread.join(timeout=2)
+    if _media_service:
+        _media_service.stop()
+        _media_service.close()
+    _media_service = None
+    _video_thread = None
+    _video_stop_event = None
+
+
+def pause_video_playback() -> None:
+    """Toggle pause on background video playback."""
+    if _media_service:
+        _media_service.toggle()
+
+
+# ── Overlay metrics loop (background thread for static themes) ────────
+
+_overlay_svc: OverlayService | None = None
+_overlay_thread: threading.Thread | None = None
+_overlay_stop_event: threading.Event | None = None
+
+
+def start_overlay_loop(
+    background, dc_path: str, width: int, height: int,
+) -> bool:
+    """Start background overlay rendering — polls metrics, re-renders, sends to LCD.
+
+    For static themes with config1.dc overlay configs. Updates _current_image
+    so the WebSocket preview stream shows live metrics.
+    """
+    global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
+
+    stop_overlay_loop()
+
+    overlay = OverlayService(width, height)
+    overlay.set_background(background)
+    overlay.load_from_dc(Path(dc_path))
+    overlay.enabled = True
+
+    _overlay_svc = overlay
+    _overlay_stop_event = threading.Event()
+    stop_event = _overlay_stop_event
+
+    def _loop() -> None:
+        from trcc.services.system import get_all_metrics
+
+        while not stop_event.is_set():
+            metrics = get_all_metrics()
+            if overlay.would_change(metrics):
+                overlay.update_metrics(metrics)
+                frame = overlay.render(metrics=metrics)
+                if frame is not None:
+                    _device_svc.send_pil(frame, width, height)
+            stop_event.wait(2.0)
+
+    _overlay_thread = threading.Thread(target=_loop, daemon=True, name="api-overlay")
+    _overlay_thread.start()
+    log.info("Overlay loop started: %s (%dx%d)", dc_path, width, height)
+    return True
+
+
+def stop_overlay_loop() -> None:
+    """Stop background overlay rendering if running."""
+    global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
+
+    if _overlay_stop_event:
+        _overlay_stop_event.set()
+    if _overlay_thread and _overlay_thread.is_alive():
+        _overlay_thread.join(timeout=2)
+    _overlay_svc = None
+    _overlay_thread = None
+    _overlay_stop_event = None
+
 
 # ── Static file mounts (resolution-aware, remounted on device select) ─
 

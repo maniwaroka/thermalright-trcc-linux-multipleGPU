@@ -15,6 +15,7 @@ from trcc.api.models import (
     HexColorRequest,
     RotationRequest,
     SplitRequest,
+    VideoStatusResponse,
     dispatch_result,
     parse_hex_or_400,
 )
@@ -34,11 +35,16 @@ def _get_display():
 
 
 def _display_route(method: str, *args, **kwargs) -> dict:
-    """Generic: get display dispatcher, call method, capture image, return result."""
+    """Generic: get display dispatcher, call method, return result.
+
+    Frame capture is automatic via DeviceService.on_frame_sent callback.
+    """
+    from trcc.api import stop_overlay_loop, stop_video_playback
+
+    # Static display operations replace any running video/overlay
+    stop_video_playback()
+    stop_overlay_loop()
     result = getattr(_get_display(), method)(*args, **kwargs)
-    if result.get("image"):
-        from trcc.api import set_current_image
-        set_current_image(result["image"])
     return dispatch_result(result)
 
 
@@ -121,31 +127,109 @@ def display_status() -> dict:
     }
 
 
+# ── Video playback endpoints ──────────────────────────────────────────
+
+
+@router.post("/video/stop")
+def video_stop() -> dict:
+    """Stop background video playback."""
+    from trcc.api import stop_video_playback
+
+    stop_video_playback()
+    return {"success": True, "message": "Video playback stopped"}
+
+
+@router.post("/video/pause")
+def video_pause() -> dict:
+    """Toggle pause on background video playback."""
+    from trcc.api import _media_service, pause_video_playback
+
+    if not _media_service:
+        raise HTTPException(status_code=409, detail="No video playing")
+    pause_video_playback()
+    return {"success": True, "paused": not _media_service.is_playing}
+
+
+@router.get("/video/status")
+def video_status() -> VideoStatusResponse:
+    """Get current video playback state."""
+    from trcc.api import _media_service
+    from trcc.core.models import PlaybackState
+
+    if not _media_service:
+        return VideoStatusResponse()
+
+    state = _media_service.state
+    return VideoStatusResponse(
+        playing=state.state == PlaybackState.PLAYING,
+        paused=state.state == PlaybackState.PAUSED,
+        progress=state.progress,
+        current_time=state.current_time_str,
+        total_time=state.total_time_str,
+        fps=state.fps,
+        source=str(_media_service.source_path or ""),
+        loop=state.loop,
+    )
+
+
+# ── Preview helpers ───────────────────────────────────────────────────
+
+
+def _fetch_ipc_frame():
+    """Fetch current LCD frame from GUI daemon via IPC (blocking call)."""
+    import base64
+
+    from PIL import Image
+
+    from trcc.ipc import IPCClient
+
+    try:
+        result = IPCClient.send("display.get_frame")
+        if result.get("success") and result.get("frame"):
+            return Image.open(io.BytesIO(base64.b64decode(result["frame"])))
+    except Exception:
+        pass
+    return None
+
+
+def _get_lcd_frame():
+    """Get current LCD frame — from IPC daemon if active, otherwise local state."""
+    from trcc.api import _current_image, _display_dispatcher
+    from trcc.ipc import IPCDisplayProxy
+
+    if isinstance(_display_dispatcher, IPCDisplayProxy):
+        return _fetch_ipc_frame()
+    return _current_image
+
+
 # ── Preview endpoints ─────────────────────────────────────────────────
 
 
 @router.get("/preview")
 def display_preview() -> Response:
     """Return the current LCD frame as a PNG image."""
-    from trcc.api import _current_image
-
-    if _current_image is None:
+    frame = _get_lcd_frame()
+    if frame is None:
         raise HTTPException(status_code=503, detail="No image available")
 
     buf = io.BytesIO()
-    _current_image.save(buf, format="PNG")
+    frame.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
 
 
 @router.websocket("/preview/stream")
 async def preview_stream(websocket: WebSocket):
-    """Live JPEG stream of the current LCD frame.
+    """Live JPEG stream of the current LCD frame — like a screen capture.
+
+    Reads the LCD frame at a steady framerate and sends it as binary JPEG.
+    When the GUI daemon is running, frames are fetched via IPC.
+    When standalone, frames come from the on_frame_sent capture.
 
     Auth: ``?token=`` query param (checked against configured API token).
-    Change detection: only sends when the PIL Image object changes (``id()``).
     Client control: send JSON ``{"fps": N}``, ``{"quality": N}``, ``{"pause": bool}``.
     """
-    from trcc.api import _api_token
+    from trcc.api import _api_token, _display_dispatcher
+    from trcc.ipc import IPCDisplayProxy
 
     # ── Auth ──────────────────────────────────────────────────────────
     if _api_token:
@@ -156,7 +240,7 @@ async def preview_stream(websocket: WebSocket):
 
     await websocket.accept()
 
-    last_image_id: int | None = None
+    use_ipc = isinstance(_display_dispatcher, IPCDisplayProxy)
     fps = 10
     quality = 85
     paused = False
@@ -180,22 +264,28 @@ async def preview_stream(websocket: WebSocket):
                     pass
                 continue  # restart loop after processing message
             except asyncio.TimeoutError:
-                pass  # no message — proceed to frame check
+                pass  # no message — proceed to frame read
 
             if paused:
                 continue
 
-            # ── Read current image (re-import to get latest ref) ──────
-            from trcc.api import _current_image as current  # noqa: F811
+            # ── Read current frame directly from source ───────────────
+            if use_ipc:
+                frame = await asyncio.get_running_loop().run_in_executor(
+                    None, _fetch_ipc_frame,
+                )
+            else:
+                from trcc.api import _current_image  # noqa: F811
 
-            if current is None or id(current) == last_image_id:
-                continue  # no change — wait for next tick
+                frame = _current_image
 
-            # ── Encode and send new frame ─────────────────────────────
+            if frame is None:
+                continue
+
+            # ── Encode and send ───────────────────────────────────────
             buf = io.BytesIO()
-            current.save(buf, format="JPEG", quality=quality)
+            frame.save(buf, format="JPEG", quality=quality)
             await websocket.send_bytes(buf.getvalue())
-            last_image_id = id(current)
 
     except WebSocketDisconnect:
         pass
