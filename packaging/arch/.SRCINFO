@@ -14,6 +14,7 @@ pkgbase = trcc-linux
 	depends = python-numpy
 	depends = python-psutil
 	depends = python-pyusb
+	depends = python-click
 	depends = python-typer
 	depends = python-fastapi
 	depends = python-uvicorn

@@ -25,6 +25,7 @@ RDEPEND="
 	dev-python/numpy[${PYTHON_USEDEP}]
 	dev-python/psutil[${PYTHON_USEDEP}]
 	dev-python/pyusb[${PYTHON_USEDEP}]
+	dev-python/click[${PYTHON_USEDEP}]
 	dev-python/typer[${PYTHON_USEDEP}]
 	dev-python/fastapi[${PYTHON_USEDEP}]
 	dev-python/uvicorn[${PYTHON_USEDEP}]

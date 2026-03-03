@@ -21,6 +21,7 @@ Requires:       python3-pillow >= 10.0.0
 Requires:       python3-numpy >= 1.24.0
 Requires:       python3-psutil >= 5.9.0
 Requires:       python3-pyusb >= 1.2.0
+Requires:       python3-click >= 7.0
 Requires:       python3-typer >= 0.9.0
 Requires:       python3-fastapi >= 0.100
 Requires:       python3-uvicorn >= 0.20
