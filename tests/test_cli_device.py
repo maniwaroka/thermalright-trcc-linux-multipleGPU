@@ -181,7 +181,7 @@ class TestDiscoverResolution:
         dev = MagicMock()
         dev.resolution = (320, 240)
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol") as mock_factory:
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol") as mock_factory:
             discover_resolution(dev)
 
         mock_factory.assert_not_called()
@@ -200,7 +200,7 @@ class TestDiscoverResolution:
         protocol.handshake.return_value = result
         protocol._device = None
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    return_value=protocol):
             discover_resolution(dev)
 
@@ -221,7 +221,7 @@ class TestDiscoverResolution:
         protocol.handshake.return_value = result
         protocol._device = None
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    return_value=protocol):
             discover_resolution(dev)
 
@@ -241,7 +241,7 @@ class TestDiscoverResolution:
         protocol.handshake.return_value = result
         protocol._device = None
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    return_value=protocol):
             discover_resolution(dev)
 
@@ -266,7 +266,7 @@ class TestDiscoverResolution:
         protocol.handshake.return_value = result
         protocol._device = bulk_dev
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    return_value=protocol):
             discover_resolution(dev)
 
@@ -281,7 +281,7 @@ class TestDiscoverResolution:
         protocol.handshake.return_value = None
         protocol._device = None
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    return_value=protocol):
             discover_resolution(dev)
 
@@ -293,7 +293,7 @@ class TestDiscoverResolution:
         dev = MagicMock()
         dev.resolution = (0, 0)
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    side_effect=RuntimeError("USB error")):
             # Must not raise
             discover_resolution(dev)
@@ -312,7 +312,7 @@ class TestDiscoverResolution:
         protocol.handshake.return_value = result
         protocol._device = None
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol",
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
                    return_value=protocol):
             discover_resolution(dev)  # should not raise
 
@@ -376,7 +376,7 @@ class TestGetDriver:
         mock_driver = MagicMock()
         mock_driver.implementation = None
 
-        with patch("trcc.adapters.device.facade_lcd.LCDDriver", return_value=mock_driver) as mock_cls, \
+        with patch("trcc.adapters.device.lcd.LCDDriver", return_value=mock_driver) as mock_cls, \
              patch("trcc.cli._device._ensure_extracted"):
             result = _get_driver(device="/dev/sg1")
 
@@ -388,7 +388,7 @@ class TestGetDriver:
         mock_driver = MagicMock()
         mock_driver.implementation = None
 
-        with patch("trcc.adapters.device.facade_lcd.LCDDriver", return_value=mock_driver) as mock_cls, \
+        with patch("trcc.adapters.device.lcd.LCDDriver", return_value=mock_driver) as mock_cls, \
              patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"), \
              patch("trcc.cli._device._ensure_extracted"):
             result = _get_driver()
@@ -401,7 +401,7 @@ class TestGetDriver:
         mock_driver = MagicMock()
         mock_driver.implementation = None
 
-        with patch("trcc.adapters.device.facade_lcd.LCDDriver", return_value=mock_driver), \
+        with patch("trcc.adapters.device.lcd.LCDDriver", return_value=mock_driver), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._ensure_extracted") as mock_extract:
             _get_driver()
@@ -438,7 +438,7 @@ class TestProbe:
         mock_led_mod = MagicMock()
         mock_led_mod.probe_led_model.return_value = led_info
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.adapter_led": mock_led_mod}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.led": mock_led_mod}):
             result = _probe(dev)
 
         assert result["model"] == "PA120 Digital"
@@ -455,7 +455,7 @@ class TestProbe:
         mock_led_mod = MagicMock()
         mock_led_mod.probe_led_model.return_value = led_info
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.adapter_led": mock_led_mod}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.led": mock_led_mod}):
             result = _probe(dev)
 
         assert result == {}
@@ -467,7 +467,7 @@ class TestProbe:
         mock_led_mod = MagicMock()
         mock_led_mod.probe_led_model.return_value = None
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.adapter_led": mock_led_mod}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.led": mock_led_mod}):
             result = _probe(dev)
 
         assert result == {}
@@ -479,7 +479,7 @@ class TestProbe:
         mock_led_mod = MagicMock()
         mock_led_mod.probe_led_model.side_effect = RuntimeError("USB error")
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.adapter_led": mock_led_mod}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.led": mock_led_mod}):
             result = _probe(dev)
 
         assert result == {}
@@ -503,8 +503,8 @@ class TestProbe:
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = fake_info
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory") as mock_factory_cls, \
-             patch("trcc.adapters.device.template_method_hid.HidHandshakeInfo", FakeHidHandshakeInfo):
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory") as mock_factory_cls, \
+             patch("trcc.adapters.device.hid.HidHandshakeInfo", FakeHidHandshakeInfo):
             mock_factory_cls.get_protocol.return_value = mock_protocol
             result = _probe(dev)
 
@@ -530,8 +530,8 @@ class TestProbe:
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = fake_info
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory") as mock_factory_cls, \
-             patch("trcc.adapters.device.template_method_hid.HidHandshakeInfo", FakeHidHandshakeInfo):
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory") as mock_factory_cls, \
+             patch("trcc.adapters.device.hid.HidHandshakeInfo", FakeHidHandshakeInfo):
             mock_factory_cls.get_protocol.return_value = mock_protocol
             result = _probe(dev)
 
@@ -541,7 +541,7 @@ class TestProbe:
         """hid_type2: exception in handshake is swallowed."""
         dev = _make_detected_device(implementation="hid_type2")
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory") as mock_factory_cls:
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory") as mock_factory_cls:
             mock_factory_cls.get_protocol.side_effect = RuntimeError("HID error")
             result = _probe(dev)
 
@@ -564,8 +564,8 @@ class TestProbe:
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = fake_info
 
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory") as mock_factory_cls, \
-             patch("trcc.adapters.device.template_method_hid.HidHandshakeInfo", FakeHidHandshakeInfo):
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory") as mock_factory_cls, \
+             patch("trcc.adapters.device.hid.HidHandshakeInfo", FakeHidHandshakeInfo):
             mock_factory_cls.get_protocol.return_value = mock_protocol
             result = _probe(dev)
 
@@ -585,7 +585,7 @@ class TestProbe:
         mock_bp = MagicMock()
         mock_bp.handshake.return_value = hs
 
-        with patch("trcc.adapters.device.abstract_factory.BulkProtocol", return_value=mock_bp):
+        with patch("trcc.adapters.device.factory.BulkProtocol", return_value=mock_bp):
             result = _probe(dev)
 
         assert result["resolution"] == (480, 480)
@@ -599,7 +599,7 @@ class TestProbe:
         mock_bp = MagicMock()
         mock_bp.handshake.return_value = None
 
-        with patch("trcc.adapters.device.abstract_factory.BulkProtocol", return_value=mock_bp):
+        with patch("trcc.adapters.device.factory.BulkProtocol", return_value=mock_bp):
             result = _probe(dev)
 
         assert result == {}
@@ -609,7 +609,7 @@ class TestProbe:
         """bulk_usblcdnew: exception in handshake is swallowed."""
         dev = _make_detected_device(implementation="bulk_usblcdnew")
 
-        with patch("trcc.adapters.device.abstract_factory.BulkProtocol",
+        with patch("trcc.adapters.device.factory.BulkProtocol",
                    side_effect=RuntimeError("bulk error")):
             result = _probe(dev)
 
@@ -769,10 +769,10 @@ class TestDetect:
     def test_no_devices_returns_1(self):
         """No devices detected -> prints message, returns 1."""
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = []
+        mock_det.detect_devices.return_value = []
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
             result = detect(show_all=False)
 
         assert result == 1
@@ -782,10 +782,10 @@ class TestDetect:
         dev = self._scsi_dev()
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             result = detect(show_all=False)
@@ -798,10 +798,10 @@ class TestDetect:
         dev2 = self._scsi_dev("/dev/sg1", "Device B")
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev1, dev2]
+        mock_det.detect_devices.return_value = [dev1, dev2]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             result = detect(show_all=True)
@@ -816,10 +816,10 @@ class TestDetect:
         dev = self._scsi_dev("/dev/sg0")
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=True)
@@ -832,10 +832,10 @@ class TestDetect:
         dev = self._scsi_dev()
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=True)
@@ -849,10 +849,10 @@ class TestDetect:
         dev2 = self._scsi_dev("/dev/sg1")
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev1, dev2]
+        mock_det.detect_devices.return_value = [dev1, dev2]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=True)
@@ -866,10 +866,10 @@ class TestDetect:
         dev1 = self._scsi_dev("/dev/sg1", "Device B")
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev0, dev1]
+        mock_det.detect_devices.return_value = [dev0, dev1]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg1"), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=False)
@@ -882,10 +882,10 @@ class TestDetect:
         dev = self._scsi_dev(protocol="scsi")
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = False  # needs update
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=False)
@@ -899,10 +899,10 @@ class TestDetect:
         dev = self._scsi_dev(protocol="scsi")
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = False
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=False)
@@ -916,10 +916,10 @@ class TestDetect:
         dev.scsi_device = None
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = False
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=False)
@@ -932,10 +932,10 @@ class TestDetect:
         dev = self._scsi_dev()
 
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
         mock_det.check_udev_rules.return_value = True
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
             detect(show_all=False)
@@ -960,9 +960,9 @@ class TestSelect:
     def test_no_devices_returns_1(self):
         """No devices -> prints message, returns 1."""
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = []
+        mock_det.detect_devices.return_value = []
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
             result = select(1)
 
         assert result == 1
@@ -971,9 +971,9 @@ class TestSelect:
         """Number 0 is below minimum (1), returns 1."""
         dev = self._scsi_dev()
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
             result = select(0)
 
         assert result == 1
@@ -982,9 +982,9 @@ class TestSelect:
         """Number exceeding device count returns 1."""
         dev = self._scsi_dev()
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}):
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
             result = select(5)
 
         assert result == 1
@@ -993,9 +993,9 @@ class TestSelect:
         """Valid device number saves and returns 0."""
         dev = self._scsi_dev("/dev/sg1", "Frost Commander")
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.save_selected_device") as mock_save:
             result = select(1)
 
@@ -1006,9 +1006,9 @@ class TestSelect:
         """Valid selection prints device scsi_device and product_name."""
         dev = self._scsi_dev("/dev/sg0", "Frost Commander 360")
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev]
+        mock_det.detect_devices.return_value = [dev]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.save_selected_device"):
             select(1)
 
@@ -1021,9 +1021,9 @@ class TestSelect:
         dev1 = self._scsi_dev("/dev/sg0", "Device A")
         dev2 = self._scsi_dev("/dev/sg1", "Device B")
         mock_det = MagicMock()
-        mock_det.DeviceDetector.detect.return_value = [dev1, dev2]
+        mock_det.detect_devices.return_value = [dev1, dev2]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.registry_detector": mock_det}), \
+        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
              patch("trcc.conf.Settings.save_selected_device") as mock_save:
             result = select(2)
 

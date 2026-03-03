@@ -285,7 +285,7 @@ class ThemeService:
 
         Returns (success, message).
         """
-        if background is None:
+        if not background:
             return False, "No image to save"
 
         w, h = lcd_size
@@ -293,22 +293,16 @@ class ThemeService:
         theme_path = data_dir / f'theme{w}{h}' / safe_name
 
         try:
-            import numpy as np
-            from PIL import Image as PILImage
-
             theme_path.mkdir(parents=True, exist_ok=True)
             td = ThemeDir(theme_path)
 
-            # Convert numpy to PIL at save boundary
-            bg_pil = PILImage.fromarray(background) if isinstance(background, np.ndarray) else background
-
             # Thumbnail from rendered preview
-            thumb = bg_pil.copy()
+            thumb = background.copy()
             thumb.thumbnail((120, 120))
             thumb.save(str(td.preview))
 
             # Save current frame as 00.png
-            bg_pil.save(str(td.bg))
+            background.save(str(td.bg))
 
             # Determine background source path (copy video into theme dir
             # so it survives reboots — source may be in a temp directory)
@@ -328,7 +322,7 @@ class ThemeService:
 
             # Determine mask source path
             mask_path_str = None
-            if mask is not None and mask_source:
+            if mask and mask_source:
                 mask_file = ThemeDir(mask_source).mask
                 if mask_file.exists():
                     mask_path_str = str(mask_source)

@@ -18,8 +18,8 @@ from __future__ import annotations
 import logging
 import struct
 
-from trcc.adapters.device._template_method_bulk import BulkFrameDevice
-from trcc.adapters.device.template_method_device import FrameDevice
+from trcc.adapters.device._usb_helpers import BulkFrameDevice
+from trcc.adapters.device.frame import FrameDevice
 from trcc.core.models import HandshakeResult, fbl_to_resolution, pm_to_fbl
 
 log = logging.getLogger(__name__)

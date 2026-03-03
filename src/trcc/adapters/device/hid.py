@@ -27,7 +27,7 @@ from typing import Any, Optional, Set
 import usb.core
 import usb.util
 
-from trcc.adapters.device.template_method_device import FrameDevice
+from trcc.adapters.device.frame import FrameDevice
 from trcc.core.models import (
     DEVICE_BUTTON_IMAGE,  # noqa: F401 — re-export
     PM_TO_BUTTON_IMAGE,  # noqa: F401 — re-export

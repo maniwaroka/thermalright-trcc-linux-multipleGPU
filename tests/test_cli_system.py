@@ -456,10 +456,10 @@ class TestSetupUdev:
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
         with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+             patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits):
             rc = setup_udev(dry_run=True)
         assert rc == 0
@@ -468,10 +468,10 @@ class TestSetupUdev:
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
         with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+             patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits):
             setup_udev(dry_run=True)
         out = capsys.readouterr().out
@@ -481,10 +481,10 @@ class TestSetupUdev:
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
         with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+             patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits), \
              patch("builtins.open", mock_open()) as m_open:
             setup_udev(dry_run=True)
@@ -493,10 +493,10 @@ class TestSetupUdev:
     def test_non_root_calls_sudo_reexec(self):
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
-        with patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+        with patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits), \
              patch("os.geteuid", return_value=1000), \
              patch("trcc.cli._system._sudo_reexec", return_value=0) as mock_reexec:
@@ -514,10 +514,10 @@ class TestSetupUdev:
             written[path] = True
             return m
 
-        with patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+        with patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
@@ -535,10 +535,10 @@ class TestSetupUdev:
         traits = self._mock_protocol_traits()
         calls = []
 
-        with patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+        with patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
@@ -555,10 +555,10 @@ class TestSetupUdev:
         traits = self._mock_protocol_traits()
         calls = []
 
-        with patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+        with patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
@@ -579,10 +579,10 @@ class TestSetupUdev:
             opened_paths.append(path)
             return mock_open()()
 
-        with patch("trcc.adapters.device.registry_detector.KNOWN_DEVICES", known), \
-             patch("trcc.adapters.device.registry_detector._HID_LCD_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._LED_DEVICES", {}), \
-             patch("trcc.adapters.device.registry_detector._BULK_DEVICES", {}), \
+        with patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
              patch("trcc.core.models.PROTOCOL_TRAITS", traits), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=True), \

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from trcc.api.models import (
     ClockFormatRequest,
@@ -16,7 +16,6 @@ from trcc.api.models import (
     ZoneSyncRequest,
     dispatch_result,
     parse_hex_or_400,
-    require_connected,
 )
 
 log = logging.getLogger(__name__)
@@ -28,7 +27,9 @@ def _get_led():
     """Get the active LEDDispatcher, raise 409 if not connected."""
     from trcc.api import _led_dispatcher
 
-    return require_connected(_led_dispatcher, "LED")
+    if not _led_dispatcher or not _led_dispatcher.connected:
+        raise HTTPException(status_code=409, detail="No LED device selected. POST /devices/{id}/select first.")
+    return _led_dispatcher
 
 
 def _led_route(method: str, *args, **kwargs) -> dict:

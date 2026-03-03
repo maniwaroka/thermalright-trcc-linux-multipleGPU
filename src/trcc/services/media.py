@@ -143,7 +143,7 @@ class MediaService:
     def advance_frame(self) -> Any | None:
         """Advance to next frame and return it.
 
-        Returns numpy array or None if not playing.
+        Returns PIL Image or None if not playing.
         """
         if self._state.state != PlaybackState.PLAYING:
             return None
@@ -169,7 +169,7 @@ class MediaService:
             return None, False, None
 
         frame = self.advance_frame()
-        if frame is None:
+        if not frame:
             return None, False, None
 
         # Progress update at ~2fps (every 8th frame)

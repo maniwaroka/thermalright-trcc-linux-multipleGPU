@@ -61,7 +61,6 @@ class DebugReport:
         self._handshakes()
         self._process_usage()
         self._config()
-        self._recent_log()
 
     @property
     def sections(self) -> list[tuple[str, str]]:
@@ -191,7 +190,7 @@ class DebugReport:
     def _devices(self) -> None:
         sec = self._add("Detected devices")
         try:
-            from trcc.adapters.device.registry_detector import DeviceDetector
+            from trcc.adapters.device.detector import DeviceDetector
 
             devices = DeviceDetector.detect()
             self._detected_devices = devices
@@ -320,25 +319,6 @@ class DebugReport:
         except Exception as e:
             sec.lines.append(f"  Error: {e}")
 
-    def _recent_log(self, tail: int = 50) -> None:
-        """Include last N lines from the log file."""
-        log_path = Path(
-            os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
-            'trcc', 'trcc.log',
-        )
-        sec = self._add(f"Recent log ({log_path})")
-        if not log_path.exists():
-            sec.lines.append("  (no log file — run 'trcc gui' first)")
-            return
-        try:
-            lines = log_path.read_text().splitlines()
-            for line in lines[-tail:]:
-                sec.lines.append(f"  {line}")
-            if len(lines) > tail:
-                sec.lines.append(f"  ... ({len(lines) - tail} earlier lines omitted)")
-        except Exception as e:
-            sec.lines.append(f"  Error reading log: {e}")
-
     # ------------------------------------------------------------------
     # Handshake helpers
     # ------------------------------------------------------------------
@@ -363,7 +343,7 @@ class DebugReport:
             sec.lines.append("    (device in use by trcc gui)")
 
     def _handshake_scsi(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.abstract_factory import ScsiProtocol
+        from trcc.adapters.device.factory import ScsiProtocol
         from trcc.core.models import FBL_TO_RESOLUTION
 
         protocol = ScsiProtocol(dev.scsi_device)
@@ -385,13 +365,13 @@ class DebugReport:
             protocol.close()
 
     def _handshake_hid_lcd(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.abstract_factory import (
+        from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             HidProtocol,
             _has_usb_errno,
         )
-        from trcc.adapters.device.template_method_hid import HidHandshakeInfo
+        from trcc.adapters.device.hid import HidHandshakeInfo
         from trcc.core.models import fbl_to_resolution, pm_to_fbl
 
         protocol = HidProtocol(vid=dev.vid, pid=dev.pid, device_type=dev.device_type)
@@ -424,13 +404,13 @@ class DebugReport:
             protocol.close()
 
     def _handshake_led(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.abstract_factory import (
+        from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             LedProtocol,
             _has_usb_errno,
         )
-        from trcc.adapters.device.adapter_led import LedHandshakeInfo, PmRegistry
+        from trcc.adapters.device.led import LedHandshakeInfo, PmRegistry
 
         protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
         try:
@@ -463,7 +443,7 @@ class DebugReport:
             protocol.close()
 
     def _handshake_bulk(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.abstract_factory import (
+        from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             BulkProtocol,
@@ -494,7 +474,7 @@ class DebugReport:
             protocol.close()
 
     def _handshake_ly(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.abstract_factory import (
+        from trcc.adapters.device.factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             LyProtocol,

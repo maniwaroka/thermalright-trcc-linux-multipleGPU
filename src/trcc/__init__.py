@@ -27,8 +27,8 @@ __version__ = "1.0.0"
 __author__ = "TRCC Linux Contributors"
 
 # Core exports
-from trcc.adapters.device.facade_lcd import LCDDriver
-from trcc.adapters.device.registry_detector import detect_devices, get_device_path
+from trcc.adapters.device.detector import detect_devices, get_device_path
+from trcc.adapters.device.lcd import LCDDriver
 from trcc.adapters.infra.dc_config import DcConfig
 from trcc.adapters.infra.dc_parser import dc_to_overlay_config, parse_dc_file
 

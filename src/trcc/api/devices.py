@@ -116,17 +116,9 @@ def select_device(device_id: int) -> dict:
             from trcc.cli._device import discover_resolution
             discover_resolution(dev)
 
-            # Create full DisplayService so dispatcher can handle
-            # video, overlay, themes — not just image/color/reset.
-            from trcc.services import MediaService, OverlayService
-            from trcc.services.display import DisplayService
-
-            display_svc = DisplayService(_device_svc, OverlayService(), MediaService())
-
             from trcc.cli._display import DisplayDispatcher
 
-            api._display_dispatcher = DisplayDispatcher(
-                device_svc=_device_svc, display_svc=display_svc)
+            api._display_dispatcher = DisplayDispatcher(device_svc=_device_svc)
 
             w_res, h_res = dev.resolution or (320, 320)
             api.set_current_image(Image.new('RGB', (w_res, h_res), (0, 0, 0)))
@@ -222,7 +214,7 @@ async def send_image(device_id: int, image: UploadFile, rotation: int = 0,
     # Discover resolution via handshake if not yet known
     w, h = dev.resolution
     if (w, h) == (0, 0):
-        from trcc.adapters.device.abstract_factory import DeviceProtocolFactory
+        from trcc.adapters.device.factory import DeviceProtocolFactory
         protocol = DeviceProtocolFactory.get_protocol(dev)
         result = protocol.handshake()
         if result:

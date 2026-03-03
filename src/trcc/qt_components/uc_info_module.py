@@ -3,14 +3,13 @@ PyQt6 UCInfoModule - Compact hardware sensor display bar.
 
 Shows 4 sensor boxes (CPU temp, GPU temp, CPU%, GPU%) above the preview.
 Matches Windows TRCC Information Module functionality.
-
-Metrics are delivered by MetricsMediator (period=3, ~3s cadence).
-No self-poll timer — the mediator is the single source.
 """
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+from ..services.system import get_all_metrics
 
 # Default sensors: (metric_key, label, color)
 DEFAULT_SENSORS = [
@@ -64,6 +63,8 @@ class UCInfoModule(QWidget):
         super().__init__(parent)
         self._temp_unit = '\u00b0C'
         self._sensor_boxes = {}
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._update_values)
 
         # Dark background via palette
         palette = self.palette()
@@ -85,26 +86,36 @@ class UCInfoModule(QWidget):
             self._sensor_boxes[key] = box
 
     def set_temp_unit(self, unit):
-        """Set temperature display unit ('\u00b0C' or '\u00b0F')."""
+        """Set temperature display unit ('°C' or '°F')."""
         self._temp_unit = unit
+        self._update_values()
 
-    def update_from_metrics(self, metrics) -> None:
-        """Accept pre-polled metrics from MetricsMediator."""
-        self._apply_metrics(metrics)
+    def start_updates(self, interval_ms=1000):
+        """Start periodic sensor updates."""
+        self._update_values()
+        self._timer.start(interval_ms)
 
-    def _apply_metrics(self, metrics) -> None:
-        """Apply metrics data to sensor display boxes."""
-        for key, box in self._sensor_boxes.items():
-            value = getattr(metrics, key, None)
-            if value is not None and isinstance(value, (int, float)):
-                if 'temp' in key:
-                    from ..core.models import celsius_to_fahrenheit
-                    if self._temp_unit == '\u00b0F':
-                        value = celsius_to_fahrenheit(value)
-                    box.value_label.setText(f"{int(value)}{self._temp_unit}")
-                elif 'usage' in key or 'percent' in key:
-                    box.value_label.setText(f"{int(value)}%")
+    def stop_updates(self):
+        """Stop sensor updates."""
+        self._timer.stop()
+
+    def _update_values(self):
+        """Update all sensor values from system_info."""
+        try:
+            metrics = get_all_metrics()
+            for key, box in self._sensor_boxes.items():
+                value = getattr(metrics, key, None)
+                if value is not None and isinstance(value, (int, float)):
+                    if 'temp' in key:
+                        from ..core.models import celsius_to_fahrenheit
+                        if self._temp_unit == '\u00b0F':
+                            value = celsius_to_fahrenheit(value)
+                        box.value_label.setText(f"{int(value)}{self._temp_unit}")
+                    elif 'usage' in key or 'percent' in key:
+                        box.value_label.setText(f"{int(value)}%")
+                    else:
+                        box.value_label.setText(str(int(value)))
                 else:
-                    box.value_label.setText(str(int(value)))
-            else:
-                box.value_label.setText("--")
+                    box.value_label.setText("--")
+        except Exception:
+            pass

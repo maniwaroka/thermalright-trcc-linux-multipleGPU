@@ -5,17 +5,8 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 # ── Shared helpers ────────────────────────────────────────────────────
-from trcc.core.models import NON_SERIALIZABLE_KEYS as _NON_SERIALIZABLE_KEYS
 
-
-def require_connected(dispatcher, label: str = "LCD"):
-    """Ensure dispatcher is connected, raise 409 if not."""
-    if not dispatcher or not dispatcher.connected:
-        raise HTTPException(
-            status_code=409,
-            detail=f"No {label} device selected. POST /devices/{{id}}/select first.",
-        )
-    return dispatcher
+_NON_SERIALIZABLE_KEYS = frozenset({"image", "colors"})
 
 
 def dispatch_result(result: dict) -> dict:

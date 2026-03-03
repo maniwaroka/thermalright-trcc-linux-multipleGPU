@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 
-from ..adapters.device.adapter_scsi import find_lcd_devices
+from ..adapters.device.scsi import find_lcd_devices
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Colors, Layout, Sizes

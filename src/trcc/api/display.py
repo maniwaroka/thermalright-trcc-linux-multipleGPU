@@ -18,7 +18,6 @@ from trcc.api.models import (
     VideoStatusResponse,
     dispatch_result,
     parse_hex_or_400,
-    require_connected,
 )
 
 log = logging.getLogger(__name__)
@@ -30,7 +29,9 @@ def _get_display():
     """Get the active DisplayDispatcher, raise 409 if not connected."""
     from trcc.api import _display_dispatcher
 
-    return require_connected(_display_dispatcher, "LCD")
+    if not _display_dispatcher or not _display_dispatcher.connected:
+        raise HTTPException(status_code=409, detail="No LCD device selected. POST /devices/{id}/select first.")
+    return _display_dispatcher
 
 
 def _display_route(method: str, *args, **kwargs) -> dict:
@@ -112,21 +113,21 @@ async def render_overlay(dc_path: str, send: bool = True) -> dict:
 
 @router.get("/status")
 def display_status() -> dict:
-    """Get current display state — resolution, device, overlay, video."""
+    """Get current display state — resolution, device path, connection."""
     from trcc.api import _display_dispatcher
 
     if not _display_dispatcher or not _display_dispatcher.connected:
         return {"connected": False, "resolution": [0, 0], "device_path": None}
-    return _display_dispatcher.status()
+
+    lcd = _display_dispatcher
+    return {
+        "connected": True,
+        "resolution": lcd.resolution,
+        "device_path": lcd.device_path,
+    }
 
 
 # ── Video playback endpoints ──────────────────────────────────────────
-
-
-@router.post("/video/play")
-def video_play() -> dict:
-    """Start/resume video playback."""
-    return dispatch_result(_get_display().play_video())
 
 
 @router.post("/video/stop")
@@ -135,27 +136,30 @@ def video_stop() -> dict:
     from trcc.api import stop_video_playback
 
     stop_video_playback()
-    return dispatch_result(_get_display().stop_video())
+    return {"success": True, "message": "Video playback stopped"}
 
 
 @router.post("/video/pause")
 def video_pause() -> dict:
-    """Pause video playback."""
-    return dispatch_result(_get_display().pause_video())
+    """Toggle pause on background video playback."""
+    from trcc.api import _media_service, pause_video_playback
+
+    if not _media_service:
+        raise HTTPException(status_code=409, detail="No video playing")
+    pause_video_playback()
+    return {"success": True, "paused": not _media_service.is_playing}
 
 
 @router.get("/video/status")
 def video_status() -> VideoStatusResponse:
     """Get current video playback state."""
-    from trcc.api import _display_dispatcher
-
-    if not _display_dispatcher or not _display_dispatcher.display_service:
-        return VideoStatusResponse()
-
-    media = _display_dispatcher.display_service.media
+    from trcc.api import _media_service
     from trcc.core.models import PlaybackState
 
-    state = media.state
+    if not _media_service:
+        return VideoStatusResponse()
+
+    state = _media_service.state
     return VideoStatusResponse(
         playing=state.state == PlaybackState.PLAYING,
         paused=state.state == PlaybackState.PAUSED,
@@ -163,7 +167,7 @@ def video_status() -> VideoStatusResponse:
         current_time=state.current_time_str,
         total_time=state.total_time_str,
         fps=state.fps,
-        source=str(media.source_path or ""),
+        source=str(_media_service.source_path or ""),
         loop=state.loop,
     )
 
@@ -204,16 +208,9 @@ def _get_lcd_frame():
 @router.get("/preview")
 def display_preview() -> Response:
     """Return the current LCD frame as a PNG image."""
-    import numpy as np
-
     frame = _get_lcd_frame()
     if frame is None:
         raise HTTPException(status_code=503, detail="No image available")
-
-    if isinstance(frame, np.ndarray):
-        from PIL import Image as PILImage
-        arr = frame[:, :, :3] if frame.ndim == 3 and frame.shape[2] == 4 else frame
-        frame = PILImage.fromarray(arr)
 
     buf = io.BytesIO()
     frame.save(buf, format="PNG")
@@ -286,13 +283,6 @@ async def preview_stream(websocket: WebSocket):
                 continue
 
             # ── Encode and send ───────────────────────────────────────
-            import numpy as np
-
-            if isinstance(frame, np.ndarray):
-                from PIL import Image as PILImage
-                arr = frame[:, :, :3] if frame.ndim == 3 and frame.shape[2] == 4 else frame
-                frame = PILImage.fromarray(arr)
-
             buf = io.BytesIO()
             frame.save(buf, format="JPEG", quality=quality)
             await websocket.send_bytes(buf.getvalue())

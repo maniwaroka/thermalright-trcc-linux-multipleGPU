@@ -16,7 +16,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, PropertyMock, patch
 
-import numpy as np
 from PIL import Image
 
 from tests.conftest import make_test_image as _make_test_image
@@ -191,10 +190,8 @@ class TestDeviceFacade(unittest.TestCase):
         self.ctrl._display.devices._send_busy = False
         self.ctrl._display.devices.select(DeviceInfo(name='LCD', path='/dev/sg0'))
 
-        with patch.object(self.ctrl._display.devices, 'send_pil_async'):
-            from PIL import Image
-            img = Image.new('RGB', (10, 10))
-            self.ctrl.send_pil_async(img, 10, 10)
+        with patch.object(self.ctrl._display.devices, 'send_rgb565_async'):
+            self.ctrl.send_image_async(b'\x00' * 100, 10, 10)
 
         self.assertTrue(started)
 
@@ -202,9 +199,7 @@ class TestDeviceFacade(unittest.TestCase):
         started = []
         self.ctrl.on_send_started = lambda: started.append(True)
         self.ctrl._display.devices._send_busy = True
-        from PIL import Image
-        img = Image.new('RGB', (1, 1))
-        self.ctrl.send_pil_async(img, 1, 1)
+        self.ctrl.send_image_async(b'\x00', 1, 1)
         self.assertEqual(started, [])
 
     def test_detect_devices_delegates(self):
@@ -369,9 +364,7 @@ class TestOverlayFacade(unittest.TestCase):
         bg = Image.new('RGB', (320, 320), 'blue')
         self.ctrl.set_overlay_background(bg)
         result = self.ctrl.render_overlay(bg)
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(result.shape, (320, 320, 3))
-        self.assertEqual(tuple(result[0, 0]), (0, 0, 255))
+        self.assertIs(result, bg)
 
 
 class TestOverlayFacadeRenderer(unittest.TestCase):
@@ -793,11 +786,11 @@ class TestFormCZTVVideoAndSend(unittest.TestCase):
         _stop_patches(self.patches)
 
     def test_video_tick_with_frame(self):
-        """video_tick always fires preview callback with the frame."""
+        """video_tick fires preview callback when DisplayService returns a result."""
         previews = []
         self.ctrl.on_preview_update = lambda img: previews.append(img)
 
-        fake_result = {'frame': _make_test_image(), 'send': False, 'progress': None}
+        fake_result = {'preview': _make_test_image(), 'send_image': None, 'progress': None}
         with patch.object(self.ctrl._display, 'video_tick', return_value=fake_result):
             self.ctrl.video_tick()
 
@@ -809,7 +802,7 @@ class TestFormCZTVVideoAndSend(unittest.TestCase):
 
     def test_video_tick_sends_to_lcd(self):
         send_img = _make_test_image()
-        fake_result = {'frame': send_img, 'send': True, 'progress': None}
+        fake_result = {'preview': _make_test_image(), 'send_image': send_img, 'progress': None}
 
         with patch.object(self.ctrl._display, 'video_tick', return_value=fake_result), \
              patch.object(self.ctrl, 'send_pil_async') as mock_send:
@@ -827,8 +820,8 @@ class TestFormCZTVVideoAndSend(unittest.TestCase):
         self.ctrl.on_status_update = lambda s: statuses.append(s)
 
         with patch.object(self.ctrl._display, 'send_current_image',
-                          return_value=_make_test_image()), \
-             patch.object(self.ctrl, 'send_pil_async'):
+                          return_value=b'\x00' * 100), \
+             patch.object(self.ctrl, 'send_image_async'):
             self.ctrl.send_current_image()
 
         self.assertIn('Sent to LCD', statuses)

@@ -34,26 +34,19 @@ class ImageService:
 
     @staticmethod
     def to_rgb565(img: Any, byte_order: str = '>') -> bytes:
-        """Convert image to RGB565 bytes.
+        """Convert PIL Image to RGB565 bytes.
 
-        Accepts numpy arrays (RGB/RGBA) or PIL Images.
         Windows TRCC ImageTo565: big-endian for 320x320 SCSI,
         little-endian otherwise.
 
         Args:
-            img: numpy array (H×W×3 RGB) or PIL Image.
+            img: PIL Image.
             byte_order: '>' for big-endian, '<' for little-endian.
         """
-        if isinstance(img, np.ndarray):
-            arr = img
-            if arr.ndim == 3 and arr.shape[2] == 4:
-                arr = arr[:, :, :3]  # strip alpha
-        else:
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            arr = np.array(img)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
 
-        arr = arr.astype(np.uint16)
+        arr = np.array(img, dtype=np.uint16)
         r = (arr[:, :, 0] >> 3) & 0x1F
         g = (arr[:, :, 1] >> 2) & 0x3F
         b = (arr[:, :, 2] >> 3) & 0x1F
@@ -62,10 +55,7 @@ class ImageService:
 
     @staticmethod
     def to_jpeg(img: Any, quality: int = 95, max_size: int = 450_000) -> bytes:
-        """Compress image to JPEG bytes.
-
-        Accepts numpy arrays (RGB/RGBA) or PIL Images. Numpy is converted
-        to PIL at the encode boundary (PIL/turbojpeg needed for JPEG codec).
+        """Compress PIL Image to JPEG bytes.
 
         Matches C# CompressionImage(): starts at *quality*, reduces by 5
         until output < *max_size*.  USBLCDNew bulk devices expect JPEG
@@ -78,10 +68,7 @@ class ImageService:
         change to simpler content), we retry from *quality* to find a
         higher-quality encode.
         """
-        if isinstance(img, np.ndarray):
-            arr = img[:, :, :3] if img.ndim == 3 and img.shape[2] == 4 else img
-            img = PILImage.fromarray(arr)
-        elif img.mode != 'RGB':
+        if img.mode != 'RGB':
             img = img.convert('RGB')
 
         hint = ImageService._jpeg_quality_hint
@@ -119,7 +106,7 @@ class ImageService:
 
     @staticmethod
     def apply_rotation(image: Any, rotation: int) -> Any:
-        """Apply display rotation to image (numpy or PIL).
+        """Apply display rotation to a PIL Image.
 
         Windows ImageTo565 for square displays:
           directionB 0   → no rotation
@@ -127,16 +114,6 @@ class ImageService:
           directionB 180 → RotateImg(180°)   = PIL ROTATE_180
           directionB 270 → RotateImg(90°CW)  = PIL ROTATE_270 (CCW)
         """
-        if isinstance(image, np.ndarray):
-            if rotation == 90:
-                return np.rot90(image, k=-1)  # 90° CW
-            elif rotation == 180:
-                return np.rot90(image, k=2)
-            elif rotation == 270:
-                return np.rot90(image, k=1)   # 270° CW = 90° CCW
-            return image
-
-        # PIL fallback (CLI one-shot paths)
         from PIL import Image as PILImage
 
         if rotation == 90:
@@ -149,17 +126,12 @@ class ImageService:
 
     @staticmethod
     def apply_brightness(image: Any, percent: int) -> Any:
-        """Apply brightness adjustment to image (numpy or PIL).
+        """Apply brightness adjustment to image.
 
         L1=25%, L2=50%, L3=100%. At 100% the image is unchanged.
         """
         if percent >= 100:
             return image
-
-        if isinstance(image, np.ndarray):
-            return (image.astype(np.uint16) * percent // 100).clip(0, 255).astype(np.uint8)
-
-        # PIL fallback (CLI one-shot paths)
         from PIL import ImageEnhance
 
         return ImageEnhance.Brightness(image).enhance(percent / 100.0)
@@ -213,17 +185,15 @@ class ImageService:
 
     @staticmethod
     def to_ansi(img: Any, cols: int = 60) -> str:
-        """Render image as ANSI true-color block art for terminal preview.
+        """Render PIL Image as ANSI true-color block art for terminal preview.
 
         Uses Unicode half-block (U+2580) to encode two pixel rows per
         terminal line.  Foreground = top pixel, background = bottom pixel.
 
         Args:
-            img: numpy array or PIL Image.
+            img: PIL Image (any mode — converted to RGB internally).
             cols: Output width in terminal columns (height scales proportionally).
         """
-        if isinstance(img, np.ndarray):
-            img = PILImage.fromarray(img[:, :, :3] if img.ndim == 3 and img.shape[2] == 4 else img)
         if img.mode != 'RGB':
             img = img.convert('RGB')
 
@@ -347,10 +317,6 @@ class ImageService:
         """
         if resolution in ImageService._SQUARE_NO_ROTATE:
             return image
-
-        if isinstance(image, np.ndarray):
-            return np.rot90(image, k=-1)  # 90° CW
-
         return image.transpose(PILImage.Transpose.ROTATE_270)
 
     @staticmethod

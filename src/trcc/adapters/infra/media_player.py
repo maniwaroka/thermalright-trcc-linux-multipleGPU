@@ -3,13 +3,9 @@
 Pure infrastructure — decodes video/animation files into frames + metadata.
 No playback state (play/pause/stop/seek). That belongs in MediaService.
 
-Frames are ``np.ndarray`` (uint8, shape H×W×3 RGB).  PIL is used only at the
-I/O boundary (JPEG decode in ThemeZtDecoder); FFmpeg raw pipe is decoded
-directly into numpy with zero PIL overhead.
-
 Decoders:
-    VideoDecoder   — FFmpeg pipe → list of numpy frames + fps
-    ThemeZtDecoder — Theme.zt binary → list of numpy frames + per-frame delays
+    VideoDecoder   — FFmpeg pipe → list of PIL frames + fps
+    ThemeZtDecoder — Theme.zt binary → list of PIL frames + per-frame delays
 """
 
 from __future__ import annotations
@@ -20,7 +16,6 @@ import os
 import struct
 import subprocess
 
-import numpy as np
 from PIL import Image
 
 log = logging.getLogger(__name__)
@@ -49,17 +44,14 @@ class VideoDecoder:
             raise RuntimeError(
                 "FFmpeg not available. Install: sudo dnf install ffmpeg"
             )
-        self.frames: list[np.ndarray] = []
+        self.frames: list[Image.Image] = []
         self.fps: int = 16  # Windows: originalImageHz = 16
 
         self._decode(video_path, target_size, fit_mode)
 
     def _decode(self, video_path: str, target_size: tuple[int, int],
                 fit_mode: str = 'fill') -> None:
-        """Decode all frames through FFmpeg pipe → numpy arrays.
-
-        FFmpeg outputs raw RGB24 bytes which reshape directly into numpy
-        arrays — no PIL intermediary needed.
+        """Decode all frames through FFmpeg pipe.
 
         fit_mode:
             'fill'   — stretch to fill LCD (current default)
@@ -100,29 +92,25 @@ class VideoDecoder:
             chunk = raw[i:i + frame_size]
             if len(chunk) < frame_size:
                 break
-            frame = np.frombuffer(chunk, dtype=np.uint8).reshape(scale_h, scale_w, 3)
+            frame = Image.frombytes('RGB', (scale_w, scale_h), chunk)
 
             if need_composite:
                 # Composite onto black canvas — letterbox or center-crop
-                canvas = np.zeros((h, w, 3), dtype=np.uint8)
+                canvas = Image.new('RGB', (w, h), (0, 0, 0))
                 px = (w - scale_w) // 2
                 py = (h - scale_h) // 2
                 if scale_w > w or scale_h > h:
                     # Center-crop: frame overflows canvas
                     left = max(0, (scale_w - w) // 2)
                     top = max(0, (scale_h - h) // 2)
-                    crop_w = min(w, scale_w - left)
-                    crop_h = min(h, scale_h - top)
-                    dst_x = max(0, px)
-                    dst_y = max(0, py)
-                    canvas[dst_y:dst_y + crop_h, dst_x:dst_x + crop_w] = \
-                        frame[top:top + crop_h, left:left + crop_w]
+                    frame = frame.crop((left, top, left + w, top + h))
+                    canvas.paste(frame, (max(0, px), max(0, py)))
                 else:
                     # Letterbox: frame fits inside canvas
-                    canvas[py:py + scale_h, px:px + scale_w] = frame
+                    canvas.paste(frame, (px, py))
                 self.frames.append(canvas)
             else:
-                self.frames.append(frame.copy())
+                self.frames.append(frame)
 
     @staticmethod
     def _probe_dimensions(video_path: str) -> tuple[int, int] | None:
@@ -204,7 +192,7 @@ class ThemeZtDecoder:
     """
 
     def __init__(self, zt_path: str, target_size: tuple[int, int] | None = None) -> None:
-        self.frames: list[np.ndarray] = []
+        self.frames: list[Image.Image] = []
         self.timestamps: list[int] = []
         self.delays: list[int] = []
 
@@ -220,13 +208,12 @@ class ThemeZtDecoder:
 
             for _ in range(frame_count):
                 size = struct.unpack('<i', f.read(4))[0]
-                # PIL for JPEG decode (necessary), convert to numpy immediately
                 img = Image.open(io.BytesIO(f.read(size)))
                 if target_size and img.size != target_size:
                     img = img.resize(target_size, Image.Resampling.LANCZOS)
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
-                self.frames.append(np.array(img))
+                self.frames.append(img)
 
         # Calculate delays from timestamps
         for i in range(len(self.timestamps)):
@@ -249,6 +236,9 @@ class ThemeZtDecoder:
         return 1000.0 / avg_delay if avg_delay > 0 else 24.0
 
     def close(self) -> None:
+        for frame in self.frames:
+            if hasattr(frame, 'close'):
+                frame.close()
         self.frames = []
 
 

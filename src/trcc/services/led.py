@@ -70,7 +70,7 @@ class LEDService:
 
         Replaces the view-layer iteration over LED_STYLES.
         """
-        from ..adapters.device.adapter_led import LED_STYLES
+        from ..adapters.device.led import LED_STYLES
         for style_id, style in LED_STYLES.items():
             if style.model_name == model_name:
                 return style_id
@@ -79,7 +79,7 @@ class LEDService:
     @staticmethod
     def get_style_info(style_id: int) -> Any:
         """Get LedDeviceStyle for a style_id."""
-        from ..adapters.device.adapter_led import LED_STYLES
+        from ..adapters.device.led import LED_STYLES
         return LED_STYLES.get(style_id)
 
     # ── State mutators ──────────────────────────────────────────────
@@ -229,8 +229,8 @@ class LEDService:
         Sets up LED segment counts/zones from the style registry and
         activates segment display rotation for digit-display styles (1-11).
         """
-        from ..adapters.device.adapter_led import LED_STYLES
-        from ..adapters.device.strategy_segment import get_display
+        from ..adapters.device.led import LED_STYLES
+        from ..adapters.device.led_segment import get_display
 
         self._led_style = style_id
         style = LED_STYLES.get(style_id)
@@ -424,7 +424,7 @@ class LEDService:
         self.configure_for_style(led_style)
 
         try:
-            from ..adapters.device.abstract_factory import DeviceProtocolFactory
+            from ..adapters.device.factory import DeviceProtocolFactory
             protocol = DeviceProtocolFactory.get_protocol(device_info)
             protocol.handshake()  # Cache handshake result for wire remap
             self.set_protocol(protocol)
@@ -434,7 +434,7 @@ class LEDService:
 
         self.load_config()
 
-        from ..adapters.device.adapter_led import LED_STYLES
+        from ..adapters.device.led import LED_STYLES
         style = LED_STYLES.get(led_style)
         name = style.model_name if style else f"Style {led_style}"
         led_count = style.led_count if style else 0

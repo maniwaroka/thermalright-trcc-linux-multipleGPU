@@ -53,7 +53,7 @@ def discover_resolution(dev) -> None:
     if dev.resolution != (0, 0):
         return
     try:
-        from trcc.adapters.device.abstract_factory import DeviceProtocolFactory
+        from trcc.adapters.device.factory import DeviceProtocolFactory
         protocol = DeviceProtocolFactory.get_protocol(dev)
         result = protocol.handshake()
         if result:
@@ -85,7 +85,7 @@ def _ensure_extracted(driver):
 
 def _get_driver(device=None):
     """Create an LCDDriver, resolving selected device and extracting archives."""
-    from trcc.adapters.device.facade_lcd import LCDDriver
+    from trcc.adapters.device.lcd import LCDDriver
     from trcc.conf import Settings
     if device is None:
         device = Settings.get_selected_device()
@@ -104,7 +104,7 @@ def _probe(dev):
     # LED devices: probe via led_device cache/handshake
     if dev.implementation == 'hid_led':
         try:
-            from trcc.adapters.device.adapter_led import probe_led_model
+            from trcc.adapters.device.led import probe_led_model
             info = probe_led_model(dev.vid, dev.pid, usb_path=dev.usb_path)
             if info and info.model_name:
                 result['model'] = info.model_name
@@ -116,8 +116,8 @@ def _probe(dev):
     # HID LCD devices: probe via hid_device handshake
     elif dev.implementation in ('hid_type2', 'hid_type3'):
         try:
-            from trcc.adapters.device.abstract_factory import DeviceProtocolFactory
-            from trcc.adapters.device.template_method_hid import HidHandshakeInfo
+            from trcc.adapters.device.factory import DeviceProtocolFactory
+            from trcc.adapters.device.hid import HidHandshakeInfo
             device_info = {
                 'vid': dev.vid, 'pid': dev.pid,
                 'protocol': dev.protocol, 'device_type': dev.device_type,
@@ -137,7 +137,7 @@ def _probe(dev):
     # Bulk USB devices: probe via BulkProtocol
     elif dev.implementation == 'bulk_usblcdnew':
         try:
-            from trcc.adapters.device.abstract_factory import BulkProtocol
+            from trcc.adapters.device.factory import BulkProtocol
             bp = BulkProtocol(dev.vid, dev.pid)
             hs = bp.handshake()
             if hs and hs.resolution:
@@ -188,17 +188,13 @@ def _format(dev, probe=False):
 @_cli_handler
 def detect(show_all=False):
     """Detect LCD device."""
-    from trcc.cli._display import DisplayDispatcher
+    from trcc.adapters.device.detector import check_udev_rules, detect_devices
     from trcc.conf import Settings
 
-    lcd = DisplayDispatcher()
-    result = lcd.detect()
-
-    if not result["success"]:
+    devices = detect_devices()
+    if not devices:
         print("No compatible TRCC LCD device detected.")
         return 1
-
-    devices = result["devices"]
 
     if show_all:
         selected = Settings.get_selected_device()
@@ -217,7 +213,6 @@ def detect(show_all=False):
         print(f"Active: {_format(dev, probe=True)}")
 
     # Check for stale/missing udev rules on any device
-    from trcc.adapters.device.registry_detector import check_udev_rules
     from trcc.core.models import PROTOCOL_TRAITS
 
     for dev in devices:
@@ -236,17 +231,14 @@ def detect(show_all=False):
 @_cli_handler
 def select(number):
     """Select a device by number."""
-    from trcc.cli._display import DisplayDispatcher
+    from trcc.adapters.device.detector import detect_devices
     from trcc.conf import Settings
 
-    lcd = DisplayDispatcher()
-    result = lcd.detect()
-
-    if not result["success"]:
+    devices = detect_devices()
+    if not devices:
         print("No devices found.")
         return 1
 
-    devices = result["devices"]
     if number < 1 or number > len(devices):
         print(f"Invalid device number. Use 1-{len(devices)}")
         return 1

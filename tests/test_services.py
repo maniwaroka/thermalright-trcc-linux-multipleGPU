@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import numpy as np
 import pytest
 from PIL import Image
 
@@ -620,49 +619,58 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
         self.assertEqual(result.count('\033[0m'), 4)
 
 
-class TestDeviceServiceSendPil(unittest.TestCase):
-    """Test that send_pil delegates to protocol (protocol encodes internally)."""
+class TestDeviceServiceSendPilBulk(unittest.TestCase):
+    """Test that send_pil routes bulk devices through JPEG encoding."""
 
-    def test_send_pil_delegates_to_protocol(self):
-        """send_pil → protocol.send_pil (encoding is protocol's job)."""
+    def test_bulk_sends_jpeg(self):
+        """Bulk protocol → ImageService.to_jpeg() path."""
         from trcc.core.models import DeviceInfo
         svc = DeviceService()
-        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi')
+        dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk')
         svc.select(dev)
 
-        mock_protocol = MagicMock()
-        mock_protocol.send_pil.return_value = True
-        with patch('trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol',
-                   return_value=mock_protocol):
+        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
+            img = Image.new('RGB', (480, 480), (255, 0, 0))
+            result = svc.send_pil(img, 480, 480)
+
+        self.assertTrue(result)
+        call_data = mock_send.call_args[0][0]
+        self.assertTrue(call_data[:2] == b'\xff\xd8')  # JPEG data
+
+    def test_bulk_pm32_sends_rgb565(self):
+        """Bulk PM=32 (use_jpeg=False) → ImageService.to_rgb565() path."""
+        from trcc.core.models import DeviceInfo
+        svc = DeviceService()
+        dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk',
+                         resolution=(320, 320), use_jpeg=False)
+        svc.select(dev)
+
+        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
             img = Image.new('RGB', (320, 320), (255, 0, 0))
             result = svc.send_pil(img, 320, 320)
 
         self.assertTrue(result)
-        mock_protocol.send_pil.assert_called_once()
+        call_data = mock_send.call_args[0][0]
+        # RGB565: 320*320*2 = 204800 bytes, not JPEG
+        self.assertEqual(len(call_data), 320 * 320 * 2)
+        self.assertNotEqual(call_data[:2], b'\xff\xd8')  # NOT JPEG
 
-    def test_send_pil_no_device(self):
-        """send_pil returns False when no device selected."""
-        svc = DeviceService()
-        img = Image.new('RGB', (320, 320))
-        self.assertFalse(svc.send_pil(img, 320, 320))
-
-    def test_send_pil_fires_on_frame_sent(self):
-        """on_frame_sent callback fires after successful send."""
+    def test_scsi_sends_rgb565(self):
+        """SCSI protocol → ImageService.to_rgb565() path (not JPEG)."""
         from trcc.core.models import DeviceInfo
         svc = DeviceService()
-        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi')
+        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi',
+                         resolution=(320, 320))
         svc.select(dev)
-        frames = []
-        svc.on_frame_sent = lambda img: frames.append(img)
 
-        mock_protocol = MagicMock()
-        mock_protocol.send_pil.return_value = True
-        with patch('trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol',
-                   return_value=mock_protocol):
-            img = Image.new('RGB', (320, 320))
-            svc.send_pil(img, 320, 320)
+        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
+            img = Image.new('RGB', (320, 320), (255, 0, 0))
+            result = svc.send_pil(img, 320, 320)
 
-        self.assertEqual(len(frames), 1)
+        self.assertTrue(result)
+        call_data = mock_send.call_args[0][0]
+        # RGB565: 320*320*2 = 204800 bytes, not JPEG
+        self.assertEqual(len(call_data), 320 * 320 * 2)
 
 
 # =============================================================================
@@ -763,8 +771,7 @@ class TestOverlayService(unittest.TestCase):
         svc = OverlayService()
         img = Image.new('RGB', (320, 320))
         svc.set_background(img)
-        self.assertIsInstance(svc.background, np.ndarray)
-        self.assertEqual(svc.background.shape[:2], (320, 320))
+        self.assertIs(svc.background, img)
 
     def test_set_resolution(self):
         svc = OverlayService(320, 320)
@@ -773,14 +780,12 @@ class TestOverlayService(unittest.TestCase):
         self.assertEqual(svc.height, 480)
 
     def test_render_no_config_returns_background(self):
-        """With no config/mask set, render returns background as numpy (fast path)."""
+        """With no config/mask set, render returns background as-is (fast path)."""
         svc = OverlayService()
         img = Image.new('RGB', (320, 320), (255, 0, 0))
         svc.set_background(img)
         result = svc.render()
-        self.assertIsInstance(result, np.ndarray)
-        self.assertEqual(result.shape, (320, 320, 3))
-        self.assertEqual(tuple(result[0, 0]), (255, 0, 0))
+        self.assertIs(result, img)
 
     def test_dc_data_round_trip(self):
         svc = OverlayService()

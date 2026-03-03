@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from tests.conftest import save_test_png as _make_png
-from trcc.adapters.device.registry_detector import DetectedDevice
+from trcc.adapters.device.detector import DetectedDevice
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -33,13 +33,13 @@ class TestDetectToSend(unittest.TestCase):
     """Full pipeline: detect device → create LCDDriver → send_frame."""
 
     @patch("trcc.adapters.infra.data_repository.SysUtils.require_sg_raw")
-    @patch("trcc.adapters.device.adapter_scsi.subprocess.run")
-    @patch("trcc.adapters.device.facade_lcd.detect_devices")
-    @patch("trcc.adapters.device.facade_lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.device.scsi.subprocess.run")
+    @patch("trcc.adapters.device.lcd.detect_devices")
+    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_detect_init_send(self, _, mock_detect, mock_run, mock_sg):
         """detect_devices → LCDDriver(path) → send_frame goes through all layers."""
-        from trcc.adapters.device.adapter_scsi import ScsiDevice
-        from trcc.adapters.device.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
+        from trcc.adapters.device.scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -66,12 +66,12 @@ class TestDetectToSend(unittest.TestCase):
         self.assertEqual(mock_run.call_count, expected_calls)
 
     @patch("trcc.adapters.infra.data_repository.SysUtils.require_sg_raw")
-    @patch("trcc.adapters.device.adapter_scsi.subprocess.run")
-    @patch("trcc.adapters.device.facade_lcd.detect_devices")
-    @patch("trcc.adapters.device.facade_lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.device.scsi.subprocess.run")
+    @patch("trcc.adapters.device.lcd.detect_devices")
+    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_send_image_pipeline(self, _, mock_detect, mock_run, mock_sg):
         """LCDDriver.load_image → send_frame end-to-end."""
-        from trcc.adapters.device.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -95,8 +95,8 @@ class TestDetectToSend(unittest.TestCase):
 class TestCLISendPipeline(unittest.TestCase):
     """CLI send_image()/send_color() → DeviceService → DeviceProtocolFactory."""
 
-    @patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol")
+    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
     def test_cli_send_image(self, mock_detect, mock_get_protocol):
         """trcc send image.png end-to-end via DeviceService."""
         from trcc.cli import send_image
@@ -104,7 +104,7 @@ class TestCLISendPipeline(unittest.TestCase):
 
         mock_detect.return_value = [_make_device()]
         mock_protocol = MagicMock()
-        mock_protocol.send_pil.return_value = True
+        mock_protocol.send_image.return_value = True
         mock_protocol.handshake.return_value = HandshakeResult(
             resolution=(320, 320))
         mock_get_protocol.return_value = mock_protocol
@@ -114,10 +114,10 @@ class TestCLISendPipeline(unittest.TestCase):
             try:
                 result = send_image(f.name, device="/dev/sg0")
                 self.assertEqual(result, 0)
-                mock_protocol.send_pil.assert_called_once()
-                # Verify PIL image dimensions
-                img = mock_protocol.send_pil.call_args[0][0]
-                self.assertEqual(img.size, (320, 320))
+                mock_protocol.send_image.assert_called_once()
+                # Verify RGB565 frame size: 320*320*2 = 204800
+                data = mock_protocol.send_image.call_args[0][0]
+                self.assertEqual(len(data), 320 * 320 * 2)
             finally:
                 os.unlink(f.name)
 
@@ -127,8 +127,8 @@ class TestCLISendPipeline(unittest.TestCase):
         result = send_image("/nonexistent/image.png")
         self.assertEqual(result, 1)
 
-    @patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol")
+    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
     def test_cli_send_color(self, mock_detect, mock_get_protocol):
         """trcc color ff0000 end-to-end via DeviceService."""
         from trcc.cli import send_color
@@ -136,17 +136,17 @@ class TestCLISendPipeline(unittest.TestCase):
 
         mock_detect.return_value = [_make_device()]
         mock_protocol = MagicMock()
-        mock_protocol.send_pil.return_value = True
+        mock_protocol.send_image.return_value = True
         mock_protocol.handshake.return_value = HandshakeResult(
             resolution=(320, 320))
         mock_get_protocol.return_value = mock_protocol
 
         result = send_color("ff0000", device="/dev/sg0")
         self.assertEqual(result, 0)
-        mock_protocol.send_pil.assert_called_once()
-        # Verify PIL image dimensions
-        img = mock_protocol.send_pil.call_args[0][0]
-        self.assertEqual(img.size, (320, 320))
+        mock_protocol.send_image.assert_called_once()
+        # Verify RGB565 frame size
+        data = mock_protocol.send_image.call_args[0][0]
+        self.assertEqual(len(data), 320 * 320 * 2)
 
     def test_cli_send_color_invalid_hex(self):
         """send_color with invalid hex returns 1."""
@@ -160,8 +160,8 @@ class TestCLISendPipeline(unittest.TestCase):
 class TestCLIResumePipeline(unittest.TestCase):
     """CLI resume() → DeviceService.detect → load config → ImageService → send."""
 
-    @patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol")
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol")
+    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
     @patch("trcc.conf.Settings.get_device_config")
     @patch("trcc.conf.Settings.device_config_key")
     def test_resume_with_saved_theme(self, mock_key, mock_cfg, mock_detect,
@@ -174,7 +174,7 @@ class TestCLIResumePipeline(unittest.TestCase):
         mock_key.return_value = "0:87cd_70db"
 
         mock_protocol = MagicMock()
-        mock_protocol.send_pil.return_value = True
+        mock_protocol.send_image.return_value = True
         mock_protocol.handshake.return_value = HandshakeResult(
             resolution=(320, 320))
         mock_get_protocol.return_value = mock_protocol
@@ -189,12 +189,12 @@ class TestCLIResumePipeline(unittest.TestCase):
 
             result = resume()
             self.assertEqual(result, 0)
-            mock_protocol.send_pil.assert_called_once()
-            # Verify PIL image dimensions
-            img = mock_protocol.send_pil.call_args[0][0]
-            self.assertEqual(img.size, (320, 320))
+            mock_protocol.send_image.assert_called_once()
+            # Verify RGB565 frame was sent
+            data = mock_protocol.send_image.call_args[0][0]
+            self.assertEqual(len(data), 320 * 320 * 2)
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
     def test_resume_no_devices(self, mock_detect):
         """resume() with no devices returns 1."""
         from trcc.cli import resume
@@ -202,7 +202,7 @@ class TestCLIResumePipeline(unittest.TestCase):
         result = resume()
         self.assertEqual(result, 1)
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
     @patch("trcc.conf.Settings.get_device_config")
     @patch("trcc.conf.Settings.device_config_key")
     def test_resume_no_saved_theme(self, mock_key, mock_cfg, mock_detect):
@@ -222,7 +222,7 @@ class TestCLIResumePipeline(unittest.TestCase):
 class TestCLIDetectPipeline(unittest.TestCase):
     """CLI detect() exercises device_detector.detect_devices end-to-end."""
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.detector.detect_devices")
     def test_detect_shows_device(self, mock_detect):
         """detect() with a device returns 0 and formats output."""
         from trcc.cli import detect
@@ -234,7 +234,7 @@ class TestCLIDetectPipeline(unittest.TestCase):
             result = detect(show_all=True)
         self.assertEqual(result, 0)
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.detector.detect_devices")
     def test_detect_no_devices(self, mock_detect):
         """detect() with no devices returns 1."""
         from trcc.cli import detect
@@ -242,7 +242,7 @@ class TestCLIDetectPipeline(unittest.TestCase):
         result = detect()
         self.assertEqual(result, 1)
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.detector.detect_devices")
     def test_detect_multiple_devices(self, mock_detect):
         """detect --all with multiple devices lists all."""
         from trcc.cli import detect
@@ -264,11 +264,11 @@ class TestCLIDetectPipeline(unittest.TestCase):
 class TestDeviceDetectorRoundTrip(unittest.TestCase):
     """Verify find_usb_devices → detect_devices → get_default_device chain."""
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.find_scsi_device_by_usb_path")
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.find_usb_devices")
+    @patch("trcc.adapters.device.detector.DeviceDetector.find_scsi_device_by_usb_path")
+    @patch("trcc.adapters.device.detector.DeviceDetector.find_usb_devices")
     def test_usb_to_scsi_mapping(self, mock_find_usb, mock_find_scsi):
         """USB device found → SCSI path assigned → returned in detect_devices."""
-        from trcc.adapters.device.registry_detector import detect_devices
+        from trcc.adapters.device.detector import detect_devices
 
         dev = _make_device(scsi=None)
         mock_find_usb.return_value = [dev]
@@ -278,11 +278,11 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].scsi_device, "/dev/sg0")
 
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.find_scsi_device_by_usb_path")
-    @patch("trcc.adapters.device.registry_detector.DeviceDetector.find_usb_devices")
+    @patch("trcc.adapters.device.detector.DeviceDetector.find_scsi_device_by_usb_path")
+    @patch("trcc.adapters.device.detector.DeviceDetector.find_usb_devices")
     def test_get_default_prefers_thermalright(self, mock_find_usb, mock_find_scsi):
         """get_default_device prefers Thermalright (VID 0x87CD)."""
-        from trcc.adapters.device.registry_detector import get_default_device
+        from trcc.adapters.device.detector import get_default_device
 
         devs = [
             _make_device(vid=0x0416, pid=0x5406, scsi="/dev/sg1",
@@ -306,13 +306,13 @@ class TestMultiResolution(unittest.TestCase):
     """Verify frame sizing and chunk counts for different resolutions."""
 
     @patch("trcc.adapters.infra.data_repository.SysUtils.require_sg_raw")
-    @patch("trcc.adapters.device.adapter_scsi.subprocess.run")
-    @patch("trcc.adapters.device.facade_lcd.detect_devices")
-    @patch("trcc.adapters.device.facade_lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.device.scsi.subprocess.run")
+    @patch("trcc.adapters.device.lcd.detect_devices")
+    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_480x480_frame_size(self, _, mock_detect, mock_run, mock_sg):
         """480x480 produces correct frame size and chunk count."""
-        from trcc.adapters.device.adapter_scsi import ScsiDevice
-        from trcc.adapters.device.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
+        from trcc.adapters.device.scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -333,13 +333,13 @@ class TestMultiResolution(unittest.TestCase):
         self.assertEqual(len(chunks), 8)
 
     @patch("trcc.adapters.infra.data_repository.SysUtils.require_sg_raw")
-    @patch("trcc.adapters.device.adapter_scsi.subprocess.run")
-    @patch("trcc.adapters.device.facade_lcd.detect_devices")
-    @patch("trcc.adapters.device.facade_lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.device.scsi.subprocess.run")
+    @patch("trcc.adapters.device.lcd.detect_devices")
+    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_240x240_frame_size(self, _, mock_detect, mock_run, mock_sg):
         """240x240 produces correct frame size and chunk count."""
-        from trcc.adapters.device.adapter_scsi import ScsiDevice
-        from trcc.adapters.device.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
+        from trcc.adapters.device.scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -527,7 +527,7 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
         """_build_header produces 20-byte header with valid CRC32."""
         import binascii
 
-        from trcc.adapters.device.adapter_scsi import ScsiDevice
+        from trcc.adapters.device.scsi import ScsiDevice
 
         header = ScsiDevice._build_header(0xF5, 0xE100)
         self.assertEqual(len(header), 20)
@@ -547,7 +547,7 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
 
     def test_frame_chunk_headers_unique(self):
         """Each frame chunk has a unique command with incrementing index."""
-        from trcc.adapters.device.adapter_scsi import ScsiDevice
+        from trcc.adapters.device.scsi import ScsiDevice
 
         chunks = ScsiDevice._get_frame_chunks(320, 320)
         cmds = [cmd for cmd, _ in chunks]

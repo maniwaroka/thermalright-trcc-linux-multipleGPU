@@ -573,7 +573,7 @@ class TestCheckUdev:
     @patch("trcc.adapters.infra.doctor.os.path.isfile", return_value=True)
     def test_all_vids_present(self, _):
         """File contains all required VIDs → ok=True."""
-        from trcc.adapters.device.registry_detector import DeviceDetector
+        from trcc.adapters.device.detector import DeviceDetector
         all_registries = DeviceDetector._get_all_registries()
         all_vids = {f"{vid:04x}" for vid, _ in all_registries}
         content = " ".join(all_vids)
@@ -581,7 +581,7 @@ class TestCheckUdev:
         from unittest.mock import mock_open as _mock_open
         with patch("builtins.open", _mock_open(read_data=content)):
             with patch(
-                "trcc.adapters.device.registry_detector.DeviceDetector._get_all_registries",
+                "trcc.adapters.device.detector.DeviceDetector._get_all_registries",
                 return_value=list(all_registries),
             ):
                 result = check_udev()
@@ -591,13 +591,13 @@ class TestCheckUdev:
     @patch("trcc.adapters.infra.doctor.os.path.isfile", return_value=True)
     def test_missing_vid_in_file(self, _):
         """File that has no VID content → ok=False, missing_vids populated."""
-        from trcc.adapters.device.registry_detector import DeviceDetector
+        from trcc.adapters.device.detector import DeviceDetector
         all_registries = DeviceDetector._get_all_registries()
 
         from unittest.mock import mock_open as _mock_open
         with patch("builtins.open", _mock_open(read_data="no vids here")):
             with patch(
-                "trcc.adapters.device.registry_detector.DeviceDetector._get_all_registries",
+                "trcc.adapters.device.detector.DeviceDetector._get_all_registries",
                 return_value=list(all_registries),
             ):
                 result = check_udev()

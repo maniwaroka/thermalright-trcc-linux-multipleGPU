@@ -30,8 +30,8 @@ from trcc.core.models import (
     remap_led_colors,  # noqa: F401 — re-export
 )
 
-from .template_method_device import LedDevice
-from .template_method_hid import (
+from .frame import LedDevice
+from .hid import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,
     EP_WRITE_02,
@@ -573,7 +573,7 @@ def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
 
     transport = None
     try:
-        from .abstract_factory import DeviceProtocolFactory
+        from .factory import DeviceProtocolFactory
         transport = DeviceProtocolFactory.create_usb_transport(vid, pid)
         transport.open()
         sender = LedHidSender(transport)

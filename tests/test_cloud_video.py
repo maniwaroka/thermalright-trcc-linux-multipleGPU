@@ -57,7 +57,7 @@ class TestCloudVideoPlayback:
         assert len(controller._display.media._frames) > 0
 
     def test_video_tick_returns_frames(self, controller):
-        """Each video_tick must return a valid result dict."""
+        """Each video_tick must return a valid frame."""
         video = _find_test_video()
         if not video:
             pytest.skip("No cached cloud video MP4")
@@ -65,24 +65,20 @@ class TestCloudVideoPlayback:
         theme = ThemeInfo.from_video(video)
         controller.load_cloud_theme(theme)
 
-        # Tick 10 times — every tick must produce a result
+        # Tick 10 times — every tick must produce a frame
         none_count = 0
-        frame_count = 0
         for i in range(10):
             result = controller._display.video_tick()
             if result is None:
                 none_count += 1
             else:
-                frame = result.get('frame')
-                if frame is not None:
-                    assert frame.shape[:2] == (320, 320)
-                    frame_count += 1
+                assert result['preview'] is not None
+                assert result['preview'].size == (320, 320)
 
         assert none_count == 0, f"{none_count}/10 ticks returned None"
-        assert frame_count >= 1, "Expected at least 1 frame in 10 ticks"
 
-    def test_fire_preview_called_periodically(self, controller, preview_log):
-        """on_preview_update must be called periodically (throttled, not every tick)."""
+    def test_fire_preview_called_every_tick(self, controller, preview_log):
+        """on_preview_update must be called with non-None image every tick."""
         video = _find_test_video()
         if not video:
             pytest.skip("No cached cloud video MP4")
@@ -97,19 +93,14 @@ class TestCloudVideoPlayback:
         assert len(calls) >= 1, "load_cloud_theme should fire preview"
         assert calls[0] is not None, "First preview frame is None!"
 
-        load_calls = len(calls)
-
-        # Tick 20 more times — every tick streams to preview
-        for _ in range(20):
+        # Tick 10 more times
+        for _ in range(10):
             controller.video_tick()
 
-        preview_ticks = len(calls) - load_calls
-        # Every tick fires preview — all 20 should produce callbacks
-        assert preview_ticks >= 18, (
-            f"Expected at least 18 preview calls in 20 ticks, got {preview_ticks}"
-        )
+        # Every tick fires preview: 10 ticks + 1 from load
+        assert len(calls) >= 11, f"Expected 11+ preview calls, got {len(calls)}"
 
-        # Check received previews are not None
+        # Check NONE of them are None
         for i, img in enumerate(calls):
             assert img is not None, f"Preview call {i} was None!"
 
@@ -131,7 +122,7 @@ class TestCloudVideoPlayback:
 
             result = overlay.render(frame)
             assert result is not None, f"overlay.render returned None on frame {i}"
-            assert result.shape[:2] == (320, 320), f"overlay.render shape wrong: {result.shape}"
+            assert result.size == (320, 320), f"overlay.render size wrong: {result.size}"
 
     def test_render_overlay_and_preview_during_video(self, controller, preview_log):
         """render_overlay_and_preview must NOT clear the preview during video."""

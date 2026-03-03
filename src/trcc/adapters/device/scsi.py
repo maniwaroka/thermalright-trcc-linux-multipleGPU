@@ -26,9 +26,9 @@ import time
 import zlib
 from typing import Dict, List, Set
 
-from trcc.adapters.device.template_method_device import FrameDevice
+from trcc.adapters.device.frame import FrameDevice
 from trcc.adapters.infra.data_repository import SysUtils
-from trcc.core.models import HandshakeResult, LCDDeviceConfig, fbl_to_resolution
+from trcc.core.models import HandshakeResult, fbl_to_resolution
 
 log = logging.getLogger(__name__)
 
@@ -471,38 +471,6 @@ class ScsiDevice(FrameDevice):
         self._initialized = False
         ScsiDevice._initialized_devices.discard(self.device_path)
 
-    @staticmethod
-    def detect_resolution(config: 'LCDDeviceConfig', device_path: str,
-                          verbose: bool = False) -> bool:
-        """Auto-detect SCSI LCD resolution via poll byte[0] → fbl_to_resolution().
-
-        Mutates config.width/height/fbl/resolution_detected on success.
-        Resolution is now detected in ScsiDevice.handshake() directly,
-        so this is only needed for pre-handshake discovery.
-        """
-        try:
-            poll_header = ScsiDevice._build_header(0xF5, 0xE100)
-            response = ScsiDevice._scsi_read(device_path, poll_header[:16], 0xE100)
-            if not response:
-                if verbose:
-                    log.warning("Empty poll response from %s", device_path)
-                return False
-
-            fbl = response[0]
-            width, height = fbl_to_resolution(fbl)
-            config.width = width
-            config.height = height
-            config.fbl = fbl
-            config.resolution_detected = True
-            if verbose:
-                log.info("Auto-detected resolution: %dx%d (FBL=%d)",
-                         width, height, fbl)
-            return True
-        except Exception as e:
-            if verbose:
-                log.warning("Failed to auto-detect resolution: %s", e)
-            return False
-
 
 # =========================================================================
 # Public API (used by core/models.py)
@@ -532,7 +500,7 @@ def find_lcd_devices() -> List[Dict]:
         model, button_image, protocol, device_type, vid, pid
     """
     try:
-        from .registry_detector import detect_devices
+        from .detector import detect_devices
     except ImportError:
         return []
 
@@ -585,7 +553,7 @@ def find_lcd_devices() -> List[Dict]:
             # to discover the real model (AX120, PA120, LC1, etc.).
             if dev.implementation == 'hid_led':
                 try:
-                    from .adapter_led import PmRegistry, probe_led_model
+                    from .led import PmRegistry, probe_led_model
                     info = probe_led_model(dev.vid, dev.pid,
                                            usb_path=dev.usb_path)
                     if info and info.model_name:

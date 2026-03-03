@@ -210,7 +210,7 @@ class TestSendImageEdgeCases(unittest.TestCase):
         """If resolution stays (0,0) after handshake, endpoint returns 503."""
         dev = _scsi_dev(resolution=(0, 0))
         _device_svc._devices = [dev]
-        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol") as mock_gp:
+        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol") as mock_gp:
             mock_protocol = MagicMock()
             mock_protocol.handshake.return_value = None
             mock_gp.return_value = mock_protocol
@@ -256,10 +256,6 @@ class TestDisplayErrorPaths(unittest.TestCase):
         self.mock_lcd.connected = True
         self.mock_lcd.resolution = (320, 320)
         self.mock_lcd.device_path = "/dev/sg0"
-        self.mock_lcd.status.return_value = {
-            "success": True, "connected": True,
-            "resolution": [320, 320], "device_path": "/dev/sg0",
-        }
         api_module._display_dispatcher = self.mock_lcd
 
     def tearDown(self) -> None:

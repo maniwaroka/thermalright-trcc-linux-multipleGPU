@@ -10,8 +10,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from ..adapters.infra.data_repository import ThemeDir
 from .image import ImageService
 from .media import MediaService
@@ -39,7 +37,7 @@ class ThemeLoader:
         """Load a local theme with DC config, mask, and overlay.
 
         Returns dict with keys:
-            'image': numpy array (H×W×3 RGB) or None
+            'image': PIL Image (rendered preview) or None
             'is_animated': bool
             'status': str
             'mask_source_dir': Path or None (for caller to store)
@@ -159,8 +157,7 @@ class ThemeLoader:
             else:
                 result['image'] = self._load_static_image(wd.bg, lcd_size)
         elif theme.is_mask_only:
-            w, h = lcd_size
-            result['image'] = np.zeros((h, w, 3), dtype=np.uint8)
+            result['image'] = ImageService.solid_color(0, 0, 0, *lcd_size)
 
         # Load mask from working dir
         if wd.mask.exists():
@@ -215,10 +212,9 @@ class ThemeLoader:
     # ── Internal helpers ─────────────────────────────────────────────
 
     def _load_static_image(self, path: Path, lcd_size: tuple[int, int]) -> Any | None:
-        """Load and resize a static image to LCD dimensions (as numpy)."""
+        """Load and resize a static image to LCD dimensions."""
         try:
-            img = ImageService.open_and_resize(path, *lcd_size)
-            return np.array(img)
+            return ImageService.open_and_resize(path, *lcd_size)
         except Exception as e:
             log.error("Failed to load image: %s", e)
             return None

@@ -13,7 +13,6 @@ from trcc.api.models import (
     ThemeSaveRequest,
     WebThemeDownloadResponse,
     WebThemeResponse,
-    require_connected,
 )
 from trcc.services import ThemeService
 
@@ -134,8 +133,11 @@ def download_web_theme(
     elif _display_dispatcher and _display_dispatcher.connected:
         w, h = _display_dispatcher.resolution  # type: ignore[union-attr]
 
-    if send:
-        require_connected(_display_dispatcher, "LCD")
+    if send and (not _display_dispatcher or not _display_dispatcher.connected):
+        raise HTTPException(
+            status_code=409,
+            detail="No LCD device selected. POST /devices/{id}/select first.",
+        )
 
     # Download (or use cache)
     web_dir = DataManager.get_web_dir(w, h)
@@ -198,7 +200,8 @@ def load_theme(body: ThemeLoadRequest) -> dict:
     """Load a theme by name and send to device."""
     from trcc.api import _display_dispatcher
 
-    require_connected(_display_dispatcher, "LCD")
+    if not _display_dispatcher or not _display_dispatcher.connected:
+        raise HTTPException(status_code=409, detail="No LCD device selected. POST /devices/{id}/select first.")
 
     from pathlib import Path
 

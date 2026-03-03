@@ -9,11 +9,6 @@ Package structure mirrors cli/ — one module per domain:
     themes.py   — theme listing, load, save, import
     system.py   — system metrics, diagnostic report
 
-API is a thin HTTP adapter over CLI dispatchers. All business logic
-lives in DisplayService/LEDService, accessed through DisplayDispatcher
-and LEDDispatcher. Background threads for video/overlay pumping are
-the only API-specific concern (adapter scheduling).
-
 Security:
     - Localhost-only by default (bind 127.0.0.1)
     - Optional token auth via --token flag (X-API-Token header)
@@ -33,7 +28,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from trcc.__version__ import __version__
-from trcc.services import DeviceService
+from trcc.services import DeviceService, MediaService, OverlayService
 
 log = logging.getLogger(__name__)
 
@@ -50,18 +45,19 @@ _display_dispatcher = None  # DisplayDispatcher | None
 _led_dispatcher = None      # LEDDispatcher | None
 _system_svc = None          # SystemService | None
 
-# Last frame sent to LCD — updated by on_frame_sent callback for preview
+# Last frame sent to LCD — updated by display/theme endpoints for preview
 _current_image = None  # PIL Image | None
 
 
 def set_current_image(img) -> None:
-    """Update the tracked LCD frame (called by on_frame_sent callback)."""
+    """Update the tracked LCD frame (called by display/theme endpoints)."""
     global _current_image  # noqa: PLW0603
     _current_image = img
 
 
-# ── Video playback (background thread — adapter scheduling) ──────────
+# ── Video playback (background thread) ───────────────────────────────
 
+_media_service: MediaService | None = None
 _video_thread: threading.Thread | None = None
 _video_stop_event: threading.Event | None = None
 
@@ -69,38 +65,34 @@ _video_stop_event: threading.Event | None = None
 def start_video_playback(
     video_path: str, width: int, height: int, *, loop: bool = True,
 ) -> bool:
-    """Start background video playback using dispatcher's DisplayService.
+    """Start background video playback — pumps frames to LCD and _current_image.
 
-    Thread pumps dispatcher.video_tick() → send frames to LCD.
-    Service creation/ownership lives in DisplayService, not here.
+    Uses MediaService to decode frames, DeviceService to send to LCD,
+    and set_current_image() to feed the WebSocket preview stream.
     """
-    global _video_thread, _video_stop_event  # noqa: PLW0603
+    global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
 
-    stop_video_playback()
+    stop_video_playback()  # Stop any existing playback
 
-    if not _display_dispatcher or not _display_dispatcher.display_service:
-        return False
-
-    dispatcher = _display_dispatcher  # local ref for closure
-    media = dispatcher.display_service.media
+    media = MediaService()
     media.set_target_size(width, height)
     if not media.load(Path(video_path)):
         return False
 
     media._state.loop = loop
-    dispatcher.play_video()
+    media.play()
 
+    _media_service = media
     _video_stop_event = threading.Event()
-    stop_event = _video_stop_event
+    stop_event = _video_stop_event  # Local ref for closure
 
     def _pump() -> None:
         interval = media.frame_interval_ms / 1000.0
         while not stop_event.is_set() and media.is_playing:
-            result = dispatcher.video_tick()
-            if not result.get("success"):
+            frame, should_send, _ = media.tick()
+            if frame is None:
                 break
-            frame = result.get("frame")
-            if frame is not None and result.get("send"):
+            if should_send:
                 _device_svc.send_pil(frame, width, height)
             stop_event.wait(interval)
 
@@ -111,27 +103,30 @@ def start_video_playback(
 
 
 def stop_video_playback() -> None:
-    """Stop background video playback."""
-    global _video_thread, _video_stop_event  # noqa: PLW0603
+    """Stop background video playback if running."""
+    global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
 
     if _video_stop_event:
         _video_stop_event.set()
     if _video_thread and _video_thread.is_alive():
         _video_thread.join(timeout=2)
-    if _display_dispatcher:
-        _display_dispatcher.stop_video()
+    if _media_service:
+        _media_service.stop()
+        _media_service.close()
+    _media_service = None
     _video_thread = None
     _video_stop_event = None
 
 
 def pause_video_playback() -> None:
     """Toggle pause on background video playback."""
-    if _display_dispatcher:
-        _display_dispatcher.pause_video()
+    if _media_service:
+        _media_service.toggle()
 
 
-# ── Overlay metrics loop (background thread — adapter scheduling) ─────
+# ── Overlay metrics loop (background thread for static themes) ────────
 
+_overlay_svc: OverlayService | None = None
 _overlay_thread: threading.Thread | None = None
 _overlay_stop_event: threading.Event | None = None
 
@@ -139,23 +134,21 @@ _overlay_stop_event: threading.Event | None = None
 def start_overlay_loop(
     background, dc_path: str, width: int, height: int,
 ) -> bool:
-    """Start background overlay rendering using dispatcher's DisplayService.
+    """Start background overlay rendering — polls metrics, re-renders, sends to LCD.
 
-    Thread polls metrics → dispatcher.update_metrics() → render → send.
+    For static themes with config1.dc overlay configs. Updates _current_image
+    so the WebSocket preview stream shows live metrics.
     """
-    global _overlay_thread, _overlay_stop_event  # noqa: PLW0603
+    global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
 
     stop_overlay_loop()
 
-    if not _display_dispatcher or not _display_dispatcher.display_service:
-        return False
-
-    dispatcher = _display_dispatcher  # local ref for closure
-    overlay = dispatcher.display_service.overlay
+    overlay = OverlayService(width, height)
     overlay.set_background(background)
     overlay.load_from_dc(Path(dc_path))
-    dispatcher.enable_overlay(True)
+    overlay.enabled = True
 
+    _overlay_svc = overlay
     _overlay_stop_event = threading.Event()
     stop_event = _overlay_stop_event
 
@@ -165,9 +158,8 @@ def start_overlay_loop(
         while not stop_event.is_set():
             metrics = get_all_metrics()
             if overlay.would_change(metrics):
-                dispatcher.update_metrics(metrics)
-                result = dispatcher.render_current_overlay()
-                frame = result.get("image") if result.get("success") else None
+                overlay.update_metrics(metrics)
+                frame = overlay.render(metrics=metrics)
                 if frame is not None:
                     _device_svc.send_pil(frame, width, height)
             stop_event.wait(2.0)
@@ -179,15 +171,14 @@ def start_overlay_loop(
 
 
 def stop_overlay_loop() -> None:
-    """Stop background overlay rendering."""
-    global _overlay_thread, _overlay_stop_event  # noqa: PLW0603
+    """Stop background overlay rendering if running."""
+    global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
 
     if _overlay_stop_event:
         _overlay_stop_event.set()
     if _overlay_thread and _overlay_thread.is_alive():
         _overlay_thread.join(timeout=2)
-    if _display_dispatcher:
-        _display_dispatcher.enable_overlay(False)
+    _overlay_svc = None
     _overlay_thread = None
     _overlay_stop_event = None
 
