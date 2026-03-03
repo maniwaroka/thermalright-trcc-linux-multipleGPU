@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -620,58 +620,49 @@ class TestLEDZonesAnsiWithMetrics(unittest.TestCase):
         self.assertEqual(result.count('\033[0m'), 4)
 
 
-class TestDeviceServiceSendPilBulk(unittest.TestCase):
-    """Test that send_pil routes bulk devices through JPEG encoding."""
+class TestDeviceServiceSendPil(unittest.TestCase):
+    """Test that send_pil delegates to protocol (protocol encodes internally)."""
 
-    def test_bulk_sends_jpeg(self):
-        """Bulk protocol → ImageService.to_jpeg() path."""
+    def test_send_pil_delegates_to_protocol(self):
+        """send_pil → protocol.send_pil (encoding is protocol's job)."""
         from trcc.core.models import DeviceInfo
         svc = DeviceService()
-        dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk')
+        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi')
         svc.select(dev)
 
-        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
-            img = Image.new('RGB', (480, 480), (255, 0, 0))
-            result = svc.send_pil(img, 480, 480)
-
-        self.assertTrue(result)
-        call_data = mock_send.call_args[0][0]
-        self.assertTrue(call_data[:2] == b'\xff\xd8')  # JPEG data
-
-    def test_bulk_pm32_sends_rgb565(self):
-        """Bulk PM=32 (use_jpeg=False) → ImageService.to_rgb565() path."""
-        from trcc.core.models import DeviceInfo
-        svc = DeviceService()
-        dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk',
-                         resolution=(320, 320), use_jpeg=False)
-        svc.select(dev)
-
-        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
+        mock_protocol = MagicMock()
+        mock_protocol.send_pil.return_value = True
+        with patch('trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol',
+                   return_value=mock_protocol):
             img = Image.new('RGB', (320, 320), (255, 0, 0))
             result = svc.send_pil(img, 320, 320)
 
         self.assertTrue(result)
-        call_data = mock_send.call_args[0][0]
-        # RGB565: 320*320*2 = 204800 bytes, not JPEG
-        self.assertEqual(len(call_data), 320 * 320 * 2)
-        self.assertNotEqual(call_data[:2], b'\xff\xd8')  # NOT JPEG
+        mock_protocol.send_pil.assert_called_once()
 
-    def test_scsi_sends_rgb565(self):
-        """SCSI protocol → ImageService.to_rgb565() path (not JPEG)."""
+    def test_send_pil_no_device(self):
+        """send_pil returns False when no device selected."""
+        svc = DeviceService()
+        img = Image.new('RGB', (320, 320))
+        self.assertFalse(svc.send_pil(img, 320, 320))
+
+    def test_send_pil_fires_on_frame_sent(self):
+        """on_frame_sent callback fires after successful send."""
         from trcc.core.models import DeviceInfo
         svc = DeviceService()
-        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi',
-                         resolution=(320, 320))
+        dev = DeviceInfo(name='scsi', path='/dev/sg0', protocol='scsi')
         svc.select(dev)
+        frames = []
+        svc.on_frame_sent = lambda img: frames.append(img)
 
-        with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:
-            img = Image.new('RGB', (320, 320), (255, 0, 0))
-            result = svc.send_pil(img, 320, 320)
+        mock_protocol = MagicMock()
+        mock_protocol.send_pil.return_value = True
+        with patch('trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol',
+                   return_value=mock_protocol):
+            img = Image.new('RGB', (320, 320))
+            svc.send_pil(img, 320, 320)
 
-        self.assertTrue(result)
-        call_data = mock_send.call_args[0][0]
-        # RGB565: 320*320*2 = 204800 bytes, not JPEG
-        self.assertEqual(len(call_data), 320 * 320 * 2)
+        self.assertEqual(len(frames), 1)
 
 
 # =============================================================================

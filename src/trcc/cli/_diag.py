@@ -15,8 +15,8 @@ def _hex_dump(data: bytes, max_bytes: int = 64) -> None:
 
 def _hid_debug_lcd(dev, *, test_frame: bool = False) -> None:
     """HID handshake diagnostic for LCD devices (Type 2/3)."""
-    from trcc.adapters.device.factory import HidProtocol
-    from trcc.adapters.device.hid import (
+    from trcc.adapters.device.abstract_factory import HidProtocol
+    from trcc.adapters.device.template_method_hid import (
         HidHandshakeInfo,
         get_button_image,
     )
@@ -116,8 +116,8 @@ def _send_test_frame(protocol, resolution: tuple, fbl: int) -> None:
 
 def _hid_debug_led(dev) -> None:
     """HID handshake diagnostic for LED devices (Type 1)."""
-    from trcc.adapters.device.factory import LedProtocol
-    from trcc.adapters.device.led import LedHandshakeInfo, PmRegistry
+    from trcc.adapters.device.abstract_factory import LedProtocol
+    from trcc.adapters.device.adapter_led import LedHandshakeInfo, PmRegistry
 
     protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
     info = protocol.handshake()
@@ -169,7 +169,7 @@ def hid_debug(*, test_frame: bool = False):
         test_frame: If True, send a solid red test frame after handshake.
     """
     try:
-        from trcc.adapters.device.detector import detect_devices
+        from trcc.adapters.device.registry_detector import detect_devices
 
         print("HID Debug — Handshake Diagnostic")
         print("=" * 60)
@@ -222,8 +222,8 @@ def led_debug(test=False):
     try:
         import time
 
-        from trcc.adapters.device.factory import LedProtocol
-        from trcc.adapters.device.led import (
+        from trcc.adapters.device.abstract_factory import LedProtocol
+        from trcc.adapters.device.adapter_led import (
             LED_PID,
             LED_VID,
             LedHandshakeInfo,

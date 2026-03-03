@@ -168,14 +168,14 @@ class TestDependenciesSection(unittest.TestCase):
 class TestDevicesSection(unittest.TestCase):
     """Test device listing."""
 
-    @patch("trcc.adapters.device.detector.DeviceDetector.detect", return_value=[])
+    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect", return_value=[])
     def test_no_devices(self, _):
         rpt = DebugReport()
         rpt._devices()
         _, body = rpt.sections[0]
         self.assertIn("none", body)
 
-    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
     def test_lists_devices(self, mock_detect):
         dev = MagicMock()
         dev.vid = 0x0416
@@ -268,7 +268,7 @@ class TestFullCollect(unittest.TestCase):
     """Test full collect with everything mocked."""
 
     @patch("trcc.adapters.infra.debug_report.subprocess.run")
-    @patch("trcc.adapters.device.detector.DeviceDetector.detect", return_value=[])
+    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect", return_value=[])
     @patch("trcc.conf.load_config", return_value={})
     @patch("os.listdir", return_value=[])
     @patch("builtins.open", side_effect=FileNotFoundError)

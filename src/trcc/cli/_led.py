@@ -66,7 +66,7 @@ class LEDDispatcher:
         if self._svc:
             return {"success": True, "status": self._init_status or ""}
 
-        from trcc.adapters.device.detector import detect_devices
+        from trcc.adapters.device.registry_detector import detect_devices
         from trcc.services import LEDService
 
         devices = detect_devices()
@@ -76,7 +76,7 @@ class LEDDispatcher:
             return {"success": False, "error": "No LED device found"}
 
         self._svc = LEDService()
-        from trcc.adapters.device.led import probe_led_model
+        from trcc.adapters.device.adapter_led import probe_led_model
         info = probe_led_model(led_dev.vid, led_dev.pid,
                                usb_path=led_dev.usb_path)
         style_id = info.style.style_id if (info and info.style) else 1

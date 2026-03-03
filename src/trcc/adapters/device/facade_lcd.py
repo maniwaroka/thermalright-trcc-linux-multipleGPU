@@ -10,8 +10,8 @@ from typing import Optional
 from trcc.core.encoding import byte_order_for, rgb_to_bytes
 from trcc.core.models import LCDDeviceConfig
 
-from .detector import DetectedDevice, detect_devices, get_default_device
-from .scsi import ScsiDevice
+from .adapter_scsi import ScsiDevice
+from .registry_detector import DetectedDevice, detect_devices, get_default_device
 
 log = logging.getLogger(__name__)
 

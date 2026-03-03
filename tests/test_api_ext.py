@@ -210,7 +210,7 @@ class TestSendImageEdgeCases(unittest.TestCase):
         """If resolution stays (0,0) after handshake, endpoint returns 503."""
         dev = _scsi_dev(resolution=(0, 0))
         _device_svc._devices = [dev]
-        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol") as mock_gp:
+        with patch("trcc.adapters.device.abstract_factory.DeviceProtocolFactory.get_protocol") as mock_gp:
             mock_protocol = MagicMock()
             mock_protocol.handshake.return_value = None
             mock_gp.return_value = mock_protocol

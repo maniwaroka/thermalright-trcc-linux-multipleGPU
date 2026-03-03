@@ -12,12 +12,7 @@ import pytest
 
 # _patch_hid_sleep and make_mock_transport live in hid_testing/conftest.py
 from tests.hid_testing.conftest import make_mock_transport as _make_mock_transport
-from trcc.adapters.device.hid import (
-    DEFAULT_TIMEOUT_MS,
-    EP_READ_01,
-    EP_WRITE_02,
-)
-from trcc.adapters.device.led import (
+from trcc.adapters.device.adapter_led import (
     DELAY_POST_INIT_S,
     DELAY_PRE_INIT_S,
     HID_REPORT_SIZE,
@@ -42,12 +37,17 @@ from trcc.adapters.device.led import (
     remap_led_colors,
     send_led_colors,
 )
+from trcc.adapters.device.template_method_hid import (
+    DEFAULT_TIMEOUT_MS,
+    EP_READ_01,
+    EP_WRITE_02,
+)
 
 
 @pytest.fixture(autouse=True)
 def _clear_rgb_table_cache():
     """Reset the ColorEngine cached table between tests."""
-    from trcc.adapters.device.led import ColorEngine
+    from trcc.adapters.device.adapter_led import ColorEngine
     original = ColorEngine._cached_table
     ColorEngine._cached_table = None
     yield
@@ -899,7 +899,7 @@ class TestLedHidSenderHandshake:
         transport.read.return_value = _make_valid_handshake_response()
 
         sender = LedHidSender(transport)
-        with patch("trcc.adapters.device.led.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.device.adapter_led.time.sleep") as mock_sleep:
             sender.handshake()
             calls = mock_sleep.call_args_list
             assert len(calls) == 2
@@ -1041,7 +1041,7 @@ class TestLedHidSenderSendLedData:
         transport = _make_mock_transport()
         sender = LedHidSender(transport)
 
-        with patch("trcc.adapters.device.led.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.device.adapter_led.time.sleep") as mock_sleep:
             sender.send_led_data(b'\xAA' * 20)
             mock_sleep.assert_not_called()
 

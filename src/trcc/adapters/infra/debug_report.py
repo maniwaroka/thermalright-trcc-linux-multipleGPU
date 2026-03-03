@@ -191,7 +191,7 @@ class DebugReport:
     def _devices(self) -> None:
         sec = self._add("Detected devices")
         try:
-            from trcc.adapters.device.detector import DeviceDetector
+            from trcc.adapters.device.registry_detector import DeviceDetector
 
             devices = DeviceDetector.detect()
             self._detected_devices = devices
@@ -363,7 +363,7 @@ class DebugReport:
             sec.lines.append("    (device in use by trcc gui)")
 
     def _handshake_scsi(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import ScsiProtocol
+        from trcc.adapters.device.abstract_factory import ScsiProtocol
         from trcc.core.models import FBL_TO_RESOLUTION
 
         protocol = ScsiProtocol(dev.scsi_device)
@@ -385,13 +385,13 @@ class DebugReport:
             protocol.close()
 
     def _handshake_hid_lcd(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import (
+        from trcc.adapters.device.abstract_factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             HidProtocol,
             _has_usb_errno,
         )
-        from trcc.adapters.device.hid import HidHandshakeInfo
+        from trcc.adapters.device.template_method_hid import HidHandshakeInfo
         from trcc.core.models import fbl_to_resolution, pm_to_fbl
 
         protocol = HidProtocol(vid=dev.vid, pid=dev.pid, device_type=dev.device_type)
@@ -424,13 +424,13 @@ class DebugReport:
             protocol.close()
 
     def _handshake_led(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import (
+        from trcc.adapters.device.abstract_factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             LedProtocol,
             _has_usb_errno,
         )
-        from trcc.adapters.device.led import LedHandshakeInfo, PmRegistry
+        from trcc.adapters.device.adapter_led import LedHandshakeInfo, PmRegistry
 
         protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
         try:
@@ -463,7 +463,7 @@ class DebugReport:
             protocol.close()
 
     def _handshake_bulk(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import (
+        from trcc.adapters.device.abstract_factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             BulkProtocol,
@@ -494,7 +494,7 @@ class DebugReport:
             protocol.close()
 
     def _handshake_ly(self, dev, sec: _Section) -> None:
-        from trcc.adapters.device.factory import (
+        from trcc.adapters.device.abstract_factory import (
             _ERRNO_EACCES,
             _ERRNO_EBUSY,
             LyProtocol,

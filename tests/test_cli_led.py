@@ -160,12 +160,12 @@ class TestLEDDispatcherConnect:
         fake_dev.implementation = 'hid_lcd'  # not hid_led
         with patch('trcc.cli._led.detect_devices', return_value=[fake_dev],
                    create=True), \
-             patch('trcc.adapters.device.detector.detect_devices',
+             patch('trcc.adapters.device.registry_detector.detect_devices',
                    return_value=[fake_dev]):
             with patch('trcc.cli._led.LEDDispatcher.connect',
                        wraps=d.connect):
                 # Patch at the import location inside connect()
-                with patch('trcc.adapters.device.detector.detect_devices',
+                with patch('trcc.adapters.device.registry_detector.detect_devices',
                            return_value=[fake_dev]):
                     pass  # covered by next test
 
@@ -175,7 +175,7 @@ class TestLEDDispatcherConnect:
         fake_dev = MagicMock()
         fake_dev.implementation = 'hid_lcd'
 
-        with patch('trcc.adapters.device.detector.detect_devices',
+        with patch('trcc.adapters.device.registry_detector.detect_devices',
                    return_value=[fake_dev]), \
              patch('trcc.services.LEDService'):
             result = d.connect()
@@ -185,7 +185,7 @@ class TestLEDDispatcherConnect:
     def test_connect_empty_device_list(self):
         """connect() returns failure when device list is empty."""
         d = LEDDispatcher()
-        with patch('trcc.adapters.device.detector.detect_devices',
+        with patch('trcc.adapters.device.registry_detector.detect_devices',
                    return_value=[]):
             result = d.connect()
         assert result["success"] is False
@@ -205,10 +205,10 @@ class TestLEDDispatcherConnect:
         fake_info = MagicMock()
         fake_info.style.style_id = 1
 
-        with patch('trcc.adapters.device.detector.detect_devices',
+        with patch('trcc.adapters.device.registry_detector.detect_devices',
                    return_value=[led_dev]), \
              patch('trcc.services.LEDService', return_value=fake_svc), \
-             patch('trcc.adapters.device.led.probe_led_model',
+             patch('trcc.adapters.device.adapter_led.probe_led_model',
                    return_value=fake_info):
             result = d.connect()
 

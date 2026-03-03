@@ -222,7 +222,7 @@ async def send_image(device_id: int, image: UploadFile, rotation: int = 0,
     # Discover resolution via handshake if not yet known
     w, h = dev.resolution
     if (w, h) == (0, 0):
-        from trcc.adapters.device.factory import DeviceProtocolFactory
+        from trcc.adapters.device.abstract_factory import DeviceProtocolFactory
         protocol = DeviceProtocolFactory.get_protocol(dev)
         result = protocol.handshake()
         if result:

@@ -234,18 +234,8 @@ class LCDDeviceController:
     def get_selected_device(self) -> Optional[DeviceInfo]:
         return self._display.devices.selected
 
-    def send_image_async(self, rgb565_data: bytes, width: int, height: int):
-        if self._display.devices.is_busy:
-            log.debug("send_image_async: busy, skipping")
-            return
-        log.debug("send_image_async: dispatching %d bytes (%dx%d)",
-                  len(rgb565_data), width, height)
-        if self.on_send_started:
-            self.on_send_started()
-        self._display.devices.send_rgb565_async(rgb565_data, width, height)
-
-    def send_pil_async(self, image: Any, width: int, height: int,
-                       byte_order: str = '>'):
+    def send_pil_async(self, image: Any, width: int, height: int):
+        """Send PIL image to device via async worker. Protocol encodes internally."""
         if self._display.devices.is_busy:
             return
         if self.on_send_started:
@@ -466,9 +456,9 @@ class LCDDeviceController:
     # ── Device Operations ─────────────────────────────────────────────
 
     def send_current_image(self):
-        rgb565 = self._display.send_current_image()
-        if rgb565:
-            self.send_image_async(rgb565, self.lcd_width, self.lcd_height)
+        image = self._display.send_current_image()
+        if image is not None:
+            self.send_pil_async(image, self.lcd_width, self.lcd_height)
             self._fire_status("Sent to LCD")
 
     def render_overlay_and_preview(self):

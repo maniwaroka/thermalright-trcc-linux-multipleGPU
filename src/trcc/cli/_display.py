@@ -466,7 +466,7 @@ class DisplayDispatcher:
         Returns raw adapter-level objects so CLI formatting (probe, udev
         checks, scsi_device paths) works without additional imports.
         """
-        from trcc.adapters.device.detector import DeviceDetector
+        from trcc.adapters.device.registry_detector import DeviceDetector
 
         raw = DeviceDetector.detect()
         if not raw:

@@ -145,7 +145,7 @@ def setup_udev(dry_run=False):
     Without quirks, UAS claims these LCD devices and the kernel ignores them
     (no /dev/sgX created). The :u quirk forces usb-storage bulk-only transport.
     """
-    from trcc.adapters.device.detector import (
+    from trcc.adapters.device.registry_detector import (
         _BULK_DEVICES,
         _HID_LCD_DEVICES,
         _LED_DEVICES,

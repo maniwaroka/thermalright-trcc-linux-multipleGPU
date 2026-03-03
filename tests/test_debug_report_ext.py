@@ -275,7 +275,7 @@ class TestDependenciesExtra:
 class TestDevicesExtra:
     """_devices extra coverage."""
 
-    @patch("trcc.adapters.device.detector.DeviceDetector.detect",
+    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect",
            side_effect=RuntimeError("usb error"))
     def test_detect_raises(self, _):
         """Exception from detect() is caught gracefully."""
@@ -284,7 +284,7 @@ class TestDevicesExtra:
         _, body = _section(rpt)
         assert "detect failed" in body
 
-    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
     def test_scsi_device_shows_scsi_path(self, mock_detect):
         """SCSI device uses scsi_device path in output."""
         dev = MagicMock()
@@ -301,7 +301,7 @@ class TestDevicesExtra:
         assert "/dev/sg0" in body
         assert "SCSI" in body
 
-    @patch("trcc.adapters.device.detector.DeviceDetector.detect")
+    @patch("trcc.adapters.device.registry_detector.DeviceDetector.detect")
     def test_hid_device_shows_usb_path(self, mock_detect):
         """HID device uses usb_path when scsi_device is None."""
         dev = MagicMock()
@@ -478,7 +478,7 @@ class TestHandshakeScsi:
         dev.scsi_device = "/dev/sg0"
         return dev
 
-    @patch("trcc.adapters.device.factory.ScsiProtocol")
+    @patch("trcc.adapters.device.abstract_factory.ScsiProtocol")
     def test_success_known_fbl(self, MockScsi):
         result = MagicMock()
         result.model_id = 50  # FBL 50 → known
@@ -499,7 +499,7 @@ class TestHandshakeScsi:
         assert "320" in text
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.ScsiProtocol")
+    @patch("trcc.adapters.device.abstract_factory.ScsiProtocol")
     def test_success_unknown_fbl(self, MockScsi):
         result = MagicMock()
         result.model_id = 999  # not in table
@@ -518,7 +518,7 @@ class TestHandshakeScsi:
         assert "UNKNOWN" in text
         assert "FBL=999" in text
 
-    @patch("trcc.adapters.device.factory.ScsiProtocol")
+    @patch("trcc.adapters.device.abstract_factory.ScsiProtocol")
     def test_handshake_returns_none(self, MockScsi):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -533,7 +533,7 @@ class TestHandshakeScsi:
         assert "poll failed" in text
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.ScsiProtocol")
+    @patch("trcc.adapters.device.abstract_factory.ScsiProtocol")
     def test_close_called_on_exception(self, MockScsi):
         proto = MagicMock()
         proto.handshake.side_effect = RuntimeError("device gone")
@@ -564,7 +564,7 @@ class TestHandshakeHidLcd:
 
     def _make_hid_info(self, fbl=50, pm=128, sub=0, serial="SN123",
                        resolution=(320, 240), raw=bytes(64)):
-        from trcc.adapters.device.hid import HidHandshakeInfo
+        from trcc.adapters.device.template_method_hid import HidHandshakeInfo
         info = MagicMock(spec=HidHandshakeInfo)
         info.mode_byte_1 = pm
         info.mode_byte_2 = sub
@@ -574,7 +574,7 @@ class TestHandshakeHidLcd:
         info.raw_response = raw
         return info
 
-    @patch("trcc.adapters.device.factory.HidProtocol")
+    @patch("trcc.adapters.device.abstract_factory.HidProtocol")
     def test_success_shows_pm_fbl_resolution(self, MockHid):
         proto = MagicMock()
         proto.handshake.return_value = self._make_hid_info()
@@ -592,7 +592,7 @@ class TestHandshakeHidLcd:
         assert "SN123" in text
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.HidProtocol")
+    @patch("trcc.adapters.device.abstract_factory.HidProtocol")
     def test_success_without_serial(self, MockHid):
         proto = MagicMock()
         info = self._make_hid_info(serial=None)
@@ -608,7 +608,7 @@ class TestHandshakeHidLcd:
         # No crash and PM line present
         assert "PM=" in text
 
-    @patch("trcc.adapters.device.factory.HidProtocol")
+    @patch("trcc.adapters.device.abstract_factory.HidProtocol")
     def test_eacces_shows_permission_denied(self, MockHid):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -620,14 +620,14 @@ class TestHandshakeHidLcd:
         rpt = DebugReport()
 
         # _has_usb_errno is imported locally inside the method; patch at factory
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 13):
             rpt._handshake_hid_lcd(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "Permission denied" in text or "setup-udev" in text
 
-    @patch("trcc.adapters.device.factory.HidProtocol")
+    @patch("trcc.adapters.device.abstract_factory.HidProtocol")
     def test_ebusy_calls_ebusy_fallback(self, MockHid):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -638,13 +638,13 @@ class TestHandshakeHidLcd:
         sec_obj.lines = []
         rpt = DebugReport()
 
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 16):
             with patch.object(rpt, "_ebusy_fallback") as mock_fallback:
                 rpt._handshake_hid_lcd(self._make_dev(), sec_obj)
                 mock_fallback.assert_called_once_with(sec_obj)
 
-    @patch("trcc.adapters.device.factory.HidProtocol")
+    @patch("trcc.adapters.device.abstract_factory.HidProtocol")
     def test_other_error_shows_result_none(self, MockHid):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -655,14 +655,14 @@ class TestHandshakeHidLcd:
         sec_obj.lines = []
         rpt = DebugReport()
 
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    return_value=False):
             rpt._handshake_hid_lcd(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "Result: None" in text
 
-    @patch("trcc.adapters.device.factory.HidProtocol")
+    @patch("trcc.adapters.device.abstract_factory.HidProtocol")
     def test_close_always_called(self, MockHid):
         proto = MagicMock()
         proto.handshake.side_effect = RuntimeError("broken")
@@ -692,7 +692,7 @@ class TestHandshakeLed:
 
     def _make_led_info(self, pm=1, sub=0, model_name="PA120",
                        known=True, raw=bytes(64)):
-        from trcc.adapters.device.led import LedHandshakeInfo
+        from trcc.adapters.device.adapter_led import LedHandshakeInfo
         info = MagicMock(spec=LedHandshakeInfo)
         info.pm = pm
         info.sub_type = sub
@@ -701,7 +701,7 @@ class TestHandshakeLed:
         info.raw_response = raw
         return info
 
-    @patch("trcc.adapters.device.factory.LedProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LedProtocol")
     def test_success_known_pm_with_style(self, MockLed):
         proto = MagicMock()
         proto.handshake.return_value = self._make_led_info()
@@ -711,7 +711,7 @@ class TestHandshakeLed:
         sec_obj.lines = []
         rpt = DebugReport()
 
-        with patch("trcc.adapters.device.led.PmRegistry") as MockReg:
+        with patch("trcc.adapters.device.adapter_led.PmRegistry") as MockReg:
             MockReg.PM_TO_STYLE = {1: "something"}
             rpt._handshake_led(self._make_dev(), sec_obj)
 
@@ -720,7 +720,7 @@ class TestHandshakeLed:
         assert "PA120" in text
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.LedProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LedProtocol")
     def test_success_no_style_info(self, MockLed):
         proto = MagicMock()
         info = self._make_led_info(known=False)
@@ -731,7 +731,7 @@ class TestHandshakeLed:
         sec_obj.lines = []
         rpt = DebugReport()
 
-        with patch("trcc.adapters.device.led.PmRegistry") as MockReg:
+        with patch("trcc.adapters.device.adapter_led.PmRegistry") as MockReg:
             MockReg.PM_TO_STYLE = {}
             rpt._handshake_led(self._make_dev(), sec_obj)
 
@@ -739,7 +739,7 @@ class TestHandshakeLed:
         assert "PM=1" in text
         assert "UNKNOWN" in text
 
-    @patch("trcc.adapters.device.factory.LedProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LedProtocol")
     def test_ebusy_calls_fallback(self, MockLed):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -750,13 +750,13 @@ class TestHandshakeLed:
         sec_obj.lines = []
         rpt = DebugReport()
 
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 16):
             with patch.object(rpt, "_ebusy_fallback") as mock_fallback:
                 rpt._handshake_led(self._make_dev(), sec_obj)
                 mock_fallback.assert_called_once_with(sec_obj)
 
-    @patch("trcc.adapters.device.factory.LedProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LedProtocol")
     def test_eacces_shows_permission_denied(self, MockLed):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -767,14 +767,14 @@ class TestHandshakeLed:
         sec_obj.lines = []
         rpt = DebugReport()
 
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 13):
             rpt._handshake_led(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "Permission denied" in text or "setup-udev" in text
 
-    @patch("trcc.adapters.device.factory.LedProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LedProtocol")
     def test_close_always_called(self, MockLed):
         proto = MagicMock()
         proto.handshake.side_effect = RuntimeError("broken")
@@ -810,7 +810,7 @@ class TestHandshakeBulk:
         r.raw_response = raw
         return r
 
-    @patch("trcc.adapters.device.factory.BulkProtocol")
+    @patch("trcc.adapters.device.abstract_factory.BulkProtocol")
     def test_success_shows_pm_resolution(self, MockBulk):
         proto = MagicMock()
         proto.handshake.return_value = self._make_result()
@@ -826,7 +826,7 @@ class TestHandshakeBulk:
         assert "(480, 480)" in text
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.BulkProtocol")
+    @patch("trcc.adapters.device.abstract_factory.BulkProtocol")
     def test_none_result_eacces(self, MockBulk):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -836,14 +836,14 @@ class TestHandshakeBulk:
         sec_obj = MagicMock()
         sec_obj.lines = []
         rpt = DebugReport()
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 13):
             rpt._handshake_bulk(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "Permission denied" in text or "setup-udev" in text
 
-    @patch("trcc.adapters.device.factory.BulkProtocol")
+    @patch("trcc.adapters.device.abstract_factory.BulkProtocol")
     def test_none_result_ebusy(self, MockBulk):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -853,13 +853,13 @@ class TestHandshakeBulk:
         sec_obj = MagicMock()
         sec_obj.lines = []
         rpt = DebugReport()
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 16):
             with patch.object(rpt, "_ebusy_fallback") as mock_fallback:
                 rpt._handshake_bulk(self._make_dev(), sec_obj)
                 mock_fallback.assert_called_once_with(sec_obj)
 
-    @patch("trcc.adapters.device.factory.BulkProtocol")
+    @patch("trcc.adapters.device.abstract_factory.BulkProtocol")
     def test_none_result_other_error(self, MockBulk):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -869,14 +869,14 @@ class TestHandshakeBulk:
         sec_obj = MagicMock()
         sec_obj.lines = []
         rpt = DebugReport()
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    return_value=False):
             rpt._handshake_bulk(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "Result: None" in text
 
-    @patch("trcc.adapters.device.factory.BulkProtocol")
+    @patch("trcc.adapters.device.abstract_factory.BulkProtocol")
     def test_close_always_called(self, MockBulk):
         proto = MagicMock()
         proto.handshake.side_effect = RuntimeError("broken")
@@ -912,7 +912,7 @@ class TestHandshakeLy:
         r.raw_response = raw
         return r
 
-    @patch("trcc.adapters.device.factory.LyProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LyProtocol")
     def test_success_shows_pm_resolution(self, MockLy):
         proto = MagicMock()
         proto.handshake.return_value = self._make_result()
@@ -928,7 +928,7 @@ class TestHandshakeLy:
         assert "(1280, 480)" in text
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.LyProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LyProtocol")
     def test_none_result_eacces(self, MockLy):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -938,14 +938,14 @@ class TestHandshakeLy:
         sec_obj = MagicMock()
         sec_obj.lines = []
         rpt = DebugReport()
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 13):
             rpt._handshake_ly(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "Permission denied" in text or "setup-udev" in text
 
-    @patch("trcc.adapters.device.factory.LyProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LyProtocol")
     def test_none_result_ebusy(self, MockLy):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -955,13 +955,13 @@ class TestHandshakeLy:
         sec_obj = MagicMock()
         sec_obj.lines = []
         rpt = DebugReport()
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    side_effect=lambda e, n: n == 16):
             with patch.object(rpt, "_ebusy_fallback") as mock_fallback:
                 rpt._handshake_ly(self._make_dev(), sec_obj)
                 mock_fallback.assert_called_once_with(sec_obj)
 
-    @patch("trcc.adapters.device.factory.LyProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LyProtocol")
     def test_none_result_no_error(self, MockLy):
         proto = MagicMock()
         proto.handshake.return_value = None
@@ -971,14 +971,14 @@ class TestHandshakeLy:
         sec_obj = MagicMock()
         sec_obj.lines = []
         rpt = DebugReport()
-        with patch("trcc.adapters.device.factory._has_usb_errno",
+        with patch("trcc.adapters.device.abstract_factory._has_usb_errno",
                    return_value=False):
             rpt._handshake_ly(self._make_dev(), sec_obj)
 
         text = " ".join(sec_obj.lines)
         assert "no response" in text
 
-    @patch("trcc.adapters.device.factory.LyProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LyProtocol")
     def test_close_always_called(self, MockLy):
         proto = MagicMock()
         proto.handshake.side_effect = RuntimeError("gone")
@@ -991,7 +991,7 @@ class TestHandshakeLy:
             rpt._handshake_ly(self._make_dev(), sec_obj)
         proto.close.assert_called_once()
 
-    @patch("trcc.adapters.device.factory.LyProtocol")
+    @patch("trcc.adapters.device.abstract_factory.LyProtocol")
     def test_raw_response_included(self, MockLy):
         proto = MagicMock()
         proto.handshake.return_value = self._make_result(raw=bytes(range(64)))

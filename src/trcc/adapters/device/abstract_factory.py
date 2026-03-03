@@ -1,9 +1,10 @@
 """
 Device Protocol Factory — unified API for SCSI, HID LCD, and HID LED devices.
 
-Observer pattern: DeviceProtocol ABC defines the contract. ScsiProtocol,
-HidProtocol, and LedProtocol are separate implementations with identical API.
-Observers register callbacks for send_complete, error, and state changes.
+ISP-compliant: DeviceProtocol ABC defines the shared contract (handshake,
+close, observers). LCDMixin adds LCD send methods (send_image, send_pil).
+LEDMixin adds LED send methods (send_led_data). No client sees methods
+it doesn't use.
 
 The factory creates the right protocol class based on device PID/implementation.
 
@@ -14,8 +15,11 @@ Usage::
     protocol = DeviceProtocolFactory.get_protocol(device_info)
     protocol.on_send_complete = lambda ok: print(f"sent: {ok}")
     protocol.on_error = lambda msg: print(f"err: {msg}")
-    protocol.send_image(rgb565_data, width, height)      # LCD devices
-    protocol.send_led_data(colors, is_on, True, 100)     # LED devices
+
+    if isinstance(protocol, LCDMixin):
+        protocol.send_pil(image, width, height)          # LCD devices
+    elif isinstance(protocol, LEDMixin):
+        protocol.send_led_data(colors, is_on, True, 100) # LED devices
 """
 
 import logging
@@ -52,10 +56,10 @@ def _has_usb_errno(exc: Exception, errno_val: int) -> bool:
 # =========================================================================
 
 class DeviceProtocol(ABC):
-    """Abstract protocol interface for LCD device communication.
+    """Abstract protocol interface for all device communication.
 
-    Both ScsiProtocol and HidProtocol implement this identical API.
-    The app codes against DeviceProtocol, never against a specific backend.
+    Shared contract: handshake (Template Method), close, get_info,
+    observer callbacks. Send methods live on LCDMixin / LEDMixin (ISP).
 
     Observer callbacks:
         on_send_complete(success: bool) — fired after each send attempt
@@ -73,19 +77,6 @@ class DeviceProtocol(ABC):
         self._last_error: Optional[Exception] = None
 
     @abstractmethod
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
-        """Send image data to the LCD device.
-
-        Args:
-            image_data: Pixel bytes (RGB565 for SCSI, JPEG for HID).
-            width: Image width in pixels.
-            height: Image height in pixels.
-
-        Returns:
-            True if the send succeeded.
-        """
-
-    @abstractmethod
     def close(self) -> None:
         """Release resources (USB transport, SCSI state, etc.)."""
 
@@ -96,26 +87,12 @@ class DeviceProtocol(ABC):
     @property
     @abstractmethod
     def protocol_name(self) -> str:
-        """Protocol identifier: 'scsi' or 'hid'."""
+        """Protocol identifier: 'scsi', 'hid', 'led', 'bulk', 'ly'."""
 
     @property
     @abstractmethod
     def is_available(self) -> bool:
         """Whether the required backend (sg_raw / pyusb / hidapi) is installed."""
-
-    def send_led_data(
-        self,
-        led_colors: List[Tuple[int, int, int]],
-        is_on: Optional[List[bool]] = None,
-        global_on: bool = True,
-        brightness: int = 100,
-    ) -> bool:
-        """Send LED color data to an RGB LED device.
-
-        Default implementation returns False (not an LED device).
-        Only LedProtocol overrides this.
-        """
-        return False
 
     def handshake(self) -> Optional[HandshakeResult]:
         """Template Method: perform handshake, cache result, handle errors.
@@ -176,11 +153,6 @@ class DeviceProtocol(ABC):
         except Exception:
             log.debug("Failed to cache handshake result", exc_info=True)
 
-    @property
-    def is_led(self) -> bool:
-        """Whether this protocol is for LED control (not LCD)."""
-        return False
-
     def _notify_send_complete(self, success: bool):
         """Notify observers of send result."""
         if self.on_send_complete:
@@ -231,6 +203,76 @@ class DeviceProtocol(ABC):
             active_backend=active, backends=backends,
             transport_open=transport_open,
         )
+
+
+# =========================================================================
+# LCDMixin / LEDMixin — ISP-compliant send interfaces
+# =========================================================================
+
+class LCDMixin:
+    """Interface for LCD frame-sending devices (ISP).
+
+    LCD protocols implement send_image() (raw bytes) and inherit send_pil()
+    (PIL/numpy → encode → send_image). LED devices never see these methods.
+    """
+
+    @abstractmethod
+    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
+        """Send raw image data to the LCD device.
+
+        Args:
+            image_data: Pixel bytes (RGB565 for SCSI, JPEG for HID).
+            width: Image width in pixels.
+            height: Image height in pixels.
+
+        Returns:
+            True if the send succeeded.
+        """
+
+    def send_pil(self, image: Any, width: int, height: int) -> bool:
+        """Encode PIL/numpy image using device's own FBL and send.
+
+        The protocol knows its encoding (RGB565/JPEG), byte order,
+        and pre-rotation from the handshake result.  Callers just pass
+        the image — no external encode_for_device() needed.
+        """
+        from ...services.image import ImageService
+
+        hr = self._handshake_result  # type: ignore[attr-defined]
+        fbl = getattr(hr, 'fbl', None)
+        resolution = hr.resolution if hr and hr.resolution else (width, height)
+        use_jpeg = getattr(self, '_use_jpeg', False)
+
+        data = ImageService.encode_for_device(
+            image, self.protocol_name, resolution, fbl, use_jpeg)  # type: ignore[attr-defined]
+        return self.send_image(data, width, height)
+
+
+class LEDMixin:
+    """Interface for LED color-sending devices (ISP).
+
+    LED protocols implement send_led_data(). LCD devices never see this method.
+    """
+
+    @abstractmethod
+    def send_led_data(
+        self,
+        led_colors: List[Tuple[int, int, int]],
+        is_on: Optional[List[bool]] = None,
+        global_on: bool = True,
+        brightness: int = 100,
+    ) -> bool:
+        """Send LED color data to an RGB LED device.
+
+        Args:
+            led_colors: List of (R, G, B) tuples for each LED.
+            is_on: Per-LED on/off state (None = all on).
+            global_on: Master on/off switch.
+            brightness: Global brightness 0-100.
+
+        Returns:
+            True if the send succeeded.
+        """
 
 
 # =========================================================================
@@ -287,7 +329,7 @@ class UsbProtocol(DeviceProtocol):
 # ScsiProtocol — SCSI/sg_raw implementation
 # =========================================================================
 
-class ScsiProtocol(DeviceProtocol):
+class ScsiProtocol(DeviceProtocol, LCDMixin):
     """LCD communication via SCSI protocol (sg_raw).
 
     Wraps scsi_device.py. Uses subprocess per send (stateless transport).
@@ -299,12 +341,12 @@ class ScsiProtocol(DeviceProtocol):
 
     def _do_handshake(self) -> Optional[HandshakeResult]:
         """Poll SCSI device to discover FBL → resolution."""
-        from .scsi import ScsiDevice
+        from .adapter_scsi import ScsiDevice
         dev = ScsiDevice(self._path)
         return dev.handshake()
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
-        from .scsi import send_image_to_device
+        from .adapter_scsi import send_image_to_device
         log.debug("SCSI send: %d bytes to %s (%dx%d)", len(image_data), self._path, width, height)
         return self._guarded_send(
             f"SCSI ({self._path})",
@@ -343,7 +385,7 @@ class ScsiProtocol(DeviceProtocol):
 # HidProtocol — HID/USB bulk implementation
 # =========================================================================
 
-class HidProtocol(UsbProtocol):
+class HidProtocol(UsbProtocol, LCDMixin):
     """LCD communication via HID USB bulk protocol (pyusb or hidapi).
 
     Wraps hid_device.py. Transport opens lazily on first send.
@@ -359,7 +401,7 @@ class HidProtocol(UsbProtocol):
         self._ensure_transport()
         assert self._transport is not None
 
-        from .hid import HidDeviceType2, HidDeviceType3
+        from .template_method_hid import HidDeviceType2, HidDeviceType3
         if self._device_type == 2:
             handler = HidDeviceType2(self._transport)
         elif self._device_type == 3:
@@ -383,7 +425,7 @@ class HidProtocol(UsbProtocol):
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         def _do_send() -> bool:
-            from .hid import HidDeviceManager
+            from .template_method_hid import HidDeviceManager
             self._ensure_transport()
             assert self._transport is not None
             return HidDeviceManager.send_image(
@@ -413,7 +455,7 @@ class HidProtocol(UsbProtocol):
 # LedProtocol — HID LED RGB controller
 # =========================================================================
 
-class LedProtocol(UsbProtocol):
+class LedProtocol(UsbProtocol, LEDMixin):
     """LED device communication via HID 64-byte reports (FormLED equivalent).
 
     Unlike HidProtocol (LCD images), LedProtocol sends LED color arrays
@@ -423,10 +465,6 @@ class LedProtocol(UsbProtocol):
     def __init__(self, vid: int, pid: int):
         super().__init__(vid, pid)
         self._sender = None
-
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
-        """No-op — LED devices don't display images."""
-        return False
 
     def send_led_data(
         self,
@@ -441,10 +479,10 @@ class LedProtocol(UsbProtocol):
             assert self._transport is not None
 
             if self._sender is None:
-                from .led import LedHidSender
+                from .adapter_led import LedHidSender
                 self._sender = LedHidSender(self._transport)
 
-            from .led import LedPacketBuilder, remap_led_colors
+            from .adapter_led import LedPacketBuilder, remap_led_colors
 
             hr = self._handshake_result
             style = getattr(hr, 'style', None) if hr else None
@@ -465,7 +503,7 @@ class LedProtocol(UsbProtocol):
         assert self._transport is not None
 
         if self._sender is None:
-            from .led import LedHidSender
+            from .adapter_led import LedHidSender
             self._sender = LedHidSender(self._transport)
 
         result = self._sender.handshake()
@@ -486,10 +524,6 @@ class LedProtocol(UsbProtocol):
     def protocol_name(self) -> str:
         return "led"
 
-    @property
-    def is_led(self) -> bool:
-        return True
-
     def __repr__(self) -> str:
         return f"LedProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x})"
 
@@ -498,7 +532,7 @@ class LedProtocol(UsbProtocol):
 # BulkProtocol — raw USB bulk (USBLCDNew) implementation
 # =========================================================================
 
-class _BulkLikeProtocol(DeviceProtocol):
+class _BulkLikeProtocol(DeviceProtocol, LCDMixin):
     """Shared base for BulkProtocol + LyProtocol (identical lifecycle)."""
 
     _label: str = ""  # "Bulk" or "LY" — set by subclass
@@ -508,6 +542,7 @@ class _BulkLikeProtocol(DeviceProtocol):
         self._vid = vid
         self._pid = pid
         self._device: Optional[Any] = None
+        self._use_jpeg = True  # Bulk/LY always use JPEG encoding
 
     @staticmethod
     def _make_device(vid: int, pid: int) -> Any:
@@ -562,7 +597,7 @@ class BulkProtocol(_BulkLikeProtocol):
 
     @staticmethod
     def _make_device(vid: int, pid: int) -> Any:
-        from .bulk import BulkDevice
+        from .adapter_bulk import BulkDevice
         return BulkDevice(vid, pid)
 
     def get_info(self) -> 'ProtocolInfo':
@@ -586,7 +621,7 @@ class LyProtocol(_BulkLikeProtocol):
 
     @staticmethod
     def _make_device(vid: int, pid: int) -> Any:
-        from .ly import LyDevice
+        from .adapter_ly import LyDevice
         return LyDevice(vid, pid)
 
     def get_info(self) -> 'ProtocolInfo':
@@ -617,7 +652,11 @@ class DeviceProtocolFactory:
 
         protocol = DeviceProtocolFactory.get_protocol(device_info)
         protocol.on_send_complete = lambda ok: update_ui(ok)
-        protocol.send_image(data, w, h)
+
+        if isinstance(protocol, LCDMixin):
+            protocol.send_pil(image, w, h)
+        elif isinstance(protocol, LEDMixin):
+            protocol.send_led_data(colors, is_on, True, 100)
 
         # When done:
         DeviceProtocolFactory.close_all()
@@ -626,15 +665,24 @@ class DeviceProtocolFactory:
     _protocols: Dict[str, DeviceProtocol] = {}
 
     # Registry map: (protocol, implementation) → factory function.
+    # Populated by @DeviceProtocolFactory.register() decorators below.
     # Looked up by exact match first, then (protocol, '') as fallback.
-    _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {
-        ('scsi', ''):       lambda di: ScsiProtocol(di.path),
-        ('bulk', ''):       lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
-        ('ly', ''):         lambda di: LyProtocol(vid=di.vid, pid=di.pid),
-        ('hid', 'hid_led'): lambda di: LedProtocol(vid=di.vid, pid=di.pid),
-        ('hid', ''):        lambda di: HidProtocol(vid=di.vid, pid=di.pid,
-                                device_type=getattr(di, 'device_type', 2)),
-    }
+    _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {}
+
+    @classmethod
+    def register(cls, protocol: str, implementation: str = ''):
+        """Decorator for protocol self-registration (OCP).
+
+        New protocols register themselves without editing the factory::
+
+            @DeviceProtocolFactory.register('scsi')
+            def _create_scsi(di):
+                return ScsiProtocol(di.path)
+        """
+        def decorator(factory_fn: Callable[..., DeviceProtocol]) -> Callable[..., DeviceProtocol]:
+            cls._PROTOCOL_REGISTRY[(protocol, implementation)] = factory_fn
+            return factory_fn
+        return decorator
 
     @classmethod
     def _device_key(cls, device_info) -> str:
@@ -727,12 +775,12 @@ class DeviceProtocolFactory:
     @staticmethod
     def create_usb_transport(vid: int, pid: int):
         """Create the best available USB transport (pyusb preferred, hidapi fallback)."""
-        from .hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+        from .template_method_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         if PYUSB_AVAILABLE:
-            from .hid import PyUsbTransport
+            from .template_method_hid import PyUsbTransport
             return PyUsbTransport(vid, pid)
         elif HIDAPI_AVAILABLE:
-            from .hid import HidApiTransport
+            from .template_method_hid import HidApiTransport
             return HidApiTransport(vid, pid)
         else:
             raise ImportError(
@@ -745,7 +793,7 @@ class DeviceProtocolFactory:
     def _get_hid_backends() -> Dict[str, bool]:
         """Check HID backend availability."""
         try:
-            from .hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
+            from .template_method_hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
             return {"pyusb": PYUSB_AVAILABLE, "hidapi": HIDAPI_AVAILABLE}
         except ImportError:
             return {"pyusb": False, "hidapi": False}
@@ -882,3 +930,33 @@ class ProtocolInfo:
             return True
         return bool(traits.fallback_backend
                     and self.backends.get(traits.fallback_backend, False))
+
+
+# =========================================================================
+# Protocol self-registration (OCP) — new protocols add @register, no factory edits
+# =========================================================================
+
+@DeviceProtocolFactory.register('scsi')
+def _create_scsi(di: Any) -> ScsiProtocol:
+    return ScsiProtocol(di.path)
+
+
+@DeviceProtocolFactory.register('bulk')
+def _create_bulk(di: Any) -> BulkProtocol:
+    return BulkProtocol(vid=di.vid, pid=di.pid)
+
+
+@DeviceProtocolFactory.register('ly')
+def _create_ly(di: Any) -> LyProtocol:
+    return LyProtocol(vid=di.vid, pid=di.pid)
+
+
+@DeviceProtocolFactory.register('hid', 'hid_led')
+def _create_led(di: Any) -> LedProtocol:
+    return LedProtocol(vid=di.vid, pid=di.pid)
+
+
+@DeviceProtocolFactory.register('hid')
+def _create_hid(di: Any) -> HidProtocol:
+    return HidProtocol(vid=di.vid, pid=di.pid,
+                       device_type=getattr(di, 'device_type', 2))

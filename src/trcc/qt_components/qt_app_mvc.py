@@ -592,7 +592,7 @@ class TRCCMainWindowMVC(QMainWindow):
             self._screencast.stop()
         else:
             log.info("System resuming — invalidating USB handles")
-            from ..adapters.device.factory import DeviceProtocolFactory
+            from ..adapters.device.abstract_factory import DeviceProtocolFactory
             DeviceProtocolFactory.close_all()
             self._device_timer.start(5000)
             self._on_device_poll()
@@ -1172,7 +1172,7 @@ class TRCCMainWindowMVC(QMainWindow):
 
         def worker():
             try:
-                from ..adapters.device.factory import DeviceProtocolFactory
+                from ..adapters.device.abstract_factory import DeviceProtocolFactory
                 protocol = DeviceProtocolFactory.get_protocol(device)
                 result = protocol.handshake()
                 if result:

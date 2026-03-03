@@ -332,24 +332,17 @@ class DisplayService:
 
     # -- LCD send ----------------------------------------------------------
 
-    def send_current_image(self) -> bytes | None:
-        """Prepare current image for LCD send. Returns encoded bytes or None."""
+    def send_current_image(self) -> Any | None:
+        """Prepare current image for LCD send. Returns PIL image or None.
+
+        Protocol handles encoding internally (knows FBL from handshake).
+        """
         if self.current_image is None:
             return None
         image = self.current_image
         if self.overlay.enabled:
             image = self.overlay.render(image)
-        image = self._apply_adjustments(image)
-        return self._encode_for_device(image)
-
-    def _encode_for_device(self, img: Any) -> bytes:
-        """Encode image for LCD device."""
-        device = self.devices.selected
-        protocol = device.protocol if device else 'scsi'
-        resolution = device.resolution if device else (320, 320)
-        fbl = device.fbl_code if device else None
-        use_jpeg = device.use_jpeg if device else True
-        return ImageService.encode_for_device(img, protocol, resolution, fbl, use_jpeg)
+        return self._apply_adjustments(image)
 
     # -- Theme save (delegates to ThemePersistence) ------------------------
 

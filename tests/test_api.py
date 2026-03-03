@@ -259,7 +259,7 @@ class TestSendImage(unittest.TestCase):
         mock_result.fbl = 128
         mock_result.model_id = 128
 
-        with patch('trcc.adapters.device.factory.DeviceProtocolFactory') as mock_factory:
+        with patch('trcc.adapters.device.abstract_factory.DeviceProtocolFactory') as mock_factory:
             mock_protocol = MagicMock()
             mock_protocol.handshake.return_value = mock_result
             mock_factory.get_protocol.return_value = mock_protocol

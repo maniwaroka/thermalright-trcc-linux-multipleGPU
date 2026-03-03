@@ -73,13 +73,13 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(size, 0xE100)
 
     def test_frame_chunks_count(self):
-        from trcc.adapters.device.scsi import ScsiDevice
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         chunks = ScsiDevice._get_frame_chunks(self.cfg.width, self.cfg.height)
         self.assertEqual(len(chunks), 4)
 
     def test_frame_chunks_total_size(self):
         """Total frame data = sum of chunk sizes."""
-        from trcc.adapters.device.scsi import ScsiDevice
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         total = sum(size for _, size in ScsiDevice._get_frame_chunks(320, 320))
         # 3 * 0x10000 + 0x2000 = 196608 + 8192 = 204800 = 320*320*2
         self.assertEqual(total, 320 * 320 * 2)
@@ -144,15 +144,15 @@ class TestConcreteDevices(unittest.TestCase):
 
 
 class TestDetectResolution(unittest.TestCase):
-    """Resolution auto-detection via DeviceService (SCSI poll byte[0] → fbl_to_resolution)."""
+    """Resolution auto-detection via ScsiDevice (poll byte[0] → fbl_to_resolution)."""
 
     def test_detect_success_480x480(self):
         """Poll response byte[0]=72 → FBL 72 → 480x480."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
         poll_response = bytes([72]) + b'\x00' * 0xE0FF
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0')
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', return_value=poll_response):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0')
         self.assertTrue(result)
         self.assertEqual(cfg.width, 480)
         self.assertEqual(cfg.height, 480)
@@ -161,11 +161,11 @@ class TestDetectResolution(unittest.TestCase):
 
     def test_detect_success_320x320(self):
         """Poll response byte[0]=100 → FBL 100 → 320x320."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
         poll_response = bytes([100]) + b'\x00' * 0xE0FF
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0')
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', return_value=poll_response):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0')
         self.assertTrue(result)
         self.assertEqual(cfg.width, 320)
         self.assertEqual(cfg.height, 320)
@@ -173,29 +173,29 @@ class TestDetectResolution(unittest.TestCase):
 
     def test_detect_success_240x240(self):
         """Poll response byte[0]=36 → FBL 36 → 240x240."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
         poll_response = bytes([36]) + b'\x00' * 0xE0FF
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0')
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', return_value=poll_response):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0')
         self.assertTrue(result)
         self.assertEqual(cfg.width, 240)
         self.assertEqual(cfg.height, 240)
 
     def test_detect_empty_response(self):
         """Empty poll response → returns False."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=b''):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0')
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', return_value=b''):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0')
         self.assertFalse(result)
 
     def test_detect_scsi_error(self):
         """SCSI read exception → returns False."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', side_effect=OSError("sg_raw fail")):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0')
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', side_effect=OSError("sg_raw fail")):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0')
         self.assertFalse(result)
 
     def test_fbl_defaults_to_none(self):
@@ -207,21 +207,21 @@ class TestDetectResolutionEdge(unittest.TestCase):
 
     def test_detect_verbose_success(self):
         """Verbose mode logs resolution on success."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
         poll_response = bytes([72]) + b'\x00' * 0xE0FF
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0', verbose=True)
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', return_value=poll_response):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0', verbose=True)
         self.assertTrue(result)
         self.assertEqual(cfg.width, 480)
         self.assertEqual(cfg.height, 480)
 
     def test_detect_verbose_failure(self):
         """Verbose mode logs warning on failure."""
-        from trcc.services.device import DeviceService
+        from trcc.adapters.device.adapter_scsi import ScsiDevice
         cfg = LCDDeviceConfig()
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', side_effect=OSError("fail")):
-            result = DeviceService.detect_lcd_resolution(cfg, '/dev/sg0', verbose=True)
+        with patch('trcc.adapters.device.adapter_scsi.ScsiDevice._scsi_read', side_effect=OSError("fail")):
+            result = ScsiDevice.detect_resolution(cfg, '/dev/sg0', verbose=True)
         self.assertFalse(result)
         self.assertEqual(cfg.width, 320)  # default unchanged
 

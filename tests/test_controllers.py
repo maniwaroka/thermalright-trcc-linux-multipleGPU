@@ -191,8 +191,10 @@ class TestDeviceFacade(unittest.TestCase):
         self.ctrl._display.devices._send_busy = False
         self.ctrl._display.devices.select(DeviceInfo(name='LCD', path='/dev/sg0'))
 
-        with patch.object(self.ctrl._display.devices, 'send_rgb565_async'):
-            self.ctrl.send_image_async(b'\x00' * 100, 10, 10)
+        with patch.object(self.ctrl._display.devices, 'send_pil_async'):
+            from PIL import Image
+            img = Image.new('RGB', (10, 10))
+            self.ctrl.send_pil_async(img, 10, 10)
 
         self.assertTrue(started)
 
@@ -200,7 +202,9 @@ class TestDeviceFacade(unittest.TestCase):
         started = []
         self.ctrl.on_send_started = lambda: started.append(True)
         self.ctrl._display.devices._send_busy = True
-        self.ctrl.send_image_async(b'\x00', 1, 1)
+        from PIL import Image
+        img = Image.new('RGB', (1, 1))
+        self.ctrl.send_pil_async(img, 1, 1)
         self.assertEqual(started, [])
 
     def test_detect_devices_delegates(self):
@@ -823,8 +827,8 @@ class TestFormCZTVVideoAndSend(unittest.TestCase):
         self.ctrl.on_status_update = lambda s: statuses.append(s)
 
         with patch.object(self.ctrl._display, 'send_current_image',
-                          return_value=b'\x00' * 100), \
-             patch.object(self.ctrl, 'send_image_async'):
+                          return_value=_make_test_image()), \
+             patch.object(self.ctrl, 'send_pil_async'):
             self.ctrl.send_current_image()
 
         self.assertIn('Sent to LCD', statuses)
