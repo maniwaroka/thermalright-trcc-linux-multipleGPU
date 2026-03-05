@@ -370,6 +370,25 @@ class OverlayGridPanel(QFrame):
         if index < len(self._configs):
             self.delete_element(index)
 
+    def select_element(self, index: int) -> None:
+        """Programmatically select an element by index."""
+        if index < 0 or index >= len(self._configs):
+            return
+        self._on_cell_clicked(index)
+
+    def find_nearest_element(self, x: int, y: int) -> int:
+        """Find index of element nearest to (x, y). Returns -1 if none."""
+        if not self._configs:
+            return -1
+        best_idx = -1
+        best_dist = float('inf')
+        for i, cfg in enumerate(self._configs):
+            d = (cfg.x - x) ** 2 + (cfg.y - y) ** 2
+            if d < best_dist:
+                best_dist = d
+                best_idx = i
+        return best_idx
+
     # --- Public API ---
 
     @property

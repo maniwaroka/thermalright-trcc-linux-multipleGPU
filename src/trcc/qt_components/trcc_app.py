@@ -1229,9 +1229,17 @@ class TRCCApp(QMainWindow):
     # ── Drag / Nudge ───────────────────────────────────────────────
 
     def _on_drag_start(self, lcd_x: int, lcd_y: int):
-        cfg = self.uc_theme_setting.overlay_grid.get_selected_config()
+        grid = self.uc_theme_setting.overlay_grid
+        cfg = grid.get_selected_config()
         if cfg is None:
-            return
+            # Auto-select nearest element to click position
+            idx = grid.find_nearest_element(lcd_x, lcd_y)
+            if idx < 0:
+                return
+            grid.select_element(idx)
+            cfg = grid.get_selected_config()
+            if cfg is None:
+                return
         self._drag_origin_x = lcd_x
         self._drag_origin_y = lcd_y
         self._drag_elem_x = cfg.x
@@ -1250,8 +1258,11 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting._on_position_changed(new_x, new_y)
 
     def _on_nudge(self, dx: int, dy: int):
-        cfg = self.uc_theme_setting.overlay_grid.get_selected_config()
-        if cfg is None or not self._lcd_handler:
+        grid = self.uc_theme_setting.overlay_grid
+        cfg = grid.get_selected_config()
+        if cfg is None:
+            return
+        if not self._lcd_handler:
             return
         w, h = self._lcd_handler.display.lcd_size
         new_x = max(0, min(cfg.x + dx, w))
