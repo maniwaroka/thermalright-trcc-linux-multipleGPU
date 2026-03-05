@@ -9,7 +9,7 @@
 - **Builder** (`core/builder.py`): `ControllerBuilder` — fluent builder, assembles devices with DI, returns `LCDDevice`/`LEDDevice`.
 - **Views** (`qt_components/`): PySide6 GUI adapter. `TRCCApp` (thin shell) + `LCDHandler`/`LEDHandler` (one per device).
 - **CLI** (`cli/`): Typer CLI adapter (package: `__init__.py` + 6 submodules). Thin presentation wrappers over `LCDDevice`/`LEDDevice` — connect, call device method, print result.
-- **API** (`api/`): FastAPI REST adapter (package: `__init__.py` + 6 submodules). 38 endpoints covering devices, display, LED, themes, and system metrics. Includes WebSocket live preview stream + cloud theme download. Uses `LCDDevice`/`LEDDevice` from core/. `_current_image` tracks last frame sent for preview endpoints.
+- **API** (`api/`): FastAPI REST adapter (package: `__init__.py` + 6 submodules). 42 endpoints covering devices, display, LED, themes, and system metrics. Includes WebSocket live preview stream + cloud theme download. Uses `LCDDevice`/`LEDDevice` from core/. `_current_image` tracks last frame sent for preview endpoints.
 - **Config** (`conf.py`): Application settings singleton — resolution, language, temp unit, device prefs. Single source of truth for all mutable app state.
 - **Entry**: `cli/` → `trcc_app.py` (TRCCApp) → builder.build_lcd()/build_led()
 - **Protocols**: SCSI (LCD frames), HID (handshake/resolution), LED (RGB effects + segment displays)
@@ -120,7 +120,7 @@ Every piece of data has exactly ONE owner. Violations = bugs.
 - **Logging**: Use `log = logging.getLogger(__name__)` — never `print()` for diagnostics
 - **Paths**: Use `pathlib.Path` where possible; `os.path` only in `data_repository.py` (legacy, perf)
 - **Thread safety**: Use Qt signals to communicate from background threads to GUI — never `QTimer.singleShot` from non-main threads
-- **Tests**: `pytest` with `PYTHONPATH=src`; 4156 tests across 54 files
+- **Tests**: `pytest` with `PYTHONPATH=src`; 4157 tests across 56 files
 - **Linting**: `ruff check .` + `pyright` must pass before any commit (0 errors, 0 warnings)
 - **Assets**: All GUI asset access goes through `Assets` class (`qt_components/assets.py`). Auto-appends `.png` for base names. Never manually build asset paths with `f"{name}.png"`.
 - **Language**: Single source of truth is `settings.lang` (in `conf.py`). Widgets call `Assets.get_localized(name, settings.lang)` — never store `self._lang`.
@@ -237,7 +237,7 @@ When adding GUI assets:
 - **Delegate pattern**: Settings tab communicates via `invoke_delegate(CMD_*, data)` to main window
 - **`_update_selected(**fields)`**: Single entry point for all element property changes (color, position, font, format, text)
 
-## GoF Refactoring (COMPLETE — v6.0.0 through v7.0.6, 4156 tests passing)
+## GoF Refactoring (COMPLETE — v6.0.0 through v7.0.10, 4157 tests passing)
 
 ### All Phases
 - **Phase 1: Segment Display Collapse** — `led_segment.py` 1109→687 lines (-422, 38%). Properties→class attrs, 4 encode methods→unified `_encode_digits()` + `_encode_7seg()`, LF12 delegates to LF8. Flyweight + Strategy.
@@ -290,7 +290,7 @@ When adding GUI assets:
 - **Font pixel sizing**: `QFont.setPixelSize(size)` — PIL callers pass pixel sizes, Qt `QFont(family, size)` interprets as points. Must use `setPixelSize()`.
 - **Test infrastructure**: `conftest.py` helpers `make_test_surface()`, `surface_size()`, `get_pixel()` — all tests use native renderer surfaces
 - **PIL boundary conversion**: PIL Images entering the system converted once via `renderer.from_pil()`, then flow as QImage throughout
-- 4156 tests passing, ruff clean, pyright clean
+- 4157 tests passing, ruff clean, pyright clean
 
 ### v7.0.6: SOLID Device ABCs — Replace Controller Layer
 - **Device ABC** (`core/ports.py`): 4 methods (connect, connected, device_info, cleanup). Minimal contract for all devices.
@@ -302,7 +302,15 @@ When adding GUI assets:
 - **CLI slimmed**: `_display.py` and `_led.py` are thin print wrappers — `_connect_or_fail()` → call device method → print result.
 - **Deleted**: `core/controllers.py` (LCDDeviceController + LEDDeviceController), backward compat aliases (DisplayDispatcher, LEDDispatcher), 197 dead tests.
 - **Test rewrites**: `test_cli_display.py`, `test_cli_led.py`, `test_qt_main_window.py`, `test_architecture.py`, `hid_testing/test_led_controller.py` — all use proper pytest fixtures.
-- 4156 tests passing, ruff clean, pyright clean
+- 4157 tests passing, ruff clean, pyright clean
+
+### v7.0.7–v7.0.10: Bug Fixes, Cloud Parity, CI Package Deps
+- **Cloud theme resolution parity**: All 32 C# v2.1.2 resolutions added to `theme_cloud.py` RESOLUTION_URLS and `tools/pack_theme_archives.py` — landscape, portrait, u/l split variants. Full match of `FormCZTV` `GifDirectoryWeb*`/`GifWebDir*` constants.
+- **CI distro package dependencies fixed**: `release.yml` inline package specs (RPM, DEB, Arch `.PKGINFO`) had missing/incomplete Python deps. Root cause of #51 (typer not found on CachyOS). All three formats now declare full dependency lists matching `pyproject.toml`.
+- **`tools/check_pkg_deps.py`**: NEW tool — queries Arch, Fedora, Debian repos to verify which PyPI deps have native packages vs need bundling. Found: Arch missing `python-uvicorn` (must bundle via pip), Fedora/Debian all available.
+- **CodeQL fix**: Stack trace exposure in `api/display.py` preview endpoint (CWE-209). Wrapped `_encode_frame` in try/except.
+- **Bulk RGB565 encoding fix**: v7.0.10 corrected bulk protocol encoding.
+- 4157 tests passing, ruff clean, pyright clean
 
 ### Future Work
 - Test consolidation (parametrize, merge tiny classes)
@@ -386,7 +394,7 @@ Current FBL table (16 entries, full C# parity):
 1. **Hexagonal architecture** — CLI, GUI, and API all adapt to the same core services. Adding the API took hours, not weeks. Device protocols slot in as new adapter subclasses.
 2. **C# as ground truth** — every bug we fixed was traced back to "our code doesn't match C#". The decompiled source eliminated guesswork.
 3. **Data-driven design** — FBL tables, wire remap tables, LED style configs, segment display layouts are all data. Logic operates on data. New devices = new data, not new logic.
-4. **Test suite (4156 tests)** — catches regressions immediately. Every fix includes tests. Mock USB devices for protocol testing.
+4. **Test suite (4157 tests)** — catches regressions immediately. Every fix includes tests. Mock USB devices for protocol testing.
 5. **`trcc report` diagnostic** — users paste one command output and we get VID:PID, PM, FBL, resolution, raw handshake bytes, permissions, SELinux status. Eliminates back-and-forth.
 6. **GoF patterns applied pragmatically** — Facade (controllers), Flyweight+Strategy (segment displays), Template Method (protocol handshakes), Memento (LED config), Observer (metrics), Command (dispatchers). Each pattern solved a real problem, not applied for theory.
 
@@ -405,7 +413,7 @@ Current FBL table (16 entries, full C# parity):
 - **v4.0** — Adapters restructure, domain data consolidation, setup wizard, SELinux support
 - **v5.0** — Full C# feature parity audit (35 items), video fit-mode, all LED wire remaps, JPEG encoding for large displays
 - **v6.0** — GoF refactoring (-1203 lines), CLI dispatchers, metrics observer, LED test harness, circulate fix, FBL table completion
-- **v7.0** — GoF file renames (13 files → `{pattern}_{name}.py`), SOLID refactoring (ISP/LSP/DIP/SRP/OCP), explicit click dependency, API DRY extraction, QtRenderer migration (eliminate PIL from hot path), 4156 tests
+- **v7.0** — GoF file renames (13 files → `{pattern}_{name}.py`), SOLID refactoring (ISP/LSP/DIP/SRP/OCP), explicit click dependency, API DRY extraction, QtRenderer migration (eliminate PIL from hot path), SOLID Device ABCs (LCDDevice/LEDDevice replace controller layer), cloud theme resolution parity (all 32 C# resolutions), CI distro package dep fixes, 4157 tests
 - **v6.6** — LCD preview stream (direct IPC frame read from GUI daemon, steady-fps WebSocket, no poll thread), overlay metrics loop for standalone themes, video playback background thread, API spec + Flutter remote guide, `on_frame_sent` callback on DeviceService, MetricsMediator, 4496 tests
 - **v6.5** — IPC daemon (GUI-as-server, CLI auto-routes through Unix socket), info module decoupling, video background save fix, 4440 tests
 - **v6.3–v6.4** — Codebase minimization, DRY refactoring, test suite expansion (2509→4440 tests, 39→54 files, 76% coverage)

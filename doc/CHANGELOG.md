@@ -1,5 +1,39 @@
 # Changelog
 
+## v7.0.10
+
+### Bug Fixes & Cloud Parity
+- **Fixed**: Bulk protocol RGB565 encoding — compute `use_jpeg` from protocol+FBL, not mutable field
+- **Fixed**: Stack trace exposure in API preview endpoint (CWE-209) — wrapped `_encode_frame` in try/except
+- **Fixed**: Missing dependencies in all distro packages (RPM, DEB, Arch inline specs in `release.yml`)
+- **Added**: Full C# v2.1.2 cloud theme resolution parity — all 32 resolutions in `theme_cloud.py` RESOLUTION_URLS (landscape, portrait, u/l split variants)
+- **Added**: `tools/check_pkg_deps.py` — queries Arch/Fedora/Debian repos to verify PyPI dep availability per distro
+- 4157 tests across 56 files
+
+## v7.0.6
+
+### SOLID Device ABCs — Replace Controller Layer
+- **Added**: `Device` ABC in `core/ports.py` — 4 methods (connect, connected, device_info, cleanup)
+- **Added**: `LCDDevice` in `core/lcd_device.py` — composed capabilities (ThemeOps, VideoOps, OverlayOps, FrameOps, DisplaySettings), each delegates to services
+- **Added**: `LEDDevice` in `core/led_device.py` — direct methods (set_color, set_mode, tick, zone/segment ops), delegates to LEDService
+- **Added**: `ControllerBuilder` in `core/builder.py` — fluent builder, returns concrete `LCDDevice`/`LEDDevice` types
+- **Added**: `TRCCApp` in `qt_components/trcc_app.py` — thin QMainWindow shell (C# Form1 equivalent)
+- **Added**: `LCDHandler` in `qt_components/lcd_handler.py` — one per LCD device (C# FormCZTV equivalent)
+- **Deleted**: `core/controllers.py` (LCDDeviceController + LEDDeviceController), backward compat aliases (DisplayDispatcher, LEDDispatcher), 197 dead tests
+- **Slimmed**: CLI `_display.py` and `_led.py` — thin print wrappers using `_connect_or_fail()` → call device method → print result
+- 4157 tests across 56 files
+
+## v7.0.5
+
+### QtRenderer — Eliminate PIL from Hot Path
+- **Added**: Expanded `Renderer` ABC in `core/ports.py` — apply_brightness, apply_rotation, encode_rgb565, encode_jpeg, open_image, surface_size
+- **Added**: `QtRenderer` in `adapters/render/qt.py` — full QImage/QPainter implementation for compositing, text, rotation, brightness, RGB565/JPEG encoding, font resolution. Zero PIL in hot path
+- **Added**: Same new methods in `PilRenderer` (`adapters/render/pil.py`) as fallback
+- **Refactored**: `ImageService` is now a thin facade — all methods delegate to `_renderer` via `set_renderer()` / `_r()`. Defaults to QtRenderer
+- **Fixed**: Font pixel sizing — `QFont.setPixelSize(size)` instead of `QFont(family, size)` which interprets as points
+- **Added**: Test infrastructure — `conftest.py` helpers `make_test_surface()`, `surface_size()`, `get_pixel()`
+- 4157 tests across 56 files
+
 ## v7.0.4
 
 ### API DRY Refactoring

@@ -2,11 +2,11 @@
 
 ## Hexagonal (Ports & Adapters)
 
-The project follows hexagonal architecture. The **services layer** is the core hexagon containing all business logic (pure Python, no framework deps). Four driving adapters consume the services:
+The project follows hexagonal architecture. The **services layer** is the core hexagon containing all business logic (pure Python, no framework deps). Four driving adapters consume the services via **Device ABCs** (`LCDDevice` / `LEDDevice`):
 
-- **CLI** (`cli/` package) — Typer, 50 commands across 7 submodules. `LEDDispatcher` + `DisplayDispatcher` classes are the single authority for programmatic LED/LCD operations — return result dicts, never print. CLI functions are thin presentation wrappers. GUI and API can import dispatchers directly.
-- **GUI** (`qt_components/`) — PySide6, controllers in `core/` call services
-- **API** (`api/` package) — FastAPI REST adapter, 38 endpoints across 6 submodules
+- **CLI** (`cli/` package) — Typer, 50 commands across 7 submodules. Thin presentation wrappers over `LCDDevice`/`LEDDevice` — connect, call device method, print result.
+- **GUI** (`qt_components/`) — PySide6, `TRCCApp` (thin shell) + `LCDHandler` (one per LCD device)
+- **API** (`api/` package) — FastAPI REST adapter, 42 endpoints across 6 submodules
 - **IPC** (`ipc.py`) — Unix socket daemon for GUI-as-server single-device-owner safety
 - **Setup GUI** (`install/gui.py`) — Standalone PySide6 setup wizard
 
@@ -22,7 +22,7 @@ src/trcc/
 │   ├── led.py                   # LED endpoints (color, mode, brightness, sensor)
 │   ├── themes.py                # Theme endpoints (list, load, save, export, import)
 │   ├── system.py                # System endpoints (info, metrics, screencast)
-│   └── models.py                # Pydantic request/response models
+│   └── models.py                # Pydantic request/response models + require_connected()
 ├── ipc.py                       # Unix socket IPC daemon (GUI-as-server)
 ├── conf.py                      # Settings singleton + persistence helpers
 ├── __version__.py               # Version info
@@ -42,7 +42,8 @@ src/trcc/
 │   │   ├── facade_lcd.py             # SCSI RGB565 frame send
 │   │   └── registry_detector.py      # USB device scan + registries
 │   ├── render/                  # Rendering backends (Strategy pattern)
-│   │   └── pil.py               # PilRenderer — CPU-only PIL/Pillow backend
+│   │   ├── qt.py                # QtRenderer — primary (QImage/QPainter)
+│   │   └── pil.py               # PilRenderer — CPU-only PIL/Pillow fallback
 │   ├── system/                  # System integration
 │   │   ├── sensors.py           # Hardware sensor discovery + collection
 │   │   ├── hardware.py          # Hardware info (CPU, GPU, RAM, disk)
@@ -66,7 +67,7 @@ src/trcc/
 ├── services/                    # Core hexagon — pure Python, no framework deps
 │   ├── __init__.py              # Re-exports service classes
 │   ├── device.py                # DeviceService — detect, select, send_pil, send_rgb565
-│   ├── image.py                 # ImageService — solid_color, resize, brightness, rotation
+│   ├── image.py                 # ImageService — thin facade over Renderer
 │   ├── display.py               # DisplayService — high-level display orchestration
 │   ├── led.py                   # LEDService — LED RGB control via LedProtocol
 │   ├── led_config.py            # LED config persistence (Memento pattern)
@@ -77,15 +78,22 @@ src/trcc/
 │   ├── system.py                # SystemService — system sensor access and monitoring
 │   ├── theme.py                 # ThemeService — theme orchestration
 │   ├── theme_loader.py          # Theme loading logic
-│   └── theme_persistence.py     # Theme save/export/import
+│   ├── theme_persistence.py     # Theme save/export/import
+│   └── video_cache.py           # Video frame caching
 ├── core/
 │   ├── models.py                # Domain constants, dataclasses, enums, resolution pipeline
-│   └── controllers.py           # LCDDeviceController (Facade), LEDDeviceController (Facade)
+│   ├── ports.py                 # Device ABC (4 methods), Renderer ABC
+│   ├── lcd_device.py            # LCDDevice(Device) + ThemeOps, VideoOps, OverlayOps, FrameOps, DisplaySettings
+│   ├── led_device.py            # LEDDevice(Device) — set_color, set_mode, tick, zone/segment ops
+│   ├── builder.py               # ControllerBuilder — fluent builder, returns LCDDevice/LEDDevice
+│   └── encoding.py              # Encoding utilities
 └── qt_components/               # PySide6 GUI adapter
-    ├── qt_app_mvc.py            # Main window (1454x800)
+    ├── trcc_app.py              # TRCCApp — thin QMainWindow shell (C# Form1 equivalent)
+    ├── lcd_handler.py           # LCDHandler — one per LCD device (C# FormCZTV equivalent)
     ├── base.py                  # BasePanel, BaseThemeBrowser, pil_to_pixmap
     ├── constants.py             # Layout coords, sizes, colors, styles
     ├── assets.py                # Asset loader with lru_cache
+    ├── metrics_mediator.py      # MetricsMediator — sensor data routing
     ├── eyedropper.py            # Fullscreen color picker
     ├── screen_capture.py        # X11/Wayland screen grab
     ├── pipewire_capture.py      # PipeWire/Portal Wayland capture
@@ -109,9 +117,9 @@ src/trcc/
 
 ## Design Patterns
 
-### Hexagonal / MVC
+### Hexagonal / Device ABCs
 
-Controllers in `core/` are Facades — `LCDDeviceController` orchestrates 4 services (theme, device, overlay, media), `LEDDeviceController` wraps `LEDService`. Views subscribe via callbacks. All business logic lives in `services/`, making it possible to swap frontends (CLI, GUI, API all use the same services). Law of Demeter: GUI→Facade→Services only.
+`LCDDevice` and `LEDDevice` in `core/` are the single entry point for all adapters. `LCDDevice` composes capabilities (ThemeOps, VideoOps, OverlayOps, FrameOps, DisplaySettings) that delegate to services. `LEDDevice` has direct methods. CLI, GUI, and API all import from `core/` — never adapter→adapter. Law of Demeter: Adapter→Device→Services only.
 
 ### Metrics Observer
 
@@ -122,11 +130,11 @@ Controllers in `core/` are Facades — `LCDDeviceController` orchestrates 4 serv
 - Style 10: `update_lf11_disk_metrics()` (disk usage, SMART)
 - Style 9: `_update_clock()` (LC2 date/time — reads own timer state, no external args)
 
-Callers (`qt_app_mvc._poll_sensors()`, test harnesses) just pass metrics — zero routing knowledge needed. This is the Observer pattern: provider emits, subscriber dispatches.
+Callers (`lcd_handler._poll_sensors()`, test harnesses) just pass metrics — zero routing knowledge needed. This is the Observer pattern: provider emits, subscriber dispatches.
 
 ### Per-Device Configuration
 
-Each connected LCD is identified by `"{index}:{vid:04x}_{pid:04x}"` (e.g. `"0:87cd_70db"`). Settings are stored in `~/.config/trcc/config.json` under a `"devices"` key. Each device independently persists:
+Each connected LCD is identified by `"{index}:{vid:04x}_{pid:04x}"` (e.g. `"0:87cd_70db"`). Settings are stored in `~/.trcc/config.json` under a `"devices"` key. Each device independently persists:
 
 - **Theme** — last selected local/cloud theme path
 - **Brightness** — 3-level brightness (25%, 50%, 100%)
@@ -156,11 +164,11 @@ The `DeviceProtocolFactory` in `abstract_factory.py` routes devices to the corre
 - **LY Bulk devices** → `LyProtocol` (PyUSB) — LCD displays via chunked bulk (0416:5408/5409)
 - **HID LED devices** → `LedProtocol` (PyUSB/HIDAPI) — RGB LED controllers
 
-The GUI auto-routes LED devices to `UCLedControl` (LED panel) instead of the LCD form. `LEDDeviceController` manages LED effects with a 150ms animation timer, matching Windows FormLED. The unified LED panel handles all device styles (1-12).
+The GUI auto-routes LED devices to `UCLedControl` (LED panel) instead of the LCD form. `LEDDevice` manages LED effects with a 150ms animation timer, matching Windows FormLED. The unified LED panel handles all device styles (1-12).
 
-### CLI Dispatchers
+### Rendering Pipeline
 
-`LEDDispatcher` and `DisplayDispatcher` in `cli/` are the programmatic API for LED and LCD operations. They return structured result dicts (`{"success": bool, "message": str, ...}`) and never print — callers decide how to present results. CLI functions are thin wrappers that print + exit. GUI and API can import dispatchers directly for the same operations without parsing CLI output.
+`QtRenderer` (QImage/QPainter) is the primary renderer — compositing, text, rotation, brightness, RGB565/JPEG encoding, font resolution. Zero PIL in the hot path. `PilRenderer` is a fallback. `ImageService` is a thin facade delegating to the active renderer.
 
 ### Shared UI Base Classes
 
