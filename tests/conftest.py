@@ -183,8 +183,8 @@ def png_factory(tmp_path):
 
 @pytest.fixture
 def led_dispatcher():
-    """LEDDispatcher with fully mocked service — no hardware."""
-    from trcc.cli._led import LEDDispatcher
+    """LEDDevice with fully mocked service — no hardware."""
+    from trcc.core.led_device import LEDDevice
 
     svc = MagicMock()
     svc.state = MagicMock()
@@ -194,28 +194,39 @@ def led_dispatcher():
     svc.state.zones = [MagicMock() for _ in range(4)]
     svc.state.segment_on = [True] * 8
     svc.tick.return_value = [(255, 0, 0)] * 64
+    svc.apply_mask.return_value = [(255, 0, 0)] * 64
+    svc.has_protocol = True
 
-    disp = LEDDispatcher.__new__(LEDDispatcher)
-    disp._service = svc
-    disp._device = MagicMock()
-    disp._segment = MagicMock()
-    return disp
+    dev = LEDDevice(svc=svc)
+    dev._device = MagicMock()
+    return dev
 
 
 @pytest.fixture
 def display_dispatcher():
-    """DisplayDispatcher with fully mocked service — no hardware."""
-    from trcc.cli._display import DisplayDispatcher
+    """LCDDevice with fully mocked services — no hardware."""
+    from trcc.core.lcd_device import LCDDevice
 
-    svc = MagicMock()
-    svc.selected = MagicMock()
-    svc.selected.resolution = (320, 320)
-    svc.send_pil.return_value = True
+    device_svc = MagicMock()
+    device_svc.selected = MagicMock()
+    device_svc.selected.resolution = (320, 320)
+    device_svc.send_pil.return_value = True
 
-    disp = DisplayDispatcher.__new__(DisplayDispatcher)
-    disp._service = svc
-    disp._dev = svc.selected
-    return disp
+    display_svc = MagicMock()
+    display_svc.lcd_width = 320
+    display_svc.lcd_height = 320
+    display_svc.auto_send = True
+    display_svc.current_image = None
+    display_svc.current_theme_path = None
+
+    theme_svc = MagicMock()
+
+    lcd = LCDDevice(
+        device_svc=device_svc,
+        display_svc=display_svc,
+        theme_svc=theme_svc,
+    )
+    return lcd
 
 
 # =========================================================================

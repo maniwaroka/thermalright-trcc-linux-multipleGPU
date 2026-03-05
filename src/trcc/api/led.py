@@ -24,7 +24,7 @@ router = APIRouter(prefix="/led", tags=["led"])
 
 
 def _get_led():
-    """Get the active LEDDispatcher, raise 409 if not connected."""
+    """Get the active LEDDevice, raise 409 if not connected."""
     from trcc.api import _led_dispatcher
 
     if not _led_dispatcher or not _led_dispatcher.connected:
@@ -33,7 +33,7 @@ def _get_led():
 
 
 def _led_route(method: str, *args, **kwargs) -> dict:
-    """Generic: get LED dispatcher, call method, return dispatch result."""
+    """Generic: get LEDDevice, call method, return dispatch result."""
     return dispatch_result(getattr(_get_led(), method)(*args, **kwargs))
 
 

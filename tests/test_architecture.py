@@ -2,11 +2,10 @@
 
 Validates that the hexagonal architecture patterns are correctly implemented:
 - Dependency Injection
-- Observer Pattern (Callbacks)
-- Factory Pattern
 - Strategy Pattern
 - Data Transfer Objects (DTOs)
 - Service isolation (no Qt dependencies)
+- Builder pattern
 """
 from __future__ import annotations
 
@@ -18,11 +17,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.conftest import get_pixel, make_test_surface, surface_size
-from trcc.core.controllers import (
-    LCDDeviceController,
-    LEDDeviceController,
-    create_controller,
-)
 from trcc.core.models import (
     DeviceInfo,
     ThemeData,
@@ -58,87 +52,13 @@ class TestDependencyInjection(unittest.TestCase):
         self.assertIs(svc.media, med)
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_exposes_service_instances(self, _):
-        """LCDDeviceController shares its services via accessor properties."""
-        ctrl = LCDDeviceController()
-        self.assertIsInstance(ctrl.theme_svc, ThemeService)
-        self.assertIsInstance(ctrl.device_svc, DeviceService)
-        self.assertIsInstance(ctrl.overlay_svc, OverlayService)
-        self.assertIsInstance(ctrl.media_svc, MediaService)
-        self.assertIsInstance(ctrl.lcd_svc, DisplayService)
-        # Service accessors point to the same objects as DisplayService
-        self.assertIs(ctrl.device_svc, ctrl._display.devices)
-        self.assertIs(ctrl.overlay_svc, ctrl._display.overlay)
-        self.assertIs(ctrl.media_svc, ctrl._display.media)
+    def test_builder_wires_services_into_lcd_device(self, _):
+        """ControllerBuilder creates LCDDevice with properly wired services."""
+        from trcc.core.builder import ControllerBuilder
+        from trcc.core.lcd_device import LCDDevice
 
-
-# =============================================================================
-# Observer Pattern — callbacks fire on state changes
-# =============================================================================
-
-
-class TestObserverPattern(unittest.TestCase):
-    """Facade controllers broadcast state changes via callbacks (Observer)."""
-
-    def setUp(self):
-        self.patches = [
-            patch('trcc.adapters.infra.data_repository.DataManager.ensure_all'),
-            patch('trcc.conf.Settings._save_resolution'),
-        ]
-        for p in self.patches:
-            p.start()
-
-    def tearDown(self):
-        for p in self.patches:
-            p.stop()
-
-    def test_facade_fires_on_device_selected(self):
-        ctrl = LCDDeviceController()
-        fired = []
-        ctrl.on_device_selected = lambda d: fired.append(d)
-        dev = DeviceInfo(name='test', path='/dev/sg0')
-        ctrl.select_device(dev)
-        self.assertEqual(len(fired), 1)
-
-    def test_facade_fires_on_overlay_config_changed(self):
-        ctrl = LCDDeviceController()
-        fired = []
-        ctrl.on_overlay_config_changed = lambda: fired.append(True)
-        ctrl.set_overlay_config({'elements': []})
-        self.assertEqual(len(fired), 1)
-
-    def test_no_callback_no_crash(self):
-        """When no callback registered, operations don't raise."""
-        ctrl = LCDDeviceController()
-        ctrl.set_overlay_config({})         # no on_overlay_config_changed set
-
-    def test_led_controller_observer_wiring(self):
-        """LEDDeviceController wires model callbacks to its own."""
-        ctrl = LEDDeviceController()
-        fired = []
-        ctrl.on_state_changed = lambda s: fired.append(s)
-        ctrl.set_color(255, 0, 0)
-        self.assertTrue(len(fired) > 0)
-
-
-# =============================================================================
-# Factory Pattern — centralized instantiation
-# =============================================================================
-
-
-class TestFactoryPattern(unittest.TestCase):
-    """Factory methods create fully wired object graphs."""
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_create_controller_returns_facade(self, _):
-        """create_controller() builds a fully wired LCDDeviceController."""
-        ctrl = create_controller()
-        self.assertIsInstance(ctrl, LCDDeviceController)
-        # Facade has internal services wired up
-        self.assertIsNotNone(ctrl.theme_svc)
-        self.assertIsNotNone(ctrl.device_svc)
-        self.assertIsNotNone(ctrl.overlay_svc)
-        self.assertIsNotNone(ctrl.media_svc)
+        lcd = ControllerBuilder().build_lcd()
+        self.assertIsInstance(lcd, LCDDevice)
 
 
 # =============================================================================
@@ -312,65 +232,6 @@ class TestServiceIsolation(unittest.TestCase):
             self.assertTrue(
                 hasattr(services, name),
                 f"services missing export: {name}")
-
-
-# =============================================================================
-# Controller Thinness — facade delegates, doesn't compute
-# =============================================================================
-
-
-class TestControllerThinness(unittest.TestCase):
-    """Facade controllers delegate to services — no business logic."""
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_select(self, _):
-        ctrl = LCDDeviceController()
-        theme = ThemeInfo(name='test')
-        with patch.object(ctrl.theme_svc, 'select') as m, \
-             patch.object(ctrl, 'load_local_theme'):
-            ctrl.select_theme(theme)
-            m.assert_called_once_with(theme)
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_detect(self, _):
-        ctrl = LCDDeviceController()
-        with patch.object(ctrl.device_svc, 'detect') as m:
-            ctrl.detect_devices()
-            m.assert_called_once()
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_play(self, _):
-        ctrl = LCDDeviceController()
-        with patch.object(ctrl.media_svc, 'play') as m:
-            ctrl.play_video()
-            m.assert_called_once()
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_pause(self, _):
-        ctrl = LCDDeviceController()
-        with patch.object(ctrl.media_svc, 'pause') as m:
-            ctrl.pause_video()
-            m.assert_called_once()
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_stop(self, _):
-        ctrl = LCDDeviceController()
-        with patch.object(ctrl.media_svc, 'stop') as m:
-            ctrl.stop_video()
-            m.assert_called_once()
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_overlay_enable(self, _):
-        ctrl = LCDDeviceController()
-        ctrl.enable_overlay(True)
-        self.assertTrue(ctrl.overlay_svc.enabled)
-
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_facade_delegates_overlay_render(self, _):
-        ctrl = LCDDeviceController()
-        with patch.object(ctrl.overlay_svc, 'render') as m:
-            ctrl.render_overlay(force=True)
-            m.assert_called_once()
 
 
 # =============================================================================

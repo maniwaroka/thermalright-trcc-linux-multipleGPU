@@ -1,7 +1,7 @@
 """Application settings and config persistence for TRCC.
 
 Single source of truth for resolution, paths, preferences, language, and device settings.
-Config is stored at ~/.config/trcc/config.json (XDG-compliant).
+Config is stored at ~/.trcc/config.json.
 
 Usage:
     from trcc.conf import settings, Settings
@@ -34,6 +34,7 @@ from typing import Optional
 
 from .__version__ import __version__
 from .adapters.infra.data_repository import (
+    USER_CONFIG_DIR,
     USER_DATA_DIR,
     DataManager,
     ThemeDir,
@@ -43,11 +44,10 @@ from .core.models import LOCALE_TO_LANG
 log = logging.getLogger(__name__)
 
 # =========================================================================
-# Config file location (XDG-compliant)
+# Config file location — everything under ~/.trcc/
 # =========================================================================
 
-_XDG_CONFIG = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
-CONFIG_DIR = os.path.join(_XDG_CONFIG, 'trcc')
+CONFIG_DIR = USER_CONFIG_DIR
 CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
 
 # USBLCD (SCSI/RGB565) supported resolutions
@@ -63,8 +63,29 @@ SUPPORTED_RESOLUTIONS = [
 # Low-level config persistence
 # =========================================================================
 
+def _migrate_old_config() -> None:
+    """One-time migration: move files from ~/.config/trcc/ to ~/.trcc/."""
+    old_dir = os.path.expanduser('~/.config/trcc')
+    if not os.path.isdir(old_dir) or old_dir == CONFIG_DIR:
+        return
+    import shutil
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    for name in os.listdir(old_dir):
+        src = os.path.join(old_dir, name)
+        dst = os.path.join(CONFIG_DIR, name)
+        if not os.path.exists(dst):
+            shutil.move(src, dst)
+    # Remove old dir if empty
+    try:
+        os.rmdir(old_dir)
+    except OSError:
+        pass
+    log.info("Migrated config from %s to %s", old_dir, CONFIG_DIR)
+
+
 def load_config() -> dict:
     """Load user config from disk. Returns empty dict on missing/corrupt file."""
+    _migrate_old_config()
     try:
         with open(CONFIG_PATH, 'r') as f:
             return json.load(f)

@@ -1160,7 +1160,7 @@ class TestUninstall:
     def test_removes_user_config_dir(self, tmp_path):
         home = self._base_patches(tmp_path)
         # Create the config dir so it physically exists
-        config_dir = home / ".config" / "trcc"
+        config_dir = home / ".trcc"
         config_dir.mkdir(parents=True)
 
         removed = []

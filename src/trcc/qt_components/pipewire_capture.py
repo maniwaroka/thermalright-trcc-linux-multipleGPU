@@ -16,7 +16,7 @@ Dependencies (optional, graceful degradation):
   - PyGObject with GStreamer bindings (gi.repository: Gst, GstApp, GLib)
 
 When deps are missing, PIPEWIRE_AVAILABLE=False and the module is a no-op.
-The screencast timer in qt_app_mvc.py falls back to grab_screen_region().
+The screencast timer in trcc_app.py falls back to grab_screen_region().
 """
 from __future__ import annotations
 

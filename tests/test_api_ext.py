@@ -154,7 +154,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
         dev = _scsi_dev(resolution=(320, 320))
         _device_svc._devices = [dev]
         with patch("trcc.cli._device.discover_resolution"), \
-             patch("trcc.cli._display.DisplayDispatcher") as mock_disp_cls, \
+             patch("trcc.core.lcd_device.LCDDevice") as mock_disp_cls, \
              patch("trcc.api.mount_static_dirs"):
             mock_disp = MagicMock()
             mock_disp_cls.return_value = mock_disp
@@ -163,11 +163,11 @@ class TestDeviceEdgeCases(unittest.TestCase):
         self.assertIn("selected", resp.json())
 
     def test_select_led_device_failed_connect_clears_dispatcher(self) -> None:
-        """If LEDDispatcher.connect() fails, _led_dispatcher stays None."""
+        """If LEDDevice.connect() fails, _led_dispatcher stays None."""
         dev = DeviceInfo(name="HR10", path="hid:0416:8001", vid=0x0416, pid=0x8001,
                          protocol="led", implementation="hid_led")
         _device_svc._devices = [dev]
-        with patch("trcc.cli._led.LEDDispatcher") as mock_cls:
+        with patch("trcc.core.led_device.LEDDevice") as mock_cls:
             mock_inst = MagicMock()
             mock_inst.connect.return_value = {"success": False, "error": "USB error"}
             mock_cls.return_value = mock_inst
@@ -179,7 +179,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
         dev = _scsi_dev(resolution=(480, 480))
         _device_svc._devices = [dev]
         with patch("trcc.cli._device.discover_resolution"), \
-             patch("trcc.cli._display.DisplayDispatcher"), \
+             patch("trcc.core.lcd_device.LCDDevice"), \
              patch("trcc.api.mount_static_dirs"):
             resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)

@@ -2,6 +2,14 @@
 
 Ports live in core/ so both services/ and adapters/ can import them
 without violating hexagonal dependency direction.
+
+SOLID:
+    S — Each ABC has one responsibility
+    O — New device types extend Device without modifying existing code
+    L — LCDDevice/LEDDevice fully substitutable as Device
+    I — Device ABC: 4 methods. Renderer ABC: domain-focused groups.
+        Replaces DisplayPort (47) and LEDPort (30) — ISP violations.
+    D — All adapters depend on these core abstractions
 """
 from __future__ import annotations
 
@@ -106,3 +114,43 @@ class Renderer(ABC):
     @abstractmethod
     def from_pil(self, image: Any) -> Any:
         """Convert PIL Image → native surface (legacy input only)."""
+
+
+# =========================================================================
+# Device ABC — minimal contract for all Thermalright devices (ISP)
+# =========================================================================
+
+
+class Device(ABC):
+    """Base device contract — sidebar, CLI, API all depend on this.
+
+    Minimal interface (ISP): only what ALL devices share.
+    Brightness is device-type-specific (LCD backlight vs LED strip),
+    so it lives on LCDDevice/LEDDevice, not here.
+
+    Concrete implementations:
+        - LCDDevice (core/lcd_device.py) — LCD display devices
+        - LEDDevice (core/led_device.py) — LED segment display devices
+    """
+
+    @abstractmethod
+    def connect(self, detected: Any = None) -> dict:
+        """Connect to device. Handshakes via protocol, fills DeviceInfo from models.
+
+        Returns: {"success": bool, "message": str, ...}
+        """
+
+    @property
+    @abstractmethod
+    def connected(self) -> bool:
+        """Whether device is connected and ready."""
+
+    @property
+    @abstractmethod
+    def device_info(self) -> Any:
+        """DeviceInfo — models hold all device state."""
+
+    @abstractmethod
+    def cleanup(self) -> None:
+        """Release resources on shutdown."""
+

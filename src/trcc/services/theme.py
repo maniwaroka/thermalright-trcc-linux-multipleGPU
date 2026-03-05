@@ -1,7 +1,7 @@
 """Theme discovery, loading, saving, export/import service.
 
 Pure Python (PIL + filesystem), no Qt dependencies.
-Absorbed from ThemeController + ThemeModel + LCDDeviceController theme ops.
+LCDDevice.ThemeOps delegates to this service.
 """
 from __future__ import annotations
 

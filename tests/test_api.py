@@ -124,7 +124,7 @@ class TestDeviceEndpoints(unittest.TestCase):
         dev = DeviceInfo(name="HR10", path="hid:0416:8001", vid=0x0416, pid=0x8001,
                          protocol="led", implementation="hid_led")
         _device_svc._devices = [dev]
-        with patch("trcc.cli._led.LEDDispatcher") as mock_led:
+        with patch("trcc.core.led_device.LEDDevice") as mock_led:
             mock_led.return_value.connect.return_value = {"success": True}
             resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)
@@ -326,7 +326,7 @@ class TestDisplayEndpoints(unittest.TestCase):
     def setUp(self):
         configure_auth(None)
         self.client = TestClient(app)
-        # Set up a mock DisplayDispatcher
+        # Set up a mock LCDDevice
         self.mock_lcd = MagicMock()
         self.mock_lcd.connected = True
         self.mock_lcd.resolution = (320, 320)
@@ -350,60 +350,60 @@ class TestDisplayEndpoints(unittest.TestCase):
         self.assertFalse(resp.json()["connected"])
 
     def test_set_color_success(self):
-        self.mock_lcd.send_color.return_value = {
+        self.mock_lcd.frame.send_color.return_value = {
             "success": True, "message": "Sent color #ff0000"}
         resp = self.client.post("/display/color", json={"hex": "ff0000"})
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.send_color.assert_called_once_with(255, 0, 0)
+        self.mock_lcd.frame.send_color.assert_called_once_with(255, 0, 0)
 
     def test_set_color_with_hash(self):
-        self.mock_lcd.send_color.return_value = {
+        self.mock_lcd.frame.send_color.return_value = {
             "success": True, "message": "Sent color"}
         resp = self.client.post("/display/color", json={"hex": "#00ff00"})
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.send_color.assert_called_once_with(0, 255, 0)
+        self.mock_lcd.frame.send_color.assert_called_once_with(0, 255, 0)
 
     def test_set_color_invalid_hex(self):
         resp = self.client.post("/display/color", json={"hex": "xyz"})
         self.assertEqual(resp.status_code, 400)
 
     def test_set_brightness_success(self):
-        self.mock_lcd.set_brightness.return_value = {
+        self.mock_lcd.settings.set_brightness.return_value = {
             "success": True, "message": "Brightness set to L2"}
         resp = self.client.post("/display/brightness", json={"level": 2})
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.set_brightness.assert_called_once_with(2)
+        self.mock_lcd.settings.set_brightness.assert_called_once_with(2)
 
     def test_set_brightness_invalid(self):
         resp = self.client.post("/display/brightness", json={"level": 5})
         self.assertEqual(resp.status_code, 422)  # Pydantic rejects level > 3
 
     def test_set_rotation_success(self):
-        self.mock_lcd.set_rotation.return_value = {
+        self.mock_lcd.settings.set_rotation.return_value = {
             "success": True, "message": "Rotation set to 90°"}
         resp = self.client.post("/display/rotation", json={"degrees": 90})
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.set_rotation.assert_called_once_with(90)
+        self.mock_lcd.settings.set_rotation.assert_called_once_with(90)
 
     def test_set_rotation_invalid(self):
-        self.mock_lcd.set_rotation.return_value = {
+        self.mock_lcd.settings.set_rotation.return_value = {
             "success": False, "error": "Rotation must be 0, 90, 180, or 270"}
         resp = self.client.post("/display/rotation", json={"degrees": 45})
         self.assertEqual(resp.status_code, 400)
 
     def test_set_split_success(self):
-        self.mock_lcd.set_split_mode.return_value = {
+        self.mock_lcd.settings.set_split_mode.return_value = {
             "success": True, "message": "Split mode set to style 1"}
         resp = self.client.post("/display/split", json={"mode": 1})
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.set_split_mode.assert_called_once_with(1)
+        self.mock_lcd.settings.set_split_mode.assert_called_once_with(1)
 
     def test_reset_display(self):
-        self.mock_lcd.reset.return_value = {
+        self.mock_lcd.frame.reset.return_value = {
             "success": True, "message": "Device reset"}
         resp = self.client.post("/display/reset")
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.reset.assert_called_once()
+        self.mock_lcd.frame.reset.assert_called_once()
 
     def test_display_no_device_returns_409(self):
         api_module._display_dispatcher = None
@@ -411,15 +411,15 @@ class TestDisplayEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 409)
 
     def test_overlay_path_success(self):
-        self.mock_lcd.render_overlay.return_value = {
+        self.mock_lcd.render_overlay_from_dc.return_value = {
             "success": True, "elements": 5, "display_opts": {},
             "message": "Overlay config loaded"}
         resp = self.client.post("/display/overlay?dc_path=/tmp/config1.dc&send=true")
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.render_overlay.assert_called_once()
+        self.mock_lcd.render_overlay_from_dc.assert_called_once()
 
     def test_mask_upload(self):
-        self.mock_lcd.load_mask.return_value = {
+        self.mock_lcd.load_mask_standalone.return_value = {
             "success": True, "message": "Sent mask"}
         img = Image.new('RGBA', (100, 100), (255, 0, 0, 128))
         buf = io.BytesIO()
@@ -431,7 +431,7 @@ class TestDisplayEndpoints(unittest.TestCase):
             files={"image": ("mask.png", buf, "image/png")},
         )
         self.assertEqual(resp.status_code, 200)
-        self.mock_lcd.load_mask.assert_called_once()
+        self.mock_lcd.load_mask_standalone.assert_called_once()
 
     def test_on_frame_sent_callback_updates_current_image(self):
         """DeviceService.on_frame_sent callback updates _current_image."""
@@ -1028,7 +1028,7 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
         """Sending a static color stops any running video playback."""
         mock_lcd = MagicMock()
         mock_lcd.connected = True
-        mock_lcd.send_color.return_value = {
+        mock_lcd.frame.send_color.return_value = {
             "success": True, "message": "Sent"}
         api_module._display_dispatcher = mock_lcd
 
@@ -1068,7 +1068,7 @@ class TestOverlayLoop(unittest.TestCase):
         """Sending a static color stops any running overlay loop."""
         mock_lcd = MagicMock()
         mock_lcd.connected = True
-        mock_lcd.send_color.return_value = {"success": True, "message": "Sent"}
+        mock_lcd.frame.send_color.return_value = {"success": True, "message": "Sent"}
         api_module._display_dispatcher = mock_lcd
 
         self.client.post("/display/color", json={"hex": "ff0000"})

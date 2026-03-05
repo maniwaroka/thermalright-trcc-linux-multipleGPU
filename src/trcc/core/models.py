@@ -237,8 +237,14 @@ class DeviceInfo:
         """Encoding params for ImageService.encode_for_device().
 
         Returns (protocol, resolution, fbl, use_jpeg).
+        Resolution (0,0) means handshake hasn't set it yet — fall back to
+        fbl_to_resolution(fbl_code) or default (320, 320).
         """
-        return (self.protocol, self.resolution, self.fbl_code, self.use_jpeg)
+        res = self.resolution
+        fbl = self.fbl_code
+        if res == (0, 0):
+            res = fbl_to_resolution(fbl) if fbl is not None else (320, 320)
+        return (self.protocol, res, fbl, self.use_jpeg)
 
 
 @dataclass

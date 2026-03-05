@@ -134,7 +134,7 @@ def gui(verbose=0, decorated=False, start_hidden=False):
     root.addHandler(console)
 
     # File handler — always DEBUG, rotated (1MB × 3 backups)
-    log_dir = Path.home() / '.config' / 'trcc'
+    log_dir = Path.home() / '.trcc'
     log_dir.mkdir(parents=True, exist_ok=True)
     file_handler = logging.handlers.RotatingFileHandler(
         log_dir / 'trcc.log', maxBytes=1_000_000, backupCount=3)
@@ -148,9 +148,9 @@ def gui(verbose=0, decorated=False, start_hidden=False):
     logging.getLogger('PIL').setLevel(logging.WARNING)
 
     try:
-        from trcc.qt_components.qt_app_mvc import run_mvc_app
+        from trcc.qt_components.trcc_app import run_app
         print("[TRCC] Starting LCD Control Center...")
-        return run_mvc_app(decorated=decorated, start_hidden=start_hidden)
+        return run_app(decorated=decorated, start_hidden=start_hidden)
     except ImportError as e:
         print(f"Error: PySide6 not available: {e}")
         print("Install with: pip install PySide6")
@@ -801,7 +801,7 @@ def _cmd_serve(
 
 
 def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
-    """Auto-generate a self-signed TLS cert in ~/.config/trcc/tls/ if missing."""
+    """Auto-generate a self-signed TLS cert in ~/.trcc/tls/ if missing."""
     import shutil
     import subprocess
     from pathlib import Path

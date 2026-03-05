@@ -1,0 +1,589 @@
+"""LCDHandler — one per LCD device (C# FormCZTV equivalent).
+
+Self-contained handler for a single LCD device. Owns an LCDDevice,
+manages theme/video/overlay/slideshow state, renders + sends frames.
+TRCCApp creates one LCDHandler per connected LCD device.
+
+SOLID: LCDDevice has composed capabilities (ISP) — this handler
+calls lcd.theme.select(), lcd.settings.set_brightness(), etc.
+"""
+# pyright: reportOptionalMemberAccess=false
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
+
+from ..conf import Settings, settings
+from ..core.lcd_device import LCDDevice
+from ..core.models import (
+    SPLIT_MODE_RESOLUTIONS,
+    DeviceInfo,
+    ThemeInfo,
+)
+
+log = logging.getLogger(__name__)
+
+
+class LCDHandler:
+    """Handler for a single LCD device — like C# FormCZTV.
+
+    Each LCD device gets its own handler with its own LCDDevice.
+    All LCD operations route through here: themes, video, overlay,
+    brightness, rotation, slideshow, screencast.
+
+    Args:
+        lcd: LCDDevice instance (built by ControllerBuilder).
+        widgets: Dict of shared GUI widgets this handler drives.
+        make_timer: Callable to create QTimers parented to app.
+        data_dir: Application data directory.
+    """
+
+    def __init__(
+        self,
+        lcd: LCDDevice,
+        widgets: dict[str, Any],
+        make_timer: Any,
+        data_dir: Path,
+    ) -> None:
+        self._lcd = lcd
+        self._w = widgets  # preview, theme_setting, theme_local, etc.
+        self._data_dir = data_dir
+
+        # Per-device state
+        self._device_key = ''
+        self._brightness_level = 2
+        self._split_mode = 0
+        self._ldd_is_split = False
+        self._background_active = False
+        self._slideshow_index = 0
+
+        # Timers (created by parent, owned by this handler)
+        self._animation_timer: QTimer = make_timer(self._on_video_tick)
+        self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
+        self._flash_timer: QTimer = make_timer(self._on_flash_timeout, single_shot=True)
+
+    @property
+    def display(self) -> LCDDevice:
+        return self._lcd
+
+    @property
+    def device_key(self) -> str:
+        return self._device_key
+
+    # ── Device Config (C# ReadSystemConfiguration) ─────────────────
+
+    def apply_device_config(self, device: DeviceInfo, w: int, h: int) -> None:
+        """Apply device resolution, restore brightness/rotation/theme/overlay."""
+        self._device_key = Settings.device_config_key(
+            device.device_index, device.vid, device.pid)
+
+        # Resolution change
+        cur_w, cur_h = self._lcd.lcd_size
+        if (w, h) != (cur_w, cur_h):
+            self._lcd.settings.set_resolution(w, h)
+            self._w['preview'].set_resolution(w, h)
+            self._w['image_cut'].set_resolution(w, h)
+            self._w['video_cut'].set_resolution(w, h)
+            self._w['theme_setting'].set_resolution(w, h)
+            self._update_theme_directories()
+
+        # Restore per-device settings
+        cfg = Settings.get_device_config(self._device_key)
+        self._restore_brightness(cfg)
+        self._restore_rotation(cfg)
+        self._restore_split_mode(cfg, w, h)
+        self._restore_theme(cfg)
+        self._restore_carousel(cfg)
+        self._restore_overlay(cfg)
+
+    def _restore_brightness(self, cfg: dict) -> None:
+        self._brightness_level = cfg.get('brightness_level', 2)
+        percent = {1: 25, 2: 50, 3: 100}.get(self._brightness_level, 50)
+        self._lcd.settings.set_brightness(percent)
+
+    def _restore_rotation(self, cfg: dict) -> None:
+        rotation_index = cfg.get('rotation', 0) // 90
+        rotation = rotation_index * 90
+        self._lcd.settings.set_rotation(rotation)
+        self._w['rotation_combo'].blockSignals(True)
+        self._w['rotation_combo'].setCurrentIndex(rotation_index)
+        self._w['rotation_combo'].blockSignals(False)
+        self._resolve_cloud_dirs(rotation)
+
+    def _restore_split_mode(self, cfg: dict, w: int, h: int) -> None:
+        self._split_mode = cfg.get('split_mode', 2)
+        self._ldd_is_split = (w, h) in SPLIT_MODE_RESOLUTIONS
+        if self._ldd_is_split:
+            if not self._split_mode:
+                self._split_mode = 2
+            self._lcd.settings.set_split_mode(self._split_mode)
+        else:
+            self._lcd.settings.set_split_mode(0)
+
+    def _restore_theme(self, cfg: dict) -> None:
+        saved = cfg.get('theme_path')
+        if saved:
+            path = Path(saved)
+            if path.exists():
+                log.info("Restoring saved theme: %s", path)
+                if path.suffix in ('.mp4', '.avi', '.mkv', '.webm'):
+                    preview = path.parent / f"{path.stem}.png"
+                    theme = ThemeInfo.from_video(
+                        path, preview if preview.exists() else None)
+                    self._select_theme(theme)
+                else:
+                    self._select_theme_from_path(path)
+                return
+            log.warning("Saved theme path not found: %s", saved)
+
+        # Auto-load first local theme (don't persist — fallback)
+        theme_base = settings.theme_dir
+        if theme_base and theme_base.exists():
+            for item in sorted(theme_base.path.iterdir()):
+                if item.is_dir() and (item / '00.png').exists():
+                    self._select_theme_from_path(item, persist=False)
+                    break
+
+    def _restore_carousel(self, cfg: dict) -> None:
+        carousel = cfg.get('carousel')
+        local = self._w['theme_local']
+        if carousel and isinstance(carousel, dict):
+            local._lunbo_array = carousel.get('themes', [])
+            local._slideshow = carousel.get('enabled', False)
+            local._slideshow_interval = carousel.get('interval', 3)
+            local.timer_input.setText(str(carousel.get('interval', 3)))
+            px = local._lunbo_on if carousel.get('enabled') else local._lunbo_off
+            if not px.isNull():
+                local.slideshow_btn.setIcon(QIcon(px))
+                local.slideshow_btn.setIconSize(local.slideshow_btn.size())
+            local._apply_decorations()
+            self._update_slideshow_state()
+        else:
+            self._slideshow_timer.stop()
+            local._lunbo_array = []
+            local._slideshow = False
+            local._apply_decorations()
+
+    def _restore_overlay(self, cfg: dict) -> None:
+        overlay = cfg.get('overlay')
+        if overlay and isinstance(overlay, dict):
+            enabled = overlay.get('enabled', False)
+            config = overlay.get('config', {})
+            if config:
+                self._w['theme_setting'].load_from_overlay_config(config)
+                self._lcd.overlay.set_config(config)
+            self._w['theme_setting'].set_overlay_enabled(enabled)
+            self._lcd.overlay.enable(enabled)
+        else:
+            log.debug("No saved overlay config — keeping theme defaults")
+
+    # ── Theme (C# Theme_Click_Event) ───────────────────────────────
+
+    def _select_theme(self, theme: ThemeInfo) -> None:
+        """Select theme via LCDDevice and handle result."""
+        result = self._lcd.theme.select(theme)
+        image = result.get('image')
+        is_animated = result.get('is_animated', False)
+
+        if image:
+            fast = is_animated
+            self._w['preview'].set_image(image, fast=fast)
+            if self._lcd.auto_send and not is_animated:
+                self._lcd.frame.send(image)
+
+        if is_animated and self._lcd.video.playing:
+            interval = result.get('interval', 33)
+            self._animation_timer.start(interval)
+            self._w['preview'].set_playing(True)
+            self._w['preview'].show_video_controls(True)
+
+    def select_theme_from_path(self, path: Path, persist: bool = True) -> None:
+        """Public entry for theme selection by path (local theme clicks)."""
+        self._select_theme_from_path(path, persist=persist)
+
+    def _select_theme_from_path(self, path: Path, persist: bool = True) -> None:
+        """Load a local/mask theme by directory path."""
+        if not path.exists():
+            return
+        self._slideshow_timer.stop()
+        self._lcd.overlay.enable(False)
+
+        # Reset mode toggles (C# ReadSystemConfiguration override)
+        self._background_active = False
+        self._animation_timer.stop()
+        self._lcd.video.stop()
+        self._w['theme_setting'].background_panel.set_enabled(False)
+        self._w['theme_setting'].screencast_panel.set_enabled(False)
+        self._w['theme_setting'].video_panel.set_enabled(False)
+
+        theme = ThemeInfo.from_directory(path)
+        self._select_theme(theme)
+        self._load_theme_overlay_config(path)
+
+        if persist and self._device_key:
+            Settings.save_device_setting(self._device_key, 'theme_path', str(path))
+
+    def select_cloud_theme(self, theme_info: Any) -> None:
+        """Handle cloud theme selection (video backgrounds)."""
+        self._slideshow_timer.stop()
+        self._background_active = False
+        self._w['theme_setting'].background_panel.set_enabled(False)
+        self._w['theme_setting'].screencast_panel.set_enabled(False)
+
+        if theme_info.video:
+            video_path = Path(theme_info.video)
+            preview_path = video_path.parent / f"{video_path.stem}.png"
+            theme = ThemeInfo.from_video(
+                video_path, preview_path if preview_path.exists() else None)
+            self._select_theme(theme)
+            if self._device_key:
+                Settings.save_device_setting(
+                    self._device_key, 'theme_path', str(video_path))
+
+    def apply_mask(self, mask_info: Any) -> None:
+        """Apply mask overlay on top of current content."""
+        if mask_info.path:
+            mask_dir = Path(mask_info.path)
+            result = self._lcd.overlay.apply_mask_dir(mask_dir)
+            image = result.get('image')
+            if image:
+                self._w['preview'].set_image(image)
+            self._load_theme_overlay_config(mask_dir)
+        else:
+            self._w['preview'].set_status(f"Mask: {mask_info.name}")
+
+    def save_theme(self, name: str) -> None:
+        result = self._lcd.theme.save(name, self._data_dir)
+        self._w['preview'].set_status(result.get('message', ''))
+        if result['success']:
+            td = settings.theme_dir
+            if td:
+                self._w['theme_local'].set_theme_directory(td.path)
+            self._w['theme_local'].load_themes()
+            if self._device_key and self._lcd.current_theme_path:
+                Settings.save_device_setting(
+                    self._device_key, 'theme_path',
+                    str(self._lcd.current_theme_path))
+
+    def export_config(self, path: Path) -> None:
+        result = self._lcd.theme.export_config(path)
+        self._w['preview'].set_status(result.get('message', ''))
+
+    def import_config(self, path: Path) -> None:
+        result = self._lcd.theme.import_config(path, self._data_dir)
+        self._w['preview'].set_status(result.get('message', ''))
+        if result['success']:
+            td = settings.theme_dir
+            if td:
+                self._w['theme_local'].set_theme_directory(td.path)
+            self._w['theme_local'].load_themes()
+
+    # ── DC File Loading ────────────────────────────────────────────
+
+    def _load_theme_overlay_config(self, theme_dir: Path) -> None:
+        """Load overlay config from theme's config.json or config1.dc."""
+        overlay_config = None
+
+        json_path = theme_dir / 'config.json'
+        if json_path.exists():
+            try:
+                from ..adapters.infra.dc_parser import load_config_json
+                result = load_config_json(str(json_path))
+                if result is not None:
+                    overlay_config = result[0]
+            except Exception:
+                pass
+
+        if overlay_config is None:
+            dc_path = theme_dir / 'config1.dc'
+            if not dc_path.exists():
+                return
+            try:
+                from ..adapters.infra.dc_config import DcConfig
+                dc = DcConfig(dc_path)
+                overlay_config = dc.to_overlay_config()
+            except Exception:
+                return
+
+        if overlay_config:
+            Settings.apply_format_prefs(overlay_config)
+            self._w['theme_setting'].set_overlay_enabled(True)
+            self._w['theme_setting'].load_from_overlay_config(overlay_config)
+            self._lcd.overlay.set_config(overlay_config)
+            self._lcd.overlay.enable(True)
+            self._render_and_send()
+
+            if self._device_key:
+                Settings.save_device_setting(self._device_key, 'overlay', {
+                    'enabled': True,
+                    'config': overlay_config,
+                })
+
+    # ── Video (C# ucBoFangQiKongZhi1) ─────────────────────────────
+
+    def play_pause(self) -> None:
+        result = self._lcd.video.pause()
+        playing = result.get('state') == 'playing'
+        self._w['preview'].set_playing(playing)
+        if playing:
+            self._animation_timer.start(self._lcd.video.interval)
+        else:
+            self._animation_timer.stop()
+
+    def stop_video(self) -> None:
+        self._lcd.video.stop()
+        self._animation_timer.stop()
+        self._w['preview'].set_playing(False)
+        self._w['preview'].show_video_controls(False)
+
+    def seek(self, percent: float) -> None:
+        self._lcd.video.seek(percent)
+
+    def set_video_fit_mode(self, mode: str) -> None:
+        result = self._lcd.video.set_fit_mode(mode)
+        image = result.get('image')
+        if image:
+            self._w['preview'].set_image(image)
+
+    def _on_video_tick(self) -> None:
+        """Timer callback: advance one video frame."""
+        result = self._lcd.video.tick()
+        if not result:
+            return
+        preview = result.get('preview')
+        if preview is not None:
+            self._w['preview'].set_image(preview, fast=True)
+
+        # Pre-encoded path
+        encoded = result.get('encoded')
+        if encoded is not None:
+            w, h = self._lcd.lcd_size
+            self._lcd.device_service.send_rgb565_async(encoded, w, h)
+            return
+
+        # Fallback encode
+        send_img = result.get('send_image')
+        if send_img:
+            w, h = self._lcd.lcd_size
+            self._lcd.frame.send_async(send_img, w, h)
+
+    # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
+
+    def on_overlay_changed(self, element_data: dict) -> None:
+        """Forward overlay config change from settings panel."""
+        if not element_data:
+            return
+        if not self._lcd.overlay.enabled:
+            self._lcd.overlay.enable(True)
+        self._lcd.overlay.set_config(element_data)
+        self._render_and_send(skip_if_video=True)
+
+        if self._device_key:
+            Settings.save_device_setting(self._device_key, 'overlay', {
+                'enabled': self._w['theme_setting'].overlay_grid.overlay_enabled,
+                'config': element_data,
+            })
+
+    def on_overlay_tick(self, metrics: Any) -> None:
+        """Metrics subscriber: render overlay when values change."""
+        self._lcd.overlay.update_metrics(metrics)
+
+        if self._lcd.video.playing:
+            if self._lcd.overlay.has_changed(metrics):
+                self._lcd.overlay.rebuild_video_cache(metrics)
+            return
+
+        if not self._lcd.overlay.has_changed(metrics):
+            return
+
+        self._render_and_send()
+
+    def flash_element(self, index: int) -> None:
+        """Flash/blink selected overlay element on preview."""
+        self._lcd.overlay.service.flash_skip_index = index
+        self._flash_timer.start(980)
+        self._render_and_send()
+
+    def _on_flash_timeout(self) -> None:
+        self._lcd.overlay.service.flash_skip_index = -1
+        self._render_and_send()
+
+    # ── Display Settings ───────────────────────────────────────────
+
+    def set_brightness(self, level: int) -> None:
+        self._brightness_level = level
+        percent = {1: 25, 2: 50, 3: 100}.get(level, 50)
+        result = self._lcd.settings.set_brightness(percent)
+        image = result.get('image')
+        if image:
+            self._w['preview'].set_image(image)
+            if self._lcd.auto_send:
+                self._lcd.frame.send(image)
+        if self._device_key:
+            Settings.save_device_setting(
+                self._device_key, 'brightness_level', level)
+
+    def set_rotation(self, degrees: int) -> None:
+        result = self._lcd.settings.set_rotation(degrees)
+        image = result.get('image')
+        if image:
+            self._w['preview'].set_image(image)
+            if self._lcd.auto_send:
+                self._lcd.frame.send(image)
+        if self._device_key:
+            Settings.save_device_setting(self._device_key, 'rotation', degrees)
+        self._resolve_cloud_dirs(degrees)
+
+    def set_split_mode(self, mode: int) -> None:
+        self._split_mode = mode
+        result = self._lcd.settings.set_split_mode(mode)
+        image = result.get('image')
+        if image:
+            self._w['preview'].set_image(image)
+            if self._lcd.auto_send:
+                self._lcd.frame.send(image)
+        if self._device_key:
+            Settings.save_device_setting(self._device_key, 'split_mode', mode)
+
+    # ── Background / Screencast Toggles ────────────────────────────
+
+    def on_background_toggle(self, enabled: bool) -> None:
+        """Handle background display toggle (C# myBjxs / myMode=0)."""
+        self._background_active = enabled
+        if enabled:
+            self._animation_timer.stop()
+            self._lcd.video.stop()
+            self._render_and_send()
+        else:
+            self._lcd.overlay.set_background(None)
+            self._render_and_send()
+        self._w['preview'].set_status(
+            f"Background: {'On' if enabled else 'Off'}")
+
+    def on_screencast_frame(self, pil_img: Any) -> None:
+        """Handle captured screencast frame — preview + send to LCD."""
+        self._w['preview'].set_image(pil_img)
+        self._lcd.frame.send(pil_img)
+
+    # ── Slideshow / Carousel ───────────────────────────────────────
+
+    def _update_slideshow_state(self) -> None:
+        local = self._w['theme_local']
+        if local.is_slideshow() and local.get_slideshow_themes():
+            interval_s = local.get_slideshow_interval()
+            self._slideshow_index = 0
+            self._slideshow_timer.start(interval_s * 1000)
+        else:
+            self._slideshow_timer.stop()
+
+        if self._device_key:
+            themes = local.get_slideshow_themes()
+            Settings.save_device_setting(self._device_key, 'carousel', {
+                'enabled': local.is_slideshow(),
+                'interval': local.get_slideshow_interval(),
+                'themes': [t.name for t in themes],
+            })
+
+    def on_slideshow_delegate(self) -> None:
+        """Handle slideshow toggle from local theme panel."""
+        self._update_slideshow_state()
+
+    def _on_slideshow_tick(self) -> None:
+        """Auto-rotate to next theme in slideshow."""
+        if self._lcd.video.playing:
+            return
+        themes = self._w['theme_local'].get_slideshow_themes()
+        if not themes:
+            self._slideshow_timer.stop()
+            return
+        self._slideshow_index = (self._slideshow_index + 1) % len(themes)
+        theme_info = themes[self._slideshow_index]
+        path = Path(theme_info.path)
+        if path.exists():
+            theme = ThemeInfo.from_directory(path)
+            self._select_theme(theme)
+            self._load_theme_overlay_config(path)
+
+    # ── Rendering ──────────────────────────────────────────────────
+
+    def _render_and_send(self, skip_if_video: bool = False) -> None:
+        """Render overlay + send to LCD if auto-send is on."""
+        result = self._lcd.overlay.render()
+        image = result.get('image')
+        if not image or not self._lcd.auto_send:
+            return
+        self._w['preview'].set_image(image)
+        if skip_if_video and self._lcd.video.playing:
+            return
+        self._lcd.frame.send(image)
+
+    def render_and_preview(self) -> Any:
+        """Render overlay and update preview (no send)."""
+        result = self._lcd.overlay.render()
+        image = result.get('image')
+        if image:
+            self._w['preview'].set_image(image)
+        return image
+
+    # ── Helpers ─────────────────────────────────────────────────────
+
+    def _update_theme_directories(self) -> None:
+        """Reload theme browser directories for current resolution."""
+        w, h = settings.width, settings.height
+        td = settings.theme_dir
+        if td and td.exists():
+            self._w['theme_local'].set_theme_directory(td.path)
+        if settings.web_dir:
+            self._w['theme_web'].set_web_directory(settings.web_dir)
+        self._w['theme_web'].set_resolution(f'{w}x{h}')
+        if settings.masks_dir:
+            self._w['theme_mask'].set_mask_directory(settings.masks_dir)
+        self._w['theme_mask'].set_resolution(f'{w}x{h}')
+
+    def _resolve_cloud_dirs(self, rotation: int) -> None:
+        """Re-resolve cloud dirs for portrait rotation (C# GetWebBackgroundImageDirectory)."""
+        settings.resolve_cloud_dirs(rotation)
+        w, h = settings.width, settings.height
+        if w != h and rotation in (90, 270):
+            w, h = h, w
+        if settings.web_dir:
+            self._w['theme_web'].set_web_directory(settings.web_dir)
+        self._w['theme_web'].set_resolution(f'{w}x{h}')
+        if settings.masks_dir:
+            self._w['theme_mask'].set_mask_directory(settings.masks_dir)
+        self._w['theme_mask'].set_resolution(f'{w}x{h}')
+
+    @property
+    def is_background_active(self) -> bool:
+        return self._background_active
+
+    @property
+    def brightness_level(self) -> int:
+        return self._brightness_level
+
+    @property
+    def split_mode(self) -> int:
+        return self._split_mode
+
+    @property
+    def ldd_is_split(self) -> bool:
+        return self._ldd_is_split
+
+    # ── Lifecycle ──────────────────────────────────────────────────
+
+    def stop_timers(self) -> None:
+        """Stop all timers (called when switching away from this device)."""
+        self._animation_timer.stop()
+        self._slideshow_timer.stop()
+
+    def cleanup(self) -> None:
+        """Full cleanup on shutdown."""
+        self._animation_timer.stop()
+        self._slideshow_timer.stop()
+        self._flash_timer.stop()
+        self._lcd.video.stop()
+        self._lcd.cleanup()

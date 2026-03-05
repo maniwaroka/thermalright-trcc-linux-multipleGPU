@@ -34,12 +34,18 @@ def _socket_path() -> Path:
 # Non-serializable keys to strip from dispatcher results (PIL Image, etc.)
 _NON_SERIALIZABLE = frozenset({"image", "colors"})
 
-# Allowed dispatcher methods (whitelist — reject anything else)
-_DISPLAY_METHODS = frozenset({
-    "send_image", "send_color", "reset",
-    "set_brightness", "set_rotation", "set_split_mode",
-    "load_mask", "render_overlay",
-})
+# SOLID routing: display methods route through LCDDevice composed capabilities.
+# Format: "method_name" → ("capability", "method") or None for flat on device.
+_DISPLAY_ROUTES: dict[str, tuple[str, str]] = {
+    "send_image":     ("frame", "send_image"),
+    "send_color":     ("frame", "send_color"),
+    "reset":          ("frame", "reset"),
+    "set_brightness": ("settings", "set_brightness"),
+    "set_rotation":   ("settings", "set_rotation"),
+    "set_split_mode": ("settings", "set_split_mode"),
+}
+
+# LED methods are flat on LEDDevice — whitelist only.
 _LED_METHODS = frozenset({
     "set_color", "set_mode", "set_brightness", "off",
     "set_sensor_source",
@@ -172,11 +178,14 @@ class IPCServer:
         if domain == "display":
             if method == "get_frame":
                 return self._get_frame()
-            if method not in _DISPLAY_METHODS:
+            route = _DISPLAY_ROUTES.get(method)
+            if not route:
                 return {"success": False, "error": f"Unknown command: {cmd}"}
             if not self._display or not self._display.connected:
                 return {"success": False, "error": "No LCD device connected"}
-            return _sanitize(getattr(self._display, method)(*args, **kwargs))
+            cap_name, cap_method = route
+            cap = getattr(self._display, cap_name)
+            return _sanitize(getattr(cap, cap_method)(*args, **kwargs))
 
         if domain == "led":
             if method not in _LED_METHODS:
@@ -220,7 +229,7 @@ class IPCServer:
         """Return current device status."""
         result: dict[str, Any] = {"success": True}
         if self._display and self._display.connected:
-            dev = self._display.device
+            dev = self._display.device_info
             result["lcd"] = {
                 "connected": True,
                 "path": dev.path,
@@ -299,7 +308,7 @@ class IPCClient:
 # =========================================================================
 
 class IPCDisplayProxy:
-    """Proxy that routes DisplayDispatcher method calls through IPC."""
+    """Proxy that routes LCDDevice method calls through IPC."""
 
     connected = True
 
@@ -324,7 +333,7 @@ class IPCDisplayProxy:
 
 
 class IPCLEDProxy:
-    """Proxy that routes LEDDispatcher method calls through IPC."""
+    """Proxy that routes LEDDevice method calls through IPC."""
 
     connected = True
 

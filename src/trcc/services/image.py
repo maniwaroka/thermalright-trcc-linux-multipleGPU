@@ -6,12 +6,14 @@ at startup via ``set_renderer()``.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, ClassVar
 
-# PIL still used for ANSI dashboard (CLI-only cold path)
 from PIL import Image as PILImage  # noqa: F401 — used in to_ansi/metrics_to_ansi
 
 from ..core.ports import Renderer
+
+log = logging.getLogger(__name__)
 
 # Cap decompression to 4x the largest LCD (1920x720).
 PILImage.MAX_IMAGE_PIXELS = 1920 * 720 * 4  # 5,529,600 pixels
@@ -105,7 +107,7 @@ class ImageService:
         """
         if resolution in ImageService._SQUARE_NO_ROTATE:
             return image
-        return ImageService._r().apply_rotation(image, 270)
+        return ImageService._r().apply_rotation(image, 90)
 
     @staticmethod
     def encode_for_device(img: Any, protocol: str,
@@ -118,11 +120,17 @@ class ImageService:
         traits = PROTOCOL_TRAITS.get(protocol)
         if (traits and traits.supports_jpeg and use_jpeg) or (
                 protocol == 'hid' and fbl in JPEG_MODE_FBLS):
+            log.debug("encode_for_device: JPEG proto=%s res=%s fbl=%s",
+                       protocol, resolution, fbl)
             return ImageService.to_jpeg(img)
 
         img = ImageService.apply_device_rotation(img, resolution)
         byte_order = ImageService.byte_order_for(protocol, resolution, fbl)
-        return ImageService.to_rgb565(img, byte_order)
+        data = ImageService.to_rgb565(img, byte_order)
+        log.debug("encode_for_device: RGB565 proto=%s res=%s fbl=%s "
+                   "byte_order=%s len=%d",
+                   protocol, resolution, fbl, byte_order, len(data))
+        return data
 
     # ── ANSI preview (CLI cold path — still uses PIL directly) ────
 

@@ -1,7 +1,7 @@
 """
 System Info dashboard panel configuration.
 
-Persists sensor-to-panel bindings as JSON in ~/.config/trcc/system_config.json.
+Persists sensor-to-panel bindings as JSON in ~/.trcc/system_config.json.
 Replaces the Windows binary Data/config format.
 
 Each panel has 4 sensor bindings (one per row), a category ID for background
@@ -41,7 +41,7 @@ class PanelConfig:
 class SysInfoConfig:
     """Load/save dashboard panel configuration from JSON."""
 
-    CONFIG_PATH = Path.home() / '.config' / 'trcc' / 'system_config.json'
+    CONFIG_PATH = Path.home() / '.trcc' / 'system_config.json'
 
     def __init__(self):
         self.panels: list[PanelConfig] = []

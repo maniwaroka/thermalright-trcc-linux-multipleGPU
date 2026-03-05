@@ -40,9 +40,9 @@ app = FastAPI(title="TRCC Linux", version=__version__)
 
 _device_svc = DeviceService()
 
-# Lazy-initialized dispatchers (set when device is selected)
-_display_dispatcher = None  # DisplayDispatcher | None
-_led_dispatcher = None      # LEDDispatcher | None
+# Lazy-initialized devices (set when device is selected)
+_display_dispatcher = None  # LCDDevice | None
+_led_dispatcher = None      # LEDDevice | None
 _system_svc = None          # SystemService | None
 
 # Last frame sent to LCD — updated by display/theme endpoints for preview

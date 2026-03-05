@@ -1,7 +1,7 @@
 """Device detection, selection, and frame sending service.
 
 Pure Python, no Qt dependencies.
-Absorbed from DeviceController + DeviceModel in controllers.py/models.py.
+Handles USB device lifecycle — detection, handshake, frame encoding + send.
 """
 from __future__ import annotations
 
@@ -189,10 +189,9 @@ class DeviceService:
 
         Encoding runs inline (~0.5ms), then routes through the same
         persistent worker as ``send_rgb565_async`` — no per-call Thread.
+        The send queue (maxlen=1) handles latest-frame-wins semantics —
+        no need to guard with is_busy here.
         """
-        if self.is_busy:
-            return
-
         img_id = id(image)
         if img_id == self._last_encode_id and self._last_encode_data is not None:
             data = self._last_encode_data

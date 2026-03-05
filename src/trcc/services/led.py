@@ -1,9 +1,8 @@
 """LED effect engine and device communication.
 
 Pure Python, no Qt dependencies.
-Absorbs business logic from LEDModel (effects), LEDController (protocol send),
-and LEDDeviceController (config, protocol factory).
-Config persistence delegated to led_config.py (SRP).
+Business logic: effects, protocol send, config persistence.
+LEDDevice (core/led_device.py) delegates to this service.
 """
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ from .led_effects import LEDEffectEngine
 
 log = logging.getLogger(__name__)
 
-# LED animation tick period (ms) — matches qt_app_mvc.py LEDHandler._timer.
+# LED animation tick period (ms) — matches trcc_app.py LEDHandler._timer.
 # C# Timer_event runs at ~167ms; our QTimer runs at 150ms.
 _LED_TICK_MS = 150
 

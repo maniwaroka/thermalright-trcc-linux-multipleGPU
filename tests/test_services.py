@@ -220,8 +220,8 @@ class TestImageServiceDeviceRotation(unittest.TestCase):
     def test_non_square_pixel_data(self):
         """Verify pixel data is correctly rotated — dimensions transpose."""
         # Use solid-color halves to survive smooth transformation interpolation.
-        # Left half red, right half green → after 270° rotation (device pre-rot):
-        # top half = red-ish, bottom half = green-ish (smooth interp may blend edges).
+        # Left half red, right half green → after 90° CW rotation (device pre-rot):
+        # top half = red, bottom half = green.
         pil_img = Image.new('RGB', (40, 20), (0, 0, 0))
         for x in range(20):
             for y in range(20):
@@ -232,12 +232,12 @@ class TestImageServiceDeviceRotation(unittest.TestCase):
         img = ImageService._r().from_pil(pil_img)
         result = ImageService.apply_device_rotation(img, (40, 20))
         self.assertEqual(surface_size(result), (20, 40))
-        # After 270° CW rotation: left-half red → bottom region,
-        # right-half green → top region. Check center pixels of each region.
+        # After 90° CW rotation: left-half red → top region,
+        # right-half green → bottom region. Check center pixels of each region.
         top_px = get_pixel(result, 10, 5)     # center of top region
         bot_px = get_pixel(result, 10, 35)    # center of bottom region
-        self.assertGreater(top_px[1], 200)    # green channel dominant
-        self.assertGreater(bot_px[0], 200)    # red channel dominant
+        self.assertGreater(top_px[0], 200)    # red channel dominant
+        self.assertGreater(bot_px[1], 200)    # green channel dominant
 
 
 class TestImageServiceResize(unittest.TestCase):

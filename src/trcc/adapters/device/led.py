@@ -492,7 +492,7 @@ class _LedProbeCache:
 
     @staticmethod
     def _path() -> Path:
-        config_dir = Path.home() / '.config' / 'trcc'
+        config_dir = Path.home() / '.trcc'
         config_dir.mkdir(parents=True, exist_ok=True)
         return config_dir / 'led_probe_cache.json'
 

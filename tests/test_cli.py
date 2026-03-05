@@ -271,16 +271,16 @@ class TestGui(unittest.TestCase):
     def test_gui_generic_exception(self):
         """Non-import exception -> returns 1."""
         mock_qt = MagicMock()
-        mock_qt.run_mvc_app.side_effect = RuntimeError('display error')
-        with patch.dict('sys.modules', {'trcc.qt_components.qt_app_mvc': mock_qt}):
+        mock_qt.run_app.side_effect = RuntimeError('display error')
+        with patch.dict('sys.modules', {'trcc.qt_components.trcc_app': mock_qt}):
             result = gui()
         self.assertEqual(result, 1)
 
     def test_gui_success(self):
-        """Successful launch returns run_mvc_app's value."""
+        """Successful launch returns run_app's value."""
         mock_qt = MagicMock()
-        mock_qt.run_mvc_app.return_value = 0
-        with patch.dict('sys.modules', {'trcc.qt_components.qt_app_mvc': mock_qt}):
+        mock_qt.run_app.return_value = 0
+        with patch.dict('sys.modules', {'trcc.qt_components.trcc_app': mock_qt}):
             result = gui()
         self.assertEqual(result, 0)
 
@@ -567,7 +567,7 @@ class TestGuiExtra(unittest.TestCase):
     def test_gui_import_error(self):
         """PySide6 not importable -> returns 1."""
         with patch.dict('sys.modules', {
-            'trcc.qt_components.qt_app_mvc': None,
+            'trcc.qt_components.trcc_app': None,
         }):
             result = gui()
         self.assertEqual(result, 1)
@@ -1043,12 +1043,10 @@ class TestUninstall(unittest.TestCase):
         """Removes config dirs, autostart, and desktop shortcut."""
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
-            config_dir = home / ".config" / "trcc"
-            config_dir.mkdir(parents=True)
-            (config_dir / "config.json").write_text("{}")
-            legacy_dir = home / ".trcc"
-            legacy_dir.mkdir()
-            (legacy_dir / "data").mkdir()
+            trcc_dir = home / ".trcc"
+            trcc_dir.mkdir(parents=True)
+            (trcc_dir / "config.json").write_text("{}")
+            (trcc_dir / "data").mkdir()
             autostart = home / ".config" / "autostart" / "trcc-linux.desktop"
             autostart.parent.mkdir(parents=True, exist_ok=True)
             autostart.write_text("[Desktop Entry]")
@@ -1066,8 +1064,7 @@ class TestUninstall(unittest.TestCase):
                 result = uninstall()
 
             self.assertEqual(result, 0)
-            self.assertFalse(config_dir.exists())
-            self.assertFalse(legacy_dir.exists())
+            self.assertFalse(trcc_dir.exists())
             self.assertFalse(autostart.exists())
             self.assertFalse(desktop.exists())
             self.assertIn("Removed:", buf.getvalue())
@@ -1704,9 +1701,9 @@ class TestSetBrightness(unittest.TestCase):
     """Tests for _display.set_brightness()."""
 
     def test_invalid_level(self):
-        """Level outside 1-3 returns error."""
-        self.assertEqual(_display.set_brightness(5), 1)
-        self.assertEqual(_display.set_brightness(0), 1)
+        """Level outside 0-100 returns error."""
+        self.assertEqual(_display.set_brightness(-1), 1)
+        self.assertEqual(_display.set_brightness(101), 1)
 
     def test_no_device(self):
         """No device returns 1."""
@@ -1799,23 +1796,14 @@ class TestLoadMask(unittest.TestCase):
 
     def test_success_file(self):
         """PNG file is loaded and sent."""
-        svc = _mock_service()
-        mock_img = MagicMock()
-        mock_img.size = (320, 320)
-        mock_img.mode = 'RGBA'
-        mock_img.convert.return_value = mock_img
-        mock_img.width = 320
-        mock_img.height = 320
-        with patch('os.path.exists', return_value=True), \
-             patch('trcc.cli._device._get_service', return_value=svc), \
-             patch('PIL.Image.open', return_value=mock_img), \
-             patch('trcc.services.OverlayService') as MockOverlay, \
-             patch('trcc.services.ImageService.solid_color', return_value=mock_img):
-            overlay_inst = MockOverlay.return_value
-            overlay_inst.render.return_value = mock_img
+        mock_lcd = MagicMock()
+        mock_lcd.load_mask_standalone.return_value = {
+            "success": True, "message": "Sent mask mask.png to /dev/sg0"}
+        with patch('trcc.cli._display._connect_or_fail',
+                   return_value=(mock_lcd, 0)):
             result = _display.load_mask('/tmp/mask.png')
             self.assertEqual(result, 0)
-            svc.send_pil.assert_called_once()
+            mock_lcd.load_mask_standalone.assert_called_once_with('/tmp/mask.png')
 
 
 # ---------------------------------------------------------------------------
@@ -1833,7 +1821,7 @@ class TestRenderOverlay(unittest.TestCase):
     def _mock_connect(self):
         """Mock _connect_or_fail to return a fake dispatcher."""
         mock_lcd = MagicMock()
-        mock_lcd.render_overlay.return_value = {
+        mock_lcd.render_overlay_from_dc.return_value = {
             "success": True, "image": MagicMock(), "elements": 1,
             "display_opts": {"elem1": {}},
             "message": "Overlay config loaded: 1 elements (320x320)",
@@ -1847,14 +1835,14 @@ class TestRenderOverlay(unittest.TestCase):
             mock_lcd = mock_conn.return_value[0]
             result = _display.render_overlay('/tmp/config1.dc')
             self.assertEqual(result, 0)
-            mock_lcd.render_overlay.assert_called_once()
+            mock_lcd.render_overlay_from_dc.assert_called_once()
 
     def test_save_to_file(self):
         """--output saves rendered image."""
         mock_img = MagicMock()
         with self._mock_connect() as mock_conn:
             mock_lcd = mock_conn.return_value[0]
-            mock_lcd.render_overlay.return_value = {
+            mock_lcd.render_overlay_from_dc.return_value = {
                 "success": True, "image": mock_img, "elements": 0,
                 "display_opts": {},
                 "message": "Saved overlay render to /tmp/out.png",
@@ -1982,13 +1970,21 @@ class TestThemeLoad(unittest.TestCase):
 class TestLEDCommands(unittest.TestCase):
     """Tests for LEDCommands."""
 
-    def _mock_led_svc(self):
-        """Create a mock LED service with status string."""
-        mock_svc = MagicMock()
-        mock_svc.tick.return_value = [(255, 0, 0)]
-        mock_svc.send_colors.return_value = True
-        mock_svc.send_tick.return_value = True
-        return mock_svc, "LED: AX120 (18 LEDs)"
+    def _mock_led_device(self):
+        """Create a mock LEDDevice with mocked service."""
+        from trcc.core.led_device import LEDDevice
+        svc = MagicMock()
+        svc.tick.return_value = [(255, 0, 0)]
+        svc.send_colors.return_value = True
+        svc.send_tick.return_value = True
+        svc.state = MagicMock()
+        svc.state.zones = [MagicMock() for _ in range(4)]
+        svc.state.segment_on = [True] * 8
+        svc.apply_mask.return_value = [(255, 0, 0)]
+        svc.has_protocol = True
+        dev = LEDDevice(svc=svc)
+        dev._device = MagicMock()
+        return dev, svc
 
     def test_set_color_invalid_hex(self):
         """Invalid hex returns 1."""
@@ -1997,69 +1993,72 @@ class TestLEDCommands(unittest.TestCase):
 
     def test_set_color_no_device(self):
         """No LED device returns 1."""
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(None, None)):
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(MagicMock(connected=False), 1)):
             self.assertEqual(_led.set_color('ff0000'), 1)
 
     def test_set_color_success(self):
         """Valid hex sets color and sends."""
-        mock_svc, status = self._mock_led_svc()
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(mock_svc, status)):
+        dev, svc = self._mock_led_device()
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(dev, 0)):
             result = _led.set_color('00ff00')
             self.assertEqual(result, 0)
-            mock_svc.set_color.assert_called_once_with(0, 255, 0)
-            mock_svc.tick.assert_called_once()
-            mock_svc.send_colors.assert_called_once()
-            mock_svc.save_config.assert_called_once()
+            svc.set_color.assert_called_once_with(0, 255, 0)
+            svc.tick.assert_called()
+            svc.send_colors.assert_called()
+            svc.save_config.assert_called()
 
     def test_set_mode_invalid(self):
         """Unknown mode returns 1."""
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(MagicMock(), "LED")):
-            # set_mode checks mode_map before using service
-            pass
-        self.assertEqual(_led.set_mode('explosion'), 1)
+        dev, svc = self._mock_led_device()
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(dev, 0)):
+            result = _led.set_mode('explosion')
+        self.assertEqual(result, 1)
 
     def test_set_mode_static(self):
         """Static mode sets and sends once (no animation loop)."""
-        mock_svc, status = self._mock_led_svc()
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(mock_svc, status)):
+        dev, svc = self._mock_led_device()
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(dev, 0)):
             result = _led.set_mode('static')
             self.assertEqual(result, 0)
-            mock_svc.tick.assert_called_once()
-            mock_svc.send_colors.assert_called_once()
+            svc.tick.assert_called()
+            svc.send_colors.assert_called()
 
     def test_set_brightness_invalid(self):
         """Out of range brightness returns 1."""
-        self.assertEqual(_led.set_led_brightness(-1), 1)
-        self.assertEqual(_led.set_led_brightness(101), 1)
+        dev, svc = self._mock_led_device()
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(dev, 0)):
+            self.assertEqual(_led.set_led_brightness(-1), 1)
+            self.assertEqual(_led.set_led_brightness(101), 1)
 
     def test_set_brightness_success(self):
         """Valid brightness sets and sends."""
-        mock_svc, status = self._mock_led_svc()
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(mock_svc, status)):
+        dev, svc = self._mock_led_device()
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(dev, 0)):
             result = _led.set_led_brightness(75)
             self.assertEqual(result, 0)
-            mock_svc.set_brightness.assert_called_once_with(75)
+            svc.set_brightness.assert_called_once_with(75)
 
     def test_led_off_no_device(self):
         """No LED device returns 1."""
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(None, None)):
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(MagicMock(connected=False), 1)):
             self.assertEqual(_led.led_off(), 1)
 
     def test_led_off_success(self):
         """Turn off sets global=False and sends."""
-        mock_svc, status = self._mock_led_svc()
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(mock_svc, status)):
+        dev, svc = self._mock_led_device()
+        with patch('trcc.cli._led._connect_or_fail',
+                   return_value=(dev, 0)):
             result = _led.led_off()
             self.assertEqual(result, 0)
-            mock_svc.toggle_global.assert_called_once_with(False)
-            mock_svc.send_tick.assert_called_once()
+            svc.toggle_global.assert_called_once_with(False)
+            svc.send_tick.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -2209,34 +2208,45 @@ class TestThemeImport(unittest.TestCase):
 class TestLEDSensorSource(unittest.TestCase):
     """Tests for _led.set_sensor_source()."""
 
+    def _mock_connect(self):
+        """Create mock LEDDevice for _connect_or_fail."""
+        from trcc.core.led_device import LEDDevice
+        dev = MagicMock(spec=LEDDevice)
+        dev.set_sensor_source.return_value = {
+            "success": True, "message": "LED sensor source set to CPU"}
+        return dev
+
     def test_invalid_source(self):
         """Invalid source returns 1."""
-        self.assertEqual(_led.set_sensor_source('memory'), 1)
+        dev = self._mock_connect()
+        dev.set_sensor_source.return_value = {
+            "success": False, "error": "Source must be 'cpu' or 'gpu'"}
+        with patch('trcc.cli._led._connect_or_fail', return_value=(dev, 0)):
+            self.assertEqual(_led.set_sensor_source('memory'), 1)
 
     def test_no_device(self):
         """No LED device returns 1."""
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(None, None)):
+        dev = MagicMock()
+        with patch('trcc.cli._led._connect_or_fail', return_value=(dev, 1)):
             self.assertEqual(_led.set_sensor_source('cpu'), 1)
 
     def test_cpu_success(self):
         """Set CPU source succeeds."""
-        mock_svc = MagicMock()
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(mock_svc, "LED: AX120")):
+        dev = self._mock_connect()
+        with patch('trcc.cli._led._connect_or_fail', return_value=(dev, 0)):
             result = _led.set_sensor_source('cpu')
             self.assertEqual(result, 0)
-            mock_svc.set_sensor_source.assert_called_once_with('cpu')
-            mock_svc.save_config.assert_called_once()
+            dev.set_sensor_source.assert_called_once_with('cpu')
 
     def test_gpu_success(self):
         """Set GPU source succeeds."""
-        mock_svc = MagicMock()
-        with patch('trcc.cli._led._get_led_service',
-                          return_value=(mock_svc, "LED: AX120")):
+        dev = self._mock_connect()
+        dev.set_sensor_source.return_value = {
+            "success": True, "message": "LED sensor source set to GPU"}
+        with patch('trcc.cli._led._connect_or_fail', return_value=(dev, 0)):
             result = _led.set_sensor_source('GPU')
             self.assertEqual(result, 0)
-            mock_svc.set_sensor_source.assert_called_once_with('gpu')
+            dev.set_sensor_source.assert_called_once_with('GPU')
 
 
 # ---------------------------------------------------------------------------

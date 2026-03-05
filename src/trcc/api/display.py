@@ -26,7 +26,7 @@ router = APIRouter(prefix="/display", tags=["display"])
 
 
 def _get_display():
-    """Get the active DisplayDispatcher, raise 409 if not connected."""
+    """Get the active LCDDevice, raise 409 if not connected."""
     from trcc.api import _display_dispatcher
 
     if not _display_dispatcher or not _display_dispatcher.connected:
@@ -34,17 +34,19 @@ def _get_display():
     return _display_dispatcher
 
 
-def _display_route(method: str, *args, **kwargs) -> dict:
-    """Generic: get display dispatcher, call method, return result.
-
-    Frame capture is automatic via DeviceService.on_frame_sent callback.
-    """
+def _display_frame_route(method: str, *args, **kwargs) -> dict:
+    """Route to lcd.frame capability, stop video/overlay first."""
     from trcc.api import stop_overlay_loop, stop_video_playback
 
-    # Static display operations replace any running video/overlay
     stop_video_playback()
     stop_overlay_loop()
-    result = getattr(_get_display(), method)(*args, **kwargs)
+    result = getattr(_get_display().frame, method)(*args, **kwargs)
+    return dispatch_result(result)
+
+
+def _display_settings_route(method: str, *args, **kwargs) -> dict:
+    """Route to lcd.settings capability."""
+    result = getattr(_get_display().settings, method)(*args, **kwargs)
     return dispatch_result(result)
 
 
@@ -52,31 +54,31 @@ def _display_route(method: str, *args, **kwargs) -> dict:
 def set_color(body: HexColorRequest) -> dict:
     """Send solid color to LCD."""
     r, g, b = parse_hex_or_400(body.hex)
-    return _display_route("send_color", r, g, b)
+    return _display_frame_route("send_color", r, g, b)
 
 
 @router.post("/brightness")
 def set_brightness(body: BrightnessRequest) -> dict:
     """Set display brightness (1=25%, 2=50%, 3=100%). Persists to config."""
-    return _display_route("set_brightness", body.level)
+    return _display_settings_route("set_brightness", body.level)
 
 
 @router.post("/rotation")
 def set_rotation(body: RotationRequest) -> dict:
     """Set display rotation (0, 90, 180, 270). Persists to config."""
-    return _display_route("set_rotation", body.degrees)
+    return _display_settings_route("set_rotation", body.degrees)
 
 
 @router.post("/split")
 def set_split(body: SplitRequest) -> dict:
     """Set split mode (0=off, 1-3=Dynamic Island). Persists to config."""
-    return _display_route("set_split_mode", body.mode)
+    return _display_settings_route("set_split_mode", body.mode)
 
 
 @router.post("/reset")
 def reset_display() -> dict:
     """Reset device by sending solid red frame."""
-    return _display_route("reset")
+    return _display_frame_route("reset")
 
 
 @router.post("/mask")
@@ -97,7 +99,7 @@ async def load_mask(image: UploadFile) -> dict:
         tmp_path = tmp.name
 
     try:
-        result = lcd.load_mask(tmp_path)
+        result = lcd.load_mask_standalone(tmp_path)
         return dispatch_result(result)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -107,7 +109,7 @@ async def load_mask(image: UploadFile) -> dict:
 async def render_overlay(dc_path: str, send: bool = True) -> dict:
     """Render overlay from DC config path and optionally send to device."""
     lcd = _get_display()
-    result = lcd.render_overlay(dc_path, send=send)
+    result = lcd.render_overlay_from_dc(dc_path, send=send)
     return dispatch_result(result)
 
 

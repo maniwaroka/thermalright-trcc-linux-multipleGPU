@@ -506,8 +506,7 @@ def uninstall(*, yes: bool = False):
 
     # User files/dirs to remove
     user_items = [
-        home / ".config" / "trcc",                          # config dir
-        home / ".trcc",                                      # downloaded themes/web data
+        home / ".trcc",                                      # all trcc data + config
     ]
     # Glob for any trcc autostart/desktop files (catches current + legacy names)
     for d in (home / ".config" / "autostart", home / ".local" / "share" / "applications"):

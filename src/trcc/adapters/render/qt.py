@@ -244,7 +244,10 @@ class QtRenderer(Renderer):
     # ── Device encoding ───────────────────────────────────────────
 
     def encode_rgb565(self, surface: Any, byte_order: str = '>') -> bytes:
-        # Qt Format_RGB16 is native-endian RGB565 — zero Python bit math
+        # Ensure opaque RGB32 first — premultiplied alpha surfaces produce
+        # darkened RGB values if converted directly to RGB16.
+        if surface.format() != QImage.Format.Format_RGB32:
+            surface = surface.convertToFormat(QImage.Format.Format_RGB32)
         rgb16 = surface.convertToFormat(QImage.Format.Format_RGB16)
         w, h = rgb16.width(), rgb16.height()
         bpl = rgb16.bytesPerLine()

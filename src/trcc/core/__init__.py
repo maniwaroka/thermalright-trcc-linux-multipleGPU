@@ -1,13 +1,10 @@
 """
-TRCC Core - Services + Controllers Architecture
+TRCC Core — Ports, Devices, Models
 
-Services: Pure Python business logic (no GUI dependencies)
-Controllers: Driving adapters that wrap services for GUI
+Ports (ABCs): Device, Renderer — contracts for adapters.
+Devices: LCDDevice, LEDDevice — concrete Device implementations.
+Builder: ControllerBuilder — assembles devices with DI.
 Models: Data classes only (ThemeInfo, DeviceInfo, VideoState, etc.)
-
-Note: Controllers are NOT re-exported here to avoid circular imports
-(services → core.models → core.__init__ → controllers → services).
-Import controllers directly: `from trcc.core.controllers import ...`
 """
 
 from .models import (
