@@ -100,6 +100,22 @@ jobs:
           License:    GPL-3.0-or-later
           URL:        https://github.com/Lexonight1/thermalright-trcc-linux
           BuildArch:  noarch
+          Requires:   python3
+          Requires:   python3-pyside6
+          Requires:   python3-pillow
+          Requires:   python3-numpy
+          Requires:   python3-psutil
+          Requires:   python3-pyusb
+          Requires:   python3-click
+          Requires:   python3-typer
+          Requires:   python3-fastapi
+          Requires:   python3-uvicorn
+          Requires:   libusb1
+          Requires:   sg3_utils
+          Requires:   p7zip
+          Recommends: python3-pynvml
+          Recommends: python3-dbus
+          Recommends: python3-hidapi
           %description
           Controls LCD displays and LED segment displays on Thermalright CPU coolers.
           %files
@@ -153,8 +169,8 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pil, python3-numpy, python3-psutil, python3-usb, libusb-1.0-0, sg3-utils, p7zip-full
-          Recommends: python3-pyside6, python3-typer, python3-fastapi, python3-uvicorn
+          Depends: python3 (>= 3.9), python3-pyside6, python3-pil, python3-numpy, python3-psutil, python3-usb, python3-click, python3-typer, python3-fastapi, python3-uvicorn, libusb-1.0-0, sg3-utils, p7zip-full
+          Recommends: python3-pynvml, python3-dbus, python3-hidapi
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
           Description: Thermalright LCD/LED Control Center for Linux
@@ -181,12 +197,15 @@ jobs:
             -v "${{ github.workspace }}/packages:/output" \
             archlinux bash -c '
           set -e
-          pacman -Sy --noconfirm python python-installer python-packaging zstd >/dev/null 2>&1
+          pacman -Sy --noconfirm python python-pip python-installer python-packaging zstd >/dev/null 2>&1
           VER=${{ steps.version.outputs.ver }}
           WHL=$(ls /src/dist/trcc_linux-*.whl)
           PKG=/tmp/pkg-root
           mkdir -p "$PKG/usr"
           python -m installer --destdir="$PKG" --prefix=/usr "$WHL"
+
+          # Bundle uvicorn (not in official Arch repos)
+          pip install --root="$PKG" --prefix=/usr --no-deps uvicorn
 
           install -Dm644 /src/packaging/udev/99-trcc-lcd.rules "$PKG/usr/lib/udev/rules.d/99-trcc-lcd.rules"
           install -Dm644 /src/packaging/modprobe/trcc-lcd.conf "$PKG/usr/lib/modprobe.d/trcc-lcd.conf"
@@ -208,13 +227,21 @@ jobs:
           arch = any
           license = GPL-3.0-or-later
           depend = python
+          depend = pyside6
           depend = python-pillow
           depend = python-numpy
           depend = python-psutil
           depend = python-pyusb
+          depend = python-click
+          depend = python-typer
+          depend = python-fastapi
           depend = libusb
           depend = sg3_utils
           depend = p7zip
+          optdepend = python-pynvml: NVIDIA GPU sensor support
+          optdepend = python-dbus: Wayland session support
+          optdepend = python-gobject: Wayland session support
+          optdepend = python-hidapi: Alternative HID transport
           INFO
 
           cd "$PKG"
