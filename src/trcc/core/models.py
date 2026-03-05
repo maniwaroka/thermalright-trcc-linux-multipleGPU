@@ -201,7 +201,6 @@ class DeviceInfo:
     device_type: int = 1  # 1=SCSI, 2=HID Type 2 ("H"), 3=HID Type 3 ("ALi")
     implementation: str = "generic"  # e.g. "thermalright_lcd_v1", "hid_type2", "hid_led"
     led_style_id: Optional[int] = None  # LED style from probe (avoids name-based lookup)
-    use_jpeg: bool = True  # Bulk PM=32 uses RGB565; all others use JPEG
 
     # State
     connected: bool = True
@@ -231,6 +230,19 @@ class DeviceInfo:
     def resolution_str(self) -> str:
         """Get resolution as string (e.g., '320x320')."""
         return f"{self.resolution[0]}x{self.resolution[1]}"
+
+    @property
+    def use_jpeg(self) -> bool:
+        """Whether this device uses JPEG encoding.
+
+        Computed from protocol + fbl_code — no mutable state, no propagation.
+        C# FormCZTVInit: bulk PM=32 (FBL=100) → myDeviceMode=4 (RGB565).
+        All other bulk PMs → myDeviceMode=2 (JPEG).
+        LY devices always JPEG.  SCSI/HID default RGB565.
+        """
+        if self.protocol in ('bulk', 'ly'):
+            return self.fbl_code not in BULK_RGB565_FBLS
+        return False
 
     @property
     def encoding_params(self) -> tuple:
@@ -1231,6 +1243,11 @@ FBL_TO_RESOLUTION: dict[int, tuple[int, int]] = {
 # C# FormCZTV: these resolutions use ImageToJpg() instead of ImageTo565().
 # Header byte[6] = 0x00 (JPEG) vs 0x01 (RGB565), with actual width/height.
 JPEG_MODE_FBLS: frozenset[int] = frozenset({54, 114, 128, 192, 224})
+
+# Bulk FBL values that use RGB565 instead of JPEG (C# myDeviceMode == 4).
+# C# FormCZTVInit: PM=32 → myDeviceMode=4 → ImageTo565() with cmd=3 header.
+# All other bulk PMs use myDeviceMode=2 → ImageToJpg() with cmd=2 header.
+BULK_RGB565_FBLS: frozenset[int] = frozenset({100})  # PM=32 → FBL=100 → 320x320
 
 # Reverse lookup: resolution → PM/FBL (first match wins)
 RESOLUTION_TO_PM: dict[tuple[int, int], int] = {

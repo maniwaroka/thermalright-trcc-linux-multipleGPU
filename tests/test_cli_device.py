@@ -249,32 +249,22 @@ class TestDiscoverResolution:
         # (the mock will show no new assignment to (0, 0) resolution)
         assert dev.resolution == (0, 0)
 
-    def test_handshake_sets_use_jpeg_from_bulk_device(self):
-        """use_jpeg is copied from protocol._device when available."""
-        dev = MagicMock()
-        dev.resolution = (0, 0)
-
-        result = MagicMock()
-        result.resolution = (480, 480)
-        result.fbl = 72
-        result.model_id = None
-
-        bulk_dev = MagicMock()
-        bulk_dev.use_jpeg = False
-
-        protocol = MagicMock()
-        protocol.handshake.return_value = result
-        protocol._device = bulk_dev
-
-        with patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol",
-                   return_value=protocol):
-            discover_resolution(dev)
-
+    def test_use_jpeg_computed_from_protocol_fbl(self):
+        """use_jpeg is computed from protocol+fbl, not propagated from BulkDevice."""
+        from trcc.core.models import DeviceInfo
+        # Bulk + FBL=100 → RGB565
+        dev = DeviceInfo(name='bulk', path='b', protocol='bulk', fbl_code=100)
         assert dev.use_jpeg is False
+        # Bulk + FBL=72 → JPEG
+        dev2 = DeviceInfo(name='bulk', path='b', protocol='bulk', fbl_code=72)
+        assert dev2.use_jpeg is True
+        # SCSI → always RGB565
+        dev3 = DeviceInfo(name='scsi', path='s', protocol='scsi', fbl_code=100)
+        assert dev3.use_jpeg is False
 
     def test_handshake_returns_none_no_update(self):
         """If handshake returns None/falsy, dev.resolution is not reassigned."""
-        dev = MagicMock(spec=["resolution", "fbl_code", "use_jpeg"])
+        dev = MagicMock(spec=["resolution", "fbl_code"])
         dev.resolution = (0, 0)
 
         protocol = MagicMock()

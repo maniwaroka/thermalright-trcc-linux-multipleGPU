@@ -60,14 +60,10 @@ def discover_resolution(dev) -> None:
             res = getattr(result, 'resolution', None)
             if isinstance(res, tuple) and len(res) == 2 and res != (0, 0):
                 dev.resolution = res
-            # Propagate FBL code for JPEG mode detection
+            # Propagate FBL code — use_jpeg is computed from protocol + fbl
             fbl = getattr(result, 'fbl', None) or getattr(result, 'model_id', None)
             if fbl:
                 dev.fbl_code = fbl
-            # Bulk PM=32 uses RGB565, not JPEG
-            bulk_dev = getattr(protocol, '_device', None)
-            if bulk_dev is not None:
-                dev.use_jpeg = getattr(bulk_dev, 'use_jpeg', True)
     except Exception:
         pass  # Handshake may fail if device not ready
 

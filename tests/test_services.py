@@ -646,11 +646,11 @@ class TestDeviceServiceSendPilBulk(unittest.TestCase):
         self.assertTrue(call_data[:2] == b'\xff\xd8')  # JPEG data
 
     def test_bulk_pm32_sends_rgb565(self):
-        """Bulk PM=32 (use_jpeg=False) → ImageService.to_rgb565() path."""
+        """Bulk PM=32 (FBL=100) → ImageService.to_rgb565() path."""
         from trcc.core.models import DeviceInfo
         svc = DeviceService()
         dev = DeviceInfo(name='bulk', path='bulk:87ad:70db', protocol='bulk',
-                         resolution=(320, 320), use_jpeg=False)
+                         resolution=(320, 320), fbl_code=100)
         svc.select(dev)
 
         with patch.object(svc, 'send_rgb565', return_value=True) as mock_send:

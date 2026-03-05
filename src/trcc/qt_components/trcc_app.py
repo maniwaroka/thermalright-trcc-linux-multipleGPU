@@ -942,9 +942,7 @@ class TRCCApp(QMainWindow):
                     resolution = getattr(result, 'resolution', None)
                     fbl = getattr(result, 'fbl', None) or getattr(
                         result, 'model_id', None)
-                    bulk_dev = getattr(protocol, '_device', None)
-                    use_jpeg = getattr(bulk_dev, 'use_jpeg', True)
-                    self._handshake_done.emit(device, (resolution, fbl, use_jpeg))
+                    self._handshake_done.emit(device, (resolution, fbl))
                 else:
                     self._handshake_done.emit(device, None)
             except Exception as e:
@@ -956,7 +954,7 @@ class TRCCApp(QMainWindow):
         if not data:
             self.uc_preview.set_status("Handshake failed — replug device")
             return
-        resolution, fbl, *rest = data
+        resolution, fbl = data
         if not resolution or resolution == (0, 0):
             self.uc_preview.set_status("Handshake failed — no resolution")
             return
@@ -965,8 +963,7 @@ class TRCCApp(QMainWindow):
         if fbl:
             device.fbl_code = fbl
             self._resolve_device_identity(device, fbl)
-        if rest:
-            device.use_jpeg = rest[0]
+        # use_jpeg is computed from protocol + fbl — no propagation needed
         self._on_device_selected(device)
 
     def _resolve_device_identity(self, device: DeviceInfo, fbl: int):

@@ -1650,23 +1650,36 @@ class TestDiscoverResolution(unittest.TestCase):
         self.assertEqual(dev.resolution, (320, 240))
         self.assertEqual(dev.fbl_code, 50)
 
-    def test_sets_use_jpeg_for_bulk(self):
-        """Bulk protocol propagates use_jpeg from BulkDevice."""
+    def test_bulk_pm32_use_jpeg_computed_from_fbl(self):
+        """Bulk PM=32 (FBL=100) → use_jpeg=False, computed from protocol+fbl."""
+        dev = _make_device_info(path='bulk:87ad:70db', protocol='bulk', resolution=(0, 0))
+        mock_result = MagicMock()
+        mock_result.resolution = (320, 320)
+        mock_result.fbl = None
+        mock_result.model_id = 100  # FBL=100 → BULK_RGB565_FBLS
+        mock_protocol = MagicMock()
+        mock_protocol.handshake.return_value = mock_result
+        with patch('trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol',
+                   return_value=mock_protocol):
+            discover_resolution(dev)
+        self.assertEqual(dev.resolution, (320, 320))
+        self.assertEqual(dev.fbl_code, 100)
+        self.assertFalse(dev.use_jpeg)  # computed: bulk + FBL=100 → RGB565
+
+    def test_bulk_jpeg_use_jpeg_computed_from_fbl(self):
+        """Bulk non-PM32 (FBL=72) → use_jpeg=True, computed from protocol+fbl."""
         dev = _make_device_info(path='bulk:87ad:70db', protocol='bulk', resolution=(0, 0))
         mock_result = MagicMock()
         mock_result.resolution = (480, 480)
         mock_result.fbl = None
         mock_result.model_id = 72
-        mock_bulk_dev = MagicMock()
-        mock_bulk_dev.use_jpeg = False
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = mock_result
-        mock_protocol._device = mock_bulk_dev
         with patch('trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol',
                    return_value=mock_protocol):
             discover_resolution(dev)
         self.assertEqual(dev.resolution, (480, 480))
-        self.assertFalse(dev.use_jpeg)
+        self.assertTrue(dev.use_jpeg)  # computed: bulk + FBL=72 → JPEG
 
     def test_handles_handshake_failure(self):
         """Handshake exception is silently caught — dev unchanged."""
