@@ -349,9 +349,9 @@ class LCDDevice(Device):
             self.theme: ThemeOps | None = None
             self.video: VideoOps | None = None
             self.overlay: OverlayOps | None = None
-            self.frame: FrameOps | None = None
 
-        # settings points to self — methods are now on LCDDevice directly
+        # frame + settings point to self — methods are on LCDDevice directly
+        self.frame: LCDDevice = self  # type: ignore[assignment]
         self.settings: LCDDevice = self  # type: ignore[assignment]
 
     def _compose(self) -> None:
@@ -359,7 +359,7 @@ class LCDDevice(Device):
         self.theme = ThemeOps(self._display_svc, self._theme_svc)
         self.video = VideoOps(self._display_svc)
         self.overlay = OverlayOps(self._display_svc)
-        self.frame = FrameOps(self._device_svc, self._display_svc)
+        # frame ops are inlined on LCDDevice — no FrameOps instance needed
 
     def _build_services(self, device_svc: Any) -> None:
         """Wire up all services from a DeviceService."""
@@ -520,8 +520,8 @@ class LCDDevice(Device):
         if output:
             result_img.save(output)
             messages.append(f"Saved overlay render to {output}")
-        if send and self.frame:
-            self.frame.send(result_img)
+        if send and self.connected:
+            self.send(result_img)
             messages.append(f"Sent overlay to {self.device_path}")
 
         elements = len(overlay.config) if overlay.config else 0
@@ -590,13 +590,59 @@ class LCDDevice(Device):
             ovl.enabled = True
             result_img = ovl.render()
 
-        if self.frame:
-            self.frame.send(result_img)
+        if self.connected:
+            self.send(result_img)
         return {
             "success": True,
             "image": result_img,
             "message": f"Sent mask {mask_file.name} to {self.device_path}",
         }
+
+    # ── Frame ops (encode/send to hardware) ─────────────────────
+
+    def send_image(self, image_path: str) -> dict:
+        if not os.path.exists(image_path):
+            return {"success": False, "error": f"File not found: {image_path}"}
+        from ..services import ImageService
+        w, h = self.lcd_size
+        img = ImageService.open_and_resize(image_path, w, h)
+        self._device_svc.send_pil(img, w, h)
+        return {"success": True, "image": img, "message": f"Sent {image_path}"}
+
+    def send_color(self, r: int, g: int, b: int) -> dict:
+        from ..services import ImageService
+        w, h = self.lcd_size
+        img = ImageService.solid_color(r, g, b, w, h)
+        self._device_svc.send_pil(img, w, h)
+        return {"success": True, "image": img,
+                "message": f"Sent color #{r:02x}{g:02x}{b:02x}"}
+
+    def send(self, image: Any) -> dict:
+        """Encode and async-send image to LCD device."""
+        if not self._device_svc.selected:
+            return {"success": False, "error": "No device selected"}
+        w, h = self.lcd_size
+        self._device_svc.send_pil_async(image, w, h)
+        return {"success": True}
+
+    def send_async(self, image: Any, width: int, height: int) -> None:
+        if self._device_svc.is_busy:
+            return
+        self._device_svc.send_pil_async(image, width, height)
+
+    def load_image(self, path: Any) -> dict:
+        image = self._display_svc.load_image_file(Path(path))
+        if image:
+            return {"success": True, "image": image,
+                    "message": f"Loaded: {Path(path).name}"}
+        return {"success": False, "error": f"Failed to load: {path}"}
+
+    def reset(self) -> dict:
+        from ..services import ImageService
+        w, h = self.lcd_size
+        img = ImageService.solid_color(255, 0, 0, w, h)
+        self._device_svc.send_pil(img, w, h)
+        return {"success": True, "image": img, "message": "Device reset — RED"}
 
     # ── Display settings (brightness/rotation/split) ─────────────
 
