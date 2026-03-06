@@ -1,5 +1,20 @@
 # Changelog
 
+## v7.1.1
+
+### Bug Fixes
+- **Fixed**: PermissionError on system-wide installs (#51) — `_find_data_dir()`, `get_web_dir()`, `get_web_masks_dir()` fell back to read-only package path (`/usr/lib/python3.x/.../trcc/data/`). Now falls back to `~/.trcc/data/` (user-writable)
+- **Fixed**: CodeQL stack-trace-exposure alert (CWE-209) — restructured preview endpoint exception handling
+
+## v7.1.0
+
+### Bug Fixes
+- **Fixed**: Scrambled display on bulk USB devices (#54) — `BulkDevice.handshake()` and `LyDevice.handshake()` returned `model_id=PM` instead of `model_id=FBL`. PM=32 mapped to JPEG encoding instead of RGB565, sending JPEG bytes with cmd=3 header
+- **Fixed**: Theme not restoring on boot — `_restore_theme()` fallback used `persist=False`, so `--last-one` autostart never saved. Now uses `persist = not saved`
+- **Fixed**: Duplicate concurrent handshakes from device poll timer — added `_handshake_pending` guard
+- **Fixed**: Per-frame DEBUG log spam (~30/sec) rotated out useful INFO messages within seconds of video playback. Removed hot-path debug logging from display, device, image services, and factory
+- **Added**: All C# v2.1.2 bulk PM values to `_BULK_KNOWN_PMS`
+
 ## v7.0.10
 
 ### Bug Fixes & Cloud Parity

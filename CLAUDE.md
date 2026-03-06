@@ -312,6 +312,15 @@ When adding GUI assets:
 - **Bulk RGB565 encoding fix**: v7.0.10 corrected bulk protocol encoding.
 - 4157 tests passing, ruff clean, pyright clean
 
+### v7.1.0–v7.1.1: Bulk FBL Bug, Theme Persist, System Install Fix
+- **Bulk/LY FBL bug (#54)**: `BulkDevice.handshake()` and `LyDevice.handshake()` returned `model_id=PM` (raw handshake byte) instead of `model_id=FBL` (lookup code). GUI stored PM as `fbl_code` → `DeviceInfo.use_jpeg` computed wrong encoding. PM=32 bulk devices got JPEG encoding when they need RGB565 → scrambled display. Fixed: both now return `pm_to_fbl(pm, sub)`.
+- **Theme persist on first boot**: `_restore_theme()` fallback used `persist=False`, so `--last-one` autostart never saved the theme. Fixed: `persist = not saved` — persists when no prior save existed.
+- **Handshake guard**: Added `_handshake_pending` flag to prevent duplicate concurrent handshakes from device poll timer.
+- **Log noise**: Removed per-frame DEBUG logs (~30/sec) from display, device, image services and factory — was rotating out useful INFO messages within seconds of video playback.
+- **PermissionError on system-wide installs (#51)**: `_find_data_dir()`, `get_web_dir()`, `get_web_masks_dir()` fell back to read-only package path (`/usr/lib/python3.x/.../trcc/data/`) when no themes existed. Cloud theme `mkdir` crashed. Fixed: fallback is now `USER_DATA_DIR` (`~/.trcc/data/`), always user-writable.
+- **CodeQL alert**: Restructured preview endpoint exception handling to prevent stack trace flow analysis false positive (CWE-209).
+- 4157 tests passing, ruff clean, pyright clean
+
 ### Future Work
 - Test consolidation (parametrize, merge tiny classes)
 - GUI component splits (uc_theme_setting.py → 5 files)
