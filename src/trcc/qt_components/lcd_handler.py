@@ -103,7 +103,9 @@ class LCDHandler:
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', 2)
         percent = {1: 25, 2: 50, 3: 100}.get(self._brightness_level, 50)
-        self._lcd.settings.set_brightness(percent)
+        # Set display service brightness directly — avoid DisplaySettings which
+        # re-persists the percent value (100) over the level (3), corrupting config.
+        self._lcd._display_svc.set_brightness(percent)
 
     def _restore_rotation(self, cfg: dict) -> None:
         rotation_index = cfg.get('rotation', 0) // 90
@@ -314,19 +316,28 @@ class LCDHandler:
             except Exception:
                 return
 
-        if overlay_config:
-            Settings.apply_format_prefs(overlay_config)
-            self._w['theme_setting'].set_overlay_enabled(True)
-            self._w['theme_setting'].load_from_overlay_config(overlay_config)
-            self._lcd.overlay.set_config(overlay_config)
-            self._lcd.overlay.enable(True)
-            self._render_and_send()
-
+        if not overlay_config:
+            # Custom themes without overlay — clear any stale saved overlay
+            # so it doesn't reappear on restart (fixes #58).
+            self._w['theme_setting'].set_overlay_enabled(False)
             if self._device_key:
                 Settings.save_device_setting(self._device_key, 'overlay', {
-                    'enabled': True,
-                    'config': overlay_config,
+                    'enabled': False, 'config': {},
                 })
+            return
+
+        Settings.apply_format_prefs(overlay_config)
+        self._w['theme_setting'].set_overlay_enabled(True)
+        self._w['theme_setting'].load_from_overlay_config(overlay_config)
+        self._lcd.overlay.set_config(overlay_config)
+        self._lcd.overlay.enable(True)
+        self._render_and_send()
+
+        if self._device_key:
+            Settings.save_device_setting(self._device_key, 'overlay', {
+                'enabled': True,
+                'config': overlay_config,
+            })
 
     # ── Video (C# ucBoFangQiKongZhi1) ─────────────────────────────
 

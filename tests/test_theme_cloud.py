@@ -226,23 +226,27 @@ class TestDownloaderErrorHandling(unittest.TestCase):
 
     @patch('trcc.adapters.infra.theme_cloud.urlopen')
     def test_download_file_http_404(self, mock_urlopen):
-        mock_urlopen.side_effect = HTTPError(
+        err = HTTPError(
             'http://test.com/a001.mp4', 404, 'Not Found', {}, None  # type: ignore[arg-type]
         )
+        mock_urlopen.side_effect = err
         with tempfile.TemporaryDirectory() as tmp:
             dl = CloudThemeDownloader(cache_dir=tmp)
             result = dl.download_theme('a999')
             self.assertIsNone(result)
+        err.close()
 
     @patch('trcc.adapters.infra.theme_cloud.urlopen')
     def test_download_file_http_500(self, mock_urlopen):
-        mock_urlopen.side_effect = HTTPError(
+        err = HTTPError(
             'http://test.com/a001.mp4', 500, 'Server Error', {}, None  # type: ignore[arg-type]
         )
+        mock_urlopen.side_effect = err
         with tempfile.TemporaryDirectory() as tmp:
             dl = CloudThemeDownloader(cache_dir=tmp)
             result = dl.download_theme('a001')
             self.assertIsNone(result)
+        err.close()
 
     @patch('trcc.adapters.infra.theme_cloud.urlopen')
     def test_download_file_url_error(self, mock_urlopen):
@@ -413,6 +417,7 @@ class TestDownloadErrors(unittest.TestCase):
         with patch('trcc.adapters.infra.theme_cloud.urlopen', side_effect=err):
             result = dl._download_file('http://test.com/a.mp4', Path('/tmp/out.mp4'))
         self.assertIsNone(result)
+        err.close()
 
     def test_download_file_url_error(self):
         """_download_file handles URLError."""

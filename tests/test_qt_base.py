@@ -156,6 +156,7 @@ class TestImageLabel(unittest.TestCase):
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(50, 50),
+            QPointF(50, 50),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
@@ -176,6 +177,7 @@ class TestClickableFrame(unittest.TestCase):
         from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
             QPointF(10, 10),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
@@ -221,6 +223,7 @@ class TestBaseThumbnail(unittest.TestCase):
         from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
+            QPointF(60, 60),
             QPointF(60, 60),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,

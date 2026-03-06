@@ -498,11 +498,12 @@ class ThemeService:
         try:
             from PIL import Image
 
-            mask_img = Image.open(mask_file)
-            position = ThemeService._parse_mask_position(
-                dc_path or (td.dc if td.dc.exists() else None),
-                mask_img, w, h)
-            data.mask = mask_img
+            with Image.open(mask_file) as mask_img:
+                mask_img.load()
+                position = ThemeService._parse_mask_position(
+                    dc_path or (td.dc if td.dc.exists() else None),
+                    mask_img, w, h)
+                data.mask = mask_img
             data.mask_position = position
             data.mask_source_dir = td.path
         except Exception as e:

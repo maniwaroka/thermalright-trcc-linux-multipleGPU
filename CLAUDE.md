@@ -321,6 +321,20 @@ When adding GUI assets:
 - **CodeQL alert**: Restructured preview endpoint exception handling to prevent stack trace flow analysis false positive (CWE-209).
 - 4157 tests passing, ruff clean, pyright clean
 
+### v7.1.2–v7.1.4: CLI Device Selection, Software Update System
+- **CLI auto-select fix**: `_get_service()` falls back to first detected device when saved device path doesn't match. Removed premature auto-select from `DeviceService.scan()` — selection is caller's responsibility.
+- **Software update system** (`uc_about.py`): Version check uses GitHub releases API (not PyPI). Detects install method (pip/pipx/pacman/dnf/apt) and distro on first launch, persists to `config.json` via `Settings.get_install_info()`/`save_install_info()`. Update button toggles dark→light overlay when update available. Click triggers method-appropriate upgrade: pip/pipx run directly, package managers download from release assets + `pkexec` for sudo prompt.
+- **Install info in config**: `config.json` stores `install_info.method` and `install_info.distro` — detected once, read forever. No runtime guessing after first launch.
+- **GitHub release assets**: Package download URLs come from the release JSON (no hardcoded filenames). Handles Fedora version changes automatically.
+- **CodeQL fix**: Restructured preview endpoint try/except to satisfy flow analysis (CWE-209).
+- 4157 tests passing, ruff clean, pyright clean
+
+### v7.1.5: Brightness Persist, Overlay Restore, Test Warnings
+- **Brightness not persisting across restarts**: `_restore_brightness` called `DisplaySettings.set_brightness(percent)` which re-persisted the percent value (100) as `brightness_level`, overwriting the saved level (3). Next restart mapped 100 via `{1:25, 2:50, 3:100}.get(100, 50)` → 50% fallback. Fixed: restore now sets `DisplayService.brightness` directly, bypassing `DisplaySettings` persist side-effect. Also added `_update_ldd_icon()` after `apply_device_config()` so brightness button icon reflects restored level.
+- **Stale overlay on custom theme restart (#58)**: Overlay config in `config.json` is per-device, not per-theme. Switching from official theme (with overlay) to custom theme (without) left stale overlay saved. On restart, custom theme loaded then `_restore_overlay` applied the old overlay. Fixed: `_load_theme_overlay_config` now clears and persists `enabled: False` when theme has no overlay config.
+- **Test warnings eliminated**: QMouseEvent deprecated 5-arg constructor → 6-arg (added `globalPos`). Unclosed PIL `Image.open()` in `_load_mask_into` → context manager. Unclosed `HTTPError` in test mocks → explicit `.close()`. Unclosed `Image.open()` in `test_dc_writer` → context manager. pyusb `_pack_` filter fixed (`usb` → `usb.*`).
+- 4157 tests passing, 0 warnings, ruff clean, pyright clean
+
 ### Future Work
 - Test consolidation (parametrize, merge tiny classes)
 - GUI component splits (uc_theme_setting.py → 5 files)

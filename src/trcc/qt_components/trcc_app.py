@@ -926,6 +926,7 @@ class TRCCApp(QMainWindow):
         if self._lcd_handler:
             self._lcd_handler.display.select_device(device)
             self._lcd_handler.apply_device_config(device, w, h)
+            self._update_ldd_icon()
             # Show info module if configured
             if Settings.show_info_module():
                 self.uc_info_module.setVisible(True)

@@ -420,9 +420,9 @@ class TestSaveTheme(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             theme_dir = os.path.join(tmpdir, 'ThumbTheme')
             save_theme(theme_dir, background_image=bg)
-            thumb = Image.open(os.path.join(theme_dir, 'Theme.png'))
-            self.assertLessEqual(thumb.width, 120)
-            self.assertLessEqual(thumb.height, 120)
+            with Image.open(os.path.join(theme_dir, 'Theme.png')) as thumb:
+                self.assertLessEqual(thumb.width, 120)
+                self.assertLessEqual(thumb.height, 120)
 
 
 # ── export_theme wrapper ─────────────────────────────────────────────────────

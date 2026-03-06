@@ -204,6 +204,7 @@ class TestOverlayElementWidget:
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(30, 30),
+            QPointF(30, 30),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
@@ -218,6 +219,7 @@ class TestOverlayElementWidget:
         from PySide6.QtCore import QPointF
         event = QMouseEvent(
             QEvent.Type.MouseButtonDblClick,
+            QPointF(30, 30),
             QPointF(30, 30),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
@@ -1013,6 +1015,7 @@ class TestThemeThumbnail:
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(60, 100),  # lower half
+            QPointF(60, 100),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
@@ -1033,6 +1036,7 @@ class TestThemeThumbnail:
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(60, 100),  # y > 60 -> slideshow toggle
+            QPointF(60, 100),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
@@ -1052,6 +1056,7 @@ class TestThemeThumbnail:
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(60, 30),  # y <= 60 -> normal click
+            QPointF(60, 30),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,

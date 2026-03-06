@@ -729,6 +729,7 @@ class TestSensorItem:
         event = QMouseEvent(
             QMouseEvent.Type.MouseButtonPress,
             QPointF(5, 5),
+            QPointF(5, 5),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
             Qt.KeyboardModifier.NoModifier,
@@ -957,6 +958,7 @@ class TestSensorRow:
 
         event = QMouseEvent(
             QMouseEvent.Type.MouseButtonPress,
+            QPointF(5, 5),
             QPointF(5, 5),
             Qt.MouseButton.LeftButton,
             Qt.MouseButton.LeftButton,
