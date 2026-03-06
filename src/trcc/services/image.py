@@ -120,17 +120,11 @@ class ImageService:
         traits = PROTOCOL_TRAITS.get(protocol)
         if (traits and traits.supports_jpeg and use_jpeg) or (
                 protocol == 'hid' and fbl in JPEG_MODE_FBLS):
-            log.debug("encode_for_device: JPEG proto=%s res=%s fbl=%s",
-                       protocol, resolution, fbl)
             return ImageService.to_jpeg(img)
 
         img = ImageService.apply_device_rotation(img, resolution)
         byte_order = ImageService.byte_order_for(protocol, resolution, fbl)
-        data = ImageService.to_rgb565(img, byte_order)
-        log.debug("encode_for_device: RGB565 proto=%s res=%s fbl=%s "
-                   "byte_order=%s len=%d",
-                   protocol, resolution, fbl, byte_order, len(data))
-        return data
+        return ImageService.to_rgb565(img, byte_order)
 
     # ── ANSI preview (CLI cold path — still uses PIL directly) ────
 

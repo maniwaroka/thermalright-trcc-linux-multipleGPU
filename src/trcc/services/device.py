@@ -130,13 +130,8 @@ class DeviceService:
         try:
             from ..adapters.device.factory import DeviceProtocolFactory
 
-            log.debug("send_rgb565: device=%s protocol=%s %dx%d (%d bytes)",
-                      self._selected.path if self._selected else 'None',
-                      self._selected.protocol if self._selected else 'None',
-                      width, height, len(data))
             protocol = DeviceProtocolFactory.get_protocol(self._selected)
             success = protocol.send_image(data, width, height)
-            log.debug("send_rgb565: send_image returned %s", success)
             return success
         except Exception as e:
             log.error("Device send error: %s", e)

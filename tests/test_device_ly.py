@@ -97,7 +97,7 @@ class TestLyDeviceHandshake(unittest.TestCase):
         d._ep_out.write.assert_called_once()
         self.assertEqual(result.resolution, (1920, 462))
         self.assertEqual(d.pm, 65)
-        self.assertEqual(result.model_id, 65)
+        self.assertEqual(result.model_id, 192)  # FBL via pm_to_fbl(65)
 
     def test_handshake_ly_clamp_min(self):
         """LY: resp[20]=0 → clamped to 1 → PM=65."""

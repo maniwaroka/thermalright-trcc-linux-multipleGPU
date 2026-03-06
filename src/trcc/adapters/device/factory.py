@@ -305,7 +305,6 @@ class ScsiProtocol(DeviceProtocol):
 
     def send_image(self, image_data: bytes, width: int, height: int) -> bool:
         from .scsi import send_image_to_device
-        log.debug("SCSI send: %d bytes to %s (%dx%d)", len(image_data), self._path, width, height)
         return self._guarded_send(
             f"SCSI ({self._path})",
             lambda: send_image_to_device(self._path, image_data, width, height),

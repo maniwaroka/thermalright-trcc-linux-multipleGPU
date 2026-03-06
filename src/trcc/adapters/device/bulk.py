@@ -38,7 +38,8 @@ _HANDSHAKE_PAYLOAD = bytes([
 
 # PM values with explicit resolution overrides for bulk devices.
 # All others default to FBL=72 → 480x480.
-_BULK_KNOWN_PMS = {5, 7, 9, 10, 11, 12, 32, 64, 65}
+# C# v2.1.2 FormCZTVInit: all PM values that get special handling.
+_BULK_KNOWN_PMS = {5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 32, 50, 64, 65, 66, 68, 69}
 
 # C# FormCZTVInit: myDeviceMode=2 (JPEG) for all USBLCDNew devices,
 # except PM=32 which overrides to myDeviceMode=4 (RGB565, cmd=3).
@@ -115,12 +116,13 @@ class BulkDevice(BulkFrameDevice, FrameDevice):
         if resolution:
             self.width, self.height = resolution
 
-        log.info("Bulk handshake OK: PM=%d, SUB=%d, resolution=%s, jpeg=%s",
-                 self.pm, self.sub_type, resolution, self.use_jpeg)
+        fbl = pm_to_fbl(self.pm, self.sub_type)
+        log.info("Bulk handshake OK: PM=%d, SUB=%d, FBL=%d, resolution=%s, jpeg=%s",
+                 self.pm, self.sub_type, fbl, resolution, self.use_jpeg)
 
         return HandshakeResult(
             resolution=resolution,
-            model_id=self.pm,
+            model_id=fbl,
             raw_response=resp,
         )
 

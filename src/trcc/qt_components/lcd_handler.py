@@ -140,12 +140,16 @@ class LCDHandler:
                 return
             log.warning("Saved theme path not found: %s", saved)
 
-        # Auto-load first local theme (don't persist — fallback)
+        # Auto-load first local theme as fallback.
+        # Persist only when no theme was previously saved — avoids
+        # overwriting a saved path that just went missing (v6.1.3).
         theme_base = settings.theme_dir
         if theme_base and theme_base.exists():
+            persist = not saved  # no prior save → persist fallback
             for item in sorted(theme_base.path.iterdir()):
                 if item.is_dir() and (item / '00.png').exists():
-                    self._select_theme_from_path(item, persist=False)
+                    log.info("Fallback theme: %s (persist=%s)", item, persist)
+                    self._select_theme_from_path(item, persist=persist)
                     break
 
     def _restore_carousel(self, cfg: dict) -> None:

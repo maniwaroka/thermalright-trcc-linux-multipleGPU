@@ -371,8 +371,6 @@ class DisplayService:
             return None
 
         self.current_image = frame
-        log.debug("video_tick: frame type=%s cache=%s",
-                  type(frame).__name__, self._cache.active if self._cache else None)
 
         # Fast path: pre-baked cache active — zero PIL work per tick
         if self._cache and self._cache.active:

@@ -369,6 +369,7 @@ class TRCCApp(QMainWindow):
         # Per-device handlers (C# formDeviceArray)
         self._lcd_handler: LCDHandler | None = None
         self._active_device_key = ''
+        self._handshake_pending = False  # guard against duplicate handshakes
 
         # Pixmap refs to prevent GC
         self._pixmap_refs: list = []
@@ -932,6 +933,11 @@ class TRCCApp(QMainWindow):
             self._mediator.ensure_running()
 
     def _start_handshake(self, device: DeviceInfo):
+        if self._handshake_pending:
+            log.debug("Handshake already in progress, skipping")
+            return
+        self._handshake_pending = True
+
         import threading
         def worker():
             try:
@@ -951,6 +957,7 @@ class TRCCApp(QMainWindow):
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_handshake_done(self, device: DeviceInfo, data: tuple | None):
+        self._handshake_pending = False
         if not data:
             self.uc_preview.set_status("Handshake failed — replug device")
             return

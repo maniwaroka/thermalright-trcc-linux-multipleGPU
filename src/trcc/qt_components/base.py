@@ -193,27 +193,20 @@ class ImageLabel(QLabel):
         PIL Image (cold path — legacy callers).
         """
         if image is None:
-            log.debug("ImageLabel.set_image: image is None, clearing")
             self.clear()
             return
 
         if isinstance(image, QImage):
-            log.debug("ImageLabel.set_image: QImage %dx%d fmt=%s → target %dx%d",
-                      image.width(), image.height(), image.format(), self._width, self._height)
             if (image.width(), image.height()) != (self._width, self._height):
                 mode = (Qt.TransformationMode.FastTransformation if fast
                         else Qt.TransformationMode.SmoothTransformation)
                 image = image.scaled(
                     self._width, self._height,
                     Qt.AspectRatioMode.IgnoreAspectRatio, mode)
-            pixmap = QPixmap.fromImage(image)
-            log.debug("ImageLabel.set_image: QPixmap %dx%d null=%s",
-                      pixmap.width(), pixmap.height(), pixmap.isNull())
-            self.setPixmap(pixmap)
+            self.setPixmap(QPixmap.fromImage(image))
             return
 
         # PIL Image fallback (cold path)
-        log.debug("ImageLabel.set_image: PIL %s %s", type(image).__name__, getattr(image, 'size', '?'))
         if image.size != (self._width, self._height):
             resampling = Image.Resampling.BILINEAR if fast else Image.Resampling.LANCZOS
             image = image.resize((self._width, self._height), resampling)

@@ -121,12 +121,13 @@ class LyDevice(BulkFrameDevice, FrameDevice):
         resolution = _ly_resolution(self.pm, self.sub_type)
         self.width, self.height = resolution
 
-        log.info("LY handshake OK: PM=%d, SUB=%d, resolution=%s, pid=0x%04x",
-                 self.pm, self.sub_type, resolution, self.pid)
+        fbl = pm_to_fbl(self.pm, self.sub_type)
+        log.info("LY handshake OK: PM=%d, SUB=%d, FBL=%d, resolution=%s, pid=0x%04x",
+                 self.pm, self.sub_type, fbl, resolution, self.pid)
 
         return HandshakeResult(
             resolution=resolution,
-            model_id=self.pm,
+            model_id=fbl,
             raw_response=resp,
         )
 
