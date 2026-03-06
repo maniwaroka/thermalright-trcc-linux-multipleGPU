@@ -561,11 +561,18 @@ class LCDDevice(Device):
         r = ImageService._r()
         mask_img = r.convert_to_rgba(r.open_image(mask_file))
 
+        # Parse mask position from DC file (C# stores center coords)
+        mask_w, mask_h = r.surface_size(mask_img)
+        dc_path = (p if p.is_dir() else p.parent) / 'config1.dc'
+        from ..services.theme import ThemeService
+        position = ThemeService._parse_mask_position(
+            dc_path, mask_w, mask_h, w, h)
+
         # Use existing overlay service (GUI) or create fresh one (CLI)
         if self._display_svc:
             ovl = self._display_svc.overlay
             ovl.set_theme_mask(None)
-            ovl.set_mask(mask_img)
+            ovl.set_mask(mask_img, position)
             ovl.enabled = True
             # Use current theme bg, fall back to black
             bg = self._display_svc._clean_background or \
@@ -577,7 +584,7 @@ class LCDDevice(Device):
             result_img = self._display_svc.render_overlay()
         else:
             ovl = OverlayService(w, h)
-            ovl.set_mask(mask_img)
+            ovl.set_mask(mask_img, position)
             bg = ImageService.solid_color(0, 0, 0, w, h)
             ovl.set_background(bg)
             ovl.enabled = True

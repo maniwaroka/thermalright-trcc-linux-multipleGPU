@@ -5,6 +5,9 @@ Exercises the rendering pipeline without a real USB device:
 UCPreview widget, theme loading, overlay compositing, rotation,
 brightness, and resolution switching.
 
+Themes are loaded from ~/.trcc/.lcd_test/theme{W}{H}/ directories.
+Copy or symlink theme folders there to test them.
+
 Resolution buttons across the top, theme list on the left,
 large preview center, controls on the right.
 
@@ -15,7 +18,9 @@ Usage:
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import tempfile
 
 os.environ.setdefault('QT_QPA_PLATFORM', '')  # use real display
 
@@ -47,6 +52,9 @@ from trcc.services.overlay import OverlayService
 from trcc.services.theme import ThemeInfo, ThemeService
 
 _start_with_overlay = '--overlay' in sys.argv
+
+# Test themes live here — separate from real app data
+_TEST_DIR = Path.home() / '.trcc' / '.lcd_test'
 
 
 # ── Test pattern generation ──────────────────────────────────────────
@@ -89,7 +97,7 @@ class LCDPanelTestHarness(QWidget):
     """Main test window for LCD preview verification.
 
     - Resolution buttons: switch between all known FBL resolutions
-    - Theme list: load real themes from disk (if available)
+    - Theme list: load real themes from ~/.trcc/.lcd_test/theme{W}{H}/
     - Test patterns: checkerboard / gradient for pixel-perfect checks
     - Overlay toggle, rotation, brightness controls
     """
@@ -98,6 +106,9 @@ class LCDPanelTestHarness(QWidget):
         super().__init__()
         self.setWindowTitle("LCD Panel Visual Test — All Resolutions")
         self.setMinimumSize(1200, 800)
+
+        # Persistent working dir for copy-based theme loading
+        self._working_dir = Path(tempfile.mkdtemp(prefix='trcc_lcd_test_'))
 
         # State
         self._width, self._height = 320, 320
@@ -264,6 +275,13 @@ class LCDPanelTestHarness(QWidget):
         self._metrics_timer.timeout.connect(self._tick_overlay)
         self._metrics_timer.start(1000)
 
+    def closeEvent(self, event):  # noqa: N802
+        """Clean up working dir on close."""
+        self._metrics_timer.stop()
+        if self._working_dir.exists():
+            shutil.rmtree(self._working_dir, ignore_errors=True)
+        super().closeEvent(event)
+
     # ── Helpers ───────────────────────────────────────────────────
 
     @staticmethod
@@ -275,12 +293,14 @@ class LCDPanelTestHarness(QWidget):
 
     def _update_status(self):
         overlay_text = "ON" if self._overlay_enabled else "OFF"
+        theme_dir = _TEST_DIR / f'theme{self._width}{self._height}'
         self._status.setText(
             f"Resolution: {self._width}x{self._height} | "
             f"Rotation: {self._rotation}° | "
             f"Brightness: {self._brightness}% | "
             f"Overlay: {overlay_text} | "
-            f"Themes: {len(self._themes)}"
+            f"Themes: {len(self._themes)} | "
+            f"Dir: {theme_dir}"
         )
 
     def _update_info(self):
@@ -334,6 +354,10 @@ class LCDPanelTestHarness(QWidget):
         # Recreate preview at new resolution
         self._preview.set_resolution(w, h)
 
+        # Reset overlay for new resolution
+        self._overlay_svc.set_config({})
+        self._overlay_svc.enabled = False
+
         # Reload themes for this resolution
         self._load_themes()
 
@@ -344,14 +368,14 @@ class LCDPanelTestHarness(QWidget):
     # ── Theme loading ────────────────────────────────────────────
 
     def _load_themes(self):
-        """Discover themes for current resolution."""
+        """Discover themes from ~/.trcc/.lcd_test/theme{W}{H}/."""
         self._theme_list.clear()
         self._themes = []
 
-        td = ThemeDir.for_resolution(self._width, self._height)
-        if td.exists():
+        theme_dir = _TEST_DIR / f'theme{self._width}{self._height}'
+        if theme_dir.exists():
             self._themes = ThemeService.discover_local(
-                td.path, (self._width, self._height))
+                theme_dir, (self._width, self._height))
 
         for theme in self._themes:
             item = QListWidgetItem(theme.name)
@@ -365,24 +389,46 @@ class LCDPanelTestHarness(QWidget):
             return
         theme = self._themes[row]
         try:
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp:
-                data = ThemeService.load(
-                    theme, Path(tmp), (self._width, self._height))
+            # Clear working dir for this theme
+            if self._working_dir.exists():
+                shutil.rmtree(self._working_dir)
+            self._working_dir.mkdir(parents=True, exist_ok=True)
 
-                if data.background is not None:
-                    # Convert PIL to QImage via renderer
-                    r = ImageService._r()
-                    self._current_bg = r.from_pil(data.background)
-                elif data.is_animated and data.animation_path:
-                    self._preview.set_status(f"Video: {data.animation_path.name}")
-                    return
-                else:
-                    self._current_bg = _checkerboard(self._width, self._height)
+            lcd_size = (self._width, self._height)
+            data = ThemeService.load(theme, self._working_dir, lcd_size)
 
-                self._render_and_show()
-                self._preview.set_status(f"Theme: {theme.name}")
+            if data.background is not None:
+                # ThemeService.load returns QImage (via QtRenderer)
+                self._current_bg = data.background
+            elif data.is_animated and data.animation_path:
+                self._preview.set_status(f"Video: {data.animation_path.name}")
+                return
+            else:
+                self._current_bg = _checkerboard(self._width, self._height)
+
+            # Load mask into overlay if theme has one
+            if data.mask is not None:
+                r = ImageService._r()
+                mask_img = r.from_pil(data.mask)  # mask is PIL Image
+                self._overlay_svc.set_mask(mask_img, data.mask_position)
+                self._overlay_svc.enabled = True
+                self._overlay_enabled = True
+                self._ov_btn.setChecked(True)
+
+            # Load overlay config from theme's DC file
+            td = ThemeDir(self._working_dir)
+            if td.dc.exists():
+                self._overlay_svc.load_from_dc(td.dc)
+                if self._overlay_svc.config:
+                    self._overlay_svc.enabled = True
+                    self._overlay_enabled = True
+                    self._ov_btn.setChecked(True)
+
+            self._render_and_show()
+            self._preview.set_status(f"Theme: {theme.name}")
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             self._preview.set_status(f"Error: {e}")
 
     # ── Test patterns ────────────────────────────────────────────
@@ -450,8 +496,14 @@ def main():
     dark.setColor(QPalette.ColorRole.ButtonText, QColor(200, 200, 200))
     app.setPalette(dark)
 
+    # Create test dir if it doesn't exist
+    _TEST_DIR.mkdir(parents=True, exist_ok=True)
+
     window = LCDPanelTestHarness()
     window.show()
+    print(f"Theme dir: {_TEST_DIR}")
+    print("Copy theme folders to ~/.trcc/.lcd_test/theme{{W}}{{H}}/ to test them.")
+    print("e.g. cp -r ~/.trcc/data/theme320320/Theme1 ~/.trcc/.lcd_test/theme320320/Theme1")
     sys.exit(app.exec())
 
 

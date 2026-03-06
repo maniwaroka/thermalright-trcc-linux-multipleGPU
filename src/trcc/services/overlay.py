@@ -256,11 +256,8 @@ class OverlayService:
         if position is not None:
             self.theme_mask_position = position
         else:
-            _, mask_h = r.surface_size(image)
-            if mask_h < self.height:
-                self.theme_mask_position = (0, self.height - mask_h)
-            else:
-                self.theme_mask_position = (0, 0)
+            # C# default: center of mask image → top-left (0, 0)
+            self.theme_mask_position = (0, 0)
 
         self._invalidate_cache()
 

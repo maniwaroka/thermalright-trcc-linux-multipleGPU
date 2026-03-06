@@ -420,6 +420,7 @@ class TestOverlayOps:
             mock_r.return_value = mock_renderer
             mock_renderer.convert_to_rgba.return_value = MagicMock()
             mock_renderer.open_image.return_value = MagicMock()
+            mock_renderer.surface_size.return_value = (10, 10)
 
             result = lcd.load_mask_standalone(str(mask_file))
 
@@ -442,6 +443,7 @@ class TestOverlayOps:
             mock_r.return_value = mock_renderer
             mock_renderer.convert_to_rgba.return_value = MagicMock()
             mock_renderer.open_image.return_value = MagicMock()
+            mock_renderer.surface_size.return_value = (10, 10)
 
             result = lcd.load_mask_standalone(str(mask_dir))
 
@@ -464,6 +466,7 @@ class TestOverlayOps:
             mock_r.return_value = mock_renderer
             mock_renderer.convert_to_rgba.return_value = MagicMock()
             mock_renderer.open_image.return_value = MagicMock()
+            mock_renderer.surface_size.return_value = (10, 10)
 
             result = lcd.load_mask_standalone(str(mask_dir))
 
@@ -852,6 +855,7 @@ class TestCLIOverlayCommands:
             mock_r.return_value = mock_renderer
             mock_renderer.convert_to_rgba.return_value = MagicMock()
             mock_renderer.open_image.return_value = MagicMock()
+            mock_renderer.surface_size.return_value = (10, 10)
 
             rc = load_mask(str(mask_file))
         assert rc == 0

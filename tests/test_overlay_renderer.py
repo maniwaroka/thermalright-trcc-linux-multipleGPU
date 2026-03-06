@@ -191,13 +191,13 @@ class TestSetThemeMask(unittest.TestCase):
         self.assertEqual(renderer.theme_mask_position, (10, 20))
 
     def test_mask_auto_position_partial(self):
-        """Test auto-positioning partial mask at bottom."""
+        """Test auto-positioning partial mask at top-left (C# default)."""
         renderer = OverlayRenderer(width=320, height=320)
         # Partial mask (height < display height)
         mask = Image.new('RGBA', (320, 100), (255, 0, 0, 128))
         renderer.set_theme_mask(mask)
-        # Should be positioned at bottom
-        self.assertEqual(renderer.theme_mask_position, (0, 220))
+        # C# defaults to center of mask image → top-left (0, 0)
+        self.assertEqual(renderer.theme_mask_position, (0, 0))
 
     def test_mask_auto_position_full(self):
         """Test auto-positioning full-size mask at origin."""

@@ -102,10 +102,8 @@ class LCDHandler:
 
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', 2)
-        percent = {1: 25, 2: 50, 3: 100}.get(self._brightness_level, 50)
-        # Set display service brightness directly — avoid DisplaySettings which
-        # re-persists the percent value (100) over the level (3), corrupting config.
-        self._lcd._display_svc.set_brightness(percent)
+        log.info("Restoring brightness: level=%d", self._brightness_level)
+        self._lcd.settings.set_brightness(self._brightness_level)
 
     def _restore_rotation(self, cfg: dict) -> None:
         rotation_index = cfg.get('rotation', 0) // 90
@@ -139,6 +137,7 @@ class LCDHandler:
                     self._select_theme(theme)
                 else:
                     self._select_theme_from_path(path)
+                self._restore_mask(cfg)
                 return
             log.warning("Saved theme path not found: %s", saved)
 
@@ -153,6 +152,22 @@ class LCDHandler:
                     log.info("Fallback theme: %s (persist=%s)", item, persist)
                     self._select_theme_from_path(item, persist=persist)
                     break
+
+    def _restore_mask(self, cfg: dict) -> None:
+        """Restore mask overlay from saved config (applied on top of theme)."""
+        mask_path = cfg.get('mask_path')
+        if not mask_path:
+            return
+        mask_dir = Path(mask_path)
+        if not mask_dir.exists():
+            log.warning("Saved mask path not found: %s", mask_path)
+            return
+        log.info("Restoring saved mask: %s", mask_dir)
+        result = self._lcd.load_mask_standalone(str(mask_dir))
+        image = result.get('image')
+        if image:
+            self._w['preview'].set_image(image)
+        self._load_theme_overlay_config(mask_dir)
 
     def _restore_carousel(self, cfg: dict) -> None:
         carousel = cfg.get('carousel')
@@ -233,6 +248,8 @@ class LCDHandler:
         if persist and self._device_key:
             log.info("Saving theme_path: %s (key=%s)", path, self._device_key)
             Settings.save_device_setting(self._device_key, 'theme_path', str(path))
+            # Clear mask — selecting a new theme replaces any mask
+            Settings.save_device_setting(self._device_key, 'mask_path', '')
 
     def select_cloud_theme(self, theme_info: Any) -> None:
         """Handle cloud theme selection (video backgrounds)."""
@@ -250,6 +267,7 @@ class LCDHandler:
             if self._device_key:
                 Settings.save_device_setting(
                     self._device_key, 'theme_path', str(video_path))
+                Settings.save_device_setting(self._device_key, 'mask_path', '')
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""
@@ -260,6 +278,10 @@ class LCDHandler:
             if image:
                 self._w['preview'].set_image(image)
             self._load_theme_overlay_config(mask_dir)
+            # Persist mask path so it survives restart
+            if self._device_key:
+                Settings.save_device_setting(
+                    self._device_key, 'mask_path', str(mask_dir))
         else:
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
 
@@ -432,16 +454,12 @@ class LCDHandler:
 
     def set_brightness(self, level: int) -> None:
         self._brightness_level = level
-        percent = {1: 25, 2: 50, 3: 100}.get(level, 50)
-        result = self._lcd.settings.set_brightness(percent)
+        result = self._lcd.settings.set_brightness(level)
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
             if self._lcd.auto_send:
                 self._lcd.frame.send(image)
-        if self._device_key:
-            Settings.save_device_setting(
-                self._device_key, 'brightness_level', level)
 
     def set_rotation(self, degrees: int) -> None:
         result = self._lcd.settings.set_rotation(degrees)
