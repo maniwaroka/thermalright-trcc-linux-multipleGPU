@@ -350,7 +350,9 @@ class LCDDevice(Device):
             self.video: VideoOps | None = None
             self.overlay: OverlayOps | None = None
             self.frame: FrameOps | None = None
-            self.settings: DisplaySettings | None = None
+
+        # settings points to self — methods are now on LCDDevice directly
+        self.settings: LCDDevice = self  # type: ignore[assignment]
 
     def _compose(self) -> None:
         """Build capability sub-objects from services."""
@@ -358,8 +360,6 @@ class LCDDevice(Device):
         self.video = VideoOps(self._display_svc)
         self.overlay = OverlayOps(self._display_svc)
         self.frame = FrameOps(self._device_svc, self._display_svc)
-        self.settings = DisplaySettings(
-            self._display_svc, self._device_svc, self._theme_svc)
 
     def _build_services(self, device_svc: Any) -> None:
         """Wire up all services from a DeviceService."""
@@ -597,6 +597,60 @@ class LCDDevice(Device):
             "image": result_img,
             "message": f"Sent mask {mask_file.name} to {self.device_path}",
         }
+
+    # ── Display settings (brightness/rotation/split) ─────────────
+
+    def _persist(self, field: str, value: object) -> None:
+        from ..conf import Settings
+        dev = self._device_svc.selected if self._device_svc else None
+        if dev:
+            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+            Settings.save_device_setting(key, field, value)
+
+    def set_brightness(self, level: int) -> dict:
+        if level in (1, 2, 3):
+            percent = {1: 25, 2: 50, 3: 100}[level]
+        elif 0 <= level <= 100:
+            percent = level
+        else:
+            return {"success": False,
+                    "error": "Brightness: 1-3 (level) or 0-100 (percent)"}
+        image = self._display_svc.set_brightness(percent)
+        self._persist('brightness_level', level)
+        return {"success": True, "image": image,
+                "message": f"Brightness set to {percent}%"}
+
+    def set_rotation(self, degrees: int) -> dict:
+        if degrees not in (0, 90, 180, 270):
+            return {"success": False,
+                    "error": "Rotation must be 0, 90, 180, or 270"}
+        image = self._display_svc.set_rotation(degrees)
+        self._persist('rotation', degrees)
+        return {"success": True, "image": image,
+                "message": f"Rotation set to {degrees}°"}
+
+    def set_split_mode(self, mode: int) -> dict:
+        if mode not in (0, 1, 2, 3):
+            return {"success": False,
+                    "error": "Split mode must be 0, 1, 2, or 3"}
+        image = self._display_svc.set_split_mode(mode)
+        self._persist('split_mode', mode)
+        return {"success": True, "image": image,
+                "message": f"Split mode: {'off' if mode == 0 else f'style {mode}'}"}
+
+    def set_resolution(self, width: int, height: int) -> dict:
+        self._display_svc.set_resolution(width, height)
+        self._theme_svc.set_directories(
+            local_dir=self._display_svc.local_dir,
+            web_dir=self._display_svc.web_dir,
+            masks_dir=self._display_svc.masks_dir,
+        )
+        self._display_svc.media.set_target_size(width, height)
+        self._display_svc.overlay.set_resolution(width, height)
+        if width and height:
+            self._theme_svc.load_local_themes((width, height))
+        return {"success": True, "resolution": (width, height),
+                "message": f"Resolution: {width}x{height}"}
 
     # ── Flat convenience (GUI calls these directly on device) ─────
 

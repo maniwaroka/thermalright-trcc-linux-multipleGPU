@@ -13,7 +13,6 @@ import pytest
 from PIL import Image
 
 from trcc.core.lcd_device import (
-    DisplaySettings,
     FrameOps,
     LCDDevice,
     OverlayOps,
@@ -125,17 +124,18 @@ def _make_png(path: Path, w=10, h=10, color=(255, 0, 0)) -> Path:
 class TestLCDDeviceInit:
     def test_default_no_services(self, lcd_empty):
         assert lcd_empty.frame is None
-        assert lcd_empty.settings is None
         assert lcd_empty.overlay is None
         assert lcd_empty.video is None
         assert lcd_empty.theme is None
+        # settings points to self (methods inlined on LCDDevice)
+        assert lcd_empty.settings is lcd_empty
 
     def test_injected_services_compose(self, lcd):
         assert isinstance(lcd.frame, FrameOps)
-        assert isinstance(lcd.settings, DisplaySettings)
         assert isinstance(lcd.overlay, OverlayOps)
         assert isinstance(lcd.video, VideoOps)
         assert isinstance(lcd.theme, ThemeOps)
+        assert lcd.settings is lcd
 
     def test_connected_false_when_no_svc(self, lcd_empty):
         assert lcd_empty.connected is False
