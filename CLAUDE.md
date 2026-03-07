@@ -356,6 +356,10 @@ When adding GUI assets:
 - **conftest fixtures**: `tests/services/conftest.py` with shared DI-wired service fixtures.
 - 4021 tests across 56 files
 
+### v8.1.4: Slideshow Carousel Fix
+- **Theme slideshow not rotating**: `_on_slideshow_tick()` bailed out when `video.playing` was True — stale state from a previously loaded animated/video theme. Timer fired every 3s but the early return skipped all theme changes.
+- **Fix**: Instead of returning when video is playing, stop video and animation timer, then proceed with theme rotation.
+
 ### Future Work
 - GUI component splits (uc_theme_setting.py → 5 files)
 
