@@ -45,7 +45,7 @@ Description: Thermalright LCD/LED Control Center for Linux
  .
  Features:
   - GUI (PySide6) with full Windows TRCC feature parity
-  - CLI (Typer) with 36+ commands
-  - REST API (FastAPI) with 35+ endpoints
+  - CLI (Typer) with 50 commands
+  - REST API (FastAPI) with 43 endpoints
   - Theme management, video playback, LED RGB effects
   - Supports SCSI, HID, Bulk, and LY USB protocols
