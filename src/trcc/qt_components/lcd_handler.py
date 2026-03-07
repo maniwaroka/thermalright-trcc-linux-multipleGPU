@@ -552,7 +552,8 @@ class LCDHandler:
     def _on_slideshow_tick(self) -> None:
         """Auto-rotate to next theme in slideshow."""
         if self._lcd.video.playing:
-            return
+            self._lcd.video.stop()
+            self._animation_timer.stop()
         themes = self._w['theme_local'].get_slideshow_themes()
         if not themes:
             self._slideshow_timer.stop()
