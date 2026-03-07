@@ -1,5 +1,13 @@
 # Changelog
 
+## v8.1.1
+
+### Bug Fixes
+- **Fixed**: Sub-screen mask overlays (000a, 000b, 000d, etc.) placed at top-left (0,0) instead of correct position. `LCDDevice._parse_mask_position()` never read the DC file's center coordinates; `ThemeService._parse_mask_position()` returned `None` instead of centering as fallback. Both now read DC `mask_position` and convert center→top-left, or center the mask by default (matching C# `ThemeMask` panel behavior).
+
+### Docs
+- **Added**: `doc/API_REFERENCE.md` — full reference for all 43 REST API endpoints (devices, display, LED, themes, system, WebSocket preview stream).
+
 ## v8.1.0
 
 ### Architecture

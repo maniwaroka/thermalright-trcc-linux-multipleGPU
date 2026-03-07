@@ -484,17 +484,19 @@ class ThemeService:
     ) -> tuple[int, int] | None:
         """Parse mask position from DC file.
 
-        DC files store mask_position as center coordinates.
+        DC files store mask_position as center coordinates (XvalMB, YvalMB).
+        C# draws at (XvalMB - W/2, YvalMB - H/2).
         Full-size masks go at (0, 0).
+        Sub-screen masks without DC position get centered (C# panel default).
         """
         if mask_w >= lcd_w and mask_h >= lcd_h:
             return (0, 0)
 
         if not dc_path or not Path(dc_path).exists():
-            return None
+            return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
 
         if self._dc_config_cls is None:
-            return None
+            return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
 
         try:
             dc = self._dc_config_cls(dc_path)
@@ -507,7 +509,7 @@ class ThemeService:
                     )
         except Exception:
             pass
-        return None
+        return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
 
     def _load_mask_into(
         self,

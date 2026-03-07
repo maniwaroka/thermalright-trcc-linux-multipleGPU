@@ -336,19 +336,36 @@ class LCDDevice(Device):
             "message": f"Sent mask {mask_file.name} to {self.device_path}",
         }
 
-    @staticmethod
     def _parse_mask_position(
-        dc_path: Path | None, mask_w: int, mask_h: int,
+        self, dc_path: Path | None, mask_w: int, mask_h: int,
         lcd_w: int, lcd_h: int,
     ) -> tuple[int, int] | None:
-        """Parse mask position from DC file (center→top-left)."""
+        """Parse mask position from DC file (center→top-left).
+
+        DC files store mask_position as center coordinates (XvalMB, YvalMB).
+        C# draws at (XvalMB - W/2, YvalMB - H/2).
+        Full-size masks go at (0, 0).
+        """
         if mask_w >= lcd_w and mask_h >= lcd_h:
             return (0, 0)
         if not dc_path or not dc_path.exists():
-            return None
-        # Parse DC file if overlay service has dc_config_cls
-        # For CLI standalone, position defaults to None (centered)
-        return None
+            # No DC file — center the mask (C# ThemeMask panel default)
+            return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
+        if self._dc_config_cls is None:
+            return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
+        try:
+            dc = self._dc_config_cls(dc_path)
+            if dc.mask_enabled:
+                center_pos = dc.mask_settings.get('mask_position')
+                if center_pos:
+                    return (
+                        center_pos[0] - mask_w // 2,
+                        center_pos[1] - mask_h // 2,
+                    )
+        except Exception:
+            pass
+        # Fallback: center the mask
+        return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
 
     # ── Frame ops (encode/send to hardware) ─────────────────────
 

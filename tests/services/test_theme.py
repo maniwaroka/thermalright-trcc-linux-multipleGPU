@@ -1362,17 +1362,17 @@ class TestParseMaskPosition:
         pos = svc._parse_mask_position(None, 400, 400, 320, 320)
         assert pos == (0, 0)
 
-    def test_small_mask_no_dc_returns_none(self) -> None:
+    def test_small_mask_no_dc_centers(self) -> None:
         svc = ThemeService()
         pos = svc._parse_mask_position(None, 100, 100, 320, 320)
-        assert pos is None
+        assert pos == (110, 110)
 
-    def test_small_mask_dc_not_exists(self, tmp_path: Path) -> None:
+    def test_small_mask_dc_not_exists_centers(self, tmp_path: Path) -> None:
         svc = ThemeService()
         pos = svc._parse_mask_position(
             tmp_path / 'nonexistent.dc', 100, 100, 320, 320
         )
-        assert pos is None
+        assert pos == (110, 110)
 
     def test_small_mask_dc_with_position(self, tmp_path: Path) -> None:
         dc_path = tmp_path / 'config1.dc'
@@ -1389,7 +1389,7 @@ class TestParseMaskPosition:
         # center_pos=(200,150), mask 100x100 -> top-left = (200-50, 150-50) = (150, 100)
         assert pos == (150, 100)
 
-    def test_small_mask_dc_mask_not_enabled(self, tmp_path: Path) -> None:
+    def test_small_mask_dc_mask_not_enabled_centers(self, tmp_path: Path) -> None:
         dc_path = tmp_path / 'config1.dc'
         dc_path.write_bytes(b'\x00')
 
@@ -1401,9 +1401,9 @@ class TestParseMaskPosition:
         svc = ThemeService(dc_config_cls=MockDcCls)
         pos = svc._parse_mask_position(dc_path, 100, 100, 320, 320)
 
-        assert pos is None
+        assert pos == (110, 110)
 
-    def test_small_mask_dc_no_position_key(self, tmp_path: Path) -> None:
+    def test_small_mask_dc_no_position_key_centers(self, tmp_path: Path) -> None:
         dc_path = tmp_path / 'config1.dc'
         dc_path.write_bytes(b'\x00')
 
@@ -1415,9 +1415,9 @@ class TestParseMaskPosition:
         svc = ThemeService(dc_config_cls=MockDcCls)
         pos = svc._parse_mask_position(dc_path, 100, 100, 320, 320)
 
-        assert pos is None
+        assert pos == (110, 110)
 
-    def test_dc_parse_exception(self, tmp_path: Path) -> None:
+    def test_dc_parse_exception_centers(self, tmp_path: Path) -> None:
         dc_path = tmp_path / 'config1.dc'
         dc_path.write_bytes(b'\x00')
 
@@ -1425,7 +1425,7 @@ class TestParseMaskPosition:
         svc = ThemeService(dc_config_cls=MockDcCls)
         pos = svc._parse_mask_position(dc_path, 100, 100, 320, 320)
 
-        assert pos is None
+        assert pos == (110, 110)
 
 
 # ── _load_mask_into ───────────────────────────────────────────────────────────
