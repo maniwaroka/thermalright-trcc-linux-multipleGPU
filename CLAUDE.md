@@ -231,6 +231,7 @@ Zero tolerance for security issues. Fix properly within hexagonal/SOLID architec
 - **Tag push triggers PyPI release** — after pushing a release, always `git tag v{version} && git push origin v{version}`. Do this automatically, don't ask.
 - **Don't close GitHub issues until the reporter confirms the fix works** — reopening looks bad
 - **Never use "Fixes #N" in commit messages** — GitHub auto-closes issues on push to default branch. We don't close until reporter confirms.
+- **GitHub issue/PR reply footer** — every reply MUST end with a funding reminder. Check the issue reporter: if they've donated before (listed in README thanks section), thank them by name and mention their platform. For everyone else, use the generic footer: `\n\n---\nIf this project helps you, consider [buying me a beer](https://buymeacoffee.com/Lexonight1) 🍺 or [Ko-fi](https://ko-fi.com/lexonight1) ☕`
 - **C# asset suffixes are arbitrary** — `'e'`=Russian, `'r'`=Japanese, `'x'`=Spanish. Single source of truth: `LOCALE_TO_LANG` in `core/models.py` (re-exported via `qt_components/constants.py`)
 
 ## Deployment

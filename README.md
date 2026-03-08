@@ -36,6 +36,7 @@
 [![Gentoo](https://img.shields.io/badge/Gentoo-ebuild-54487A?logo=gentoo&logoColor=white)](https://github.com/Lexonight1/thermalright-trcc-linux/tree/main/packaging/gentoo)
 
 [![Buy Me a Beer](https://img.shields.io/badge/Buy_Me_a_Beer-🍺-FF5F5F?style=flat)](https://buymeacoffee.com/Lexonight1)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-☕-FF5E5B?style=flat&logo=kofi&logoColor=white)](https://ko-fi.com/lexonight1)
 
 > Huge thanks to **[@javisaman](https://github.com/javisaman)**, **[@Xentrino](https://github.com/Xentrino)**, **[@loosethoughts19-hash](https://github.com/loosethoughts19-hash)**, **[@Mr-Renegade](https://github.com/Mr-Renegade)**, and **[@Reborn627](https://github.com/Reborn627)** for the beers — you guys are legends.
 
