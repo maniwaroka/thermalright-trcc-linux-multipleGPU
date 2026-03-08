@@ -30,6 +30,7 @@ ENV/
 
 # AI tooling
 CLAUDE.md
+.claude/
 
 # OS
 .DS_Store
