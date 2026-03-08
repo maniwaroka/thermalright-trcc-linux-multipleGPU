@@ -1,5 +1,7 @@
 # TRCC Linux
 
+> **Solo hobbyist project** — built in my spare time, one device, no corporate backing. Just a Linux user who got tired of waiting for Thermalright to support us. If something breaks, please be patient — I do this for free because I like helping people.
+
 [![GitHub Release](https://img.shields.io/github/v/release/Lexonight1/thermalright-trcc-linux?color=green&logo=github)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
 [![PyPI](https://img.shields.io/pypi/v/trcc-linux)](https://pypi.org/project/trcc-linux/)
 [![GitHub Downloads](https://img.shields.io/github/downloads/Lexonight1/thermalright-trcc-linux/total?color=blue&logo=github&label=downloads)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
