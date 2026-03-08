@@ -900,9 +900,6 @@ class TRCCApp(QMainWindow):
         else:
             self.uc_system_info.stop_updates()
 
-        if view != 'led' and self._led.active:
-            self._led.stop()
-
     # ── Signal Wiring ──────────────────────────────────────────────
 
     def _connect_view_signals(self):

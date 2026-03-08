@@ -124,3 +124,7 @@ This documents the architectural refactoring journey from v6.0.0 through v8.1.4.
 ### v8.1.4: Slideshow Carousel Fix
 - **Theme slideshow not rotating**: `_on_slideshow_tick()` bailed out when `video.playing` was True — stale state from a previously loaded animated/video theme. Timer fired every 3s but the early return skipped all theme changes.
 - **Fix**: Instead of returning when video is playing, stop video and animation timer, then proceed with theme rotation.
+
+### v8.1.9: LED View Switch Fix (#61)
+- **LED display going dark on view switch**: `_show_view()` called `_led.stop()` whenever navigating away from the LED panel (back button, about, sysinfo). `stop()` closes the USB transport, so the physical LED display stopped receiving data and went dark.
+- **Fix**: Removed `_led.stop()` from `_show_view()`. LED keeps running independently of which GUI panel is shown. Only stops on full app quit or explicit device switch to LCD.

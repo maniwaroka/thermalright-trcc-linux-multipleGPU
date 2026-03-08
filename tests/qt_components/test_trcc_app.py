@@ -1436,3 +1436,50 @@ class TestDevicePollLEDAutoSelect:
 
             app._led.show.assert_called_once()
             app._mediator.ensure_running.assert_called_once()
+
+
+# =========================================================================
+# View switch must NOT stop LED (#61)
+# =========================================================================
+
+
+class TestViewSwitchLEDKeepsRunning:
+    """_show_view must NOT stop the LED when switching away from 'led' view.
+
+    Regression test for #61: navigating away from the LED panel (e.g. clicking
+    the back button or switching to about/sysinfo) was calling _led.stop()
+    which closed the USB transport. The physical LED display went dark because
+    it stopped receiving data.
+    """
+
+    @pytest.fixture()
+    def app(self, qapp):
+        from trcc.qt_components.trcc_app import TRCCApp
+        TRCCApp._instance = None
+        with patch.object(TRCCApp, '__init__', lambda self, *a, **kw: None):
+            inst = TRCCApp.__new__(TRCCApp)
+            inst._led = MagicMock()
+            inst._led.active = True
+            inst.form_container = MagicMock()
+            inst.uc_about = MagicMock()
+            inst.uc_system_info = MagicMock()
+            inst.uc_led_control = MagicMock()
+            inst.form1_close_btn = MagicMock()
+            inst.form1_help_btn = MagicMock()
+            yield inst
+            TRCCApp._instance = None
+
+    def test_show_view_form_does_not_stop_led(self, app):
+        """Switching to 'form' view must not stop active LED."""
+        app._show_view('form')
+        app._led.stop.assert_not_called()
+
+    def test_show_view_about_does_not_stop_led(self, app):
+        """Switching to 'about' view must not stop active LED."""
+        app._show_view('about')
+        app._led.stop.assert_not_called()
+
+    def test_show_view_sysinfo_does_not_stop_led(self, app):
+        """Switching to 'sysinfo' view must not stop active LED."""
+        app._show_view('sysinfo')
+        app._led.stop.assert_not_called()
