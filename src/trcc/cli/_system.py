@@ -563,10 +563,14 @@ def uninstall(*, yes: bool = False):
 def report():
     """Generate a full diagnostic report for bug reports."""
     from trcc.adapters.infra.debug_report import DebugReport
+    from trcc.adapters.infra.doctor import run_doctor
 
     rpt = DebugReport()
     rpt.collect()
     print(rpt)
+    run_doctor()
+    print("Copy everything above and paste it into your GitHub issue:")
+    print("  https://github.com/Lexonight1/thermalright-trcc-linux/issues/new")
     return 0
 
 

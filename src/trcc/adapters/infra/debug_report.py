@@ -76,8 +76,6 @@ class DebugReport:
             parts.append(f"{'─' * _WIDTH}")
             parts.extend(s.lines)
         parts.append(f"\n{'=' * _WIDTH}")
-        parts.append("Copy everything above and paste it into your GitHub issue:")
-        parts.append("  https://github.com/Lexonight1/thermalright-trcc-linux/issues/new")
         return "\n".join(parts)
 
     # ------------------------------------------------------------------

@@ -1258,11 +1258,32 @@ class TestReport:
         mock_report.collect.return_value = None
         mock_report.__str__ = lambda self: "DIAGNOSTIC_OUTPUT_HERE"
 
-        with patch("trcc.adapters.infra.debug_report.DebugReport", return_value=mock_report):
+        with patch("trcc.adapters.infra.debug_report.DebugReport", return_value=mock_report), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
             report()
 
         out = capsys.readouterr().out
         assert "DIAGNOSTIC_OUTPUT_HERE" in out
+
+    def test_calls_run_doctor(self):
+        mock_report = MagicMock()
+        mock_report.__str__ = lambda self: "REPORT"
+
+        with patch("trcc.adapters.infra.debug_report.DebugReport", return_value=mock_report), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0) as mock_doctor:
+            report()
+        mock_doctor.assert_called_once()
+
+    def test_prints_github_url(self, capsys):
+        mock_report = MagicMock()
+        mock_report.__str__ = lambda self: "REPORT"
+
+        with patch("trcc.adapters.infra.debug_report.DebugReport", return_value=mock_report), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        assert "github.com" in out
 
 
 # ===========================================================================
@@ -1678,3 +1699,294 @@ class TestRunSetup:
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "trcc gui" in out
+
+
+# ===========================================================================
+# TestReportDiagnosticOutput — integration tests with real DebugReport
+# ===========================================================================
+
+class TestReportDiagnosticOutput:
+    """Test report() output with mocked system state, not mocked report objects.
+
+    These verify that real user scenarios produce the right diagnostic hints
+    in the combined report + doctor output.
+    """
+
+    # Shared patches that block all external I/O (subprocess, device detection,
+    # file reads to system paths, handshakes, etc.)
+    @staticmethod
+    def _base_patches():
+        """Context managers that isolate DebugReport from the real system."""
+        return {
+            # Block subprocess calls (lsusb, ps, getenforce)
+            "sub": patch(
+                "trcc.adapters.infra.debug_report.subprocess.run",
+                return_value=_completed(0, stdout=""),
+            ),
+            # Block device detection
+            "detect": patch(
+                "trcc.adapters.device.detector.DeviceDetector.detect",
+                return_value=[],
+            ),
+            # Block config loading
+            "conf": patch(
+                "trcc.conf.load_config",
+                return_value={},
+            ),
+            # Block doctor's subprocess calls
+            "doc_sub": patch(
+                "trcc.adapters.infra.doctor.subprocess.run",
+                return_value=_completed(0, stdout=""),
+            ),
+            # Block log file read
+            "log_path": patch(
+                "pathlib.Path.exists",
+                return_value=False,
+            ),
+        }
+
+    def test_udev_rules_missing_shows_not_installed(self, capsys, tmp_path):
+        """When udev rules file doesn't exist, output says NOT INSTALLED."""
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=1):
+            report()
+
+        out = capsys.readouterr().out
+        assert "NOT INSTALLED" in out
+        assert "setup-udev" in out
+
+    def test_udev_rules_exist_shows_rules(self, capsys, tmp_path):
+        """When udev rules file exists, output shows the rules."""
+        rules_file = tmp_path / "99-trcc-lcd.rules"
+        rules_file.write_text(
+            '# Thermalright\n'
+            'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0416", '
+            'ATTRS{idProduct}=="5302", MODE="0666"\n'
+        )
+
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(rules_file)), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        assert "0416" in out
+        assert "5302" in out
+        assert "NOT INSTALLED" not in out
+
+    def test_no_sg_devices_shows_message(self, capsys, tmp_path):
+        """When no /dev/sg* devices exist, output says so."""
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=["tty0", "null", "zero"]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        assert "no /dev/sg*" in out
+
+    def test_sg_device_no_access_shows_no_access(self, capsys, tmp_path):
+        """When /dev/sg* exists but isn't accessible, output says NO ACCESS."""
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=["sg0", "sg1"]), \
+             patch("trcc.adapters.infra.debug_report.os.stat") as mock_stat, \
+             patch("trcc.adapters.infra.debug_report.os.access",
+                   return_value=False), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            mock_stat.return_value.st_mode = 0o060660  # crw-rw---- (660)
+            report()
+
+        out = capsys.readouterr().out
+        assert "NO ACCESS" in out
+        assert "/dev/sg0" in out
+
+    def test_no_devices_detected(self, capsys, tmp_path):
+        """When no devices found, output says none."""
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        assert "(none)" in out
+
+    def test_no_devices_to_handshake(self, capsys, tmp_path):
+        """When no devices detected, handshake section says so."""
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        assert "no devices to handshake" in out
+
+    def test_hid_permission_denied_shows_hint(self, capsys, tmp_path):
+        """When HID handshake gets EACCES, output says run setup-udev."""
+        mock_dev = MagicMock()
+        mock_dev.vid = 0x0416
+        mock_dev.pid = 0x5302
+        mock_dev.protocol = "hid"
+        mock_dev.implementation = "hid_type2"
+        mock_dev.device_type = 2
+        mock_dev.product_name = "USBDISPLAY"
+        mock_dev.scsi_device = None
+        mock_dev.usb_path = "3-005"
+
+        # Create a USBError-like exception with errno 13 (EACCES)
+        usb_err = Exception("[Errno 13] Access denied (insufficient permissions)")
+        usb_err.errno = 13  # type: ignore[attr-defined]
+
+        mock_protocol = MagicMock()
+        mock_protocol.handshake.return_value = None
+        mock_protocol.last_error = usb_err
+
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[mock_dev]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.device.factory.HidProtocol",
+                   return_value=mock_protocol), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        assert "Permission denied" in out
+        assert "setup-udev" in out
+
+    def test_doctor_missing_udev_in_report(self, capsys, tmp_path):
+        """When doctor finds udev missing, the hint appears in report output."""
+        from trcc.adapters.infra.doctor import UdevResult
+
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.check_udev",
+                   return_value=UdevResult(ok=False, message="udev rules not installed")), \
+             patch("trcc.adapters.infra.doctor._detect_pkg_manager",
+                   return_value="apt"), \
+             patch("trcc.adapters.infra.doctor._read_os_release",
+                   return_value={"PRETTY_NAME": "Linux Mint 22.3"}), \
+             patch("trcc.adapters.infra.doctor._check_python_module",
+                   return_value=True), \
+             patch("trcc.adapters.infra.doctor._check_gpu_packages"), \
+             patch("trcc.adapters.infra.doctor._check_library",
+                   return_value=True), \
+             patch("trcc.adapters.infra.doctor._check_binary",
+                   return_value=True), \
+             patch("trcc.adapters.infra.doctor.check_selinux",
+                   return_value=MagicMock(enforcing=False)), \
+             patch("trcc.adapters.infra.doctor.check_rapl",
+                   return_value=MagicMock(applicable=False)), \
+             patch("trcc.adapters.infra.doctor.check_polkit",
+                   return_value=MagicMock(ok=True, message="ok")):
+            report()
+
+        out = capsys.readouterr().out
+        # Both the report section AND doctor should flag udev
+        assert "NOT INSTALLED" in out
+        assert "setup-udev" in out
+
+    def test_lsusb_shows_thermalright_devices(self, capsys, tmp_path):
+        """When lsusb finds Thermalright VIDs, they appear in output."""
+        lsusb_output = (
+            "Bus 001 Device 003: ID 0416:8001 Winbond Electronics Corp. HID Transfer\n"
+            "Bus 003 Device 006: ID 0416:8041 Winbond Electronics Corp. SLV3RX_V1.6\n"
+            "Bus 002 Device 001: ID 1d6b:0003 Linux Foundation USB 3.0 root hub\n"
+        )
+
+        def _fake_subprocess(cmd, **kwargs):
+            # lsusb returns device list, everything else returns empty
+            if cmd and cmd[0] == "lsusb":
+                return _completed(0, stdout=lsusb_output)
+            return _completed(0, stdout="")
+
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   side_effect=_fake_subprocess), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        # Thermalright VIDs shown, non-Thermalright filtered out
+        assert "0416:8001" in out
+        assert "0416:8041" in out
+        assert "1d6b:0003" not in out
+
+    def test_report_github_url_after_doctor(self, capsys, tmp_path):
+        """GitHub URL appears at the very end, after doctor output."""
+        with patch("trcc.adapters.infra.debug_report._UDEV_PATH",
+                   str(tmp_path / "nonexistent")), \
+             patch("trcc.adapters.infra.debug_report.subprocess.run",
+                   return_value=_completed(0, stdout="")), \
+             patch("trcc.adapters.device.detector.DeviceDetector.detect",
+                   return_value=[]), \
+             patch("trcc.conf.load_config", return_value={}), \
+             patch("trcc.adapters.infra.debug_report.os.listdir",
+                   return_value=[]), \
+             patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
+            report()
+
+        out = capsys.readouterr().out
+        lines = out.strip().splitlines()
+        # GitHub URL is in the last few lines
+        tail = "\n".join(lines[-3:])
+        assert "github.com" in tail

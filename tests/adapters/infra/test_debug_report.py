@@ -1167,12 +1167,10 @@ class TestStrAndSections:
         text = str(rpt)
         assert "─" in text
 
-    def test_str_footer_url(self):
+    def test_str_footer_separator(self):
         rpt = DebugReport()
         text = str(rpt)
-        from urllib.parse import urlparse
-        urls = [w for w in text.split() if w.startswith("http")]
-        assert any(urlparse(u).hostname == "github.com" for u in urls)
+        assert "═" * 10 in text or "=" * 10 in text or text.rstrip().endswith("═" * 60)
 
     def test_sections_returns_title_body_pairs(self):
         rpt = DebugReport()
