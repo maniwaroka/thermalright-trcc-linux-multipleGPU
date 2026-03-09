@@ -115,13 +115,14 @@ async def render_overlay(dc_path: str, send: bool = True) -> dict:
     # Validate path is within the data directory — prevent traversal
     if '\0' in dc_path:
         raise HTTPException(status_code=400, detail="Invalid overlay path")
-    resolved = Path(dc_path).resolve()
     allowed = Path(USER_DATA_DIR).resolve()
-    if not str(resolved).startswith(str(allowed) + "/") and resolved != allowed:
+    # Build safe path: join user input under allowed base, resolve symlinks/..
+    safe_path = (allowed / dc_path).resolve()
+    if not safe_path.is_relative_to(allowed):
         raise HTTPException(status_code=400, detail="Invalid overlay path")
 
     lcd = _get_display()
-    result = lcd.render_overlay_from_dc(dc_path, send=send)
+    result = lcd.render_overlay_from_dc(str(safe_path), send=send)
     return dispatch_result(result)
 
 
