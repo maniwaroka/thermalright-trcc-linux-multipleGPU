@@ -1104,20 +1104,24 @@ class TestUninstall:
         home.mkdir()
         return home
 
-    def test_returns_zero(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_returns_zero(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             rc = uninstall(yes=True)
         assert rc == 0
 
-    def test_pip_uninstall_called(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_pip_uninstall_called(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
@@ -1125,16 +1129,17 @@ class TestUninstall:
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
         pip_calls = [c for c in calls if "pip" in c and "uninstall" in c]
         assert len(pip_calls) >= 1
 
-    def test_pip_uninstall_with_yes_flag(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_pip_uninstall_with_yes_flag(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
@@ -1142,16 +1147,17 @@ class TestUninstall:
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
         pip_calls = [c for c in calls if "pip" in c and "uninstall" in c]
         assert any("--yes" in c for c in pip_calls)
 
-    def test_pip_uninstall_without_yes_flag(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_pip_uninstall_without_yes_flag(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
@@ -1159,37 +1165,35 @@ class TestUninstall:
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=False)
 
         pip_calls = [c for c in calls if "pip" in c and "uninstall" in c]
         assert all("--yes" not in c for c in pip_calls)
 
-    def test_non_root_uses_sudo_for_root_files(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_non_root_uses_sudo_for_root_files(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
-
-        def fake_run(cmd, **kwargs):
-            calls.append(cmd)
-            return _completed(0)
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=1000), \
              patch("os.path.exists", side_effect=lambda p: "/etc/udev" in str(p)), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
+             patch("trcc.cli._system.subprocess.run",
+                   side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
         sudo_rm_calls = [c for c in calls if "sudo" in c and "rm" in c]
         assert len(sudo_rm_calls) >= 1
 
-    def test_root_removes_files_directly(self, tmp_path):
-        home = self._base_patches(tmp_path)
-
+    def test_root_removes_files_directly(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         removed_paths = []
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
@@ -1197,8 +1201,6 @@ class TestUninstall:
              patch("os.path.exists", side_effect=lambda p: "/etc/udev" in str(p)), \
              patch("os.remove", side_effect=lambda p: removed_paths.append(p)), \
              patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
@@ -1206,7 +1208,6 @@ class TestUninstall:
 
     def test_removes_user_config_dir(self, tmp_path):
         home = self._base_patches(tmp_path)
-        # Create the config dir so it physically exists
         config_dir = home / ".trcc"
         config_dir.mkdir(parents=True)
 
@@ -1215,7 +1216,6 @@ class TestUninstall:
         import os as _os
         real_os_path_exists = _os.path.exists
 
-        # Only return False for system root paths — let user paths use real FS
         def selective_exists(p):
             if str(p).startswith("/etc") or str(p).startswith("/usr"):
                 return False
@@ -1233,26 +1233,28 @@ class TestUninstall:
 
         assert any("trcc" in r for r in removed)
 
-    def test_prints_nothing_to_remove_when_clean(self, tmp_path, capsys):
-        home = self._base_patches(tmp_path)
+    def test_prints_nothing_to_remove_when_clean(self, tmp_config, capsys):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
         out = capsys.readouterr().out
         assert "Nothing to remove" in out or "already clean" in out.lower()
 
-    def test_root_triggers_udevadm_after_removing_udev_rules(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_root_triggers_udevadm_after_removing_udev_rules(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
-
-        # Only report existence for the specific udev rule path (root file)
         udev_rule = "/etc/udev/rules.d/99-trcc-lcd.rules"
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
@@ -1262,97 +1264,109 @@ class TestUninstall:
              patch.object(Path, "exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
         udevadm_calls = [c for c in calls if "udevadm" in c]
         assert len(udevadm_calls) >= 1
 
-    def test_calls_clear_installed_resolutions(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_calls_clear_installed_resolutions(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
              patch("trcc.conf.Settings.clear_installed_resolutions") as mock_clear, \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
         mock_clear.assert_called_once()
 
-    # --- Install method detection tests ---
+    # --- Install method detection & PEP 668 ---
+    #
+    # These tests exercise the real detection code paths:
+    # - Real config.json on disk (via tmp_config fixture)
+    # - Real EXTERNALLY-MANAGED marker file (via fake_stdlib fixture)
+    # - Real file deletion for stale binaries
+    # Only subprocess.run is mocked (can't run real pip/pacman in tests).
 
-    def test_pacman_install_prints_instructions(self, tmp_path, capsys):
+    def test_pacman_install_prints_instructions(self, tmp_config, capsys):
         """System package installs print package manager command, not pip."""
-        home = self._base_patches(tmp_path)
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pacman", "distro": "cachyos"}})
+        home = tmp_config / "home"
+        home.mkdir()
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info",
-                   return_value={'method': 'pacman'}):
+             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
             uninstall(yes=True)
 
         out = capsys.readouterr().out
         assert "sudo pacman -R trcc-linux" in out
 
-    def test_dnf_install_prints_instructions(self, tmp_path, capsys):
-        home = self._base_patches(tmp_path)
+    def test_dnf_install_prints_instructions(self, tmp_config, capsys):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "dnf", "distro": "fedora"}})
+        home = tmp_config / "home"
+        home.mkdir()
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info",
-                   return_value={'method': 'dnf'}):
+             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
             uninstall(yes=True)
 
         out = capsys.readouterr().out
         assert "sudo dnf remove trcc-linux" in out
 
-    def test_pipx_install_uses_pipx_uninstall(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_pipx_install_uses_pipx_uninstall(self, tmp_config):
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pipx", "distro": "arch"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
-                   side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info",
-                   return_value={'method': 'pipx'}):
+                   side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)):
             uninstall(yes=True)
 
-        pipx_calls = [c for c in calls if "pipx" in c]
-        assert len(pipx_calls) >= 1
+        assert ["pipx", "uninstall", "trcc-linux"] in calls
 
-    def test_pip_adds_break_system_packages_on_pep668(self, tmp_path):
-        """PEP 668 distros get --break-system-packages flag."""
-        home = self._base_patches(tmp_path)
+    def test_pip_adds_break_system_packages_on_pep668(self, tmp_config):
+        """PEP 668 distros get --break-system-packages in the actual pip command."""
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "arch"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
 
+        # _is_externally_managed is tested separately in TestIsExternallyManaged
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=True):
             uninstall(yes=True)
 
         pip_calls = [c for c in calls if "pip" in c and "uninstall" in c]
-        assert any("--break-system-packages" in c for c in pip_calls)
+        assert len(pip_calls) == 1
+        assert "--break-system-packages" in pip_calls[0]
 
-    def test_pip_no_break_system_packages_without_pep668(self, tmp_path):
-        home = self._base_patches(tmp_path)
+    def test_pip_no_break_system_packages_without_marker(self, tmp_config):
+        """No EXTERNALLY-MANAGED marker = no --break-system-packages flag."""
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pip", "distro": "ubuntu"}})
+        home = tmp_config / "home"
+        home.mkdir()
         calls = []
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
@@ -1360,39 +1374,109 @@ class TestUninstall:
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
         pip_calls = [c for c in calls if "pip" in c and "uninstall" in c]
-        assert all("--break-system-packages" not in c for c in pip_calls)
+        assert len(pip_calls) == 1
+        assert "--break-system-packages" not in pip_calls[0]
 
-    def test_stale_shadow_binary_removed(self, tmp_path):
-        """Old ~/.local/bin/trcc from pip/pipx gets cleaned up."""
-        home = self._base_patches(tmp_path)
+    def test_stale_shadow_binary_removed(self, tmp_config):
+        """Old ~/.local/bin/trcc from pip/pipx gets cleaned up on real filesystem."""
+        from trcc.conf import save_config
+        save_config({"install_info": {"method": "pacman", "distro": "cachyos"}})
+        home = tmp_config / "home"
+        home.mkdir()
         stale = home / ".local" / "bin" / "trcc"
         stale.parent.mkdir(parents=True)
-        stale.touch()
+        stale.write_text("#!/usr/bin/env python3\n# old pip entry point")
 
         import os as _os
-        real_os_path_exists = _os.path.exists
-
-        def selective_exists(p):
-            if str(p).startswith("/etc") or str(p).startswith("/usr"):
-                return False
-            return real_os_path_exists(p)
+        real_exists = _os.path.exists
 
         with patch("trcc.cli._system.Path.home", return_value=home), \
              patch("os.geteuid", return_value=0), \
-             patch("os.path.exists", side_effect=selective_exists), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
-             patch("trcc.conf.Settings.clear_installed_resolutions"), \
-             patch("trcc.conf.Settings.get_install_info",
-                   return_value={'method': 'pacman'}):
+             patch("os.path.exists",
+                   side_effect=lambda p: False if str(p).startswith(("/etc", "/usr")) else real_exists(p)), \
+             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
             uninstall(yes=True)
 
         assert not stale.exists()
+
+
+# ===========================================================================
+# TestDetectInstallMethod — unit tests for _detect_install_method
+# ===========================================================================
+
+class TestDetectInstallMethod:
+    """_detect_install_method — exercises each detection branch."""
+
+    def test_pipx_prefix(self):
+        """Detects pipx from sys.prefix path."""
+        from trcc.cli._system import _detect_install_method
+        with patch("trcc.cli._system.sys.prefix",
+                   "/home/user/.local/pipx/venvs/trcc-linux"):
+            assert _detect_install_method() == "pipx"
+
+    def test_pip_from_metadata(self):
+        """Reads INSTALLER file from package metadata."""
+        from trcc.cli._system import _detect_install_method
+        mock_dist = MagicMock()
+        mock_dist.read_text.return_value = "pip\n"
+        with patch("trcc.cli._system.sys.prefix", "/usr"), \
+             patch("importlib.metadata.distribution", return_value=mock_dist):
+            assert _detect_install_method() == "pip"
+
+    def test_falls_back_to_package_manager(self):
+        """Falls back to whichever system package manager exists."""
+        from importlib.metadata import PackageNotFoundError
+
+        from trcc.cli._system import _detect_install_method
+        with patch("trcc.cli._system.sys.prefix", "/usr"), \
+             patch("importlib.metadata.distribution",
+                   side_effect=PackageNotFoundError("trcc-linux")), \
+             patch("trcc.cli._system.shutil.which",
+                   side_effect=lambda cmd: "/usr/bin/dnf" if cmd == "dnf" else None):
+            assert _detect_install_method() == "dnf"
+
+
+# ===========================================================================
+# TestIsExternallyManaged — unit tests for PEP 668 marker detection
+# ===========================================================================
+
+class TestIsExternallyManaged:
+    """_is_externally_managed — checks real EXTERNALLY-MANAGED file on disk."""
+
+    def test_marker_present(self, tmp_path):
+        """Returns True when EXTERNALLY-MANAGED exists in stdlib dir."""
+        import os as real_os
+
+        from trcc.cli._system import _is_externally_managed
+        fake_stdlib = tmp_path / "lib" / "python3.14"
+        fake_stdlib.mkdir(parents=True)
+        (fake_stdlib / "EXTERNALLY-MANAGED").write_text(
+            "[externally-managed]\nError=This is managed by pacman\n"
+        )
+        original = real_os.__file__
+        try:
+            real_os.__file__ = str(fake_stdlib / "os.py")
+            assert _is_externally_managed() is True
+        finally:
+            real_os.__file__ = original
+
+    def test_marker_absent(self, tmp_path):
+        """Returns False when no EXTERNALLY-MANAGED in stdlib dir."""
+        import os as real_os
+
+        from trcc.cli._system import _is_externally_managed
+        fake_stdlib = tmp_path / "lib" / "python3.14"
+        fake_stdlib.mkdir(parents=True)
+        original = real_os.__file__
+        try:
+            real_os.__file__ = str(fake_stdlib / "os.py")
+            assert _is_externally_managed() is False
+        finally:
+            real_os.__file__ = original
 
 
 # ===========================================================================
