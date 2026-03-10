@@ -108,21 +108,22 @@ async def load_mask(image: UploadFile) -> dict:
 @router.post("/overlay")
 async def render_overlay(dc_path: str, send: bool = True) -> dict:
     """Render overlay from DC config path and optionally send to device."""
-    from pathlib import Path
+    import os
 
     from trcc.core.paths import USER_DATA_DIR
 
     # Validate path is within the data directory — prevent traversal
+
     if '\0' in dc_path:
         raise HTTPException(status_code=400, detail="Invalid overlay path")
-    allowed = Path(USER_DATA_DIR).resolve()
-    # Build safe path: join user input under allowed base, resolve symlinks/..
-    safe_path = (allowed / dc_path).resolve()
-    if not safe_path.is_relative_to(allowed):
+    allowed_dir = os.path.realpath(USER_DATA_DIR)
+    # Resolve to canonical path — handles both absolute and relative input
+    safe_path = os.path.realpath(os.path.join(allowed_dir, dc_path))
+    if not safe_path.startswith(allowed_dir + os.sep) and safe_path != allowed_dir:
         raise HTTPException(status_code=400, detail="Invalid overlay path")
 
     lcd = _get_display()
-    result = lcd.render_overlay_from_dc(str(safe_path), send=send)
+    result = lcd.render_overlay_from_dc(safe_path, send=send)
     return dispatch_result(result)
 
 
