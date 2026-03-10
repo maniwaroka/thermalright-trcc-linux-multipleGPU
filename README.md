@@ -118,29 +118,23 @@ Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
 
 Pre-built packages are available for every major distro. No pip, no venv, no PEP 668 headaches — just download and install like any other app. Every release is built automatically from source using [GitHub Actions](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/release.yml) — the build logs are public so anyone can verify what went in.
 
-**Step 1:** Go to the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) and download the package for your distro.
-
 > Not sure which distro you're running? Open a terminal and type `cat /etc/os-release` — the `ID` line tells you.
-
-**Step 2:** Open a terminal in your Downloads folder and install:
 
 **Fedora / openSUSE / Nobara:**
 ```bash
-cd ~/Downloads
-sudo dnf install ./trcc-linux-*.noarch.rpm
+sudo dnf install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.2.6-1.fc43.noarch.rpm
 ```
 
 **Ubuntu / Debian / Mint / Pop!_OS / Zorin:**
 ```bash
-cd ~/Downloads
-sudo dpkg -i trcc-linux_*_all.deb
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux_8.2.6-1_all.deb
+sudo dpkg -i trcc-linux_8.2.6-1_all.deb
 sudo apt-get install -f    # pulls in any missing dependencies
 ```
 
 **Arch / CachyOS / Manjaro / EndeavourOS / Garuda:**
 ```bash
-cd ~/Downloads
-sudo pacman -U trcc-linux-*-any.pkg.tar.zst
+sudo pacman -U https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.2.6-1-any.pkg.tar.zst
 ```
 
 **NixOS** — add to your `flake.nix` inputs:

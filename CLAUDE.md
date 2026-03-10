@@ -267,11 +267,12 @@ When the user says one bare word — `patch`, `minor`, or `major` — execute th
 1. Bump version (`patch`: 8.1.10→8.1.11, `minor`: 8.1.10→8.2.0, `major`: 8.1.10→9.0.0) in **both** `src/trcc/__version__.py` AND `pyproject.toml`
 2. Add version history entry in `__version__.py`
 3. Update inline package specs in `release.yml` (version strings)
-4. `ruff check .` + `pyright` — fix any issues
-5. `PYTHONPATH=src pytest tests/ -x -q` — all tests must pass
-6. Commit + push to `main`
-7. `git tag v{version} && git push origin v{version}`
-8. `gh release create v{version} --target main --title "v{version}"` with release notes
+4. Update README native package URLs to new version
+5. `ruff check .` + `pyright` — fix any issues
+6. `PYTHONPATH=src pytest tests/ -x -q` — all tests must pass
+7. Commit + push to `main`
+8. `git tag v{version} && git push origin v{version}`
+9. `gh release create v{version} --target main --title "v{version}"` with release notes
 
 ### Rules
 - **Version bump = release boundary** — no bump means still in development
