@@ -17,7 +17,7 @@ All features are tested and working on the `main` branch:
 - **LED RGB control** — 6 effect modes (Static, Breathing, Colorful, Rainbow, Temp-linked, Load-linked), sensor-linked colors, 12 device styles
 - **Per-device config** — each LCD remembers its theme, brightness, rotation, overlay, and carousel settings
 - **Autostart** — launches minimized to system tray on login, sends last-used theme
-- **Setup wizard** — CLI (`trcc setup`) and GUI (`trcc setup-gui`) with bootstrap script (`setup.sh`)
+- **Setup wizard** — CLI (`trcc setup`) and GUI (`trcc setup-gui`)
 - **CLI** — 50 Typer commands with full service parity (theme, LED, display, overlay, screencast, video, diagnostics, setup)
 - **REST API** — 43 endpoints with full CLI parity (`trcc serve`), Pydantic models, uses LCDDevice/LEDDevice from core/
 - **IPC daemon** — GUI owns device exclusively; CLI auto-routes through Unix socket when GUI is running
@@ -79,7 +79,7 @@ All features are tested and working on the `main` branch:
 | 16 | REST API adapter | Done — FastAPI (`trcc serve`) |
 | 17 | Unified segment display renderer | Done — 10 styles, OOP class hierarchy |
 | 18 | Hexagonal adapters/ restructure | Done — adapters/device, system, infra |
-| 19 | Setup wizard (CLI + GUI) | Done — `trcc setup` + `trcc setup-gui` + `setup.sh` |
+| 19 | Setup wizard (CLI + GUI) | Done — `trcc setup` + `trcc setup-gui` |
 | 20 | SELinux support | Done — `trcc setup-selinux` + policy module + wizard integration |
 | 21 | Windows C# feature parity audit | Done — 45/49 ported, 4 hidden/unreleased |
 | 22 | GoF refactoring (5-phase OOP overhaul) | Done — -1203 lines, Facade/Flyweight/Strategy/Template Method/Memento, GoF file renames (v7.0.1), SOLID (v7.0.2) |

@@ -81,7 +81,6 @@ src/trcc/data/ui_*.json
 /probe_*.py
 /*.sh
 !install.sh
-!setup.sh
 
 # Dev tooling
 tools/

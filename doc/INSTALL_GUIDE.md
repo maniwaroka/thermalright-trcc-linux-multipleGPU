@@ -525,18 +525,6 @@ trcc gui
 
 ---
 
-## One-Line Install
-
-Downloads and installs TRCC automatically, then launches the setup wizard:
-
-```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/setup.sh)
-```
-
-After it finishes: unplug and replug the USB cable, then run `trcc gui`.
-
----
-
 ## Git Clone Install
 
 For developers or if you want the latest code:

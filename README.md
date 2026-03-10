@@ -179,14 +179,6 @@ Then **unplug and replug the USB cable** and run `trcc gui`.
 
 > `pipx` not installed? `sudo apt install pipx` (Debian/Ubuntu), `sudo dnf install pipx` (Fedora), `sudo pacman -S python-pipx` (Arch). See the **[Install Guide](doc/INSTALL_GUIDE.md)** for your distro.
 
-### One-line bootstrap
-
-```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Lexonight1/thermalright-trcc-linux/main/setup.sh)
-```
-
-Downloads and installs trcc-linux, then launches the setup wizard.
-
 ### Automatic (git clone)
 
 ```bash
