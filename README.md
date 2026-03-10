@@ -134,7 +134,8 @@ sudo apt-get install -f    # pulls in any missing dependencies
 
 **Arch / CachyOS / Manjaro / EndeavourOS / Garuda:**
 ```bash
-sudo pacman -U https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.2.10-1-any.pkg.tar.zst
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.2.10-1-any.pkg.tar.zst
+sudo pacman -U trcc-linux-8.2.10-1-any.pkg.tar.zst
 ```
 
 **NixOS** — add to your `flake.nix` inputs:
