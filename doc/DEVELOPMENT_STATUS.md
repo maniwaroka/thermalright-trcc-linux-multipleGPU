@@ -2,9 +2,9 @@
 
 TRCC Linux is **feature-complete** — all 45 features from the Windows TRCC 2.1.2 have been ported, with full CLI/GUI/API parity via hexagonal architecture.
 
-**Current version:** 8.2.3
+**Current version:** 8.2.6
 **Branch:** `main`
-**Tests:** 4112 across 57 files in 9 hexagonal directories
+**Tests:** 4660 across 57+ files in 9 hexagonal directories
 **PyPI:** [trcc-linux](https://pypi.org/project/trcc-linux/)
 
 ## What's Stable
@@ -23,7 +23,7 @@ All features are tested and working on the `main` branch:
 - **IPC daemon** — GUI owns device exclusively; CLI auto-routes through Unix socket when GUI is running
 - **Services layer** — 8 pure-Python service classes shared by GUI, CLI, and API
 - **Cross-distro compatibility** — tested on Fedora, Debian/Ubuntu, Arch, openSUSE, Void, Alpine, Gentoo, NixOS, SteamOS, Bazzite
-- **4112 tests** across 57 test files in hexagonal directory layout (`tests/{core,services,adapters/,cli,api,qt_components}/`)
+- **4660 tests** across 57+ test files in hexagonal directory layout (`tests/{core,services,adapters/,cli,api,qt_components}/`)
 
 ### Supported Devices
 
