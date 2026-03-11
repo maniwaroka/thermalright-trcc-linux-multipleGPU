@@ -1103,6 +1103,212 @@ class TestIPCFrameSharing(unittest.TestCase):
 
 
 # =============================================================================
+# Standalone mode — theme data init + auto-token
+# =============================================================================
+
+class TestStandaloneThemeInit(unittest.TestCase):
+    """API endpoints trigger theme data download in standalone mode."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        api_module._display_dispatcher = None
+        api_module._current_image = None
+
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_init_theme_data_calls_ensure_all(self, mock_ensure):
+        """POST /themes/init triggers DataManager.ensure_all() for the resolution."""
+        resp = self.client.post("/themes/init?resolution=320x320")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+        mock_ensure.assert_called_once_with(320, 320)
+
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_init_theme_data_invalid_resolution(self, mock_ensure):
+        """POST /themes/init rejects bad resolution."""
+        resp = self.client.post("/themes/init?resolution=bad")
+        self.assertEqual(resp.status_code, 400)
+        mock_ensure.assert_not_called()
+
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_themes')
+    @patch('trcc.api.themes.ThemeService.discover_local', return_value=[])
+    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution',
+           return_value=MagicMock(__str__=lambda s: '/tmp/themes', path='/tmp/themes'))
+    def test_list_themes_calls_ensure_themes(self, _td, _discover, mock_ensure):
+        """GET /themes triggers DataManager.ensure_themes() for the resolution."""
+        self.client.get("/themes?resolution=320x320")
+        mock_ensure.assert_called_once_with(320, 320)
+
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_web')
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/nonexistent')
+    def test_list_web_themes_calls_ensure_web(self, _dir, mock_ensure):
+        """GET /themes/web triggers DataManager.ensure_web() for the resolution."""
+        self.client.get("/themes/web?resolution=480x480")
+        mock_ensure.assert_called_once_with(480, 480)
+
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_web_masks')
+    @patch('trcc.adapters.infra.data_repository.DataManager.get_web_masks_dir', return_value='/nonexistent')
+    def test_list_masks_calls_ensure_web_masks(self, _dir, mock_ensure):
+        """GET /themes/masks triggers DataManager.ensure_web_masks() for the resolution."""
+        self.client.get("/themes/masks?resolution=320x320")
+        mock_ensure.assert_called_once_with(320, 320)
+
+    @patch('trcc.ipc.IPCClient')
+    @patch('trcc.cli._device.discover_resolution')
+    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
+    def test_select_device_standalone_calls_ensure_all(
+        self, mock_ensure_all, mock_discover, mock_ipc,
+    ):
+        """select_device() standalone path calls DataManager.ensure_all()."""
+        mock_ipc.available.return_value = False
+
+        dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
+                         protocol="scsi", resolution=(320, 320))
+        _device_svc._devices = [dev]
+
+        resp = self.client.post("/devices/0/select")
+        self.assertEqual(resp.status_code, 200)
+        mock_ensure_all.assert_called_once_with(320, 320)
+        api_module._display_dispatcher = None
+
+
+class TestPairing(unittest.TestCase):
+    """POST /pair — device pairing flow."""
+
+    def setUp(self):
+        configure_auth("persistent-token-abc")
+        api_module.set_pairing_code("A3X7K2")
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        configure_auth(None)
+        api_module.set_pairing_code(None)
+
+    def test_pair_correct_code_returns_token(self):
+        """Correct pairing code returns the persistent API token."""
+        resp = self.client.post("/pair?code=A3X7K2")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["token"], "persistent-token-abc")
+
+    def test_pair_case_insensitive(self):
+        """Pairing code is case-insensitive."""
+        resp = self.client.post("/pair?code=a3x7k2")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+
+    def test_pair_wrong_code_rejected(self):
+        """Wrong pairing code returns 403."""
+        resp = self.client.post("/pair?code=WRONG1")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_pair_no_pairing_code_set(self):
+        """Returns 503 when server started with --token (no pairing)."""
+        api_module.set_pairing_code(None)
+        resp = self.client.post("/pair?code=A3X7K2")
+        self.assertEqual(resp.status_code, 503)
+
+    def test_pair_bypasses_auth(self):
+        """POST /pair works without X-API-Token header."""
+        # Auth is configured, but /pair should be exempt
+        resp = self.client.post("/pair?code=A3X7K2")
+        self.assertEqual(resp.status_code, 200)
+
+
+class TestPersistentToken:
+    """Persistent API token in config.json."""
+
+    def test_get_api_token_generates_on_first_call(self):
+        """First call generates a 16-char token and persists it."""
+        import string
+
+        from trcc.conf import Settings
+        token = Settings.get_api_token()
+        assert len(token) == 16
+        valid = set(string.ascii_letters + string.digits)
+        assert all(c in valid for c in token)
+
+    def test_get_api_token_returns_same_on_second_call(self):
+        """Second call returns the same persisted token."""
+        from trcc.conf import Settings
+        t1 = Settings.get_api_token()
+        t2 = Settings.get_api_token()
+        assert t1 == t2
+
+    def test_save_api_token_overrides(self):
+        """Explicit --token overrides the persisted token."""
+        from trcc.conf import Settings
+        Settings.save_api_token("explicit-override")
+        assert Settings.get_api_token() == "explicit-override"
+
+    def test_serve_uses_persistent_token(self):
+        """trcc serve with no --token uses persistent config token."""
+        from trcc.cli import _cmd_serve
+
+        captured_token = None
+
+        def capture_auth(token):
+            nonlocal captured_token
+            captured_token = token
+
+        with patch('trcc.api.configure_auth', side_effect=capture_auth):
+            with patch('trcc.api.set_pairing_code'):
+                with patch('uvicorn.run'):
+                    with patch('trcc.cli._print_serve_qr'):
+                        _cmd_serve(token=None)
+
+        assert captured_token is not None
+        assert len(captured_token) == 16
+
+    def test_serve_explicit_token_saves_to_config(self):
+        """trcc serve --token saves the explicit token to config."""
+        from trcc.cli import _cmd_serve
+        from trcc.conf import Settings
+
+        with patch('trcc.api.configure_auth'):
+            with patch('trcc.api.set_pairing_code'):
+                with patch('uvicorn.run'):
+                    with patch('trcc.cli._print_serve_qr'):
+                        _cmd_serve(token="myCustom99")
+
+        assert Settings.get_api_token() == "myCustom99"
+
+    def test_serve_generates_pairing_code_when_no_explicit_token(self):
+        """trcc serve without --token generates a 6-char pairing code."""
+        from trcc.cli import _cmd_serve
+
+        captured_code = None
+
+        def capture_code(code):
+            nonlocal captured_code
+            captured_code = code
+
+        with patch('trcc.api.configure_auth'):
+            with patch('trcc.api.set_pairing_code', side_effect=capture_code):
+                with patch('uvicorn.run'):
+                    with patch('trcc.cli._print_serve_qr'):
+                        _cmd_serve(token=None)
+
+        assert captured_code is not None
+        assert len(captured_code) == 6
+
+    def test_serve_no_pairing_code_with_explicit_token(self):
+        """trcc serve --token skips pairing code generation."""
+        from trcc.cli import _cmd_serve
+
+        with patch('trcc.api.configure_auth'):
+            with patch('trcc.api.set_pairing_code') as mock_code:
+                with patch('uvicorn.run'):
+                    with patch('trcc.cli._print_serve_qr'):
+                        _cmd_serve(token="explicit")
+
+        mock_code.assert_not_called()
+
+
+# =============================================================================
 # dispatch_result — shared API helper
 # =============================================================================
 

@@ -836,9 +836,27 @@ def _cmd_serve(
     )] = None,
 ) -> int:
     """Start REST API server."""
-    import uvicorn  # noqa: I001
+    import secrets  # noqa: I001
+    import string
 
-    from trcc.api import app as api_app, configure_auth
+    import uvicorn
+
+    from trcc.api import app as api_app, configure_auth, set_pairing_code  # noqa: I001
+    from trcc.conf import Settings
+
+    # Token resolution: explicit --token > persistent config > auto-generate
+    pairing_code: Optional[str] = None
+    if token is not None:
+        # Explicit --token: save it, no pairing code needed
+        Settings.save_api_token(token)
+    else:
+        # Use persistent token (generated on first run, reused forever)
+        token = Settings.get_api_token()
+        # Generate ephemeral 6-char pairing code for phone to enter
+        alphabet = string.ascii_uppercase + string.digits
+        pairing_code = ''.join(secrets.choice(alphabet) for _ in range(6))
+        set_pairing_code(pairing_code)
+
     configure_auth(token)
 
     ssl_kwargs: dict = {}
@@ -851,12 +869,18 @@ def _cmd_serve(
         ssl_kwargs = {"ssl_certfile": certs[0], "ssl_keyfile": certs[1]}
 
     # Warn if token travels in plaintext over LAN
-    if token and host != "127.0.0.1" and not ssl_kwargs:
-        print("WARNING: --token without --tls exposes your API key in plaintext on the network.")
+    if host != "127.0.0.1" and not ssl_kwargs:
+        print("WARNING: No --tls — traffic is unencrypted on the network.")
         print("         Add --tls for HTTPS, or use --cert/--key for a custom certificate.")
 
     scheme = "https" if ssl_kwargs else "http"
     print(f"Serving on {scheme}://{host}:{port}")
+
+    if pairing_code:
+        print(f"\n  Pairing code:  {pairing_code}\n")
+        print("  Enter this code in TRCC Remote to pair your phone.")
+        print("  After pairing, the phone stays connected across restarts.\n")
+
     _print_serve_qr(host, port, token, bool(ssl_kwargs))
     uvicorn.run(api_app, host=host, port=port, **ssl_kwargs)
     return 0

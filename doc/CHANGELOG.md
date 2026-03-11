@@ -1,5 +1,19 @@
 # Changelog
 
+## v8.3.3
+
+### Features
+- **Device pairing for TRCC Remote**: `trcc serve` displays a 6-character pairing code in the terminal. Phone enters the code once → receives a persistent API token → stays paired across server restarts. No re-scanning needed
+- **Persistent API token**: Token auto-generated on first run and stored in `~/.trcc/config.json`. Survives restarts — phone pairs once, connects forever. `--token` flag overrides with explicit token
+- **`POST /pair` endpoint**: Auth-exempt endpoint that validates the pairing code and returns the persistent token. Case-insensitive code matching
+- **`POST /themes/init` endpoint**: Remote apps call this on startup to pre-download theme/web/mask archives for a resolution. No-op if already cached
+- **Standalone theme data init**: `DataManager.ensure_all()` called during device select in standalone mode — theme directories are populated before the phone asks for them
+- **Lazy theme data download**: `GET /themes`, `GET /themes/web`, `GET /themes/masks` each call their respective `ensure_*()` before scanning — handles resolution queries for devices not yet selected
+
+### Internal
+- **Auth middleware refactored**: `_AUTH_EXEMPT` set for paths that bypass token auth (`/health`, `/pair`)
+- **Tests**: 4802 total (+18 new) — `TestPairing` (5), `TestPersistentToken` (7), `TestStandaloneThemeInit` (6)
+
 ## v8.3.2
 
 ### Features

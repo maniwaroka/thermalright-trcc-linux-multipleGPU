@@ -250,9 +250,10 @@ def mount_static_dirs(width: int, height: int) -> None:
              width, height, theme_dir, web_dir, masks_dir)
 
 
-# ── Token auth middleware (optional, enabled via --token) ─────────────
+# ── Token auth + pairing ──────────────────────────────────────────────
 
 _api_token: str | None = None
+_pairing_code: str | None = None  # Ephemeral 6-char code, shown in terminal
 
 
 def configure_auth(token: str | None) -> None:
@@ -261,10 +262,20 @@ def configure_auth(token: str | None) -> None:
     _api_token = token
 
 
+def set_pairing_code(code: str) -> None:
+    """Set the ephemeral pairing code (displayed in terminal)."""
+    global _pairing_code  # noqa: PLW0603
+    _pairing_code = code
+
+
+# Paths exempt from token auth — pairing needs to work before the phone has a token
+_AUTH_EXEMPT = {"/health", "/pair"}
+
+
 @app.middleware("http")
 async def check_token(request: Request, call_next):
     """Reject requests without valid token (if token is configured)."""
-    if _api_token and request.url.path != "/health":
+    if _api_token and request.url.path not in _AUTH_EXEMPT:
         header_token = request.headers.get("X-API-Token", "")
         if not hmac.compare_digest(header_token, _api_token):
             return JSONResponse(status_code=401, content={"detail": "Invalid token"})
@@ -277,6 +288,37 @@ async def check_token(request: Request, call_next):
 def health() -> dict:
     """Health check (always accessible, no auth required)."""
     return {"status": "ok", "version": __version__}
+
+
+# ── Pairing endpoint (no auth required) ───────────────────────────────
+
+@app.post("/pair")
+def pair_device(code: str):
+    """Pair a remote device using the 6-char code shown in the terminal.
+
+    Returns the persistent API token on success. The remote app stores
+    this token and uses it for all future requests (X-API-Token header).
+    No re-pairing needed after server restart.
+    """
+    if not _pairing_code:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Pairing not available (server started with --token)"},
+        )
+
+    if not hmac.compare_digest(code.upper(), _pairing_code.upper()):
+        log.warning("Pairing attempt with wrong code")
+        return JSONResponse(
+            status_code=403, content={"detail": "Invalid pairing code"},
+        )
+
+    if not _api_token:
+        return JSONResponse(
+            status_code=500, content={"detail": "No API token configured"},
+        )
+
+    log.info("Remote device paired successfully")
+    return {"success": True, "token": _api_token}
 
 
 # ── Register routers ──────────────────────────────────────────────────

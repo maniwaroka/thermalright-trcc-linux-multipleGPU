@@ -121,6 +121,11 @@ def select_device(device_id: int) -> dict:
             api._display_dispatcher = lcd
 
             w_res, h_res = dev.resolution or (320, 320)
+
+            # Download/extract theme data for this resolution (no-op if cached)
+            from trcc.adapters.infra.data_repository import DataManager
+            DataManager.ensure_all(w_res, h_res)
+
             api.set_current_image(ImageService.solid_color(0, 0, 0, w_res, h_res))
 
             lcd.restore_device_settings()

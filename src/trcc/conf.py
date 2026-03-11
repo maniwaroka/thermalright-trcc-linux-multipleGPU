@@ -366,6 +366,32 @@ class Settings:
         config.pop("installed_resolutions", None)
         save_config(config)
 
+    @staticmethod
+    def get_api_token() -> str:
+        """Get persistent API token, generating one on first call.
+
+        Stored in config.json so it survives restarts — phone pairs once,
+        stays trusted forever.
+        """
+        import secrets
+        import string
+
+        config = load_config()
+        token = config.get('api_token')
+        if not token:
+            alphabet = string.ascii_letters + string.digits
+            token = ''.join(secrets.choice(alphabet) for _ in range(16))
+            config['api_token'] = token
+            save_config(config)
+        return token
+
+    @staticmethod
+    def save_api_token(token: str) -> None:
+        """Save an explicit API token (from --token flag)."""
+        config = load_config()
+        config['api_token'] = token
+        save_config(config)
+
     # --- Instance methods and properties ---
 
     def __init__(self) -> None:
