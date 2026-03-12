@@ -351,8 +351,8 @@ A big thanks to everyone who has contributed invaluable reports to this project:
 - **[Pewful2021](https://github.com/Pewful2021)** — PA120 LED troubleshooting
 - **[lallemandgianni-boop](https://github.com/lallemandgianni-boop)** — PA120 DIGITAL LCD PID investigation
 - **[sleeper14200](https://github.com/sleeper14200)** — Linux Mint .deb compatibility bug report
-- **[riodevelop](https://github.com/riodevelop)** — Frozen Warframe 240 HID color bug report
-- **[wobbegongus](https://github.com/wobbegongus)** — Frozen Warframe 240 HID color bug report
+- **[riodevelop](https://github.com/riodevelop)** — Frozen Warframe 240 HID tester
+- **[wobbegongus](https://github.com/wobbegongus)** — Frozen Warframe 240 HID tester
 
 ## Stargazers
 

@@ -45,6 +45,7 @@ These devices have been tested on real Linux hardware by contributors:
 | Elite Vision 360 ARGB Black | `0402:3922` | SCSI | [tensaiteki](https://github.com/tensaiteki) |
 | GrandVision 360 AIO | `87AD:70DB` | Bulk | [Reborn627](https://github.com/Reborn627) |
 | Peerless Assassin 120 Digital ARGB (LED) | `0416:8001` | HID LED | [Pewful2021](https://github.com/Pewful2021) |
+| Frozen Warframe 240 (HID) | `0416:5302` | HID Type 2 | [riodevelop](https://github.com/riodevelop), [wobbegongus](https://github.com/wobbegongus) |
 
 ## Need Testers — HID LCD Devices
 
@@ -55,7 +56,7 @@ These use USB HID to display images on the LCD. Code is complete, but no one has
 | Trofeo Vision LCD | `0416:5302` | HID Type 2 | High — user reported detection issue (#1) |
 | AS120 VISION | `0416:5302` | HID Type 2 | High |
 | BA120 VISION | `0416:5302` | HID Type 2 | High |
-| FROZEN WARFRAME (HID variant) | `0416:5302` | HID Type 2 | Medium — color fix in v8.3.5, awaiting confirmation |
+| FROZEN WARFRAME (HID variant) | `0416:5302` | HID Type 2 | Confirmed working (v8.3.5) — other 240px variants may differ |
 | FROZEN WARFRAME SE (HID variant) | `0416:5302` | HID Type 2 | Medium |
 | FROZEN WARFRAME PRO | `0416:5302` | HID Type 2 | Medium |
 | ELITE VISION (HID variant) | `0416:5302` | HID Type 2 | Medium — SCSI variant confirmed by tensaiteki |
