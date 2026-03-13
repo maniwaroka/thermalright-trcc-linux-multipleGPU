@@ -76,6 +76,14 @@ Run `trcc report` and [paste the output in an issue](https://github.com/Lexonigh
 
 **Under the hood**: 109 source files, ~40K lines of Python, 5114 tests across 60 test files in 9 directories. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
 
+### 30-Language GUI (i18n)
+
+The Windows TRCC app ships 10 languages by baking translated text into separate PNG background images — 129 PNGs just for panel labels. We replaced all of that with a runtime i18n system: language-neutral background PNGs + QLabel text overlays rendered from `core/i18n.py`. Switching languages updates every label instantly — no restart, no extra files.
+
+**Supported languages:** Simplified Chinese, Traditional Chinese, English, German, Russian, French, Portuguese, Japanese, Spanish, Korean, Italian, Dutch, Polish, Turkish, Arabic, Hindi, Thai, Vietnamese, Indonesian, Czech, Swedish, Danish, Norwegian, Finnish, Hungarian, Romanian, Ukrainian, Greek, Hebrew, Malay
+
+Adding a new language is one dict entry per string in `core/i18n.py` — no PNG editing, no asset pipeline. Community translations welcome.
+
 ## Supported Devices
 
 Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
