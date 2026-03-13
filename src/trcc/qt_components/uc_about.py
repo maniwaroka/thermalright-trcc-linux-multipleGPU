@@ -253,10 +253,8 @@ class UCAbout(BasePanel):
         self._apply_localized_background()
 
     def _apply_localized_background(self):
-        """Set localized background image (no tiling)."""
-        from ..conf import settings
-        bg_name = Assets.get_localized(Assets.ABOUT_BG, settings.lang)
-        set_background_pixmap(self, bg_name)
+        """Set background image (no tiling)."""
+        set_background_pixmap(self, Assets.ABOUT_BG)
 
     def _setup_ui(self):
         """Build UI with invisible click targets over background image text."""

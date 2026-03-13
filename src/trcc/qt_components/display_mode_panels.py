@@ -1,6 +1,7 @@
 """Display mode toggle panels — bottom-row controls.
 
 DisplayModePanel: Generic toggle + action buttons for background/mask/video modes.
+MaskPanel: Mask overlay with X/Y position inputs and visibility toggle.
 ScreenCastPanel: Screen capture with X/Y/W/H coordinate inputs and aspect locking.
 DataTablePanel: Context-sensitive format controls (C/F, 12H/24H, date format, text).
 """
@@ -10,10 +11,12 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QFrame,
+    QLabel,
     QLineEdit,
     QPushButton,
 )
 
+from ..core.i18n import MASK_TITLE, tr
 from ..core.models import OverlayMode
 from .assets import Assets
 from .base import set_background_pixmap
@@ -199,6 +202,7 @@ class DisplayModePanel(QFrame):
         "GIF": "Load animated GIF",
         "Network": "Network stream",
         "Settings": "Settings",
+        "Upload": "Upload custom mask",
     }
 
     # Tooltip text for toggle buttons by mode
@@ -236,7 +240,8 @@ class DisplayModePanel(QFrame):
         # Action buttons with icon images
         _ICON_MAP = {
             "Image": "P图片.png", "Video": "P视频.png",
-            "Load": "P蒙板.png", "VideoLoad": "P直播视频载入.png",
+            "Load": "P蒙板.png", "Upload": "P图片.png",
+            "VideoLoad": "P直播视频载入.png",
             "GIF": "P动画.png", "Network": "P网络.png",
         }
         self._action_buttons: list[QPushButton] = []
@@ -281,6 +286,176 @@ class DisplayModePanel(QFrame):
                 Qt.TransformationMode.SmoothTransformation
             )
             set_background_pixmap(self, scaled)
+
+
+class MaskPanel(DisplayModePanel):
+    """Mask overlay panel with X/Y position inputs and visibility toggle.
+
+    Extends DisplayModePanel with coordinate entry fields for mask positioning
+    and an eye toggle for mask visibility.
+
+    Layout within 351x100:
+        [Toggle] [Load] [Upload]     X: [___][+][-]
+                                      Y: [___][+][-]  [eye]
+    """
+
+    mask_position_changed = Signal(int, int)  # x, y
+    mask_visibility_toggled = Signal(bool)
+
+    # X/Y entry positions (right side of panel)
+    _TEXTBOX_X = (259, 40, 38, 16)
+    _TEXTBOX_Y = (259, 65, 38, 16)
+
+    # +/- button positions
+    _BTN_ADD_X = (301, 42, 14, 14)
+    _BTN_SUB_X = (319, 42, 14, 14)
+    _BTN_ADD_Y = (301, 67, 14, 14)
+    _BTN_SUB_Y = (319, 67, 14, 14)
+
+    # Eye toggle position
+    _BTN_EYE = (309, 6, 24, 16)
+
+    _ENTRY_STYLE = (
+        "background-color: black; color: #B4964F; border: none;"
+        " font-family: 'Microsoft YaHei'; font-size: 9pt;"
+    )
+
+    def __init__(self, parent=None):
+        super().__init__("mask", ["Load", "Upload"], parent)
+        self._updating = False
+        self._mask_visible = True
+        self._setup_mask_ui()
+
+    _LABEL_STYLE = (
+        "color: white; font-family: 'Microsoft YaHei'; font-size: 9pt;"
+        " background: transparent;"
+    )
+
+    _TITLE_STYLE = (
+        "color: white; font-family: 'Microsoft YaHei'; font-size: 12pt;"
+        " background: transparent;"
+    )
+
+    def _setup_mask_ui(self):
+        """Add X/Y coordinate inputs and eye toggle on top of base panel."""
+        self._title_lbl = QLabel("Layer Mask", self)
+        self._title_lbl.setGeometry(44, 5, 120, 18)
+        self._title_lbl.setStyleSheet(self._TITLE_STYLE)
+
+        self._make_label("X", 247, 40)
+        self._make_label("Y", 247, 65)
+
+        self.entry_x = self._make_entry(*self._TEXTBOX_X)
+        self.entry_y = self._make_entry(*self._TEXTBOX_Y)
+
+        self.entry_x.textChanged.connect(self._on_position_changed)
+        self.entry_y.textChanged.connect(self._on_position_changed)
+
+        # +/- buttons
+        self._make_pm_btn(*self._BTN_ADD_X, +1, self.entry_x)
+        self._make_pm_btn(*self._BTN_SUB_X, -1, self.entry_x)
+        self._make_pm_btn(*self._BTN_ADD_Y, +1, self.entry_y)
+        self._make_pm_btn(*self._BTN_SUB_Y, -1, self.entry_y)
+
+        # Eye toggle button
+        self.eye_btn = QPushButton(self)
+        self.eye_btn.setGeometry(*self._BTN_EYE)
+        self.eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.eye_btn.setToolTip("Toggle mask visibility")
+        self.eye_btn.clicked.connect(self._on_eye_toggle)
+        self._update_eye_icon()
+
+    def _make_label(self, text, x, y):
+        """Create a small coordinate label."""
+        lbl = QLabel(text, self)
+        lbl.setGeometry(x, y, 10, 16)
+        lbl.setStyleSheet(self._LABEL_STYLE)
+        return lbl
+
+    def _make_entry(self, x, y, w, h):
+        """Create a coordinate entry field."""
+        entry = QLineEdit(self)
+        entry.setGeometry(x, y, w, h)
+        entry.setText("0")
+        entry.setAlignment(Qt.AlignmentFlag.AlignRight)
+        entry.setStyleSheet(self._ENTRY_STYLE)
+        from PySide6.QtGui import QIntValidator
+        entry.setValidator(QIntValidator(0, 9999, entry))
+        return entry
+
+    def _make_pm_btn(self, x, y, w, h, delta, entry):
+        """Create a +/- button for a coordinate."""
+        btn = QPushButton(self)
+        btn.setGeometry(x, y, w, h)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        img_name = 'P加.png' if delta > 0 else 'P减.png'
+        pix = Assets.load_pixmap(img_name, w, h)
+        if not pix.isNull():
+            btn.setIcon(QIcon(pix))
+            btn.setIconSize(btn.size())
+            btn.setStyleSheet(Styles.FLAT_BUTTON)
+        else:
+            btn.setText("+" if delta > 0 else "-")
+            btn.setStyleSheet(
+                "QPushButton { background: #333; color: #888; border: none; font-size: 9px; }"
+            )
+        btn.clicked.connect(lambda: self._increment(entry, delta))
+
+    def _increment(self, entry, delta):
+        """Increment/decrement an entry value."""
+        try:
+            val = max(0, min(9999, int(entry.text() or '0') + delta))
+            entry.setText(str(val))
+        except ValueError:
+            pass
+
+    def _on_position_changed(self):
+        """Handle X/Y value change."""
+        if self._updating:
+            return
+        try:
+            x = int(self.entry_x.text() or '0')
+            y = int(self.entry_y.text() or '0')
+            self.mask_position_changed.emit(x, y)
+        except ValueError:
+            pass
+
+    def _on_eye_toggle(self):
+        self._mask_visible = not self._mask_visible
+        self._update_eye_icon()
+        self.mask_visibility_toggled.emit(self._mask_visible)
+
+    def _update_eye_icon(self):
+        img = 'P显示边框A.png' if self._mask_visible else 'P显示边框.png'
+        pix = Assets.load_pixmap(img, 24, 16)
+        if not pix.isNull():
+            self.eye_btn.setIcon(QIcon(pix))
+            self.eye_btn.setIconSize(self.eye_btn.size())
+            self.eye_btn.setStyleSheet(Styles.FLAT_BUTTON)
+        else:
+            self.eye_btn.setText("V" if self._mask_visible else "H")
+            self.eye_btn.setStyleSheet(
+                "QPushButton { background: #00CED1; color: white; border: none; font-size: 8px; }"
+                if self._mask_visible else
+                "QPushButton { background: #555; color: white; border: none; font-size: 8px; }"
+            )
+
+    def set_position(self, x: int, y: int):
+        """Set X/Y values without triggering events."""
+        self._updating = True
+        self.entry_x.setText(str(x))
+        self.entry_y.setText(str(y))
+        self._updating = False
+
+    def set_mask_visible(self, visible: bool):
+        """Set eye toggle state."""
+        self._mask_visible = visible
+        self._update_eye_icon()
+
+    def apply_language(self, lang: str) -> None:
+        """Update title label for current language."""
+        self._title_lbl.setText(tr(MASK_TITLE, lang))
 
 
 class ScreenCastPanel(DisplayModePanel):

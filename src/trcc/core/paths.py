@@ -20,6 +20,10 @@ USER_DATA_DIR = os.path.join(USER_CONFIG_DIR, 'data')
 # Runtime data directory — always writable (~/.trcc/data/)
 DATA_DIR = USER_DATA_DIR
 
+# User-created content (~/.trcc-user/) — survives uninstall and data re-download
+USER_CONTENT_DIR = os.path.expanduser('~/.trcc-user')
+USER_MASKS_WEB_DIR = os.path.join(USER_CONTENT_DIR, 'data', 'web')
+
 
 # =========================================================================
 # Directory resolution — pure path logic, no I/O beyond os.path/os.listdir
@@ -72,3 +76,12 @@ def get_web_dir(width: int, height: int) -> str:
 def get_web_masks_dir(width: int, height: int) -> str:
     """Get cloud masks directory for a resolution."""
     return _resolve_web_subdir(f'zt{width}{height}', check_fn=_has_themes)
+
+
+def get_user_masks_dir(width: int, height: int) -> str:
+    """Get user-created masks directory for a resolution.
+
+    Lives in ~/.trcc-user/data/web/zt{W}{H}/ — separate from cloud masks
+    so user content survives uninstall and data re-download.
+    """
+    return os.path.join(USER_MASKS_WEB_DIR, f'zt{width}{height}')

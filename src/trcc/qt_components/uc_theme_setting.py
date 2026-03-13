@@ -29,6 +29,7 @@ from .constants import Layout, Sizes
 from .display_mode_panels import (  # noqa: F401
     DataTablePanel,
     DisplayModePanel,
+    MaskPanel,
     ScreenCastPanel,
 )
 
@@ -66,7 +67,10 @@ class UCThemeSetting(BasePanel):
     CMD_VIDEO_TOGGLE = 3
     CMD_MASK_TOGGLE = 96
     CMD_MASK_LOAD = 97
+    CMD_MASK_UPLOAD = 98
     CMD_MASK_CLOUD = 99  # C# buttonYDMB_Click — navigate to cloud masks panel
+    CMD_MASK_POSITION = 100
+    CMD_MASK_VISIBILITY = 101
     CMD_VIDEO_LOAD = 10
     CMD_OVERLAY_CHANGED = 128
     CMD_EYEDROPPER = 112  # Matches Windows cmd for FormGetColor
@@ -116,10 +120,12 @@ class UCThemeSetting(BasePanel):
         self.data_table.text_changed.connect(self._on_text_changed)
 
         # Display mode panels
-        self.mask_panel = DisplayModePanel("mask", ["Load"], self)
+        self.mask_panel = MaskPanel(self)
         self.mask_panel.move(*Layout.MASK_PANEL)
         self.mask_panel.mode_changed.connect(self._on_mode_changed)
         self.mask_panel.action_requested.connect(self._on_action_requested)
+        self.mask_panel.mask_position_changed.connect(self._on_mask_position)
+        self.mask_panel.mask_visibility_toggled.connect(self._on_mask_visibility)
 
         self.background_panel = DisplayModePanel("background", ["Image", "Video"], self)
         self.background_panel.move(*Layout.BG_PANEL)
@@ -242,11 +248,20 @@ class UCThemeSetting(BasePanel):
         """Forward screencast coordinate changes."""
         self.screencast_params_changed.emit(x, y, w, h)
 
+    def _on_mask_position(self, x, y):
+        """Forward mask position change to main app."""
+        self.invoke_delegate(self.CMD_MASK_POSITION, (x, y))
+
+    def _on_mask_visibility(self, visible):
+        """Forward mask visibility toggle to main app."""
+        self.invoke_delegate(self.CMD_MASK_VISIBILITY, visible)
+
     def _on_action_requested(self, action_name):
         action_map = {
             "Image": self.CMD_BACKGROUND_LOAD_IMAGE,
             "Video": self.CMD_BACKGROUND_LOAD_VIDEO,
             "Load": self.CMD_MASK_LOAD,
+            "Upload": self.CMD_MASK_UPLOAD,
             "VideoLoad": self.CMD_VIDEO_LOAD,
         }
         cmd = action_map.get(action_name)
@@ -269,6 +284,14 @@ class UCThemeSetting(BasePanel):
 
     def set_overlay_enabled(self, enabled: bool):
         self.overlay_grid.set_overlay_enabled(enabled)
+
+    def set_mask_position(self, x: int, y: int):
+        """Update mask panel X/Y fields (e.g. after mask load or drag)."""
+        self.mask_panel.set_position(x, y)
+
+    def set_mask_visible(self, visible: bool):
+        """Update mask panel eye toggle state."""
+        self.mask_panel.set_mask_visible(visible)
 
     def set_resolution(self, width: int, height: int):
         """Delegate resolution to screencast panel."""

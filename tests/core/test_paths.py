@@ -8,9 +8,12 @@ from trcc.core.paths import (
     DATA_DIR,
     RESOURCES_DIR,
     USER_CONFIG_DIR,
+    USER_CONTENT_DIR,
     USER_DATA_DIR,
+    USER_MASKS_WEB_DIR,
     _has_any_content,
     _has_themes,
+    get_user_masks_dir,
     get_web_dir,
     get_web_masks_dir,
 )
@@ -192,6 +195,44 @@ class TestGetWebMasksDir(unittest.TestCase):
     def test_different_resolutions_different_paths(self):
         self.assertNotEqual(
             get_web_masks_dir(320, 320), get_web_masks_dir(480, 480))
+
+
+class TestUserContentPaths(unittest.TestCase):
+    """User content paths (~/.trcc-user/) — survives uninstall."""
+
+    def test_user_content_dir(self):
+        self.assertEqual(USER_CONTENT_DIR, os.path.expanduser('~/.trcc-user'))
+
+    def test_user_masks_web_dir(self):
+        self.assertEqual(
+            USER_MASKS_WEB_DIR,
+            os.path.join(os.path.expanduser('~/.trcc-user'), 'data', 'web'))
+
+
+class TestGetUserMasksDir(unittest.TestCase):
+    """get_user_masks_dir() — user custom masks directory."""
+
+    def test_returns_string(self):
+        result = get_user_masks_dir(320, 320)
+        self.assertIsInstance(result, str)
+
+    def test_contains_zt_prefix(self):
+        result = get_user_masks_dir(320, 320)
+        self.assertIn('zt320320', result)
+
+    def test_under_trcc_user(self):
+        result = get_user_masks_dir(320, 320)
+        self.assertIn('.trcc-user', result)
+
+    def test_separate_from_cloud_masks(self):
+        """User masks dir is NOT under ~/.trcc/ (survives data re-download)."""
+        cloud = get_web_masks_dir(320, 320)
+        user = get_user_masks_dir(320, 320)
+        self.assertNotEqual(cloud, user)
+
+    def test_different_resolutions(self):
+        self.assertNotEqual(
+            get_user_masks_dir(320, 320), get_user_masks_dir(480, 480))
 
 
 if __name__ == '__main__':

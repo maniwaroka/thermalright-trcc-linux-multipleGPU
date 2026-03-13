@@ -74,9 +74,10 @@ class CloudThemeItem(ThemeItem):
 
 @dataclass
 class MaskItem(ThemeItem):
-    """Item in the cloud masks browser (UCThemeMask)."""
+    """Item in the masks browser (UCThemeMask)."""
     path: Optional[str] = None
     preview: Optional[str] = None
+    is_custom: bool = False  # User-uploaded mask (enables delete in context menu)
 
 
 # =============================================================================

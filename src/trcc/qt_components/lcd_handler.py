@@ -308,6 +308,14 @@ class LCDHandler:
         else:
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
 
+    def update_mask_position(self, x: int, y: int) -> None:
+        """Update mask overlay position and re-render."""
+        svc = self._lcd._display_svc
+        if svc and svc.overlay:
+            svc.overlay.theme_mask_position = (x, y)
+            svc.overlay._invalidate_cache()
+            self._render_and_send()
+
     def save_theme(self, name: str) -> None:
         result = self._lcd.theme.save(name, self._data_dir)
         self._w['preview'].set_status(result.get('message', ''))

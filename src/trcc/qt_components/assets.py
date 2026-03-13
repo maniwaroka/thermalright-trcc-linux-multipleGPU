@@ -46,19 +46,15 @@ class Assets:
     """
 
     # Form1 background (full window with sidebar + gold bar + sensor grid)
-    FORM1_BG = 'A0无设备.png'
+    FORM1_BG = 'App_main.png'
 
     # Main form backgrounds
-    FORM_CZTV_BG = 'P0CZTV.png'
-    FORM_CZTV_BG_EN = 'P0CZTVen.png'
+    FORM_CZTV_BG = 'App_form.png'
 
     # Theme panel backgrounds (732x652)
-    THEME_LOCAL_BG = 'P0本地主题.png'
-    THEME_LOCAL_BG_EN = 'P0本地主题en.png'
-    THEME_WEB_BG = 'P0云端背景.png'
-    THEME_WEB_BG_EN = 'P0云端背景en.png'
-    THEME_MASK_BG = 'P0云端主题.png'
-    THEME_MASK_BG_EN = 'P0云端主题en.png'
+    THEME_LOCAL_BG = 'App_theme_base.png'
+    THEME_WEB_BG = 'App_theme_gallery.png'
+    THEME_MASK_BG = 'App_theme_base.png'
     THEME_SETTING_BG = 'P0主题设置.png'
 
     # Preview frame backgrounds (500x500)
@@ -93,10 +89,8 @@ class Assets:
     VIDEO_CONTROLS_BG = 'ucBoFangQiKongZhi1.BackgroundImage.png'
 
     # Settings panel sub-backgrounds (from UCThemeSetting.resx)
-    SETTINGS_CONTENT = 'P01内容.png'
-    SETTINGS_CONTENT_EN = 'P01内容en.png'
-    SETTINGS_PARAMS = 'P01参数面板.png'
-    SETTINGS_PARAMS_EN = 'P01参数面板en.png'
+    SETTINGS_CONTENT = 'Panel_overlay.png'
+    SETTINGS_PARAMS = 'Panel_params.png'
 
     # UCThemeSetting sub-component backgrounds (from .resx)
     OVERLAY_GRID_BG = 'ucXiTongXianShi1.BackgroundImage.png'        # 472x430
@@ -119,7 +113,7 @@ class Assets:
     ABOUT_BTN_ACTIVE = 'A1关于a.png'
 
     # About / Control Center panel (UCAbout)
-    ABOUT_BG = 'A0关于.png'
+    ABOUT_BG = 'App_about.png'
     ABOUT_LOGOUT = 'Alogout默认.png'
     ABOUT_LOGOUT_HOVER = 'Alogout选中.png'
     CHECKBOX_OFF = 'P点选框.png'

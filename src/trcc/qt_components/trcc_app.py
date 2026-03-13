@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QFileDialog,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMenu,
@@ -445,7 +446,7 @@ class TRCCApp(QMainWindow):
         from ..adapters.infra.data_repository import USER_DATA_DIR
         self._data_dir = data_dir or Path(USER_DATA_DIR)
 
-        self.setWindowTitle("TRCC Linux - Thermalright LCD Control Center")
+        self.setWindowTitle("TRCC-Linux - Thermalright LCD Control Center")
         self.setFixedSize(Sizes.WINDOW_W, Sizes.WINDOW_H)
         if not decorated:
             self.setWindowFlags(
@@ -455,6 +456,8 @@ class TRCCApp(QMainWindow):
         self._lcd_handler: LCDHandler | None = None
         self._active_device_key = ''
         self._handshake_pending = False  # guard against duplicate handshakes
+        self._cut_mode = 'background'  # 'background' or 'mask' — what image cut is for
+        self._mask_upload_filename = ''  # original filename for mask naming
 
         # Pixmap refs to prevent GC
         self._pixmap_refs: list = []
@@ -642,8 +645,7 @@ class TRCCApp(QMainWindow):
         self.form_container = QWidget(central)
         self.form_container.setGeometry(*Layout.FORM_CONTAINER)
 
-        form_bg = Assets.get_localized(Assets.FORM_CZTV_BG, settings.lang)
-        pix = set_background_pixmap(self.form_container, form_bg,
+        pix = set_background_pixmap(self.form_container, Assets.FORM_CZTV_BG,
             fallback_style=f"background-color: {Colors.WINDOW_BG};")
         if pix:
             self._pixmap_refs.append(pix)
@@ -676,21 +678,18 @@ class TRCCApp(QMainWindow):
 
         # C# ButtonNewMode order: 1=Local, 2=CloudBG, 3=Settings, 4=CloudMasks
         self.uc_theme_local = UCThemeLocal()              # panel 0
-        self._set_panel_bg(self.uc_theme_local,
-            Assets.get_localized(Assets.THEME_LOCAL_BG, settings.lang))
+        self._set_panel_bg(self.uc_theme_local, Assets.THEME_LOCAL_BG)
         self.panel_stack.addWidget(self.uc_theme_local)
 
         self.uc_theme_web = UCThemeWeb()                  # panel 1
-        self._set_panel_bg(self.uc_theme_web,
-            Assets.get_localized(Assets.THEME_WEB_BG, settings.lang))
+        self._set_panel_bg(self.uc_theme_web, Assets.THEME_WEB_BG)
         self.panel_stack.addWidget(self.uc_theme_web)
 
         self.uc_theme_setting = UCThemeSetting()          # panel 2
         self.panel_stack.addWidget(self.uc_theme_setting)
 
         self.uc_theme_mask = UCThemeMask()                # panel 3
-        self._set_panel_bg(self.uc_theme_mask,
-            Assets.get_localized(Assets.THEME_MASK_BG, settings.lang))
+        self._set_panel_bg(self.uc_theme_mask, Assets.THEME_MASK_BG)
         self.panel_stack.addWidget(self.uc_theme_mask)
 
         # Activity sidebar
@@ -738,6 +737,9 @@ class TRCCApp(QMainWindow):
         self.form1_help_btn.setToolTip("Help")
         self.form1_help_btn.clicked.connect(self._on_help_clicked)
 
+        # i18n overlay preview (red text to verify positioning)
+        self._create_i18n_overlays()
+
         # Theme directories
         self._init_theme_directories()
 
@@ -745,6 +747,259 @@ class TRCCApp(QMainWindow):
         pix = set_background_pixmap(widget, asset_name)
         if pix:
             self._pixmap_refs.append(pix)
+
+    def _create_i18n_overlays(self) -> None:
+        """Add red QLabel overlays for every i18n text position (preview only)."""
+        from ..core.i18n import (
+            BACKGROUND_LOAD_IMG,
+            BACKGROUND_LOAD_IMG_POS,
+            BACKGROUND_LOAD_VIDEO,
+            BACKGROUND_LOAD_VIDEO_POS,
+            BACKGROUND_TITLE,
+            BACKGROUND_TITLE_POS,
+            DISPLAY_ANGLE,
+            DISPLAY_ANGLE_POS,
+            EXPORT_IMPORT,
+            EXPORT_IMPORT_POS,
+            GALLERY_AESTHETIC,
+            GALLERY_ALL,
+            GALLERY_LIGHT,
+            GALLERY_NATURE,
+            GALLERY_OTHER,
+            GALLERY_TAB_FONT,
+            GALLERY_TAB_H,
+            GALLERY_TAB_Y,
+            GALLERY_TECH,
+            GALLERY_TITLE,
+            GALLERY_TITLE_POS,
+            LOCAL_THEME,
+            LOCAL_THEME_POS,
+            MASK_DESC_POS,
+            MASK_DESCRIPTION,
+            MASK_LOAD,
+            MASK_LOAD_POS,
+            MASK_TITLE,
+            MASK_TITLE_POS,
+            MEDIA_PLAYER_LOAD,
+            MEDIA_PLAYER_LOAD_POS,
+            MEDIA_PLAYER_TITLE,
+            MEDIA_PLAYER_TITLE_POS,
+            ONLINE_THEME,
+            ONLINE_THEME_POS,
+            OVERLAY_GRID_HINT,
+            OVERLAY_GRID_HINT_POS,
+            OVERLAY_GRID_TITLE,
+            OVERLAY_GRID_TITLE_POS,
+            PARAM_COLOUR,
+            PARAM_COLOUR_POS,
+            PARAM_COORDINATE,
+            PARAM_COORDINATE_POS,
+            PARAM_FONT,
+            PARAM_FONT_POS,
+            SAVE_AS,
+            SAVE_AS_POS,
+            SCREENCAST_TITLE,
+            SCREENCAST_TITLE_POS,
+            TITLE_BAR_POS,
+            TITLE_BAR_TEXT,
+            tr,
+        )
+        lang = settings.lang
+        self._i18n_labels: list[tuple[QLabel, dict[str, str] | None]] = []
+
+        def _lbl(parent: QWidget, text: str, x: int, y: int, w: int, h: int,
+                 pt: int, table: dict[str, str] | None = None,
+                 bold: bool = False, color: str = 'red') -> QLabel:
+            """Place a QLabel at PNG pixel coords — auto-adjusts for font metrics.
+
+            i18n.py stores raw PNG pixel positions (where text actually appears
+            in the image). QLabel renders text a few px below its top edge due to
+            font ascent/leading, so we shift y up to compensate.
+            """
+            y_offset = max(2, pt // 4)
+            lbl = QLabel(text, parent)
+            lbl.setGeometry(x, y - y_offset, w, h)
+            weight = " font-weight: bold;" if bold else ""
+            lbl.setStyleSheet(
+                f"color: {color}; font-family: 'Microsoft YaHei';"
+                f" font-size: {pt}pt;{weight} background: transparent;"
+            )
+            lbl.raise_()
+            self._i18n_labels.append((lbl, table))
+            return lbl
+
+        # Gold title bar — on form_container
+        x, y, w, h, pt = TITLE_BAR_POS
+        _lbl(self.form_container, TITLE_BAR_TEXT, x, y, w, h, pt, bold=True, color='#434343')
+
+        # Main view bottom — on form_container
+        for table, pos in [
+            (DISPLAY_ANGLE, DISPLAY_ANGLE_POS),
+            (SAVE_AS, SAVE_AS_POS),
+            (EXPORT_IMPORT, EXPORT_IMPORT_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(self.form_container, tr(table, lang), x, y, w, h, pt, table)
+
+        # Overlay grid — on uc_theme_setting.data_table
+        grid = self.uc_theme_setting.data_table
+        for tbl, pos in [
+            (OVERLAY_GRID_TITLE, OVERLAY_GRID_TITLE_POS),
+            (OVERLAY_GRID_HINT, OVERLAY_GRID_HINT_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(grid, tr(tbl, lang), x, y, w, h, pt, tbl)
+
+        # Parameter panel — on uc_theme_setting.right_stack
+        rpanel = self.uc_theme_setting.right_stack
+        for tbl, pos in [
+            (PARAM_COORDINATE, PARAM_COORDINATE_POS),
+            (PARAM_FONT, PARAM_FONT_POS),
+            (PARAM_COLOUR, PARAM_COLOUR_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(rpanel, tr(tbl, lang), x, y, w, h, pt, tbl)
+
+        # Mask panel — on uc_theme_setting.mask_panel
+        mp = self.uc_theme_setting.mask_panel
+        for tbl, pos in [
+            (MASK_TITLE, MASK_TITLE_POS),
+            (MASK_LOAD, MASK_LOAD_POS),
+            (MASK_DESCRIPTION, MASK_DESC_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(mp, tr(tbl, lang), x, y, w, h, pt, tbl)
+
+        # Background panel — on uc_theme_setting.background_panel
+        bp = self.uc_theme_setting.background_panel
+        for tbl, pos in [
+            (BACKGROUND_TITLE, BACKGROUND_TITLE_POS),
+            (BACKGROUND_LOAD_IMG, BACKGROUND_LOAD_IMG_POS),
+            (BACKGROUND_LOAD_VIDEO, BACKGROUND_LOAD_VIDEO_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(bp, tr(tbl, lang), x, y, w, h, pt, tbl)
+
+        # Screencast panel — on uc_theme_setting.screencast_panel
+        sp = self.uc_theme_setting.screencast_panel
+        x, y, w, h, pt = SCREENCAST_TITLE_POS
+        _lbl(sp, tr(SCREENCAST_TITLE, lang), x, y, w, h, pt, SCREENCAST_TITLE)
+
+        # Video/Media player panel — on uc_theme_setting.video_panel
+        vp = self.uc_theme_setting.video_panel
+        for tbl, pos in [
+            (MEDIA_PLAYER_TITLE, MEDIA_PLAYER_TITLE_POS),
+            (MEDIA_PLAYER_LOAD, MEDIA_PLAYER_LOAD_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(vp, tr(tbl, lang), x, y, w, h, pt, tbl)
+
+        # Local theme browser
+        x, y, w, h, pt = LOCAL_THEME_POS
+        _lbl(self.uc_theme_local, tr(LOCAL_THEME, lang), x, y, w, h, pt,
+             LOCAL_THEME)
+
+        # Online/Mask theme browser
+        x, y, w, h, pt = ONLINE_THEME_POS
+        _lbl(self.uc_theme_mask, tr(ONLINE_THEME, lang), x, y, w, h, pt,
+             ONLINE_THEME)
+
+        # Gallery (cloud backgrounds) — title + category tabs
+        x, y, w, h, pt = GALLERY_TITLE_POS
+        _lbl(self.uc_theme_web, tr(GALLERY_TITLE, lang), x, y, w, h, pt,
+             GALLERY_TITLE)
+        tab_x_positions = [45, 135, 235, 335, 430, 525, 635]
+        tab_tables = [
+            GALLERY_ALL, GALLERY_TECH, None,
+            GALLERY_LIGHT, GALLERY_NATURE, GALLERY_AESTHETIC, GALLERY_OTHER,
+        ]
+        for tx, tbl in zip(tab_x_positions, tab_tables):
+            text = 'HUD' if tbl is None else tr(tbl, lang)
+            _lbl(self.uc_theme_web, text,
+                 tx, GALLERY_TAB_Y, 90, GALLERY_TAB_H, GALLERY_TAB_FONT, tbl)
+
+        # About panel
+        from ..core.i18n import (
+            ABOUT_AUTOSTART,
+            ABOUT_AUTOSTART_POS,
+            ABOUT_HDD,
+            ABOUT_HDD_POS,
+            ABOUT_HDD_WARN_POS,
+            ABOUT_HDD_WARNING,
+            ABOUT_LANG_POS,
+            ABOUT_LANG_SELECT,
+            ABOUT_MULTI_THREAD,
+            ABOUT_MULTI_THREAD_POS,
+            ABOUT_REFRESH_POS,
+            ABOUT_REFRESH_TIME,
+            ABOUT_RUNNING_MODE,
+            ABOUT_RUNNING_MODE_POS,
+            ABOUT_SINGLE_THREAD,
+            ABOUT_SINGLE_THREAD_POS,
+            ABOUT_UNIT,
+            ABOUT_UNIT_POS,
+            ABOUT_UPDATE,
+            ABOUT_UPDATE_POS,
+            ABOUT_VERSION_LABEL,
+            ABOUT_VERSION_POS,
+        )
+        about_items: list[tuple[dict[str, str], tuple[int, ...]]] = [
+            (ABOUT_AUTOSTART, ABOUT_AUTOSTART_POS),
+            (ABOUT_UNIT, ABOUT_UNIT_POS),
+            (ABOUT_HDD, ABOUT_HDD_POS),
+            (ABOUT_HDD_WARNING, ABOUT_HDD_WARN_POS),
+            (ABOUT_REFRESH_TIME, ABOUT_REFRESH_POS),
+            (ABOUT_RUNNING_MODE, ABOUT_RUNNING_MODE_POS),
+            (ABOUT_SINGLE_THREAD, ABOUT_SINGLE_THREAD_POS),
+            (ABOUT_MULTI_THREAD, ABOUT_MULTI_THREAD_POS),
+            (ABOUT_UPDATE, ABOUT_UPDATE_POS),
+            (ABOUT_LANG_SELECT, ABOUT_LANG_POS),
+            (ABOUT_VERSION_LABEL, ABOUT_VERSION_POS),
+        ]
+        for table, pos in about_items:
+            x, y, w, h, pt = pos
+            _lbl(self.uc_about, tr(table, lang), x, y, w, h, pt, table)
+
+        # Language dropdown preview (red overlay — replaces 10 checkboxes)
+        from ..core.i18n import LANGUAGE_NAMES
+        lang_combo = QComboBox(self.uc_about)
+        lang_combo.setGeometry(297, 413, 200, 28)
+        for code in sorted(LANGUAGE_NAMES, key=lambda c: LANGUAGE_NAMES[c]):
+            lang_combo.addItem(LANGUAGE_NAMES[code], code)
+        idx = lang_combo.findData(lang)
+        if idx >= 0:
+            lang_combo.setCurrentIndex(idx)
+        lang_combo.setStyleSheet(
+            "QComboBox { background: #2A2A2A; color: red; border: 1px solid red;"
+            " font-size: 10pt; padding-left: 5px; }"
+            "QComboBox::drop-down { border: none; width: 20px; }"
+            "QComboBox QAbstractItemView { background: #2A2A2A; color: red;"
+            " selection-background-color: #4A2A2A; }"
+        )
+        lang_combo.raise_()
+
+        # Wire combo to update all red overlay labels live
+        def _on_preview_lang(index: int) -> None:
+            new_lang = lang_combo.itemData(index)
+            for lbl, tbl in self._i18n_labels:
+                if tbl is not None:
+                    lbl.setText(tr(tbl, new_lang))
+
+        lang_combo.currentIndexChanged.connect(_on_preview_lang)
+
+        # System Info panel
+        from ..core.i18n import (
+            SYSINFO_NAME,
+            SYSINFO_NAME_POS,
+            SYSINFO_VALUE,
+            SYSINFO_VALUE_POS,
+        )
+        for tbl, pos in [
+            (SYSINFO_NAME, SYSINFO_NAME_POS),
+            (SYSINFO_VALUE, SYSINFO_VALUE_POS),
+        ]:
+            x, y, w, h, pt = pos
+            _lbl(self.uc_system_info, tr(tbl, lang), x, y, w, h, pt, tbl)
 
     def _create_mode_tabs(self):
         self.mode_buttons = []
@@ -852,16 +1107,15 @@ class TRCCApp(QMainWindow):
 
     def _apply_settings_backgrounds(self):
         s = self.uc_theme_setting
-        for panel, base in [
-            (s.mask_panel, '\u5e03\u5c40\u8499\u677f'),
-            (s.background_panel, '\u80cc\u666f\u663e\u793a'),
-            (s.screencast_panel, '\u6295\u5c4f\u663e\u793axy'),
-            (s.video_panel, '\u64ad\u653e\u5668'),
-            (s.overlay_grid, '\u5185\u5bb9'),
-            (s.color_panel, '\u53c2\u6570\u9762\u677f'),
+        for panel, bg_name in [
+            (s.mask_panel, 'Panel_base.png'),
+            (s.background_panel, 'Panel_base.png'),
+            (s.screencast_panel, 'Panel_base.png'),
+            (s.video_panel, 'Panel_base.png'),
+            (s.overlay_grid, 'Panel_overlay.png'),
+            (s.color_panel, 'Panel_params.png'),
         ]:
-            bg = Assets.get_localized(f'P01{base}.png', settings.lang)
-            self._set_panel_bg(panel, bg)
+            self._set_panel_bg(panel, bg_name)
 
     def _init_theme_directories(self):
         w, h = settings.width, settings.height
@@ -1164,6 +1418,15 @@ class TRCCApp(QMainWindow):
             if self._lcd_handler:
                 self._lcd_handler.display.set_overlay_mask_visible(info)
                 self._lcd_handler._render_and_send()
+        elif cmd == UCThemeSetting.CMD_MASK_UPLOAD:
+            self._on_mask_upload_clicked()
+        elif cmd == UCThemeSetting.CMD_MASK_POSITION:
+            if self._lcd_handler and info:
+                self._lcd_handler.update_mask_position(info[0], info[1])
+        elif cmd == UCThemeSetting.CMD_MASK_VISIBILITY:
+            if self._lcd_handler:
+                self._lcd_handler.display.set_overlay_mask_visible(info)
+                self._lcd_handler._render_and_send()
         elif cmd == UCThemeSetting.CMD_MASK_LOAD:
             self._show_panel(3)
         elif cmd == UCThemeSetting.CMD_MASK_CLOUD:
@@ -1249,6 +1512,7 @@ class TRCCApp(QMainWindow):
             self._show_cutter('video')
 
     def _on_load_image_clicked(self):
+        self._cut_mode = 'background'
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Image", "",
             "Image Files (*.png *.jpg *.jpeg *.bmp);;All Files (*)")
@@ -1261,6 +1525,24 @@ class TRCCApp(QMainWindow):
                 self._show_cutter('image')
             except Exception as e:
                 self.uc_preview.set_status(f"Error: {e}")
+
+    def _on_mask_upload_clicked(self):
+        """Open file picker for mask PNG, then show crop dialog."""
+        self._cut_mode = 'mask'
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Upload Mask Image", "",
+            "PNG Images (*.png);;All Files (*)")
+        if path and self._lcd_handler:
+            try:
+                from PIL import Image as PILImage
+                self._mask_upload_filename = Path(path).stem
+                pil_img = PILImage.open(path)
+                w, h = self._lcd_handler.display.lcd_size
+                self.uc_image_cut.load_image(pil_img, w, h)
+                self._show_cutter('image')
+            except Exception as e:
+                self.uc_preview.set_status(f"Error: {e}")
+                self._cut_mode = 'background'
 
     def _on_save_clicked(self):
         name = self.theme_name_input.text().strip()
@@ -1299,14 +1581,84 @@ class TRCCApp(QMainWindow):
 
     def _on_image_cut_done(self, result):
         self._hide_cutters()
-        if result is not None and self._lcd_handler:
+        if result is None or not self._lcd_handler:
+            self.uc_preview.set_status("Image crop cancelled")
+            self._cut_mode = 'background'
+            return
+
+        if self._cut_mode == 'mask':
+            self._save_and_apply_custom_mask(result)
+        else:
             # C# UpDateUCImageCut: kill video, set static image
             self._lcd_handler.stop_video()
             self._lcd_handler.display.set_overlay_background(result)
             self._lcd_handler._render_and_send()
             self.uc_preview.set_status("Image loaded")
-        else:
-            self.uc_preview.set_status("Image crop cancelled")
+        self._cut_mode = 'background'
+
+    def _save_and_apply_custom_mask(self, cropped_pil):
+        """Save cropped PIL image as a custom mask and apply it."""
+        import re
+
+        from PIL import Image as PILImage
+
+        from ..core.models import MaskItem
+        from ..core.paths import get_user_masks_dir
+
+        if not self._lcd_handler:
+            return
+
+        w, h = self._lcd_handler.display.lcd_size
+        user_dir = Path(get_user_masks_dir(w, h))
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        # Name from original filename stem — sanitize and deduplicate
+        raw_name = self._mask_upload_filename or 'custom_001'
+        # Keep only safe characters
+        mask_name = re.sub(r'[^\w\-]', '_', raw_name).strip('_') or 'custom'
+        # Deduplicate if exists
+        base_name = mask_name
+        counter = 1
+        while (user_dir / mask_name).exists():
+            counter += 1
+            mask_name = f"{base_name}_{counter}"
+
+        mask_dir = user_dir / mask_name
+        mask_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save mask at LCD resolution → 01.png (already cropped by UCImageCut)
+        img = cropped_pil.convert('RGBA')
+        if img.size != (w, h):
+            img = img.resize((w, h), PILImage.Resampling.LANCZOS)
+        img.save(mask_dir / '01.png')
+
+        # Generate thumbnail → Theme.png (120x120 black bg, centered)
+        thumb_size = 120
+        thumb = img.copy()
+        thumb.thumbnail((thumb_size, thumb_size), PILImage.Resampling.LANCZOS)
+        bg = PILImage.new('RGB', (thumb_size, thumb_size), (0, 0, 0))
+        offset = ((thumb_size - thumb.width) // 2,
+                  (thumb_size - thumb.height) // 2)
+        bg.paste(thumb, offset, thumb if thumb.mode == 'RGBA' else None)
+        bg.save(mask_dir / 'Theme.png')
+
+        log.info("Imported custom mask: %s", mask_name)
+
+        # Apply the mask
+        new_item = MaskItem(
+            name=mask_name,
+            path=str(mask_dir),
+            preview=str(mask_dir / 'Theme.png'),
+            is_local=True,
+            is_custom=True,
+        )
+        self._lcd_handler.apply_mask(new_item)
+
+        # Refresh cloud masks grid so the new mask appears
+        if hasattr(self, 'uc_theme_mask'):
+            self.uc_theme_mask.refresh_masks()
+
+        self.uc_preview.set_status(f"Custom mask '{mask_name}' uploaded")
 
     def _on_video_cut_done(self, zt_path):
         self._hide_cutters()
@@ -1455,14 +1807,6 @@ class TRCCApp(QMainWindow):
 
     def _set_language(self, lang: str):
         settings.lang = lang
-        self._set_panel_bg(self.form_container,
-            Assets.get_localized(Assets.FORM_CZTV_BG, settings.lang))
-        self._set_panel_bg(self.uc_theme_local,
-            Assets.get_localized(Assets.THEME_LOCAL_BG, settings.lang))
-        self._set_panel_bg(self.uc_theme_web,
-            Assets.get_localized(Assets.THEME_WEB_BG, settings.lang))
-        self._set_panel_bg(self.uc_theme_mask,
-            Assets.get_localized(Assets.THEME_MASK_BG, settings.lang))
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
         self.uc_led_control.apply_localized_background()

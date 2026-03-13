@@ -1,27 +1,30 @@
 """
-PyQt6 UCThemeMask - Cloud masks browser panel.
+UCThemeMask — Cloud + custom masks browser panel.
 
-Matches Windows TRCC.DCUserControl.UCThemeMask (732x652)
-Shows cloud layout masks with download functionality.
+Matches Windows TRCC.DCUserControl.UCThemeMask (732x652).
+Shows cloud layout masks with download, plus user-uploaded custom masks.
 """
 
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QMenu
 
 from trcc.adapters.infra.data_repository import DataManager
 
 from ..core.models import MaskItem
+from ..core.paths import get_user_masks_dir
 from .base import BaseThumbnail, DownloadableThemeBrowser
 
 log = logging.getLogger(__name__)
 
 
 class MaskThumbnail(BaseThumbnail):
-    """Cloud mask thumbnail with non-local (dashed border) state."""
+    """Mask thumbnail with non-local (dashed border) state."""
 
     def __init__(self, mask_info: MaskItem, parent=None):
         super().__init__(mask_info, parent)
@@ -32,11 +35,12 @@ class MaskThumbnail(BaseThumbnail):
 
 class UCThemeMask(DownloadableThemeBrowser):
     """
-    Cloud masks browser panel.
+    Cloud + custom masks browser panel.
 
     Windows size: 732x652
     Background image provides header with 7 category filter buttons.
     Grid: 5 columns, starts at (30, 60).
+    Custom masks live in ~/.trcc-user/data/web/zt{W}{H}/.
     """
 
     # Known cloud mask IDs (000a-023e pattern)
@@ -63,7 +67,7 @@ class UCThemeMask(DownloadableThemeBrowser):
         super().__init__(parent)
 
     def _create_filter_buttons(self):
-        """Seven category buttons matching Windows UCThemeMask layout."""
+        """Seven category buttons."""
         from .constants import Layout
         btn_normal, btn_active = self._load_filter_assets()
         self.cat_buttons = {}
@@ -86,7 +90,27 @@ class UCThemeMask(DownloadableThemeBrowser):
         self.refresh_masks()
 
     def _create_thumbnail(self, item_info: MaskItem) -> MaskThumbnail:
-        return MaskThumbnail(item_info)
+        thumb = MaskThumbnail(item_info)
+        if item_info.is_custom:
+            thumb.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            thumb.customContextMenuRequested.connect(
+                lambda pos, info=item_info: self._show_custom_context_menu(thumb, info))
+        return thumb
+
+    def _show_custom_context_menu(self, widget: MaskThumbnail, info: MaskItem):
+        """Right-click menu for custom masks — delete option."""
+        menu = QMenu(widget)
+        delete_action = menu.addAction("Delete")
+        action = menu.exec(widget.mapToGlobal(widget.rect().center()))
+        if action == delete_action and info.path:
+            self._delete_custom_mask(Path(info.path))
+
+    def _delete_custom_mask(self, mask_dir: Path):
+        """Delete a custom mask directory and refresh the grid."""
+        if mask_dir.exists():
+            shutil.rmtree(mask_dir)
+            log.info("Deleted custom mask: %s", mask_dir)
+        self.refresh_masks()
 
     def _no_items_message(self) -> str:
         return "No masks found\n\nMasks can be downloaded by clicking on cloud mask thumbnails"
@@ -102,6 +126,37 @@ class UCThemeMask(DownloadableThemeBrowser):
         """Set resolution for cloud downloads."""
         self._resolution = resolution
 
+    def _parse_resolution(self) -> tuple[int, int]:
+        """Parse resolution string (e.g. '320x320') into (width, height)."""
+        parts = self._resolution.split('x')
+        return (int(parts[0]), int(parts[1]))
+
+    def _user_masks_dir(self) -> Path:
+        """Get the user custom masks directory for current resolution."""
+        w, h = self._parse_resolution()
+        return Path(get_user_masks_dir(w, h))
+
+    def _scan_mask_dir(self, directory: Path, is_custom: bool = False) -> list[MaskItem]:
+        """Scan a directory for local mask subdirs."""
+        masks: list[MaskItem] = []
+        if not directory.exists():
+            return masks
+        for item in sorted(directory.iterdir()):
+            if not item.is_dir():
+                continue
+            thumb_path = item / 'Theme.png'
+            mask_path = item / '01.png'
+            if thumb_path.exists() or mask_path.exists():
+                masks.append(MaskItem(
+                    name=item.name,
+                    path=str(item),
+                    preview=str(thumb_path if thumb_path.exists() else mask_path),
+                    is_local=True,
+                    is_custom=is_custom,
+                ))
+                self._local_masks.add(item.name.lower())
+        return masks
+
     def refresh_masks(self):
         """Reload masks from disk and show cloud masks available for download."""
         self._clear_grid()
@@ -112,21 +167,13 @@ class UCThemeMask(DownloadableThemeBrowser):
 
         masks: list[MaskItem] = []
 
-        # Load local masks
-        if self.mask_directory and self.mask_directory.exists():
-            for item in sorted(self.mask_directory.iterdir()):
-                if item.is_dir():
-                    thumb_path = item / 'Theme.png'
-                    mask_path = item / '01.png'
+        # Load user custom masks first (shown at top)
+        user_dir = self._user_masks_dir()
+        masks.extend(self._scan_mask_dir(user_dir, is_custom=True))
 
-                    if thumb_path.exists() or mask_path.exists():
-                        masks.append(MaskItem(
-                            name=item.name,
-                            path=str(item),
-                            preview=str(thumb_path if thumb_path.exists() else mask_path),
-                            is_local=True,
-                        ))
-                        self._local_masks.add(item.name.lower())
+        # Load cloud masks (downloaded cache)
+        if self.mask_directory and self.mask_directory.exists():
+            masks.extend(self._scan_mask_dir(self.mask_directory))
 
         # Add known cloud masks that aren't locally cached
         for mask_id in self.KNOWN_MASKS:
@@ -165,6 +212,8 @@ class UCThemeMask(DownloadableThemeBrowser):
         if success:
             log.info("Mask %s downloaded — refreshing grid", mask_id)
             self.refresh_masks()
+
+    # ── Cloud mask download ─────────────────────────────────────────
 
     def _download_cloud_mask(self, mask_id: str):
         """Download a cloud mask from the server."""

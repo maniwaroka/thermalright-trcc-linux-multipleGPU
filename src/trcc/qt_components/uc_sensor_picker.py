@@ -135,8 +135,7 @@ class SensorPickerDialog(QDialog):
         self.setModal(True)
 
         # Background image (no tiling — matches Windows ImageLayout.None)
-        from ..conf import settings
-        bg_name = Assets.get_localized('P0系统信息.png', settings.lang)
+        bg_name = 'App_sysinfo.png'
         self._bg_ref = set_background_pixmap(
             self, bg_name, width=DIALOG_W, height=DIALOG_H,
             fallback_style="background-color: #1A1A2E;"
