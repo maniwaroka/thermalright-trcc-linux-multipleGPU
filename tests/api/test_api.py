@@ -647,6 +647,48 @@ class TestSystemEndpoints(unittest.TestCase):
         self.assertIn("report", resp.json())
 
 
+# ── Language endpoints ─────────────────────────────────────────────────
+
+class TestLanguageEndpoints(unittest.TestCase):
+    """GET/PUT /system/language(s) endpoints."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def test_get_languages(self):
+        resp = self.client.get("/system/languages")
+        self.assertEqual(resp.status_code, 200)
+        langs = resp.json()["languages"]
+        self.assertIn("en", langs)
+        self.assertEqual(langs["en"], "English")
+        self.assertIn("d", langs)
+        self.assertEqual(langs["d"], "Deutsch")
+
+    @patch('trcc.conf.settings')
+    def test_get_language(self, mock_settings):
+        mock_settings.lang = 'en'
+        resp = self.client.get("/system/language")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["code"], "en")
+        self.assertEqual(data["name"], "English")
+
+    @patch('trcc.conf.settings')
+    def test_set_language(self, mock_settings):
+        resp = self.client.put("/system/language/d")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["code"], "d")
+        self.assertEqual(data["name"], "Deutsch")
+        self.assertEqual(mock_settings.lang, "d")
+
+    def test_set_language_invalid(self):
+        resp = self.client.put("/system/language/zzz")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Unknown language code", resp.json()["detail"])
+
+
 # ── Web/mask theme endpoints ─────────────────────────────────────────
 
 class TestWebThemeEndpoints(unittest.TestCase):

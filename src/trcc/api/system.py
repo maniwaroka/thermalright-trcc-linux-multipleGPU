@@ -74,6 +74,41 @@ def get_perf() -> dict:
     return report.to_dict()
 
 
+@router.get("/languages")
+def get_languages() -> dict:
+    """List all available languages with codes and native names."""
+    from trcc.core.i18n import LANGUAGE_NAMES
+
+    return {"languages": {code: name for code, name in LANGUAGE_NAMES.items()}}
+
+
+@router.get("/language")
+def get_language() -> dict:
+    """Get the current language code."""
+    from trcc.conf import settings
+    from trcc.core.i18n import LANGUAGE_NAMES
+
+    code = settings.lang
+    return {"code": code, "name": LANGUAGE_NAMES.get(code, code)}
+
+
+@router.put("/language/{code}")
+def set_language(code: str) -> dict:
+    """Set the application language by code."""
+    from fastapi import HTTPException
+
+    from trcc.conf import settings
+    from trcc.core.i18n import LANGUAGE_NAMES
+
+    if code not in LANGUAGE_NAMES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown language code '{code}'. Use GET /system/languages for valid codes.",
+        )
+    settings.lang = code
+    return {"code": code, "name": LANGUAGE_NAMES[code]}
+
+
 @router.get("/perf/device")
 def get_perf_device() -> dict:
     """Benchmark connected hardware (USB handshake, frame latency, FPS)."""

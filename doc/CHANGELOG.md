@@ -1,5 +1,10 @@
 # Changelog
 
+## v8.3.10
+
+### Features
+- **Language API endpoints**: `GET /system/languages`, `GET /system/language`, `PUT /system/language/{code}` — list, get, and set application language via REST API (46 total endpoints)
+
 ## v8.3.9
 
 ### Features
