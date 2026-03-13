@@ -90,42 +90,6 @@ The Windows TRCC app ships 10 languages by baking translated text into separate 
 
 Adding a new language is one dict entry per string in `core/i18n.py` — no PNG editing, no asset pipeline. Community translations welcome.
 
-## Supported Devices
-
-Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
-
-**SCSI devices** — fully supported:
-| USB ID | Devices |
-|--------|---------|
-| `87CD:70DB` | FROZEN HORIZON PRO, FROZEN MAGIC PRO, FROZEN VISION V2, CORE VISION, ELITE VISION, AK120, AX120, PA120 DIGITAL, Wonder Vision |
-| `0416:5406` | LC1, LC2, LC3, LC5 (AIO pump heads) |
-| `0402:3922` | FROZEN WARFRAME, FROZEN WARFRAME 360, FROZEN WARFRAME SE, ELITE VISION 360 |
-
-**Bulk USB devices** — raw USB protocol:
-| USB ID | Devices |
-|--------|---------|
-| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro |
-
-**LY USB devices** — chunked bulk protocol:
-| USB ID | Devices |
-|--------|---------|
-| `0416:5408` | Trofeo Vision 9.16 LCD |
-| `0416:5409` | (LY1 variant) |
-
-**HID LCD devices** — auto-detected:
-| USB ID | Devices |
-|--------|---------|
-| `0416:5302` | Trofeo Vision LCD, Assassin Spirit 120 Vision ARGB, AS120 VISION, BA120 VISION, FROZEN WARFRAME, FROZEN WARFRAME 360, FROZEN WARFRAME SE, FROZEN WARFRAME PRO, ELITE VISION, LC5 |
-| `0418:5303` | TARAN ARMS |
-| `0418:5304` | TARAN ARMS |
-
-**HID LED devices** — RGB LED control:
-| USB ID | Devices |
-|--------|---------|
-| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL ARGB White, Assassin X 120R Digital ARGB, Phantom Spirit 120 Digital EVO, HR10 2280 PRO Digital, and others (model auto-detected via handshake) |
-
-> See the [full device list with protocol details](doc/REFERENCE_DEVICES.md) and the [Device Testing Guide](doc/GUIDE_DEVICE_TESTING.md) if you have an untested device.
-
 ## Install
 
 ### Native packages (recommended)
@@ -224,6 +188,42 @@ Fedora, Nobara, Ubuntu, Debian, Mint, Pop!_OS, Zorin, elementary OS, Arch, Manja
 ### Something not working?
 
 **[Open a GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new)** — that's the only place I see bug reports. I don't monitor Reddit, forums, or Discussions. Run `trcc report`, paste the output, and I'll get back to you.
+
+## Supported Devices
+
+Run `lsusb` to find your USB ID (`xxxx:xxxx` after `ID`), then match it below.
+
+**SCSI devices** — fully supported:
+| USB ID | Devices |
+|--------|---------|
+| `87CD:70DB` | FROZEN HORIZON PRO, FROZEN MAGIC PRO, FROZEN VISION V2, CORE VISION, ELITE VISION, AK120, AX120, PA120 DIGITAL, Wonder Vision |
+| `0416:5406` | LC1, LC2, LC3, LC5 (AIO pump heads) |
+| `0402:3922` | FROZEN WARFRAME, FROZEN WARFRAME 360, FROZEN WARFRAME SE, ELITE VISION 360 |
+
+**Bulk USB devices** — raw USB protocol:
+| USB ID | Devices |
+|--------|---------|
+| `87AD:70DB` | GrandVision 360 AIO, Mjolnir Vision 360, Wonder Vision Pro 360, Frozen Warframe Pro |
+
+**LY USB devices** — chunked bulk protocol:
+| USB ID | Devices |
+|--------|---------|
+| `0416:5408` | Trofeo Vision 9.16 LCD |
+| `0416:5409` | (LY1 variant) |
+
+**HID LCD devices** — auto-detected:
+| USB ID | Devices |
+|--------|---------|
+| `0416:5302` | Trofeo Vision LCD, Assassin Spirit 120 Vision ARGB, AS120 VISION, BA120 VISION, FROZEN WARFRAME, FROZEN WARFRAME 360, FROZEN WARFRAME SE, FROZEN WARFRAME PRO, ELITE VISION, LC5 |
+| `0418:5303` | TARAN ARMS |
+| `0418:5304` | TARAN ARMS |
+
+**HID LED devices** — RGB LED control:
+| USB ID | Devices |
+|--------|---------|
+| `0416:8001` | AX120 DIGITAL, PA120 DIGITAL, Peerless Assassin 120 DIGITAL ARGB White, Assassin X 120R Digital ARGB, Phantom Spirit 120 Digital EVO, HR10 2280 PRO Digital, and others (model auto-detected via handshake) |
+
+> See the [full device list with protocol details](doc/REFERENCE_DEVICES.md) and the [Device Testing Guide](doc/GUIDE_DEVICE_TESTING.md) if you have an untested device.
 
 ## Usage
 
