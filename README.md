@@ -48,13 +48,19 @@ Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.1.2). C
 
 > Unofficial community project, not affiliated with Thermalright. Built with [Claude](https://claude.ai) (AI) for protocol reverse engineering and code generation, guided by human architecture decisions and logical assessment.
 
+### What we do better than Windows TRCC
+
+- **38 languages** — Windows has 10 (baked into PNGs). We render text at runtime, community can add more
+- **CLI + REST API** — Windows is GUI-only. We have 50 CLI commands and 43 API endpoints for automation
+- **Custom mask upload** — upload your own PNG overlay, position with X/Y controls, saved to `~/.trcc-user/`
+- **No admin required** — udev rules handle permissions. Windows needs "Run as Administrator"
+- **Open source** — read the code, fix bugs, add features. Windows TRCC is closed-source .NET
+- **Screencast on Wayland** — Windows can't do that either
+- **Hexagonal architecture** — GUI, CLI, and API share the same core. No feature lag between interfaces
+
 ### Have an untested device?
 
 Run `trcc report` and [paste the output in an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — takes 30 seconds. See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**.
-
-### Something not working?
-
-**[Open a GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new)** — that's the only place I see bug reports. I don't monitor Reddit, forums, or Discussions. Run `trcc report`, paste the output, and I'll get back to you.
 
 ![TRCC Linux GUI](doc/screenshots/screenshot.png)
 
@@ -74,7 +80,7 @@ Run `trcc report` and [paste the output in an issue](https://github.com/Lexonigh
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules, polkit policy, SELinux support, no root required after setup |
 
-**Under the hood**: 109 source files, ~40K lines of Python, 5114 tests across 60 test files in 9 directories. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
+**Under the hood**: 109 source files, ~40K lines of Python, 5045 tests across 60 test files in 9 directories. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
 
 ### 38-Language GUI (i18n)
 
@@ -214,6 +220,10 @@ Fedora, Nobara, Ubuntu, Debian, Mint, Pop!_OS, Zorin, elementary OS, Arch, Manja
 > **`trcc: command not found`?** Open a new terminal — pip installs to `~/.local/bin` which needs a new shell session to appear on PATH.
 
 > See the **[Install Guide](doc/GUIDE_INSTALL.md)** for distro-specific instructions and troubleshooting.
+
+### Something not working?
+
+**[Open a GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new)** — that's the only place I see bug reports. I don't monitor Reddit, forums, or Discussions. Run `trcc report`, paste the output, and I'll get back to you.
 
 ## Usage
 
