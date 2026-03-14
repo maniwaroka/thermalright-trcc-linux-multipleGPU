@@ -1,5 +1,17 @@
 # Changelog
 
+## v8.3.11
+
+### Features
+- **Windows port scaffold**: Platform-conditional adapters for Windows — USB detection (WMI), SCSI passthrough (DeviceIoControl), hardware info (WMI), sensor enumerator (LibreHardwareMonitor + pynvml fallback)
+- **LibreHardwareMonitor GPU sensors**: Windows-exclusive sensors via NVAPI — GPU Hotspot temp, Memory Junction temp, GPU Core Voltage — not available on Linux or via pynvml
+- **Windows installer pipeline**: GitHub Actions builds Windows installer (PyInstaller + Inno Setup) on tag push — `trcc.exe` (CLI) + `trcc-gui.exe` (GUI)
+- **Platform detection**: `core/platform.py` — `WINDOWS`, `LINUX`, `MACOS`, `BSD` flags for conditional adapter wiring
+
+### Tests
+- 83 new tests for Windows adapters (mocked WMI/LHM/pynvml — run on Linux CI)
+- 5133 total tests
+
 ## v8.3.10
 
 ### Features

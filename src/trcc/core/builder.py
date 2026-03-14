@@ -53,7 +53,15 @@ class ControllerBuilder:
         Requires: renderer (defaults to QtRenderer if not set).
         Optional: data_dir (triggers initialize).
         """
-        from ..adapters.device.detector import DeviceDetector
+        from .platform import WINDOWS
+
+        if WINDOWS:
+            from ..adapters.device.windows.detector import WindowsDeviceDetector
+            detect_fn = WindowsDeviceDetector.detect
+        else:
+            from ..adapters.device.detector import DeviceDetector
+            detect_fn = DeviceDetector.detect
+
         from ..adapters.device.factory import DeviceProtocolFactory
         from ..adapters.device.led import probe_led_model
         from ..adapters.infra.data_repository import DataManager
@@ -83,7 +91,7 @@ class ControllerBuilder:
 
         # Create services with injected adapter dependencies
         device_svc = DeviceService(
-            detect_fn=DeviceDetector.detect,
+            detect_fn=detect_fn,
             probe_led_fn=probe_led_model,
             get_protocol=DeviceProtocolFactory.get_protocol,
             get_protocol_info=DeviceProtocolFactory.get_protocol_info,
@@ -128,10 +136,17 @@ class ControllerBuilder:
 
     def build_system(self) -> SystemService:
         """Build and return a SystemService with injected enumerator."""
-        from ..adapters.system.sensors import SensorEnumerator
         from ..services.system import SystemService
+        from .platform import WINDOWS
 
-        return SystemService(enumerator=SensorEnumerator())
+        if WINDOWS:
+            from ..adapters.system.windows.sensors import WindowsSensorEnumerator
+            enumerator = WindowsSensorEnumerator()
+        else:
+            from ..adapters.system.sensors import SensorEnumerator
+            enumerator = SensorEnumerator()
+
+        return SystemService(enumerator=enumerator)
 
     def build_led(self) -> LEDDevice:
         """Build and return a LEDDevice.
