@@ -1,5 +1,15 @@
 # Changelog
 
+## v8.3.12
+
+### Features
+- **macOS port scaffold**: Platform-conditional adapters for macOS — USB detection (pyusb), SCSI passthrough (USB BOT with kernel driver detach), hardware info (system_profiler), sensor enumerator (IOKit SMC for Intel, powermetrics for Apple Silicon, pynvml for eGPU)
+- **macOS CI pipeline**: GitHub Actions builds macOS `.dmg` installer (PyInstaller + create-dmg) on tag push — universal app bundle with drag-to-Applications
+
+### Tests
+- 37 new tests for macOS adapters (mocked IOKit/powermetrics/pyusb — run on Linux CI)
+- 5170 total tests
+
 ## v8.3.11
 
 ### Features

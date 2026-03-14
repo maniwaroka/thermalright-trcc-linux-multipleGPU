@@ -53,11 +53,14 @@ class ControllerBuilder:
         Requires: renderer (defaults to QtRenderer if not set).
         Optional: data_dir (triggers initialize).
         """
-        from .platform import WINDOWS
+        from .platform import MACOS, WINDOWS
 
         if WINDOWS:
             from ..adapters.device.windows.detector import WindowsDeviceDetector
             detect_fn = WindowsDeviceDetector.detect
+        elif MACOS:
+            from ..adapters.device.macos.detector import MacOSDeviceDetector
+            detect_fn = MacOSDeviceDetector.detect
         else:
             from ..adapters.device.detector import DeviceDetector
             detect_fn = DeviceDetector.detect
@@ -137,11 +140,14 @@ class ControllerBuilder:
     def build_system(self) -> SystemService:
         """Build and return a SystemService with injected enumerator."""
         from ..services.system import SystemService
-        from .platform import WINDOWS
+        from .platform import MACOS, WINDOWS
 
         if WINDOWS:
             from ..adapters.system.windows.sensors import WindowsSensorEnumerator
             enumerator = WindowsSensorEnumerator()
+        elif MACOS:
+            from ..adapters.system.macos.sensors import MacOSSensorEnumerator
+            enumerator = MacOSSensorEnumerator()
         else:
             from ..adapters.system.sensors import SensorEnumerator
             enumerator = SensorEnumerator()
