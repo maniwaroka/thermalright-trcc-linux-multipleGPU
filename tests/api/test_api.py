@@ -649,26 +649,26 @@ class TestSystemEndpoints(unittest.TestCase):
 
 # ── Language endpoints ─────────────────────────────────────────────────
 
-class TestLanguageEndpoints(unittest.TestCase):
-    """GET/PUT /system/language(s) endpoints."""
+class TestI18nEndpoints(unittest.TestCase):
+    """GET/PUT /i18n/language(s) endpoints."""
 
     def setUp(self):
         configure_auth(None)
         self.client = TestClient(app)
 
     def test_get_languages(self):
-        resp = self.client.get("/system/languages")
+        resp = self.client.get("/i18n/languages")
         self.assertEqual(resp.status_code, 200)
         langs = resp.json()["languages"]
         self.assertIn("en", langs)
         self.assertEqual(langs["en"], "English")
-        self.assertIn("d", langs)
-        self.assertEqual(langs["d"], "Deutsch")
+        self.assertIn("de", langs)
+        self.assertEqual(langs["de"], "Deutsch")
 
     @patch('trcc.conf.settings')
     def test_get_language(self, mock_settings):
         mock_settings.lang = 'en'
-        resp = self.client.get("/system/language")
+        resp = self.client.get("/i18n/language")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["code"], "en")
@@ -676,15 +676,15 @@ class TestLanguageEndpoints(unittest.TestCase):
 
     @patch('trcc.conf.settings')
     def test_set_language(self, mock_settings):
-        resp = self.client.put("/system/language/d")
+        resp = self.client.put("/i18n/language/de")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertEqual(data["code"], "d")
+        self.assertEqual(data["code"], "de")
         self.assertEqual(data["name"], "Deutsch")
-        self.assertEqual(mock_settings.lang, "d")
+        self.assertEqual(mock_settings.lang, "de")
 
     def test_set_language_invalid(self):
-        resp = self.client.put("/system/language/zzz")
+        resp = self.client.put("/i18n/language/zzz")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Unknown language code", resp.json()["detail"])
 

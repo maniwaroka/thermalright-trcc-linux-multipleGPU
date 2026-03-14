@@ -10,7 +10,7 @@
 - **Builder** (`core/builder.py`): `ControllerBuilder` — fluent builder, assembles devices with DI, returns `LCDDevice`/`LEDDevice`. Composition root: imports adapters to inject into services.
 - **Views** (`qt_components/`): PySide6 GUI adapter. `TRCCApp` (thin shell) + `LCDHandler`/`LEDHandler` (one per device).
 - **CLI** (`cli/`): Typer CLI adapter (package: `__init__.py` + 7 submodules). Thin presentation wrappers over `LCDDevice`/`LEDDevice` — connect, call device method, print result.
-- **API** (`api/`): FastAPI REST adapter (package: `__init__.py` + 7 submodules). 46 endpoints covering devices, display, LED, themes, system metrics, and language settings. Includes WebSocket live preview stream + cloud theme download. Uses `LCDDevice`/`LEDDevice` from core/. `_current_image` tracks last frame sent for preview endpoints.
+- **API** (`api/`): FastAPI REST adapter (package: `__init__.py` + 7 submodules). 46 endpoints covering devices, display, LED, themes, system metrics, and i18n. Includes WebSocket live preview stream + cloud theme download. Uses `LCDDevice`/`LEDDevice` from core/. `_current_image` tracks last frame sent for preview endpoints.
 - **Config** (`conf.py`): Application settings singleton — resolution, language, temp unit, device prefs. Single source of truth for all mutable app state.
 - **Entry**: `cli/` → `trcc_app.py` (TRCCApp) → builder.build_lcd()/build_led()
 - **Protocols**: SCSI (LCD frames), HID (handshake/resolution), LED (RGB effects + segment displays)
@@ -233,7 +233,7 @@ Zero tolerance for security issues. Fix properly within hexagonal/SOLID architec
 - **Don't close GitHub issues until the reporter confirms the fix works** — reopening looks bad
 - **Never use "Fixes #N" in commit messages** — GitHub auto-closes issues on push to default branch. We don't close until reporter confirms.
 - **GitHub issue/PR reply footer** — every reply MUST end with a funding reminder. Check the issue reporter: if they've donated before (listed in README thanks section), thank them by name and mention their platform. For everyone else, use the generic footer: `\n\n---\nIf this project helps you, consider [buying me a beer](https://buymeacoffee.com/Lexonight1) 🍺 or [Ko-fi](https://ko-fi.com/lexonight1) ☕`
-- **C# asset suffixes are arbitrary** — `'e'`=Russian, `'r'`=Japanese, `'x'`=Spanish. Single source of truth: `LOCALE_TO_LANG` in `core/models.py` (re-exported via `qt_components/constants.py`)
+- **C# asset suffixes are legacy** — PNG filenames still use C# suffixes (`'e'`=Russian, `'r'`=Japanese, `'x'`=Spanish). `Assets.get_localized()` maps ISO 639-1 codes → legacy suffixes via `ISO_TO_LEGACY` in `core/models.py`. System-wide language codes are ISO 639-1 (`'ru'`, `'ja'`, `'es'`). Old config values auto-migrated via `LEGACY_TO_ISO`.
 
 ## Deployment
 - **Default branch: `main`** — all development, releases, and user-facing clones happen here

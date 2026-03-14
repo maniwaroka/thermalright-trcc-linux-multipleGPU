@@ -301,17 +301,17 @@ class Layout:
 
     # Language selection checkboxes (within UCAbout) — v2.1.4 coordinates
     ABOUT_LANG_BUTTONS = [
-        # (x, y, lang_suffix)
-        (297, 413, 'en'),   # English
-        (387, 413, 'd'),    # Deutsch
-        (477, 413, 'e'),    # Россия
-        (567, 413, 'f'),    # Français
-        (657, 413, 'p'),    # Português
-        (297, 443, 'r'),    # 日本語
-        (387, 443, 'x'),    # Español
-        (477, 443, ''),     # 中文简体
-        (567, 443, 'tc'),   # 中文繁體
-        (657, 443, 'h'),    # 한국어
+        # (x, y, lang_code)
+        (297, 413, 'en'),      # English
+        (387, 413, 'de'),      # Deutsch
+        (477, 413, 'ru'),      # Русский
+        (567, 413, 'fr'),      # Français
+        (657, 413, 'pt'),      # Português
+        (297, 443, 'ja'),      # 日本語
+        (387, 443, 'es'),      # Español
+        (477, 443, 'zh'),      # 中文简体
+        (567, 443, 'zh_TW'),   # 中文繁體
+        (657, 443, 'ko'),      # 한국어
     ]
     ABOUT_CHECKBOX_SIZE = 14
 

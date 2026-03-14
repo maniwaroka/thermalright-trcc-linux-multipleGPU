@@ -3,19 +3,15 @@
 Standard i18n pattern: TRANSLATIONS[lang_code][english_string] → translated string.
 tr('English text', lang) looks up the translation, falling back to English.
 
-Original 10 language codes (from C# PNG suffixes via LOCALE_TO_LANG):
-    '' = Simplified Chinese (default), 'tc' = Traditional Chinese,
-    'en' = English, 'd' = German, 'e' = Russian, 'f' = French,
-    'p' = Portuguese, 'r' = Japanese, 'x' = Spanish, 'h' = Korean
-
-Extended language codes (ISO 639-1):
+All 38 language codes use ISO 639-1 (v8.3.10+):
+    'zh' = Simplified Chinese, 'zh_TW' = Traditional Chinese,
+    'en' = English, 'de' = German, 'ru' = Russian, 'fr' = French,
+    'pt' = Portuguese, 'ja' = Japanese, 'es' = Spanish, 'ko' = Korean,
     'it' = Italian, 'nl' = Dutch, 'pl' = Polish, 'tr' = Turkish,
     'ar' = Arabic, 'hi' = Hindi, 'th' = Thai, 'vi' = Vietnamese,
     'id' = Indonesian, 'cs' = Czech, 'sv' = Swedish, 'da' = Danish,
     'no' = Norwegian, 'fi' = Finnish, 'hu' = Hungarian, 'ro' = Romanian,
-    'uk' = Ukrainian, 'el' = Greek, 'he' = Hebrew, 'ms' = Malay
-
-New languages (v8.3.9):
+    'uk' = Ukrainian, 'el' = Greek, 'he' = Hebrew, 'ms' = Malay,
     'bn' = Bengali, 'ur' = Urdu, 'fa' = Farsi, 'tl' = Tagalog,
     'ta' = Tamil, 'pa' = Punjabi, 'sw' = Swahili, 'my' = Burmese
 
@@ -36,16 +32,16 @@ from __future__ import annotations
 # Human-readable language names (for dropdown selector)
 # ---------------------------------------------------------------------------
 LANGUAGE_NAMES: dict[str, str] = {
-    '': '简体中文',
-    'tc': '繁體中文',
+    'zh': '简体中文',
+    'zh_TW': '繁體中文',
     'en': 'English',
-    'd': 'Deutsch',
-    'e': 'Русский',
-    'f': 'Français',
-    'p': 'Português',
-    'r': '日本語',
-    'x': 'Español',
-    'h': '한국어',
+    'de': 'Deutsch',
+    'ru': 'Русский',
+    'fr': 'Français',
+    'pt': 'Português',
+    'ja': '日本語',
+    'es': 'Español',
+    'ko': '한국어',
     'it': 'Italiano',
     'nl': 'Nederlands',
     'pl': 'Polski',
@@ -153,7 +149,7 @@ SYSINFO_VALUE_POS = (350, 27, 80, 20, 10)
 # English keys are the canonical identifiers used by tr().
 # ---------------------------------------------------------------------------
 TRANSLATIONS: dict[str, dict[str, str]] = {
-    '': {
+    'zh': {
         'Layer Mask': '布局蒙板',
         'Masks': '蒙板',
         'Upload': '上传',
@@ -196,7 +192,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': '名称',
         'Value': '数值',
     },
-    'tc': {
+    'zh_TW': {
         'Layer Mask': '佈局蒙板',
         'Masks': '蒙板',
         'Upload': '上傳',
@@ -281,7 +277,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': 'NAME',
         'Value': 'Value',
     },
-    'd': {
+    'de': {
         'Layer Mask': 'Ebenenmaske',
         'Masks': 'Masken',
         'Upload': 'Hochladen',
@@ -323,7 +319,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': 'NAME',
         'Value': 'Wert',
     },
-    'e': {
+    'ru': {
         'Layer Mask': 'Покрытие',
         'Masks': 'Маски',
         'Upload': 'Загрузить',
@@ -365,7 +361,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': 'ИМЯ',
         'Value': 'Значение',
     },
-    'f': {
+    'fr': {
         'Layer Mask': 'Masque de couche',
         'Masks': 'Masques',
         'Upload': 'Téléverser',
@@ -407,7 +403,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': 'NOM',
         'Value': 'Valeur',
     },
-    'p': {
+    'pt': {
         'Layer Mask': 'Máscara de camada',
         'Masks': 'Máscaras',
         'Upload': 'Enviar',
@@ -449,7 +445,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': 'NOME',
         'Value': 'Valor',
     },
-    'r': {
+    'ja': {
         'Layer Mask': 'レイヤーマスク',
         'Masks': 'マスク',
         'Upload': 'アップロード',
@@ -491,7 +487,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': '名前',
         'Value': '値',
     },
-    'x': {
+    'es': {
         'Layer Mask': 'Mascarilla de capa',
         'Masks': 'Máscaras',
         'Upload': 'Subir',
@@ -533,7 +529,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'NAME': 'NOMBRE',
         'Value': 'Valor',
     },
-    'h': {
+    'ko': {
         'Layer Mask': '레이어 마스크',
         'Masks': '마스크',
         'Upload': '업로드',

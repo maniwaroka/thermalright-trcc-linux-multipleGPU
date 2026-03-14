@@ -86,10 +86,9 @@ class TestAssets(unittest.TestCase):
         name = Assets.get_preview_for_resolution(9999, 9999)
         self.assertEqual(name, Assets.PREVIEW_320X320)
 
-    def test_assets_get_localized_cn(self):
-        """Chinese (default) returns base name."""
-        self.assertEqual(Assets.get_localized('P0CZTV.png', 'cn'), 'P0CZTV.png')
-        self.assertEqual(Assets.get_localized('P0CZTV.png', ''), 'P0CZTV.png')
+    def test_assets_get_localized_zh(self):
+        """Chinese simplified returns base name (no suffix)."""
+        self.assertEqual(Assets.get_localized('P0CZTV.png', 'zh'), 'P0CZTV.png')
 
     def test_assets_get_localized_en(self):
         """English returns en-suffixed name if it exists."""
@@ -560,7 +559,7 @@ class TestDetectLanguage(unittest.TestCase):
     @patch('trcc.conf.locale')
     def test_chinese_locale(self, mock_locale):
         mock_locale.getlocale.return_value = ('zh_CN', 'UTF-8')
-        self.assertEqual(_detect_language(), '')
+        self.assertEqual(_detect_language(), 'zh')
 
     @patch('trcc.conf.locale')
     def test_unknown_locale_defaults_to_en(self, mock_locale):

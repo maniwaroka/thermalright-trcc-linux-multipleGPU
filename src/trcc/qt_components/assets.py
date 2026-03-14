@@ -183,20 +183,25 @@ class Assets:
 
         Args:
             base_name: Base asset name (e.g., 'P0CZTV' or 'P0CZTV.png').
-            lang: Language code ('en', 'tc', 'd', 'f', etc.).
+            lang: ISO 639-1 language code ('en', 'de', 'fr', 'zh', etc.).
 
         Returns:
             Localized asset name if exists, else base name.
         """
-        if lang == 'cn' or lang == '':
+        if lang == 'zh':
+            # Simplified Chinese is the base asset (no suffix)
             return base_name
+
+        # Map ISO code to legacy C# suffix for asset filenames
+        from trcc.core.models import ISO_TO_LEGACY
+        suffix = ISO_TO_LEGACY.get(lang, lang)
 
         # Split extension if present, insert lang suffix before it
         if '.' in base_name:
             stem, ext = base_name.rsplit('.', 1)
-            localized = f"{stem}{lang}.{ext}"
+            localized = f"{stem}{suffix}.{ext}"
         else:
-            localized = f"{base_name}{lang}"
+            localized = f"{base_name}{suffix}"
 
         if cls.exists(localized):
             return localized

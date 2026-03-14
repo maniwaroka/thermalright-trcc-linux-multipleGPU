@@ -1336,19 +1336,38 @@ WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 # Chinese weekday names (for Language == 1)
 WEEKDAYS_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
-# System locale → Windows asset suffix (from FormLED.cs / UCAbout.cs)
-# C# uses arbitrary single-char suffixes: 'e'=Russian, 'r'=Japanese, 'x'=Spanish
+# Legacy C# suffix → ISO 639-1 code migration map
+# Used by conf.py to migrate old config.json "lang" values
+LEGACY_TO_ISO: dict[str, str] = {
+    '': 'zh',
+    'tc': 'zh_TW',
+    'd': 'de',
+    'e': 'ru',
+    'f': 'fr',
+    'p': 'pt',
+    'r': 'ja',
+    'x': 'es',
+    'h': 'ko',
+    # These were already ISO — included for completeness
+    'en': 'en',
+}
+
+# ISO 639-1 code → legacy C# asset suffix (for asset filename lookup)
+# Only needed for the 10 original languages whose assets use C# suffixes
+ISO_TO_LEGACY: dict[str, str] = {v: k for k, v in LEGACY_TO_ISO.items()}
+
+# System locale prefix → ISO 639-1 language code
 LOCALE_TO_LANG: dict[str, str] = {
-    'zh_CN': '',     # Chinese Simplified = default (no suffix)
-    'zh_TW': 'tc',   # Traditional Chinese
-    'en': 'en',      # English
-    'de': 'd',       # German
-    'es': 'x',       # Spanish
-    'fr': 'f',       # French
-    'pt': 'p',       # Portuguese
-    'ru': 'e',       # Russian
-    'ja': 'r',       # Japanese
-    'ko': 'h',       # Korean
+    'zh_CN': 'zh',
+    'zh_TW': 'zh_TW',
+    'en': 'en',
+    'de': 'de',
+    'es': 'es',
+    'fr': 'fr',
+    'pt': 'pt',
+    'ru': 'ru',
+    'ja': 'ja',
+    'ko': 'ko',
 }
 
 # =============================================================================

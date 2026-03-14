@@ -13,7 +13,7 @@ Usage:
     settings.web_dir        # Cloud theme preview dir
     settings.masks_dir      # Cloud mask overlay dir
     settings.temp_unit      # 0=Celsius, 1=Fahrenheit
-    settings.lang           # Language suffix ('en', 'd', 'e', 'f', 'p', 'r', 'x', '', 'tc')
+    settings.lang           # ISO 639-1 language code ('en', 'de', 'ru', 'fr', 'zh', etc.)
 
     # Static settings operations
     Settings.device_config_key(0, 0x87cd, 0x70db)  # returns "0"
@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Optional
 
 from .__version__ import __version__
-from .core.models import LOCALE_TO_LANG, ThemeDir
+from .core.models import LEGACY_TO_ISO, LOCALE_TO_LANG, ThemeDir
 from .core.paths import USER_CONFIG_DIR, USER_DATA_DIR, get_web_dir, get_web_masks_dir
 
 log = logging.getLogger(__name__)
@@ -186,12 +186,12 @@ def _migrate_config() -> None:
 
 
 # =========================================================================
-# Language detection (system locale → asset suffix)
+# Language detection (system locale → ISO 639-1 code)
 # =========================================================================
 
 
 def _detect_language() -> str:
-    """Detect system language and return Windows asset suffix."""
+    """Detect system language and return ISO 639-1 code."""
     try:
         lang = (locale.getlocale()[0]
                 or os.environ.get('LANG', '').split('.')[0]
@@ -207,6 +207,11 @@ def _detect_language() -> str:
         return LOCALE_TO_LANG[prefix]
 
     return 'en'
+
+
+def _migrate_legacy_lang(code: str) -> str:
+    """Convert legacy C# language suffix to ISO 639-1 code."""
+    return LEGACY_TO_ISO.get(code, code)
 
 
 # =========================================================================
@@ -453,22 +458,28 @@ class Settings:
 
     @property
     def lang(self) -> str:
-        """Current language suffix ('en', 'd', 'e', 'f', 'p', 'r', 'x', '', 'tc')."""
+        """Current ISO 639-1 language code ('en', 'de', 'ru', 'fr', 'zh', etc.)."""
         return self._lang
 
     @lang.setter
     def lang(self, value: str) -> None:
-        """Set language suffix and persist."""
+        """Set ISO 639-1 language code and persist."""
         self._lang = value
         config = load_config()
         config['lang'] = value
         save_config(config)
 
     def _get_saved_lang(self) -> str:
-        """Get saved language, falling back to system locale detection."""
+        """Get saved language, falling back to system locale detection.
+
+        Migrates legacy C# suffixes (e.g. 'd' → 'de') on first read.
+        """
         saved = load_config().get('lang')
         if saved is not None:
-            return saved
+            migrated = _migrate_legacy_lang(saved)
+            if migrated != saved:
+                self.lang = migrated  # Persist the migration
+            return migrated
         return _detect_language()
 
     def _resolve_paths(self) -> None:

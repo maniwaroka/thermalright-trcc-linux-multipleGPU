@@ -140,7 +140,7 @@ class TestMigrateConfig:
             "selected_device": "/dev/sg0",
             "installed_resolutions": {"320320": True},
             "temp_unit": 1,
-            "lang": "d",
+            "lang": "de",
         })
         _migrate_config()
         cfg = load_config()
@@ -151,7 +151,7 @@ class TestMigrateConfig:
         assert "installed_resolutions" not in cfg
         # User prefs preserved
         assert cfg["temp_unit"] == 1
-        assert cfg["lang"] == "d"
+        assert cfg["lang"] == "de"
         assert cfg["config_version"] == __version__
 
     def test_deletes_led_probe_cache_on_version_mismatch(self, tmp_config):
@@ -190,11 +190,11 @@ class TestMigrateConfig:
 
 
 class TestDetectLanguage:
-    """_detect_language: maps system locale to C# asset suffix."""
+    """_detect_language: maps system locale to ISO 639-1 code."""
 
     def test_exact_locale_match(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("zh_CN", "UTF-8"))
-        assert _detect_language() == ""
+        assert _detect_language() == "zh"
 
     def test_exact_locale_en(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("en", "UTF-8"))
@@ -203,37 +203,37 @@ class TestDetectLanguage:
     def test_prefix_match_de_DE(self, monkeypatch):
         """de_DE is not in LOCALE_TO_LANG, but prefix 'de' is."""
         monkeypatch.setattr("locale.getlocale", lambda: ("de_DE", "UTF-8"))
-        assert _detect_language() == "d"
+        assert _detect_language() == "de"
 
     def test_prefix_match_fr(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("fr_FR", "UTF-8"))
-        assert _detect_language() == "f"
+        assert _detect_language() == "fr"
 
     def test_prefix_match_ru(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("ru_RU", "UTF-8"))
-        assert _detect_language() == "e"
+        assert _detect_language() == "ru"
 
     def test_prefix_match_ja(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("ja_JP", "UTF-8"))
-        assert _detect_language() == "r"
+        assert _detect_language() == "ja"
 
     def test_prefix_match_es(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("es_ES", "UTF-8"))
-        assert _detect_language() == "x"
+        assert _detect_language() == "es"
 
     def test_prefix_match_pt(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("pt_BR", "UTF-8"))
-        assert _detect_language() == "p"
+        assert _detect_language() == "pt"
 
     def test_zh_TW_traditional_chinese(self, monkeypatch):
         monkeypatch.setattr("locale.getlocale", lambda: ("zh_TW", "UTF-8"))
-        assert _detect_language() == "tc"
+        assert _detect_language() == "zh_TW"
 
     def test_falls_back_to_env_LANG(self, monkeypatch):
         """locale.getlocale returns (None, None) — fall back to $LANG."""
         monkeypatch.setattr("locale.getlocale", lambda: (None, None))
         monkeypatch.setenv("LANG", "de.UTF-8")
-        assert _detect_language() == "d"
+        assert _detect_language() == "de"
 
     def test_falls_back_to_en_when_no_locale(self, monkeypatch):
         """No locale, no $LANG — defaults to 'en'."""
@@ -241,10 +241,10 @@ class TestDetectLanguage:
         monkeypatch.delenv("LANG", raising=False)
         assert _detect_language() == "en"
 
-    def test_korean_locale_returns_h(self, monkeypatch):
-        """Korean locale returns 'h' suffix."""
+    def test_korean_locale_returns_ko(self, monkeypatch):
+        """Korean locale returns 'ko' code."""
         monkeypatch.setattr("locale.getlocale", lambda: ("ko_KR", "UTF-8"))
-        assert _detect_language() == "h"
+        assert _detect_language() == "ko"
 
     def test_unknown_locale_returns_en(self, monkeypatch):
         """Unrecognized locale with no prefix match returns 'en'."""
@@ -427,7 +427,7 @@ class TestSettingsInit:
             "resolution": [480, 480],
             "temp_unit": 1,
             "hdd_enabled": False,
-            "lang": "d",
+            "lang": "de",
         })
         with patch("trcc.conf._migrate_config"), \
              patch("trcc.conf.ThemeDir.for_resolution") as mock_td, \
@@ -440,7 +440,7 @@ class TestSettingsInit:
         assert s.height == 480
         assert s.temp_unit == 1
         assert s.hdd_enabled is False
-        assert s.lang == "d"
+        assert s.lang == "de"
 
     def test_init_zero_resolution_skips_resolve(self, tmp_config):
         """If saved resolution is (0, 0), _resolve_paths is not called."""
@@ -510,9 +510,9 @@ class TestSettingsInstance:
         assert Settings._get_saved_hdd_enabled() is False
 
     def test_lang_setter_persists(self, settings, tmp_config):
-        settings.lang = "r"
-        assert settings.lang == "r"
-        assert load_config()["lang"] == "r"
+        settings.lang = "ja"
+        assert settings.lang == "ja"
+        assert load_config()["lang"] == "ja"
 
     def test_get_saved_lang_falls_back_to_detect(self, tmp_config, monkeypatch):
         """No saved lang in config -> falls back to _detect_language."""
@@ -523,18 +523,30 @@ class TestSettingsInstance:
              patch("trcc.conf.get_web_masks_dir", return_value="/tmp/masks"):
             mock_td.return_value = MagicMock()
             s = Settings()
-        assert s.lang == "r"
+        assert s.lang == "ja"
 
     def test_get_saved_lang_uses_saved(self, tmp_config):
         """Saved lang in config is used directly."""
-        save_config({"lang": "x"})
+        save_config({"lang": "es"})
         with patch("trcc.conf._migrate_config"), \
              patch("trcc.conf.ThemeDir.for_resolution") as mock_td, \
              patch("trcc.conf.get_web_dir", return_value="/tmp/web"), \
              patch("trcc.conf.get_web_masks_dir", return_value="/tmp/masks"):
             mock_td.return_value = MagicMock()
             s = Settings()
-        assert s.lang == "x"
+        assert s.lang == "es"
+
+    def test_get_saved_lang_migrates_legacy_code(self, tmp_config):
+        """Legacy C# suffix in config.json is auto-migrated to ISO 639-1."""
+        save_config({"lang": "d"})
+        with patch("trcc.conf._migrate_config"), \
+             patch("trcc.conf.ThemeDir.for_resolution") as mock_td, \
+             patch("trcc.conf.get_web_dir", return_value="/tmp/web"), \
+             patch("trcc.conf.get_web_masks_dir", return_value="/tmp/masks"):
+            mock_td.return_value = MagicMock()
+            s = Settings()
+        assert s.lang == "de"
+        assert load_config()["lang"] == "de"  # Persisted
 
 
 # =========================================================================

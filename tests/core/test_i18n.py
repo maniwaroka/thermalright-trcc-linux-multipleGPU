@@ -5,8 +5,8 @@ import pytest
 
 from trcc.core.i18n import LANGUAGE_NAMES, TITLE_BAR_POS, TITLE_BAR_TEXT, TRANSLATIONS, tr
 
-# Original 10 C# language codes
-ORIGINAL_LANGS = {'', 'tc', 'en', 'd', 'e', 'f', 'p', 'r', 'x', 'h'}
+# Original 10 languages (now ISO 639-1 codes, migrated from C# suffixes in v8.3.10)
+ORIGINAL_LANGS = {'zh', 'zh_TW', 'en', 'de', 'ru', 'fr', 'pt', 'ja', 'es', 'ko'}
 
 # Extended ISO 639-1 codes
 EXTENDED_LANGS = {
@@ -84,7 +84,7 @@ class TestLanguageNames:
         assert LANGUAGE_NAMES['en'] == 'English'
 
     def test_chinese_simplified(self) -> None:
-        assert LANGUAGE_NAMES[''] == '简体中文'
+        assert LANGUAGE_NAMES['zh'] == '简体中文'
 
     def test_all_names_unique(self) -> None:
         values = list(LANGUAGE_NAMES.values())
@@ -102,7 +102,7 @@ class TestTrFunction:
         assert tr('Layer Mask', 'en') == 'Layer Mask'
 
     def test_chinese_default_key(self) -> None:
-        assert tr('Layer Mask', '') == '布局蒙板'
+        assert tr('Layer Mask', 'zh') == '布局蒙板'
 
     def test_extended_lang(self) -> None:
         assert tr('Layer Mask', 'it') == 'Maschera livello'

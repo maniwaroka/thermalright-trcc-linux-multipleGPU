@@ -5,6 +5,7 @@ Package structure mirrors cli/ — one module per domain:
     models.py   — Pydantic request/response models
     devices.py  — device detection, selection, image send
     display.py  — LCD display settings (brightness, rotation, color, etc.)
+    i18n.py     — language listing and selection
     led.py      — LED RGB control (color, mode, zones, segments)
     themes.py   — theme listing, load, save, import
     system.py   — system metrics, diagnostic report
@@ -325,12 +326,14 @@ def pair_device(code: str):
 
 from trcc.api.devices import router as devices_router  # noqa: E402
 from trcc.api.display import router as display_router  # noqa: E402
+from trcc.api.i18n import router as i18n_router  # noqa: E402
 from trcc.api.led import router as led_router  # noqa: E402
 from trcc.api.system import router as system_router  # noqa: E402
 from trcc.api.themes import router as themes_router  # noqa: E402
 
 app.include_router(devices_router)
 app.include_router(display_router)
+app.include_router(i18n_router)
 app.include_router(led_router)
 app.include_router(themes_router)
 app.include_router(system_router)
