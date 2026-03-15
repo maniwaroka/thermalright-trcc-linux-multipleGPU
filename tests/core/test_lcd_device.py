@@ -56,6 +56,18 @@ class TestLCDDeviceConstruction(unittest.TestCase):
         self.assertIsNone(lcd._display_svc)
         self.assertIsNone(lcd._theme_svc)
 
+    def test_connect_requires_device_svc(self):
+        """connect() raises RuntimeError without injected device_svc."""
+        lcd = LCDDevice()
+        with self.assertRaises(RuntimeError, msg="ControllerBuilder"):
+            lcd.connect()
+
+    def test_build_services_requires_factory(self):
+        """_build_services() raises RuntimeError without build_services_fn."""
+        lcd = LCDDevice(device_svc=MagicMock())
+        with self.assertRaises(RuntimeError, msg="ControllerBuilder"):
+            lcd._build_services(MagicMock())
+
 
 # =============================================================================
 # Device ABC — connected, device_info, cleanup
@@ -670,12 +682,12 @@ class TestLCDDeviceProxyRouting:
         svc = MagicMock()
         svc.selected = None
         lcd = LCDDevice(
+            device_svc=svc,
+            build_services_fn=MagicMock(),
             find_active_fn=lambda: None,
             proxy_factory_fn=lambda kind: MagicMock(),
         )
-        with patch("trcc.adapters.device.detector.detect_devices"), \
-             patch("trcc.services.DeviceService", return_value=svc):
-            result = lcd.connect()
+        result = lcd.connect()
         assert not result["success"]  # No device found
         assert lcd._proxy is None  # No proxy set
 
@@ -683,10 +695,8 @@ class TestLCDDeviceProxyRouting:
         """Without DI params, connect() never checks for active instances."""
         svc = MagicMock()
         svc.selected = None
-        lcd = LCDDevice()
-        with patch("trcc.adapters.device.detector.detect_devices"), \
-             patch("trcc.services.DeviceService", return_value=svc):
-            result = lcd.connect()
+        lcd = LCDDevice(device_svc=svc, build_services_fn=MagicMock())
+        result = lcd.connect()
         assert not result["success"]
         assert lcd._proxy is None
 
@@ -707,12 +717,12 @@ class TestLCDDeviceProxyRouting:
         svc = MagicMock()
         svc.selected = None
         lcd = LCDDevice(
+            device_svc=svc,
+            build_services_fn=MagicMock(),
             find_active_fn=find_fn,
             proxy_factory_fn=MagicMock(),
         )
-        with patch("trcc.adapters.device.detector.detect_devices"), \
-             patch("trcc.services.DeviceService", return_value=svc):
-            lcd.connect("/dev/sg0")
+        lcd.connect("/dev/sg0")
         find_fn.assert_not_called()
 
 

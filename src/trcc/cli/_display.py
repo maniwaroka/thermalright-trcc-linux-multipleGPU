@@ -24,13 +24,17 @@ def _connect_or_fail(device: str | None = None) -> tuple[LCDDevice, int]:
     Composition root: injects instance detection (find_active) and proxy
     factory so core routes through GUI/API if one is already running.
     """
+    from trcc.cli import _ensure_renderer
+    from trcc.core.builder import ControllerBuilder
     from trcc.core.instance import find_active
     from trcc.ipc import create_lcd_proxy
+    from trcc.services.image import ImageService
 
-    lcd = LCDDevice(
-        find_active_fn=find_active,
-        proxy_factory_fn=create_lcd_proxy,
-    )
+    _ensure_renderer()
+    builder = ControllerBuilder().with_renderer(ImageService._r())
+    lcd = builder.build_lcd()
+    lcd._find_active_fn = find_active
+    lcd._proxy_factory_fn = create_lcd_proxy
     result = lcd.connect(device)
     if not result["success"]:
         print(result["error"])
@@ -373,7 +377,6 @@ def resume():
     from trcc.adapters.device.detector import DeviceDetector
     from trcc.adapters.device.factory import DeviceProtocolFactory
     from trcc.adapters.device.led import probe_led_model
-    from trcc.core.lcd_device import LCDDevice
     from trcc.services import DeviceService
 
     svc = DeviceService(
@@ -407,7 +410,8 @@ def resume():
 
         try:
             svc.select(dev)
-            lcd = LCDDevice.from_service(svc)
+            from trcc.core.builder import ControllerBuilder
+            lcd = ControllerBuilder().lcd_from_service(svc)
             lcd.restore_device_settings()
             result = lcd.load_last_theme()
             if not result.get("success"):

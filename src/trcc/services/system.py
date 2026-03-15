@@ -22,6 +22,7 @@ from ..core.models import format_metric as _format_metric
 
 if TYPE_CHECKING:
     from ..core.models import SensorInfo
+    from ..core.ports import SensorEnumerator
 
 log = logging.getLogger(__name__)
 
@@ -44,12 +45,12 @@ _mem_clock_cache: object | float | None = _SENTINEL
 class SystemService:
     """Unified system monitoring: sensor discovery, metrics, panel config."""
 
-    def __init__(self, enumerator: Any = None) -> None:
+    def __init__(self, enumerator: SensorEnumerator | None = None) -> None:
         if enumerator is None:
             raise RuntimeError(
                 "SystemService requires an enumerator. "
                 "Use ControllerBuilder to wire dependencies.")
-        self._enumerator = enumerator
+        self._enumerator: SensorEnumerator = enumerator
         self._discovered = False
         self._defaults: Optional[Dict[str, str]] = None
         # Cached fallback values — computed once, reused on subsequent calls

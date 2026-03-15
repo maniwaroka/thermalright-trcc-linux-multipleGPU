@@ -167,6 +167,19 @@ class TestLCDDeviceInit:
 # TestLCDDeviceConnect
 # =========================================================================
 
+def _mock_build_services_fn():
+    """Create a mock build_services_fn for testing."""
+    def _build(device_svc, renderer=None):
+        return {
+            'display_svc': MagicMock(),
+            'theme_svc': MagicMock(),
+            'renderer': renderer or MagicMock(),
+            'dc_config_cls': MagicMock(),
+            'load_config_json_fn': MagicMock(),
+        }
+    return _build
+
+
 class TestLCDDeviceConnect:
     def test_connect_success(self):
         svc = MagicMock()
@@ -175,9 +188,8 @@ class TestLCDDeviceConnect:
         dev.path = "/dev/sg0"
         svc.selected = dev
 
-        lcd = LCDDevice()
-        with patch(_DEV_SVC, return_value=svc):
-            result = lcd.connect()
+        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        result = lcd.connect()
 
         assert result["success"] is True
         assert result["resolution"] == (320, 320)
@@ -187,9 +199,8 @@ class TestLCDDeviceConnect:
         svc = MagicMock()
         svc.selected = None
 
-        lcd = LCDDevice()
-        with patch(_DEV_SVC, return_value=svc):
-            result = lcd.connect()
+        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        result = lcd.connect()
 
         assert result["success"] is False
         assert "No LCD device" in result["error"]
@@ -201,9 +212,8 @@ class TestLCDDeviceConnect:
         dev.path = "/dev/sg1"
         svc.selected = dev
 
-        lcd = LCDDevice()
-        with patch(_DEV_SVC, return_value=svc):
-            lcd.connect("/dev/sg1")
+        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        lcd.connect("/dev/sg1")
 
         svc.scan_and_select.assert_called_once_with("/dev/sg1")
 
@@ -214,10 +224,9 @@ class TestLCDDeviceConnect:
         dev.path = "/dev/sg0"
         svc.selected = dev
 
-        lcd = LCDDevice()
+        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
         assert lcd.frame is lcd  # frame always points to self
-        with patch(_DEV_SVC, return_value=svc):
-            lcd.connect()
+        lcd.connect()
         assert lcd.frame is lcd  # still self after connect
 
 

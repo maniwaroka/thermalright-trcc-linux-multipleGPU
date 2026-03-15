@@ -88,6 +88,30 @@ class TestControllerBuilderLed(unittest.TestCase):
         led = ControllerBuilder().build_led()
         self.assertIsNotNone(led._get_protocol)
 
+    def test_build_led_injects_device_svc(self):
+        """build_led() injects a DeviceService so connect() works."""
+        led = ControllerBuilder().build_led()
+        self.assertIsNotNone(led._device_svc)
+
+
+class TestControllerBuilderLcdFromService(unittest.TestCase):
+    """ControllerBuilder.lcd_from_service() — builds from existing DeviceService."""
+
+    def test_returns_lcd_device(self):
+        from trcc.core.lcd_device import LCDDevice
+        svc = MagicMock()
+        svc.selected = MagicMock()
+        lcd = ControllerBuilder().lcd_from_service(svc)
+        self.assertIsInstance(lcd, LCDDevice)
+
+    def test_wires_display_and_theme_services(self):
+        svc = MagicMock()
+        svc.selected = MagicMock()
+        lcd = ControllerBuilder().lcd_from_service(svc)
+        self.assertIsNotNone(lcd._display_svc)
+        self.assertIsNotNone(lcd._theme_svc)
+        self.assertIs(lcd._device_svc, svc)
+
 
 class TestControllerBuilderFluent(unittest.TestCase):
     """ControllerBuilder fluent API — method chaining."""

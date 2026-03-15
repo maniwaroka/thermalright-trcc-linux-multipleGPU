@@ -164,31 +164,29 @@ class TestLEDDeviceConnect:
 
     def test_connect_no_led_device_directly(self):
         """connect() returns failure when no hid_led device found."""
-        dev = LEDDevice()
         fake_dev = MagicMock()
         fake_dev.implementation = 'hid_lcd'
-
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = [fake_dev]
-        with patch('trcc.services.DeviceService', return_value=mock_dev_svc), \
-             patch('trcc.services.LEDService'):
+
+        dev = LEDDevice(device_svc=mock_dev_svc)
+        with patch('trcc.services.LEDService'):
             result = dev.connect()
         assert result["success"] is False
         assert "No LED device" in result["error"]
 
     def test_connect_empty_device_list(self):
         """connect() returns failure when device list is empty."""
-        dev = LEDDevice()
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = []
-        with patch('trcc.services.DeviceService', return_value=mock_dev_svc):
-            result = dev.connect()
+
+        dev = LEDDevice(device_svc=mock_dev_svc)
+        result = dev.connect()
         assert result["success"] is False
         assert "No LED device" in result["error"]
 
     def test_connect_success_sets_svc(self):
         """connect() sets _svc and _init_status on success."""
-        dev = LEDDevice()
         led_dev = MagicMock()
         led_dev.implementation = 'hid_led'
         led_dev.led_style_id = 1
@@ -198,8 +196,9 @@ class TestLEDDeviceConnect:
 
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = [led_dev]
-        with patch('trcc.services.DeviceService', return_value=mock_dev_svc), \
-             patch('trcc.services.LEDService', return_value=fake_svc):
+
+        dev = LEDDevice(device_svc=mock_dev_svc)
+        with patch('trcc.services.LEDService', return_value=fake_svc):
             result = dev.connect()
 
         assert result["success"] is True
@@ -643,6 +642,12 @@ class TestLEDDeviceTick:
 class TestCLIHelpers:
     """CLI presentation helpers in _led.py."""
 
+    def _patch_builder(self, fake_led):
+        """Patch ControllerBuilder to return a pre-built fake LED device."""
+        mock_builder = MagicMock()
+        mock_builder.build_led.return_value = fake_led
+        return patch("trcc.core.builder.ControllerBuilder", return_value=mock_builder)
+
     def test_connect_or_fail_success(self, capsys):
         from trcc.cli._led import _connect_or_fail
 
@@ -650,7 +655,7 @@ class TestCLIHelpers:
         fake_led._svc = MagicMock()
         fake_led._init_status = "AX120"
 
-        with patch("trcc.cli._led.LEDDevice", return_value=fake_led), \
+        with self._patch_builder(fake_led), \
              patch.object(fake_led, "connect",
                           return_value={"success": True, "status": "AX120"}), \
              patch(_IPC, return_value=None):
@@ -665,7 +670,7 @@ class TestCLIHelpers:
 
         fake_led = LEDDevice()
 
-        with patch("trcc.cli._led.LEDDevice", return_value=fake_led), \
+        with self._patch_builder(fake_led), \
              patch.object(fake_led, "connect",
                           return_value={"success": False,
                                         "error": "No LED device found"}), \
@@ -681,7 +686,7 @@ class TestCLIHelpers:
         fake_led = LEDDevice()
         fake_led._svc = MagicMock()
 
-        with patch("trcc.cli._led.LEDDevice", return_value=fake_led), \
+        with self._patch_builder(fake_led), \
              patch.object(fake_led, "connect",
                           return_value={"success": True}), \
              patch(_IPC, return_value=None):
@@ -772,7 +777,9 @@ class TestCLIHelpers:
 
         dev = LEDDevice(svc=mock_svc)
         dev._init_status = "PA120"
-        with patch('trcc.cli._led.LEDDevice', return_value=dev), \
+        mock_builder = MagicMock()
+        mock_builder.build_led.return_value = dev
+        with patch('trcc.core.builder.ControllerBuilder', return_value=mock_builder), \
              patch.object(dev, 'connect',
                           return_value={"success": True, "status": "PA120"}):
             svc, status = _get_led_service()

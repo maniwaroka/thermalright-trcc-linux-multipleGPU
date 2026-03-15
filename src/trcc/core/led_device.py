@@ -34,17 +34,10 @@ class LEDDevice(Device):
     Models ARE the device: LEDMode, LEDState, LEDZoneState define all state.
     LEDService owns the logic. This class is the entry point.
 
-    Construction:
-        led = LEDDevice()
+    Construction (via builder — the only correct way):
+        led = ControllerBuilder().build_led()
         led.connect()                        # CLI: auto-detect + probe
         led.set_color(255, 0, 0)             # set static red
-
-        led = LEDDevice()
-        led.initialize(device_info, style)   # GUI: device already detected
-
-    DI for instance detection:
-        led = LEDDevice(find_active_fn=find_active, proxy_factory_fn=factory)
-        led.connect()  # routes through GUI/API if one is running
     """
 
     def __init__(self, svc: Any = None,
@@ -90,17 +83,9 @@ class LEDDevice(Device):
         from ..services import LEDService
 
         if self._device_svc is None:
-            # Composition root must provide DeviceService
-            from ..adapters.device.detector import DeviceDetector
-            from ..adapters.device.factory import DeviceProtocolFactory
-            from ..adapters.device.led import probe_led_model
-            from ..services import DeviceService
-            self._device_svc = DeviceService(
-                detect_fn=DeviceDetector.detect,
-                probe_led_fn=probe_led_model,
-                get_protocol=DeviceProtocolFactory.get_protocol,
-                get_protocol_info=DeviceProtocolFactory.get_protocol_info,
-            )
+            raise RuntimeError(
+                "LEDDevice requires a DeviceService. "
+                "Use ControllerBuilder.build_led() to wire dependencies.")
 
         self._device_svc.detect()
         led_dev = next(

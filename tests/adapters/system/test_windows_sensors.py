@@ -636,3 +636,175 @@ class TestLhmTypeMap:
     def test_temperature_mapping(self):
         from trcc.adapters.system.windows.sensors import _LHM_TYPE_MAP
         assert _LHM_TYPE_MAP['Temperature'] == ('temperature', '°C')
+
+
+# ── read_one / set_poll_interval ─────────────────────────────────────
+
+
+class TestReadOne:
+    """read_one returns cached single-sensor values."""
+
+    def test_returns_cached_value(self):
+        enum = _make_enum()
+        enum._readings = {'psutil:cpu_percent': 42.0, 'nvidia:0:temp': 72.0}
+        assert enum.read_one('psutil:cpu_percent') == 42.0
+        assert enum.read_one('nvidia:0:temp') == 72.0
+
+    def test_returns_none_for_missing(self):
+        enum = _make_enum()
+        assert enum.read_one('nonexistent:sensor') is None
+
+
+class TestSetPollInterval:
+    """set_poll_interval clamps to minimum 0.5s."""
+
+    def test_sets_interval(self):
+        enum = _make_enum()
+        enum.set_poll_interval(5.0)
+        assert enum._poll_interval == 5.0
+
+    def test_clamps_minimum(self):
+        enum = _make_enum()
+        enum.set_poll_interval(0.1)
+        assert enum._poll_interval == 0.5
+
+
+# ── Computed I/O rates ───────────────────────────────────────────────
+
+
+class TestReadComputed:
+    """Disk and network I/O delta computation."""
+
+    @patch(f'{MODULE}.psutil')
+    def test_disk_io_second_call(self, mock_psutil):
+        """Disk read/write rates computed from delta between polls."""
+        disk1 = MagicMock(read_bytes=100_000_000, write_bytes=50_000_000)
+        disk2 = MagicMock(read_bytes=200_000_000, write_bytes=80_000_000)
+        mock_psutil.disk_io_counters.side_effect = [disk1, disk2]
+
+        enum = _make_enum()
+        r1: dict[str, float] = {}
+        enum._read_computed(r1)
+        # First call: no prev, no rates
+        assert 'computed:disk_read' not in r1
+
+        r2: dict[str, float] = {}
+        enum._read_computed(r2)
+        # Second call: should have rates
+        assert 'computed:disk_read' in r2
+        assert 'computed:disk_write' in r2
+        assert r2['computed:disk_read'] > 0
+        assert r2['computed:disk_write'] > 0
+
+    @patch(f'{MODULE}.psutil')
+    def test_network_io_second_call(self, mock_psutil):
+        mock_psutil.disk_io_counters.return_value = None
+        net1 = MagicMock(bytes_sent=1_000_000, bytes_recv=5_000_000)
+        net2 = MagicMock(bytes_sent=2_000_000, bytes_recv=8_000_000)
+        mock_psutil.net_io_counters.side_effect = [net1, net2]
+
+        enum = _make_enum()
+        r1: dict[str, float] = {}
+        enum._read_computed(r1)
+        assert 'computed:net_total_up' in r1  # totals available immediately
+
+        r2: dict[str, float] = {}
+        enum._read_computed(r2)
+        assert 'computed:net_up' in r2
+        assert 'computed:net_down' in r2
+        assert r2['computed:net_up'] > 0
+
+
+# ── map_defaults ─────────────────────────────────────────────────────
+
+
+class TestMapDefaults:
+    """Legacy metric key mapping for Windows."""
+
+    def test_psutil_only_maps_cpu_mem(self):
+        """With only psutil sensors, basic mappings are set."""
+        enum = _make_enum()
+        enum.discover()
+        defaults = enum.map_defaults()
+
+        assert defaults['cpu_percent'] == 'psutil:cpu_percent'
+        assert defaults['cpu_freq'] == 'psutil:cpu_freq'
+        assert defaults['mem_percent'] == 'psutil:mem_percent'
+        assert defaults['disk_read'] == 'computed:disk_read'
+        assert defaults['net_up'] == 'computed:net_up'
+
+    def test_cached_after_first_call(self):
+        enum = _make_enum()
+        enum.discover()
+        d1 = enum.map_defaults()
+        d2 = enum.map_defaults()
+        assert d1 is d2  # Same object, cached
+
+    @patch(f'{MODULE}.NVML_AVAILABLE', True)
+    @patch(f'{MODULE}.pynvml')
+    def test_nvidia_gpu_mapping(self, mock_nvml):
+        mock_nvml.nvmlDeviceGetCount.return_value = 1
+        mock_nvml.nvmlDeviceGetHandleByIndex.return_value = 'h'
+        mock_nvml.nvmlDeviceGetName.return_value = 'RTX 4090'
+
+        enum = _make_enum(nvml=True)
+        enum.discover()
+        defaults = enum.map_defaults()
+
+        assert defaults['gpu_temp'] == 'nvidia:0:temp'
+        assert defaults['gpu_usage'] == 'nvidia:0:gpu_busy'
+        assert defaults['gpu_clock'] == 'nvidia:0:clock'
+        assert defaults['gpu_power'] == 'nvidia:0:power'
+
+    @patch(f'{MODULE}.LHM_AVAILABLE', True)
+    @patch(f'{MODULE}.Computer', create=True)
+    def test_lhm_gpu_preferred_over_nvidia(self, mock_computer_cls):
+        """LHM GPU sensors should take priority over pynvml."""
+        gpu_sensors = [
+            _mock_lhm_sensor('GPU Core', 'Temperature', 72.0),
+            _mock_lhm_sensor('GPU Core', 'Load', 98.0),
+            _mock_lhm_sensor('GPU Core', 'Clock', 1950.0),
+            _mock_lhm_sensor('GPU Package', 'Power', 320.0),
+        ]
+        gpu_hw = _mock_lhm_hardware('RTX 4090', 'GpuNvidia', gpu_sensors)
+
+        mock_computer = MagicMock()
+        mock_computer.Hardware = [gpu_hw]
+        mock_computer_cls.return_value = mock_computer
+
+        enum = _make_enum(lhm=True)
+        enum.discover()
+        defaults = enum.map_defaults()
+
+        assert defaults['gpu_temp'].startswith('lhm:')
+        assert defaults['gpu_usage'].startswith('lhm:')
+
+    def test_empty_mappings_excluded(self):
+        """Keys with no matching sensor should not appear in result."""
+        enum = _make_enum()
+        enum.discover()
+        defaults = enum.map_defaults()
+        for v in defaults.values():
+            assert v != ''
+
+    @patch(f'{MODULE}.LHM_AVAILABLE', True)
+    @patch(f'{MODULE}.Computer', create=True)
+    def test_fan_keyword_matching(self, mock_computer_cls):
+        fan_sensors = [
+            _mock_lhm_sensor('CPU Fan', 'Fan', 800.0),
+            _mock_lhm_sensor('GPU Fan', 'Fan', 1200.0),
+            _mock_lhm_sensor('System Fan', 'Fan', 600.0),
+        ]
+        hw = _mock_lhm_hardware('Motherboard', 'Motherboard', fan_sensors)
+
+        mock_computer = MagicMock()
+        mock_computer.Hardware = [hw]
+        mock_computer_cls.return_value = mock_computer
+
+        enum = _make_enum(lhm=True)
+        enum.discover()
+        defaults = enum.map_defaults()
+
+        assert 'fan_cpu' in defaults
+        assert 'fan_gpu' in defaults
+        assert 'fan_sys2' in defaults

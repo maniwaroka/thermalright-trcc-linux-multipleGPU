@@ -975,6 +975,16 @@ def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
 
 def main():
     """Main CLI entry point (pyproject.toml console_scripts)."""
+    # Windows consoles default to cp1252 which can't encode Unicode (─, ℃, etc.)
+    import sys
+    if sys.platform == 'win32':
+        import io
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, encoding='utf-8', errors='replace')
     try:
         result = app(standalone_mode=False)
         return result if isinstance(result, int) else 0

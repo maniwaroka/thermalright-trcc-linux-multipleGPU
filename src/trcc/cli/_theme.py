@@ -82,8 +82,8 @@ def load_theme(name, *, device=None, preview=False):
         return 0
 
     if match.background_path and match.background_path.exists():
-        from trcc.core.lcd_device import LCDDevice
-        lcd = LCDDevice.from_service(svc)
+        from trcc.core.builder import ControllerBuilder
+        lcd = ControllerBuilder().lcd_from_service(svc)
         lcd.restore_device_settings()
         result = lcd.load_image(match.background_path)
         img = result.get("image")

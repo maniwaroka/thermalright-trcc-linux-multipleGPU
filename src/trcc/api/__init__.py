@@ -35,10 +35,10 @@ from trcc.adapters.device.led import probe_led_model
 from trcc.adapters.infra.dc_config import DcConfig
 from trcc.adapters.infra.dc_parser import load_config_json
 from trcc.adapters.render.qt import QtRenderer
-from trcc.adapters.system.sensors import SensorEnumerator
+from trcc.core.builder import ControllerBuilder
 from trcc.services import DeviceService, MediaService, OverlayService
 from trcc.services.image import ImageService
-from trcc.services.system import SystemService, set_instance
+from trcc.services.system import set_instance
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ _device_svc = DeviceService(
 )
 
 # System service (composition root — adapter wired here)
-_system_svc = SystemService(enumerator=SensorEnumerator())
+_system_svc = ControllerBuilder().build_system()
 set_instance(_system_svc)
 
 # Lazy-initialized devices (set when device is selected)

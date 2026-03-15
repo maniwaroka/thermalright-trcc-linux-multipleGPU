@@ -26,13 +26,10 @@ class LCDDevice(Device):
     (lcd.frame, lcd.video, lcd.overlay, lcd.theme, lcd.settings)
     all point to self.
 
-    Construction:
-        lcd = LCDDevice()
+    Construction (via builder — the only correct way):
+        lcd = ControllerBuilder().with_renderer(renderer).build_lcd()
         lcd.connect()
         lcd.send_image("pic.png")
-
-    Or with pre-built services (GUI):
-        lcd = LCDDevice(device_svc=svc, display_svc=disp, theme_svc=theme)
     """
 
     def __init__(
@@ -45,6 +42,7 @@ class LCDDevice(Device):
         load_config_json_fn: Any = None,
         find_active_fn: Any = None,
         proxy_factory_fn: Any = None,
+        build_services_fn: Any = None,
     ) -> None:
         self._device_svc = device_svc
         self._display_svc = display_svc
@@ -54,6 +52,7 @@ class LCDDevice(Device):
         self._load_config_json_fn = load_config_json_fn
         self._find_active_fn = find_active_fn
         self._proxy_factory_fn = proxy_factory_fn
+        self._build_services_fn = build_services_fn
         self._proxy: Any = None  # Set when routing through another instance
 
         # All capability accessors point to self — methods are on LCDDevice
@@ -64,55 +63,28 @@ class LCDDevice(Device):
         self.settings: LCDDevice = self  # type: ignore[assignment]
 
     def _build_services(self, device_svc: Any) -> None:
-        """Wire up all services from a DeviceService (composition root)."""
-        from ..adapters.infra.data_repository import DataManager
-        from ..adapters.infra.dc_config import DcConfig
-        from ..adapters.infra.dc_parser import load_config_json
-        from ..adapters.infra.dc_writer import export_theme, import_theme
-        from ..adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
-        from ..services import (
-            DisplayService,
-            MediaService,
-            OverlayService,
-            ThemeService,
-        )
-        from ..services.image import ImageService
-
+        """Wire up all services from a DeviceService via injected factory."""
+        if self._build_services_fn is None:
+            raise RuntimeError(
+                "LCDDevice requires build_services_fn. "
+                "Use ControllerBuilder.build_lcd() to wire dependencies.")
+        result = self._build_services_fn(device_svc, self._renderer)
         self._device_svc = device_svc
-        self._renderer = self._renderer or ImageService._r()
-        self._dc_config_cls = DcConfig
-        self._load_config_json_fn = load_config_json
-        overlay_svc = OverlayService(
-            renderer=self._renderer,
-            load_config_json_fn=load_config_json,
-            dc_config_cls=DcConfig,
-        )
-        media_svc = MediaService(
-            video_decoder_cls=VideoDecoder,
-            zt_decoder_cls=ThemeZtDecoder,
-        )
-        theme_svc = ThemeService(
-            ensure_data_fn=DataManager.ensure_all,
-            export_theme_fn=export_theme,
-            import_theme_fn=import_theme,
-            load_config_json_fn=load_config_json,
-            dc_config_cls=DcConfig,
-        )
-        self._display_svc = DisplayService(
-            device_svc, overlay_svc, media_svc,
-            ensure_data_fn=DataManager.ensure_all,
-            theme_svc=theme_svc,
-        )
-        self._theme_svc = theme_svc
+        self._display_svc = result['display_svc']
+        self._theme_svc = result['theme_svc']
+        self._renderer = result['renderer']
+        self._dc_config_cls = result['dc_config_cls']
+        self._load_config_json_fn = result['load_config_json_fn']
 
     @classmethod
-    def from_service(cls, device_svc: Any, renderer: Any = None) -> LCDDevice:
+    def from_service(cls, device_svc: Any, renderer: Any = None,
+                     build_services_fn: Any = None) -> LCDDevice:
         """Create a fully-wired LCDDevice from an existing DeviceService.
 
         Use when the caller already has a connected DeviceService (e.g. CLI
         resume, API device select) and needs the full DisplayService pipeline.
         """
-        lcd = cls(renderer=renderer)
+        lcd = cls(renderer=renderer, build_services_fn=build_services_fn)
         lcd._build_services(device_svc)
         return lcd
 
@@ -146,10 +118,10 @@ class LCDDevice(Device):
                     "device_path": getattr(self._proxy, 'device_path', ''),
                 }
 
-        from ..adapters.device.detector import DeviceDetector
-        from ..adapters.device.factory import DeviceProtocolFactory
-        from ..adapters.device.led import probe_led_model
-        from ..services import DeviceService
+        if self._device_svc is None:
+            raise RuntimeError(
+                "LCDDevice requires a DeviceService. "
+                "Use ControllerBuilder.build_lcd() to wire dependencies.")
 
         device_path = None
         if isinstance(detected, str):
@@ -158,12 +130,7 @@ class LCDDevice(Device):
             device_path = getattr(detected, 'scsi_device', None) or \
                           getattr(detected, 'path', None)
 
-        svc = DeviceService(
-            detect_fn=DeviceDetector.detect,
-            probe_led_fn=probe_led_model,
-            get_protocol=DeviceProtocolFactory.get_protocol,
-            get_protocol_info=DeviceProtocolFactory.get_protocol_info,
-        )
+        svc = self._device_svc
         svc.scan_and_select(device_path)
         if not svc.selected:
             return {"success": False, "error": "No LCD device found"}

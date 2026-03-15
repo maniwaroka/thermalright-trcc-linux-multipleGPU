@@ -14,7 +14,10 @@ SOLID:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from trcc.core.models import SensorInfo
 
 
 class Renderer(ABC):
@@ -218,6 +221,60 @@ ImportThemeFn = Callable[[str, str], None]
 # Concrete: hardware._privileged_cmd
 PrivilegedCmdFn = Callable[[str, list[str]], list[str]]
 
-# Type alias for sensor enumerator (duck-typed — has discover/read_all).
-SensorEnumeratorT = Any
+# =========================================================================
+# Sensor Enumerator ABC — contract for platform sensor adapters
+# =========================================================================
+
+
+class SensorEnumerator(ABC):
+    """Port: hardware sensor discovery and reading.
+
+    Each platform adapter (Linux, Windows, macOS, BSD) implements this ABC
+    to provide sensor data via native sources (hwmon, LHM, IOKit, sysctl).
+
+    Concrete implementations:
+        - SensorEnumerator (adapters/system/sensors.py) — Linux
+        - WindowsSensorEnumerator (adapters/system/windows/sensors.py)
+        - MacOSSensorEnumerator (adapters/system/macos/sensors.py)
+        - BSDSensorEnumerator (adapters/system/bsd/sensors.py)
+    """
+
+    @abstractmethod
+    def discover(self) -> list[SensorInfo]:
+        """Scan hardware for available sensors. Call once at startup."""
+
+    @abstractmethod
+    def get_sensors(self) -> list[SensorInfo]:
+        """Return previously discovered sensors."""
+
+    @abstractmethod
+    def get_by_category(self, category: str) -> list[SensorInfo]:
+        """Filter sensors by category."""
+
+    @abstractmethod
+    def read_all(self) -> dict[str, float]:
+        """Return current sensor readings (non-blocking, from cache)."""
+
+    @abstractmethod
+    def read_one(self, sensor_id: str) -> Optional[float]:
+        """Read a single sensor by ID."""
+
+    @abstractmethod
+    def start_polling(self, interval: float = 2.0) -> None:
+        """Start background polling thread."""
+
+    @abstractmethod
+    def stop_polling(self) -> None:
+        """Stop background polling thread."""
+
+    @abstractmethod
+    def set_poll_interval(self, seconds: float) -> None:
+        """Set background poll interval (user's data refresh setting)."""
+
+    @abstractmethod
+    def map_defaults(self) -> dict[str, str]:
+        """Map legacy metric keys to sensor IDs for overlay rendering.
+
+        Returns dict like {'cpu_temp': 'hwmon:coretemp:temp1', ...}.
+        """
 

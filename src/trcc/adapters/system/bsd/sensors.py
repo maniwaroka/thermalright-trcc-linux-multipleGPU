@@ -24,6 +24,7 @@ from typing import Optional
 import psutil
 
 from trcc.core.models import SensorInfo
+from trcc.core.ports import SensorEnumerator as SensorEnumeratorABC
 
 try:
     import pynvml  # pyright: ignore[reportMissingImports]
@@ -36,7 +37,7 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class BSDSensorEnumerator:
+class BSDSensorEnumerator(SensorEnumeratorABC):
     """Discover and read hardware sensors on FreeBSD."""
 
     def __init__(self) -> None:
@@ -45,6 +46,8 @@ class BSDSensorEnumerator:
         self._lock = threading.Lock()
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._poll_interval: float = 1.0
+        self._default_map: Optional[dict[str, str]] = None
 
     # ── Discovery ────────────────────────────────────────────────
 
@@ -142,13 +145,26 @@ class BSDSensorEnumerator:
             SensorInfo('computed:day_of_week', 'Day of Week', 'datetime', '', 'computed'),
         ])
 
+    def get_sensors(self) -> list[SensorInfo]:
+        """Return previously discovered sensors."""
+        return self._sensors
+
+    def read_one(self, sensor_id: str) -> Optional[float]:
+        """Read a single sensor by ID from cached readings."""
+        with self._lock:
+            return self._readings.get(sensor_id)
+
+    def set_poll_interval(self, seconds: float) -> None:
+        """Set background poll interval (user's data refresh setting)."""
+        self._poll_interval = max(0.5, seconds)
+
     # ── Polling ──────────────────────────────────────────────────
 
     def start_polling(self, interval: float = 1.0) -> None:
         """Start background sensor polling."""
         self._stop_event.clear()
         self._poll_thread = threading.Thread(
-            target=self._poll_loop, args=(interval,), daemon=True,
+            target=self._poll_loop, daemon=True,
         )
         self._poll_thread.start()
 
@@ -158,9 +174,9 @@ class BSDSensorEnumerator:
         if self._poll_thread is not None:
             self._poll_thread.join(timeout=3)
 
-    def _poll_loop(self, interval: float) -> None:
+    def _poll_loop(self) -> None:
         """Polling loop running in background thread."""
-        while not self._stop_event.wait(interval):
+        while not self._stop_event.wait(self._poll_interval):
             self._poll_once()
 
     def _poll_once(self) -> None:
@@ -262,3 +278,50 @@ class BSDSensorEnumerator:
     def get_by_category(self, category: str) -> list[SensorInfo]:
         """Return sensors matching a category."""
         return [s for s in self._sensors if s.category == category]
+
+    def map_defaults(self) -> dict[str, str]:
+        """Map legacy metric keys to BSD sensor IDs."""
+        if self._default_map is not None:
+            return self._default_map
+
+        sensors = self.get_sensors()
+        mapping: dict[str, str] = {}
+
+        def _find_first(source: str = '', name_contains: str = '',
+                        category: str = '') -> Optional[str]:
+            for s in sensors:
+                if source and s.source != source:
+                    continue
+                if category and s.category != category:
+                    continue
+                if name_contains and name_contains.lower() not in s.name.lower():
+                    continue
+                return s.id
+            return None
+
+        # CPU
+        mapping['cpu_temp'] = (
+            _find_first(source='sysctl', name_contains='Core 0', category='temperature')
+            or _find_first(source='sysctl', category='temperature')
+            or ''
+        )
+        mapping['cpu_percent'] = 'psutil:cpu_percent'
+        mapping['cpu_freq'] = 'psutil:cpu_freq'
+
+        # GPU (NVIDIA only on BSD)
+        mapping['gpu_temp'] = _find_first(source='nvidia', category='temperature') or ''
+        mapping['gpu_usage'] = _find_first(source='nvidia', category='gpu_busy') or ''
+        mapping['gpu_power'] = _find_first(source='nvidia', category='power') or ''
+
+        # Memory
+        mapping['mem_percent'] = 'psutil:mem_percent'
+        mapping['mem_available'] = 'psutil:mem_used'
+
+        # Disk / Network
+        mapping['disk_read'] = 'computed:disk_read'
+        mapping['disk_write'] = 'computed:disk_write'
+        mapping['net_up'] = 'computed:net_up'
+        mapping['net_down'] = 'computed:net_down'
+
+        self._default_map = {k: v for k, v in mapping.items() if v}
+        return self._default_map

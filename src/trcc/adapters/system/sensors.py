@@ -27,6 +27,7 @@ import psutil
 
 from trcc.adapters.infra.data_repository import SysUtils
 from trcc.core.models import SensorInfo
+from trcc.core.ports import SensorEnumerator as SensorEnumeratorABC
 
 try:
     import pynvml  # pyright: ignore[reportMissingImports]
@@ -95,8 +96,8 @@ def _detect_gpu_vendors() -> list[str]:
     return vendors
 
 
-class SensorEnumerator:
-    """Discovers and reads all available hardware sensors on the system."""
+class SensorEnumerator(SensorEnumeratorABC):
+    """Discovers and reads all available hardware sensors on Linux."""
 
     def __init__(self):
         self._sensors: list[SensorInfo] = []

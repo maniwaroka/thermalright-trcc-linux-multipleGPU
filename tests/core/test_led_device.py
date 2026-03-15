@@ -46,6 +46,12 @@ class TestLEDDeviceConstruction(unittest.TestCase):
         led = LEDDevice(get_protocol=gp)
         self.assertIs(led._get_protocol, gp)
 
+    def test_connect_requires_device_svc(self):
+        """connect() raises RuntimeError without injected device_svc."""
+        led = LEDDevice()
+        with self.assertRaises(RuntimeError, msg="ControllerBuilder"):
+            led.connect()
+
 
 # =============================================================================
 # Device ABC

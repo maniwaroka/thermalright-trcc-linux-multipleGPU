@@ -28,7 +28,7 @@ from ..adapters.system.config import (
     SensorBinding,
     SysInfoConfig,
 )
-from ..adapters.system.sensors import SensorEnumerator
+from ..core.ports import SensorEnumerator
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Layout

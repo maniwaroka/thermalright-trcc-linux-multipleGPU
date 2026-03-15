@@ -19,11 +19,13 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
+import time
 from typing import Any, Optional
 
 import psutil
 
 from trcc.core.models import SensorInfo
+from trcc.core.ports import SensorEnumerator as SensorEnumeratorABC
 
 # ── Optional: LibreHardwareMonitor via pythonnet ──────────────────────
 # pip install HardwareMonitor (requires .NET 4.7, admin for full access)
@@ -58,10 +60,8 @@ _LHM_TYPE_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-class WindowsSensorEnumerator:
+class WindowsSensorEnumerator(SensorEnumeratorABC):
     """Discovers and reads hardware sensors on Windows.
-
-    Same interface as Linux SensorEnumerator — drop-in replacement.
 
     Sensor priority for GPU:
     1. LibreHardwareMonitor — hotspot temp, memory junction temp, voltage
@@ -75,8 +75,13 @@ class WindowsSensorEnumerator:
         self._lock = threading.Lock()
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._poll_interval: float = 2.0
         self._lhm_computer: Any = None  # LHM Computer instance (kept alive)
         self._lhm_gpu_used = False  # True if LHM handled GPU discovery
+        self._default_map: Optional[dict[str, str]] = None
+        # I/O rate tracking (delta-based)
+        self._disk_prev: Optional[tuple[Any, float]] = None
+        self._net_prev: Optional[tuple[Any, float]] = None
 
     def discover(self) -> list[SensorInfo]:
         """Scan system for all available sensors."""
@@ -104,6 +109,10 @@ class WindowsSensorEnumerator:
         with self._lock:
             return dict(self._readings)
 
+    def set_poll_interval(self, seconds: float) -> None:
+        """Set background poll interval (driven by user's data refresh setting)."""
+        self._poll_interval = max(0.5, seconds)
+
     def start_polling(self, interval: float = 2.0) -> None:
         """Start background polling thread."""
         if self._poll_thread and self._poll_thread.is_alive():
@@ -113,12 +122,17 @@ class WindowsSensorEnumerator:
         def _poll() -> None:
             while not self._stop_event.is_set():
                 self._poll_once()
-                self._stop_event.wait(interval)
+                self._stop_event.wait(self._poll_interval)
 
         self._poll_thread = threading.Thread(
             target=_poll, daemon=True, name="win-sensors",
         )
         self._poll_thread.start()
+
+    def read_one(self, sensor_id: str) -> Optional[float]:
+        """Read a single sensor by ID from cached readings."""
+        with self._lock:
+            return self._readings.get(sensor_id)
 
     def stop_polling(self) -> None:
         """Stop background polling."""
@@ -328,6 +342,9 @@ class WindowsSensorEnumerator:
         elif NVML_AVAILABLE and pynvml is not None:
             self._poll_nvidia(readings)
 
+        # Computed I/O rates (disk, network)
+        self._read_computed(readings)
+
         # Date/time
         now = datetime.datetime.now()
         readings['computed:date_year'] = float(now.year)
@@ -413,3 +430,167 @@ class WindowsSensorEnumerator:
                     pass
         except Exception:
             pass
+
+    def _read_computed(self, readings: dict[str, float]) -> None:
+        """Read computed I/O rate sensors (disk, network) via psutil."""
+        now = time.monotonic()
+
+        # Disk I/O
+        try:
+            disk = psutil.disk_io_counters()
+            if disk and self._disk_prev:
+                prev_disk, prev_time = self._disk_prev
+                dt = now - prev_time
+                if dt > 0:
+                    readings['computed:disk_read'] = (
+                        (disk.read_bytes - prev_disk.read_bytes) / (dt * 1024 * 1024))
+                    readings['computed:disk_write'] = (
+                        (disk.write_bytes - prev_disk.write_bytes) / (dt * 1024 * 1024))
+                    if hasattr(disk, 'busy_time') and hasattr(prev_disk, 'busy_time'):
+                        busy_ms = disk.busy_time - prev_disk.busy_time
+                        readings['computed:disk_activity'] = min(
+                            100.0, busy_ms / (dt * 10))
+            if disk:
+                self._disk_prev = (disk, now)
+        except Exception:
+            pass
+
+        # Network I/O
+        try:
+            net = psutil.net_io_counters()
+            if net:
+                readings['computed:net_total_up'] = net.bytes_sent / (1024 * 1024)
+                readings['computed:net_total_down'] = net.bytes_recv / (1024 * 1024)
+                if self._net_prev:
+                    prev_net, prev_time = self._net_prev
+                    dt = now - prev_time
+                    if dt > 0:
+                        readings['computed:net_up'] = (
+                            (net.bytes_sent - prev_net.bytes_sent) / (dt * 1024))
+                        readings['computed:net_down'] = (
+                            (net.bytes_recv - prev_net.bytes_recv) / (dt * 1024))
+                self._net_prev = (net, now)
+        except Exception:
+            pass
+
+    # ── Default sensor mapping (legacy compat) ────────────────────
+
+    def map_defaults(self) -> dict[str, str]:
+        """Build legacy metric key -> sensor ID mapping for Windows.
+
+        Returns dict like {'cpu_temp': 'lhm:cpu:temperature', ...}.
+        Used for backward compatibility with overlay renderer.
+        Cached after first call.
+        """
+        if self._default_map is not None:
+            return self._default_map
+
+        sensors = self.get_sensors()
+        mapping: dict[str, str] = {}
+
+        def _find_first(source: str = '', name_contains: str = '',
+                        category: str = '') -> Optional[str]:
+            for s in sensors:
+                if source and s.source != source:
+                    continue
+                if category and s.category != category:
+                    continue
+                if name_contains and name_contains.lower() not in s.name.lower():
+                    continue
+                return s.id
+            return None
+
+        # CPU — LHM > psutil
+        mapping['cpu_temp'] = (
+            _find_first(source='lhm', name_contains='Package', category='temperature')
+            or _find_first(source='lhm', name_contains='CPU', category='temperature')
+            or _find_first(source='psutil', category='temperature')
+            or ''
+        )
+        mapping['cpu_percent'] = 'psutil:cpu_percent'
+        mapping['cpu_freq'] = 'psutil:cpu_freq'
+        mapping['cpu_power'] = (
+            _find_first(source='lhm', name_contains='Package', category='power')
+            or _find_first(source='lhm', name_contains='CPU', category='power')
+            or ''
+        )
+
+        # GPU — LHM > NVIDIA (pynvml)
+        lhm_gpu_temp = _find_first(source='lhm', name_contains='GPU', category='temperature')
+        nvidia_gpu_temp = _find_first(source='nvidia', category='temperature')
+        if lhm_gpu_temp:
+            mapping['gpu_temp'] = lhm_gpu_temp
+            mapping['gpu_usage'] = _find_first(
+                source='lhm', name_contains='GPU', category='usage') or ''
+            mapping['gpu_clock'] = _find_first(
+                source='lhm', name_contains='GPU', category='clock') or ''
+            mapping['gpu_power'] = _find_first(
+                source='lhm', name_contains='GPU', category='power') or ''
+        elif nvidia_gpu_temp:
+            mapping['gpu_temp'] = nvidia_gpu_temp
+            mapping['gpu_usage'] = _find_first(
+                source='nvidia', category='gpu_busy') or ''
+            mapping['gpu_clock'] = _find_first(
+                source='nvidia', category='clock') or ''
+            mapping['gpu_power'] = _find_first(
+                source='nvidia', category='power') or ''
+        else:
+            mapping['gpu_temp'] = ''
+            mapping['gpu_usage'] = ''
+            mapping['gpu_clock'] = ''
+            mapping['gpu_power'] = ''
+
+        # Memory
+        mapping['mem_temp'] = (
+            _find_first(source='lhm', name_contains='Memory', category='temperature')
+            or ''
+        )
+        mapping['mem_percent'] = 'psutil:mem_percent'
+        mapping['mem_available'] = 'psutil:mem_used'  # Windows: used as proxy
+
+        # Disk
+        mapping['disk_temp'] = (
+            _find_first(source='lhm', name_contains='Drive', category='temperature')
+            or _find_first(source='lhm', name_contains='SSD', category='temperature')
+            or _find_first(source='lhm', name_contains='NVMe', category='temperature')
+            or ''
+        )
+        mapping['disk_read'] = 'computed:disk_read'
+        mapping['disk_write'] = 'computed:disk_write'
+        mapping['disk_activity'] = 'computed:disk_activity'
+
+        # Network
+        mapping['net_up'] = 'computed:net_up'
+        mapping['net_down'] = 'computed:net_down'
+        mapping['net_total_up'] = 'computed:net_total_up'
+        mapping['net_total_down'] = 'computed:net_total_down'
+
+        # Fans — LHM provides fan speeds
+        fan_sensors = [s for s in sensors
+                       if s.category == 'fan' and s.source in ('lhm', 'nvidia')]
+        _fan_slots = [
+            ('fan_cpu', ('cpu',)),
+            ('fan_gpu', ('gpu',)),
+            ('fan_ssd', ('ssd', 'nvme', 'm.2')),
+            ('fan_sys2', ('sys', 'chassis', 'case', 'pump')),
+        ]
+        fan_mapped: dict[str, str] = {}
+        unmatched_fans: list[SensorInfo] = []
+        for sensor in fan_sensors:
+            name_lower = sensor.name.lower()
+            matched = False
+            for key, keywords in _fan_slots:
+                if key not in fan_mapped and any(kw in name_lower for kw in keywords):
+                    fan_mapped[key] = sensor.id
+                    matched = True
+                    break
+            if not matched:
+                unmatched_fans.append(sensor)
+        empty_keys = [k for k, _ in _fan_slots if k not in fan_mapped]
+        for sensor, key in zip(unmatched_fans, empty_keys):
+            fan_mapped[key] = sensor.id
+        mapping.update(fan_mapped)
+
+        # Remove empty and cache
+        self._default_map = {k: v for k, v in mapping.items() if v}
+        return self._default_map

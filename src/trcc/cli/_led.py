@@ -19,13 +19,13 @@ def _connect_or_fail() -> tuple[LEDDevice, int]:
     Composition root: injects instance detection (find_active) and proxy
     factory so core routes through GUI/API if one is already running.
     """
+    from trcc.core.builder import ControllerBuilder
     from trcc.core.instance import find_active
     from trcc.ipc import create_led_proxy
 
-    led = LEDDevice(
-        find_active_fn=find_active,
-        proxy_factory_fn=create_led_proxy,
-    )
+    led = ControllerBuilder().build_led()
+    led._find_active_fn = find_active
+    led._proxy_factory_fn = create_led_proxy
     result = led.connect()
     if not result["success"]:
         print("No LED device found.")
@@ -64,7 +64,8 @@ def _led_command(method: str, *args, preview: bool = False, **kwargs) -> int:
 # Keep _get_led_service for backward compat (tests import it)
 def _get_led_service():
     """Detect LED device and create initialized LEDService."""
-    led = LEDDevice()
+    from trcc.core.builder import ControllerBuilder
+    led = ControllerBuilder().build_led()
     result = led.connect()
     if not result["success"]:
         return None, None

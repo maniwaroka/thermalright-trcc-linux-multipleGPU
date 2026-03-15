@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 
 from ..adapters.device.scsi import find_lcd_devices
 from ..adapters.infra.dc_writer import read_carousel_config
-from ..adapters.system.sensors import SensorEnumerator
 from ..conf import Settings, settings
 from ..core.builder import ControllerBuilder
 from ..core.led_device import LEDDevice
@@ -99,9 +98,8 @@ class LEDHandler:
         """Initialize LED device and start animation."""
         model = device.model or ''
         if self._led is None:
-            from ..adapters.device.factory import DeviceProtocolFactory
-            self._led = LEDDevice(
-                get_protocol=DeviceProtocolFactory.get_protocol)
+            from ..core.builder import ControllerBuilder
+            self._led = ControllerBuilder().build_led()
             self._connect_signals()
             log.debug("LED: created LEDDevice, signals wired")
 
@@ -707,10 +705,11 @@ class TRCCApp(QMainWindow):
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)
 
-        # System service (composition root — adapter import here is correct)
-        from ..services.system import SystemService, set_instance
-        self._system_sensors = SensorEnumerator()
-        self._system_svc = SystemService(enumerator=self._system_sensors)
+        # System service (via builder — routes to platform-correct enumerator)
+        from ..services.system import set_instance
+        builder = ControllerBuilder()
+        self._system_svc = builder.build_system()
+        self._system_sensors = self._system_svc.enumerator
         self._system_svc.discover()
         set_instance(self._system_svc)
 

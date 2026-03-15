@@ -1,5 +1,17 @@
 # Changelog
 
+## v8.4.7
+
+### Fixes
+- **Windows: `map_defaults` crash**: `WindowsSensorEnumerator` was missing `map_defaults()`, `read_one()`, `set_poll_interval()`, and disk/network I/O reading — any command touching system metrics (`trcc test-lcd`, `trcc info`, GUI startup) crashed with `AttributeError`. Added all missing methods with Windows-native sensor mapping (LHM > pynvml > psutil)
+- **Windows: `charmap` codec crash**: `trcc report` and `trcc setup-winusb` crashed with Unicode encoding error on Windows consoles using default codepage. CLI entry point now forces UTF-8 stdout/stderr on Windows
+- **Windows: GUI used Linux sensor enumerator**: GUI and API hardcoded the Linux `SensorEnumerator` import instead of using `ControllerBuilder` which routes to the platform-correct adapter. Fixed all composition roots to use the builder
+
+### Architecture
+- **SensorEnumerator ABC**: New port in `core/ports.py` — 9 abstract methods enforcing the contract all platform sensor adapters must implement. All 4 platforms (Linux, Windows, macOS, BSD) now inherit from this ABC
+- **Pure hexagonal DI**: `lcd_device.py` and `led_device.py` no longer import from `adapters/` — strict DI with `RuntimeError` if dependencies aren't injected via `ControllerBuilder`. Zero escape hatches
+- **Architecture test tightened**: Only `builder.py` is exempted from the "no adapter imports in core/" rule (was 3 files). ABC contract tests verify all platform enumerators implement the interface
+
 ## v8.4.6
 
 ### Improvements

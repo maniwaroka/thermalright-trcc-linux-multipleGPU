@@ -268,13 +268,13 @@ class TestHexagonalBoundary(unittest.TestCase):
     """Core layer must not import from services or adapters at module level.
 
     Deferred imports inside functions/methods are fine — that's how
-    lcd_device.py, led_device.py, and builder.py wire dependencies
-    at call time (they're application facades, not domain objects).
+    builder.py wires dependencies at call time (it's the composition root).
+    lcd_device.py and led_device.py are strict DI — no adapter imports.
     """
 
-    # Files that are application facades / composition roots living in core/
-    # for import convenience. They use deferred imports intentionally.
-    _FACADE_FILES = {'lcd_device.py', 'led_device.py', 'builder.py'}
+    # builder.py is the composition root — it's the ONLY core/ file
+    # that imports from adapters (to inject concrete implementations).
+    _COMPOSITION_ROOTS = {'builder.py'}
 
     def _get_module_level_imports(self, filepath: Path) -> list[tuple[str, int]]:
         """Return (module_name, lineno) for top-level imports only.
@@ -311,7 +311,7 @@ class TestHexagonalBoundary(unittest.TestCase):
         """core/ files never import from services/ at module level."""
         violations = []
         for py_file in CORE_DIR.glob('*.py'):
-            if py_file.name in self._FACADE_FILES:
+            if py_file.name in self._COMPOSITION_ROOTS:
                 continue
             for module, lineno in self._get_module_level_imports(py_file):
                 if '.services' in module or module.startswith('trcc.services'):
@@ -322,12 +322,36 @@ class TestHexagonalBoundary(unittest.TestCase):
         """core/ files never import from adapters/ at module level."""
         violations = []
         for py_file in CORE_DIR.glob('*.py'):
-            if py_file.name in self._FACADE_FILES:
+            if py_file.name in self._COMPOSITION_ROOTS:
                 continue
             for module, lineno in self._get_module_level_imports(py_file):
                 if '.adapters' in module or module.startswith('trcc.adapters'):
                     violations.append(f"{py_file.name}:{lineno} imports {module}")
         self.assertEqual(violations, [], f"core/ → adapters/ violations: {violations}")
+
+
+class TestSensorEnumeratorABC(unittest.TestCase):
+    """All platform sensor enumerators implement the SensorEnumerator ABC."""
+
+    def test_linux_implements_abc(self):
+        from trcc.adapters.system.sensors import SensorEnumerator
+        from trcc.core.ports import SensorEnumerator as ABC
+        self.assertTrue(issubclass(SensorEnumerator, ABC))
+
+    def test_windows_implements_abc(self):
+        from trcc.adapters.system.windows.sensors import WindowsSensorEnumerator
+        from trcc.core.ports import SensorEnumerator as ABC
+        self.assertTrue(issubclass(WindowsSensorEnumerator, ABC))
+
+    def test_macos_implements_abc(self):
+        from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+        from trcc.core.ports import SensorEnumerator as ABC
+        self.assertTrue(issubclass(MacOSSensorEnumerator, ABC))
+
+    def test_bsd_implements_abc(self):
+        from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
+        from trcc.core.ports import SensorEnumerator as ABC
+        self.assertTrue(issubclass(BSDSensorEnumerator, ABC))
 
 
 if __name__ == '__main__':

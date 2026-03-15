@@ -28,6 +28,7 @@ from typing import Any, Optional
 import psutil
 
 from trcc.core.models import SensorInfo
+from trcc.core.ports import SensorEnumerator as SensorEnumeratorABC
 
 try:
     import pynvml  # pyright: ignore[reportMissingImports]
@@ -119,10 +120,8 @@ def _smc_key_to_int(key: str) -> int:
     return struct.unpack('>I', key.encode('ascii'))[0]
 
 
-class MacOSSensorEnumerator:
+class MacOSSensorEnumerator(SensorEnumeratorABC):
     """Discovers and reads hardware sensors on macOS.
-
-    Same interface as Linux SensorEnumerator — drop-in replacement.
 
     Intel Macs: reads SMC via IOKit for CPU/GPU temp and fan speed.
     Apple Silicon: reads IOHIDEventSystemClient for thermal sensors.
@@ -134,7 +133,9 @@ class MacOSSensorEnumerator:
         self._lock = threading.Lock()
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._poll_interval: float = 2.0
         self._smc_conn: Any = None  # IOKit SMC connection (Intel)
+        self._default_map: Optional[dict[str, str]] = None
 
     def discover(self) -> list[SensorInfo]:
         """Scan system for all available sensors."""
@@ -163,6 +164,15 @@ class MacOSSensorEnumerator:
         with self._lock:
             return dict(self._readings)
 
+    def read_one(self, sensor_id: str) -> Optional[float]:
+        """Read a single sensor by ID from cached readings."""
+        with self._lock:
+            return self._readings.get(sensor_id)
+
+    def set_poll_interval(self, seconds: float) -> None:
+        """Set background poll interval (user's data refresh setting)."""
+        self._poll_interval = max(0.5, seconds)
+
     def start_polling(self, interval: float = 2.0) -> None:
         """Start background polling thread."""
         if self._poll_thread and self._poll_thread.is_alive():
@@ -172,7 +182,7 @@ class MacOSSensorEnumerator:
         def _poll() -> None:
             while not self._stop_event.is_set():
                 self._poll_once()
-                self._stop_event.wait(interval)
+                self._stop_event.wait(self._poll_interval)
 
         self._poll_thread = threading.Thread(
             target=_poll, daemon=True, name="mac-sensors",
@@ -406,6 +416,71 @@ class MacOSSensorEnumerator:
         except Exception:
             pass
         return None
+
+    # ── Default sensor mapping (legacy compat) ────────────────────
+
+    def map_defaults(self) -> dict[str, str]:
+        """Map legacy metric keys to macOS sensor IDs."""
+        if self._default_map is not None:
+            return self._default_map
+
+        sensors = self.get_sensors()
+        mapping: dict[str, str] = {}
+
+        def _find_first(source: str = '', name_contains: str = '',
+                        category: str = '') -> Optional[str]:
+            for s in sensors:
+                if source and s.source != source:
+                    continue
+                if category and s.category != category:
+                    continue
+                if name_contains and name_contains.lower() not in s.name.lower():
+                    continue
+                return s.id
+            return None
+
+        # CPU
+        mapping['cpu_temp'] = (
+            _find_first(source='smc', name_contains='CPU', category='temperature')
+            or _find_first(source='iokit', name_contains='cpu', category='temperature')
+            or ''
+        )
+        mapping['cpu_percent'] = 'psutil:cpu_percent'
+        mapping['cpu_freq'] = 'psutil:cpu_freq'
+
+        # GPU
+        gpu_temp = (
+            _find_first(source='smc', name_contains='GPU', category='temperature')
+            or _find_first(source='iokit', name_contains='gpu', category='temperature')
+            or _find_first(source='nvidia', category='temperature')
+        )
+        mapping['gpu_temp'] = gpu_temp or ''
+        mapping['gpu_usage'] = _find_first(source='nvidia', category='gpu_busy') or ''
+        mapping['gpu_power'] = _find_first(source='nvidia', category='power') or ''
+
+        # Memory
+        mapping['mem_temp'] = (
+            _find_first(source='smc', name_contains='Memory', category='temperature')
+            or ''
+        )
+        mapping['mem_percent'] = 'psutil:mem_percent'
+        mapping['mem_available'] = 'psutil:mem_used'
+
+        # Disk / Network
+        mapping['disk_read'] = 'computed:disk_read'
+        mapping['disk_write'] = 'computed:disk_write'
+        mapping['net_up'] = 'computed:net_up'
+        mapping['net_down'] = 'computed:net_down'
+
+        # Fans
+        fan_sensors = [s for s in sensors if s.category == 'fan']
+        if fan_sensors:
+            mapping['fan_cpu'] = fan_sensors[0].id
+            if len(fan_sensors) > 1:
+                mapping['fan_gpu'] = fan_sensors[1].id
+
+        self._default_map = {k: v for k, v in mapping.items() if v}
+        return self._default_map
 
 
 def _parse_metric(line: str) -> float:

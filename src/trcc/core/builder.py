@@ -47,6 +47,59 @@ class ControllerBuilder:
 
     # ── Build methods ──────────────────────────────────────────────
 
+    @staticmethod
+    def _make_build_services_fn():
+        """Create a factory function that wires LCD services from a DeviceService.
+
+        Returns a callable(device_svc, renderer) -> dict of services.
+        Captures adapter imports in the closure so LCDDevice never imports them.
+        """
+        from ..adapters.infra.data_repository import DataManager
+        from ..adapters.infra.dc_config import DcConfig
+        from ..adapters.infra.dc_parser import load_config_json
+        from ..adapters.infra.dc_writer import export_theme, import_theme
+        from ..adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
+        from ..services import (
+            DisplayService,
+            MediaService,
+            OverlayService,
+            ThemeService,
+        )
+        from ..services.image import ImageService
+
+        def _build(device_svc, renderer=None):
+            r = renderer or ImageService._r()
+            overlay_svc = OverlayService(
+                renderer=r,
+                load_config_json_fn=load_config_json,
+                dc_config_cls=DcConfig,
+            )
+            media_svc = MediaService(
+                video_decoder_cls=VideoDecoder,
+                zt_decoder_cls=ThemeZtDecoder,
+            )
+            theme_svc = ThemeService(
+                ensure_data_fn=DataManager.ensure_all,
+                export_theme_fn=export_theme,
+                import_theme_fn=import_theme,
+                load_config_json_fn=load_config_json,
+                dc_config_cls=DcConfig,
+            )
+            display_svc = DisplayService(
+                device_svc, overlay_svc, media_svc,
+                ensure_data_fn=DataManager.ensure_all,
+                theme_svc=theme_svc,
+            )
+            return {
+                'display_svc': display_svc,
+                'theme_svc': theme_svc,
+                'renderer': r,
+                'dc_config_cls': DcConfig,
+                'load_config_json_fn': load_config_json,
+            }
+
+        return _build
+
     def build_lcd(self) -> LCDDevice:
         """Build and return an LCDDevice.
 
@@ -70,18 +123,7 @@ class ControllerBuilder:
 
         from ..adapters.device.factory import DeviceProtocolFactory
         from ..adapters.device.led import probe_led_model
-        from ..adapters.infra.data_repository import DataManager
-        from ..adapters.infra.dc_config import DcConfig
-        from ..adapters.infra.dc_parser import load_config_json
-        from ..adapters.infra.dc_writer import export_theme, import_theme
-        from ..adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
-        from ..services import (
-            DeviceService,
-            DisplayService,
-            MediaService,
-            OverlayService,
-            ThemeService,
-        )
+        from ..services import DeviceService
         from ..services.image import ImageService
         from .lcd_device import LCDDevice
 
@@ -95,43 +137,29 @@ class ControllerBuilder:
         # Wire renderer into ImageService (global facade)
         ImageService.set_renderer(renderer)
 
-        # Create services with injected adapter dependencies
+        # Create DeviceService with platform-correct detector
         device_svc = DeviceService(
             detect_fn=detect_fn,
             probe_led_fn=probe_led_model,
             get_protocol=DeviceProtocolFactory.get_protocol,
             get_protocol_info=DeviceProtocolFactory.get_protocol_info,
         )
-        overlay_svc = OverlayService(
-            renderer=renderer,
-            load_config_json_fn=load_config_json,
-            dc_config_cls=DcConfig,
-        )
-        media_svc = MediaService(
-            video_decoder_cls=VideoDecoder,
-            zt_decoder_cls=ThemeZtDecoder,
-        )
-        theme_svc = ThemeService(
-            ensure_data_fn=DataManager.ensure_all,
-            export_theme_fn=export_theme,
-            import_theme_fn=import_theme,
-            load_config_json_fn=load_config_json,
-            dc_config_cls=DcConfig,
-        )
-        display_svc = DisplayService(
-            device_svc, overlay_svc, media_svc,
-            ensure_data_fn=DataManager.ensure_all,
-            theme_svc=theme_svc,
-        )
+
+        # Build services factory (captures adapter imports in closure)
+        build_services_fn = self._make_build_services_fn()
+
+        # Wire services now
+        result = build_services_fn(device_svc, renderer)
 
         # Build LCDDevice with pre-wired services
         lcd = LCDDevice(
             device_svc=device_svc,
-            display_svc=display_svc,
-            theme_svc=theme_svc,
+            display_svc=result['display_svc'],
+            theme_svc=result['theme_svc'],
             renderer=renderer,
-            dc_config_cls=DcConfig,
-            load_config_json_fn=load_config_json,
+            dc_config_cls=result['dc_config_cls'],
+            load_config_json_fn=result['load_config_json_fn'],
+            build_services_fn=build_services_fn,
         )
 
         # Initialize if data dir provided
@@ -139,6 +167,20 @@ class ControllerBuilder:
             lcd.initialize(self._data_dir)
 
         return lcd
+
+    def lcd_from_service(self, device_svc) -> LCDDevice:
+        """Build an LCDDevice from an existing DeviceService.
+
+        Used by CLI/API when the caller already has a connected DeviceService
+        and needs the full DisplayService pipeline.
+        """
+        from .lcd_device import LCDDevice
+        build_fn = self._make_build_services_fn()
+        return LCDDevice.from_service(
+            device_svc,
+            renderer=self._renderer,
+            build_services_fn=build_fn,
+        )
 
     def build_system(self) -> SystemService:
         """Build and return a SystemService with injected enumerator."""
@@ -161,10 +203,34 @@ class ControllerBuilder:
         return SystemService(enumerator=enumerator)
 
     def build_led(self) -> LEDDevice:
-        """Build and return a LEDDevice.
+        """Build and return a LEDDevice with injected dependencies."""
+        from .platform import BSD, MACOS, WINDOWS
 
-        No required dependencies — LEDService is created on connect.
-        """
+        if WINDOWS:
+            from ..adapters.device.windows.detector import WindowsDeviceDetector
+            detect_fn = WindowsDeviceDetector.detect
+        elif MACOS:
+            from ..adapters.device.macos.detector import MacOSDeviceDetector
+            detect_fn = MacOSDeviceDetector.detect
+        elif BSD:
+            from ..adapters.device.bsd.detector import BSDDeviceDetector
+            detect_fn = BSDDeviceDetector.detect
+        else:
+            from ..adapters.device.detector import DeviceDetector
+            detect_fn = DeviceDetector.detect
+
         from ..adapters.device.factory import DeviceProtocolFactory
+        from ..adapters.device.led import probe_led_model
+        from ..services import DeviceService
         from .led_device import LEDDevice
-        return LEDDevice(get_protocol=DeviceProtocolFactory.get_protocol)
+
+        device_svc = DeviceService(
+            detect_fn=detect_fn,
+            probe_led_fn=probe_led_model,
+            get_protocol=DeviceProtocolFactory.get_protocol,
+            get_protocol_info=DeviceProtocolFactory.get_protocol_info,
+        )
+        return LEDDevice(
+            device_svc=device_svc,
+            get_protocol=DeviceProtocolFactory.get_protocol,
+        )

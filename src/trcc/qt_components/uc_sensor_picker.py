@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..adapters.system.sensors import SensorEnumerator, SensorInfo
+from ..core.models import SensorInfo
+from ..core.ports import SensorEnumerator
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Styles

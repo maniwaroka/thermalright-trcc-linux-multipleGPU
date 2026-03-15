@@ -828,9 +828,11 @@ class TestLEDHandler:
     def _show_with_mock_led(self, handler, device, mock_led, style_info,
                             style_id=1):
         """Helper: call handler.show() with a pre-built mock LEDDevice."""
+        mock_builder = MagicMock()
+        mock_builder.build_led.return_value = mock_led
         with (
-            patch("trcc.qt_components.trcc_app.LEDDevice",
-                  return_value=mock_led),
+            patch("trcc.core.builder.ControllerBuilder",
+                  return_value=mock_builder),
             patch("trcc.services.led.LEDService") as mock_svc,
             patch("trcc.qt_components.trcc_app.settings") as mock_settings,
         ):
@@ -860,19 +862,18 @@ class TestLEDHandler:
         handler.stop()
 
     def test_show_wires_get_protocol(self, handler):
-        """show() must pass get_protocol to LEDDevice (regression: #61)."""
-        device, _, style_info = self._make_device_and_style()
-        captured_kwargs: dict = {}
+        """show() must use ControllerBuilder.build_led() (regression: #61).
 
-        def capture_led_device(**kwargs):
-            captured_kwargs.update(kwargs)
-            mock_led = MagicMock()
-            mock_led.state = _make_mock_led_state()
-            return mock_led
+        The builder injects get_protocol internally — the GUI no longer
+        creates LEDDevice directly.
+        """
+        device, mock_led, style_info = self._make_device_and_style()
+        mock_builder = MagicMock()
+        mock_builder.build_led.return_value = mock_led
 
         with (
-            patch("trcc.qt_components.trcc_app.LEDDevice",
-                  side_effect=capture_led_device),
+            patch("trcc.core.builder.ControllerBuilder",
+                  return_value=mock_builder),
             patch("trcc.services.led.LEDService") as mock_svc,
             patch("trcc.qt_components.trcc_app.settings") as mock_settings,
         ):
@@ -881,9 +882,7 @@ class TestLEDHandler:
             mock_settings.temp_unit = 0
             handler.show(device)
 
-        assert "get_protocol" in captured_kwargs, \
-            "LEDDevice must receive get_protocol"
-        assert captured_kwargs["get_protocol"] is not None
+        mock_builder.build_led.assert_called_once()
         handler.stop()
 
     def test_show_starts_timer(self, handler):
