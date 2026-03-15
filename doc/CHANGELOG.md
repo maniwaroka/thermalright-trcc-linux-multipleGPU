@@ -1,5 +1,11 @@
 # Changelog
 
+## v8.4.5
+
+### Fixes
+- **GUI not showing on Windows**: `_ensure_qt()` set `QT_QPA_PLATFORM=offscreen` for headless CLI rendering — `trcc gui` inherited it and rendered to a hidden surface. Now cleared before GUI launch. Affects all platforms but primarily Windows where the exe always routes through CLI
+- **Windows installer upgrade**: Closes running TRCC before upgrade (avoids locked file errors). Cleans stale PyInstaller `_internal/` directory from previous version to prevent DLL conflicts. User data (`~/.trcc/`) is never touched
+
 ## v8.4.4
 
 ### Features
