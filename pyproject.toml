@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trcc-linux"
-version = "8.5.0"
+version = "8.5.1"
 description = "Linux implementation of Thermalright LCD Control Center"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -39,6 +39,7 @@ dependencies = [
     "fastapi>=0.100",
     "uvicorn[standard]>=0.20",
     "python-multipart>=0.0.6",
+    "wmi>=1.5.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

@@ -17,8 +17,38 @@ from PySide6.QtGui import QPixmap
 
 log = logging.getLogger(__name__)
 
-# Asset directory (relative to this file)
-_ASSETS_DIR = Path(__file__).parent.parent / 'assets' / 'gui'
+# Asset directory — on non-Linux, copy to ~/.trcc/assets/gui/ to avoid
+# sandboxed package paths (e.g. Microsoft Store Python) mangling filenames.
+_PKG_ASSETS_DIR = Path(__file__).parent.parent / 'assets' / 'gui'
+
+
+def _init_assets_dir() -> Path:
+    """Resolve asset directory, copying to user dir on non-Linux."""
+    from trcc.core.platform import LINUX
+    if LINUX:
+        return _PKG_ASSETS_DIR
+
+    user_assets = Path.home() / '.trcc' / 'assets' / 'gui'
+    if user_assets.exists() and any(user_assets.glob('*.png')):
+        return user_assets
+
+    # First run on non-Linux — copy bundled assets to user dir
+    if _PKG_ASSETS_DIR.exists():
+        import shutil
+        user_assets.mkdir(parents=True, exist_ok=True)
+        try:
+            for f in _PKG_ASSETS_DIR.iterdir():
+                shutil.copy2(f, user_assets / f.name)
+            log.info("Copied %d assets to %s",
+                     len(list(user_assets.glob('*'))), user_assets)
+            return user_assets
+        except Exception:
+            log.warning("Failed to copy assets to user dir", exc_info=True)
+
+    return _PKG_ASSETS_DIR
+
+
+_ASSETS_DIR = _init_assets_dir()
 
 
 @lru_cache(maxsize=256)

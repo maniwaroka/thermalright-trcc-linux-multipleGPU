@@ -1,5 +1,11 @@
 # Changelog
 
+## v8.5.1
+
+### Fixes
+- **Windows: assets not loading**: Microsoft Store Python sandboxes packages in a deep path that mangles Chinese filenames. Non-Linux platforms now copy bundled assets to `~/.trcc/assets/gui/` on first run
+- **Windows: `wmi` auto-install**: Moved from optional to main dependency with `sys_platform == 'win32'` marker — installs automatically on Windows
+
 ## v8.5.0
 
 ### Architecture
