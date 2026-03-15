@@ -175,6 +175,11 @@ def gui(verbose=0, decorated=False, start_hidden=False):
     logging.getLogger('PIL').setLevel(logging.WARNING)
 
     try:
+        # Clear offscreen platform set by _ensure_qt() for CLI commands —
+        # the GUI needs the real windowed platform.
+        import os
+        os.environ.pop('QT_QPA_PLATFORM', None)
+
         from trcc.qt_components.trcc_app import run_app
         print("[TRCC] Starting LCD Control Center...")
         return run_app(decorated=decorated, start_hidden=start_hidden)
