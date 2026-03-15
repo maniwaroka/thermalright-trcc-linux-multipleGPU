@@ -1,5 +1,23 @@
 # Changelog
 
+## v8.5.0
+
+### Architecture
+- **Pure hexagonal DI**: `lcd_device.py` and `led_device.py` have zero adapter imports — strict `RuntimeError` without deps. Only `builder.py` imports adapters. Architecture test enforces this
+- **SensorEnumerator ABC**: `core/ports.py` — 9 abstract methods. All 4 platforms (Linux, Windows, macOS, BSD) inherit from it
+- **PlatformSetup ABC**: Each OS has its own setup adapter (`LinuxSetup`, `WindowsSetup`, `MacOSSetup`, `BSDSetup`). `trcc setup` dispatches via `ControllerBuilder.build_setup()`
+- **Cross-platform package managers**: Doctor dep system supports `winget` (Windows), `brew` (macOS), `pkg` (BSD) for auto-installing 7z, ffmpeg, libusb
+
+### Fixes
+- **Windows: sensor crashes**: `WindowsSensorEnumerator` was missing `map_defaults()`, `read_one()`, `set_poll_interval()`, and disk/network I/O. GUI and API hardcoded the Linux enumerator instead of routing through the builder
+- **Windows: `charmap` codec crash**: CLI now forces UTF-8 stdout/stderr on Windows
+- **Windows: GUI not showing**: `socket.AF_UNIX`, `signal.SIGUSR1`, `/tmp` lock path, and IPC sockets all crash on Windows. Guarded with platform checks. Lock file uses `~/.trcc/` on all platforms. IPC skipped on Windows
+- **Rotation crushed on non-square displays**: 90°/270° on landscape devices (640x480, 800x480, etc.) sent swapped dimensions. `encode_for_device()` now resizes back to native dims before encoding
+
+### Improvements
+- **`trcc report` shows install method**: pip, pipx, pacman, dnf, apt, or .exe — helps triage immediately
+- **5247 tests** across all hexagonal layers with ABC contract verification
+
 ## v8.4.12
 
 ### Improvements
