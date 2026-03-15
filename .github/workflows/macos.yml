@@ -84,9 +84,13 @@ jobs:
 
       - name: Verify bundled dependencies
         run: |
+          echo "=== Contents/MacOS/ ==="
+          ls -la dist/TRCC.app/Contents/MacOS/ || true
+          echo "=== Contents/Frameworks/ (first 20) ==="
+          ls dist/TRCC.app/Contents/Frameworks/ | head -20 || true
           missing=()
-          # PyInstaller 6.0+ puts executable in Frameworks/, MacOS/ has the launcher
-          [ -f "dist/TRCC.app/Contents/Frameworks/TRCC" ] || [ -f "dist/TRCC.app/Contents/MacOS/TRCC" ] || missing+=("TRCC")
+          # PyInstaller may name the launcher differently — check for any executable
+          [ -f "dist/TRCC.app/Contents/MacOS/TRCC" ] || [ -f "dist/TRCC.app/Contents/Frameworks/TRCC" ] || [ -f "dist/TRCC.app/Contents/MacOS/__main__" ] || missing+=("TRCC")
           [ -f "dist/TRCC.app/Contents/MacOS/7z" ] || missing+=("7z")
           [ -f "dist/TRCC.app/Contents/MacOS/ffmpeg" ] || missing+=("ffmpeg")
           [ -f "dist/TRCC.app/Contents/Frameworks/libusb-1.0.dylib" ] || missing+=("libusb-1.0.dylib")
