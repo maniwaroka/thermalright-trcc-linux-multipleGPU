@@ -1,5 +1,22 @@
 # Changelog
 
+## v8.4.1
+
+### Fixes
+- **Stream Vision device identity (#69)**: GUI showed "Frozen Warframe Pro" instead of "Stream Vision" for 87AD:70DB bulk devices — `_resolve_device_identity` used FBL (64) for button image lookup instead of raw PM (7) + SUB (1). Added `pm_byte`/`sub_byte` to `HandshakeResult` across all protocols (Bulk, LY, HID Type 2/3)
+- **Windows bulk detection (#68)**: CLI `detect`, `report`, and other code paths imported the Linux-only detector directly, silently returning no devices on Windows/macOS/BSD. Made `detect_devices` alias platform-aware — routes to WMI (Windows), pyusb (macOS/BSD), or sysfs (Linux)
+- **Debug report misleading PM**: `trcc report` printed FBL as "PM" for bulk/LY devices — now shows actual PM, SUB, and FBL separately
+- **Debug report cross-platform**: Skips Linux-only sections (lsusb, udev, SELinux, RAPL, /dev/sg*) on non-Linux platforms; `_distro_name()` returns `platform.platform()` on Windows/macOS
+
+### Infrastructure
+- Added `wmi` to Windows optional deps (`[windows]` extra) and PyInstaller `--hidden-import`
+- Guarded udev rules check in CLI `detect` for Linux only
+
+### Tests
+- 10 new tests for pm_byte/sub_byte propagation and button image lookup
+- Updated mock targets from `DeviceDetector.detect` to platform-aware `detect_devices`
+- 5217 total tests
+
 ## v8.4.0
 
 ### Features
