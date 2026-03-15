@@ -113,6 +113,32 @@ class TestControllerBuilderLcdFromService(unittest.TestCase):
         self.assertIs(lcd._device_svc, svc)
 
 
+class TestControllerBuilderSetup(unittest.TestCase):
+    """ControllerBuilder.build_setup() — platform setup adapter."""
+
+    def test_returns_platform_setup(self):
+        from trcc.core.ports import PlatformSetup
+        setup = ControllerBuilder.build_setup()
+        self.assertIsInstance(setup, PlatformSetup)
+
+    def test_has_archive_tool_help(self):
+        setup = ControllerBuilder.build_setup()
+        help_text = setup.archive_tool_install_help()
+        self.assertIn('7z', help_text.lower())
+
+    def test_has_distro_name(self):
+        setup = ControllerBuilder.build_setup()
+        name = setup.get_distro_name()
+        self.assertIsInstance(name, str)
+        self.assertTrue(len(name) > 0)
+
+    def test_has_pkg_manager(self):
+        setup = ControllerBuilder.build_setup()
+        # May be None on some systems, but the method should exist
+        pm = setup.get_pkg_manager()
+        self.assertTrue(pm is None or isinstance(pm, str))
+
+
 class TestControllerBuilderFluent(unittest.TestCase):
     """ControllerBuilder fluent API — method chaining."""
 

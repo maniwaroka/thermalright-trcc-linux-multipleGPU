@@ -278,3 +278,42 @@ class SensorEnumerator(ABC):
         Returns dict like {'cpu_temp': 'hwmon:coretemp:temp1', ...}.
         """
 
+
+# =========================================================================
+# Platform Setup ABC — contract for platform-specific setup wizards
+# =========================================================================
+
+
+class PlatformSetup(ABC):
+    """Port: platform-specific setup wizard.
+
+    Each platform adapter (Linux, Windows, macOS, BSD) implements this ABC
+    to provide its own dependency checks and install steps.
+
+    Concrete implementations:
+        - LinuxSetup (adapters/system/setup.py)
+        - WindowsSetup (adapters/system/windows/setup.py)
+        - MacOSSetup (adapters/system/macos/setup.py)
+        - BSDSetup (adapters/system/bsd/setup.py)
+    """
+
+    @abstractmethod
+    def get_distro_name(self) -> str:
+        """Human-readable OS/distro name for the setup header."""
+
+    @abstractmethod
+    def get_pkg_manager(self) -> Optional[str]:
+        """Detect the native package manager (dnf, winget, brew, pkg, etc.)."""
+
+    @abstractmethod
+    def check_deps(self) -> list[Any]:
+        """Check all system dependencies. Returns list of DepResult."""
+
+    @abstractmethod
+    def run(self, auto_yes: bool = False) -> int:
+        """Run the full interactive setup wizard. Returns exit code."""
+
+    @abstractmethod
+    def archive_tool_install_help(self) -> str:
+        """Platform-specific instructions for installing 7z/p7zip."""
+

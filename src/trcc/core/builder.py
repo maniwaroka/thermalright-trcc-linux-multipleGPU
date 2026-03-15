@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .ports import Renderer
+from .ports import PlatformSetup, Renderer
 
 if TYPE_CHECKING:
     from ..services.system import SystemService
@@ -234,3 +234,20 @@ class ControllerBuilder:
             device_svc=device_svc,
             get_protocol=DeviceProtocolFactory.get_protocol,
         )
+
+    @staticmethod
+    def build_setup() -> PlatformSetup:
+        """Build and return the platform-specific setup wizard."""
+        from .platform import BSD, MACOS, WINDOWS
+
+        if WINDOWS:
+            from ..adapters.system.windows.setup import WindowsSetup
+            return WindowsSetup()
+        if MACOS:
+            from ..adapters.system.macos.setup import MacOSSetup
+            return MacOSSetup()
+        if BSD:
+            from ..adapters.system.bsd.setup import BSDSetup
+            return BSDSetup()
+        from ..adapters.system.setup import LinuxSetup
+        return LinuxSetup()

@@ -107,7 +107,11 @@ class IPCServer:
         self._current_frame = image
 
     def start(self) -> None:
-        """Bind and listen on Unix domain socket."""
+        """Bind and listen on Unix domain socket (Unix only)."""
+        if not hasattr(socket, 'AF_UNIX'):
+            log.debug("IPC server skipped — AF_UNIX not available (Windows)")
+            return
+
         path = _socket_path()
         if path.exists():
             path.unlink()
@@ -284,6 +288,8 @@ class IPCClient:
     @staticmethod
     def available() -> bool:
         """Check if the IPC daemon is running and accepting connections."""
+        if not hasattr(socket, 'AF_UNIX'):
+            return False
         path = _socket_path()
         if not path.exists():
             return False
@@ -300,6 +306,8 @@ class IPCClient:
     def send(cmd: str, args: list | None = None,
              kwargs: dict | None = None) -> dict:
         """Send command to daemon, return result dict."""
+        if not hasattr(socket, 'AF_UNIX'):
+            return {"error": "IPC not available on Windows"}
         request = {"cmd": cmd, "args": args or [], "kwargs": kwargs or {}}
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

@@ -63,16 +63,19 @@ _INSTALL_MAP: dict[str, dict[str, str]] = {
         'dnf': 'p7zip p7zip-plugins', 'apt': 'p7zip-full', 'pacman': 'p7zip',
         'zypper': 'p7zip-full', 'xbps': 'p7zip', 'apk': '7zip',
         'emerge': 'p7zip',
+        'winget': '7zip.7zip', 'brew': 'p7zip', 'pkg': 'p7zip',
     },
     'ffmpeg': {
         'dnf': 'ffmpeg', 'apt': 'ffmpeg', 'pacman': 'ffmpeg',
         'zypper': 'ffmpeg', 'xbps': 'ffmpeg', 'apk': 'ffmpeg',
         'emerge': 'ffmpeg', 'eopkg': 'ffmpeg',
+        'winget': 'Gyan.FFmpeg', 'brew': 'ffmpeg', 'pkg': 'ffmpeg',
     },
     'libusb': {
         'dnf': 'libusb1', 'apt': 'libusb-1.0-0', 'pacman': 'libusb',
         'zypper': 'libusb-1_0-0', 'xbps': 'libusb', 'apk': 'libusb',
         'emerge': 'dev-libs/libusb',
+        'brew': 'libusb', 'pkg': 'libusb',
     },
     'libxcb-cursor': {
         'apt': 'libxcb-cursor0',
@@ -95,6 +98,8 @@ _INSTALL_CMD: dict[str, str] = {
     'xbps': 'sudo xbps-install', 'apk': 'sudo apk add',
     'emerge': 'sudo emerge', 'eopkg': 'sudo eopkg install',
     'rpm-ostree': 'sudo rpm-ostree install', 'swupd': 'sudo swupd bundle-add',
+    'winget': 'winget install', 'brew': 'brew install',
+    'pkg': 'sudo pkg install',
 }
 
 
@@ -124,7 +129,17 @@ def _read_os_release() -> dict[str, str]:
 
 
 def _detect_pkg_manager() -> str | None:
-    """Detect the system package manager from os-release."""
+    """Detect the system package manager."""
+    from trcc.core.platform import BSD, MACOS, WINDOWS
+
+    if WINDOWS:
+        return 'winget' if shutil.which('winget') else None
+    if MACOS:
+        return 'brew' if shutil.which('brew') else None
+    if BSD:
+        return 'pkg' if shutil.which('pkg') else None
+
+    # Linux: detect from os-release
     info = _read_os_release()
     distro_id = info.get('ID', '').lower()
 
@@ -396,9 +411,19 @@ class SetupInfo:
 
 def get_setup_info() -> SetupInfo:
     """Get system info for setup wizard."""
+    from trcc.core.platform import BSD, MACOS, WINDOWS
+
     v = sys.version_info
+    if WINDOWS:
+        distro = f"Windows {platform.version()}"
+    elif MACOS:
+        distro = f"macOS {platform.mac_ver()[0]}"
+    elif BSD:
+        distro = f"FreeBSD {platform.release()}"
+    else:
+        distro = _read_os_release().get('PRETTY_NAME', 'Unknown Linux')
     return SetupInfo(
-        distro=_read_os_release().get('PRETTY_NAME', 'Unknown Linux'),
+        distro=distro,
         pkg_manager=_detect_pkg_manager(),
         python_version=f"{v.major}.{v.minor}.{v.micro}",
     )
@@ -437,19 +462,25 @@ def check_system_deps(pm: str | None = None) -> list[DepResult]:
         version=hid_ver or '', install_cmd='pip install hidapi',
     ))
 
-    # System libraries
-    libusb_ok = ctypes.util.find_library('usb-1.0') is not None
-    results.append(DepResult(
-        name='libusb-1.0', ok=libusb_ok, required=True,
-        install_cmd=_install_hint('libusb', pm),
-    ))
+    from trcc.core.platform import LINUX, WINDOWS
+
+    # System libraries — libusb (not needed on Windows, WinUSB provides it)
+    if not WINDOWS:
+        libusb_ok = ctypes.util.find_library('usb-1.0') is not None
+        results.append(DepResult(
+            name='libusb-1.0', ok=libusb_ok, required=True,
+            install_cmd=_install_hint('libusb', pm),
+        ))
 
     # System binaries
-    for name, required, note in [
-        ('sg_raw', True, 'SCSI LCD devices'),
+    _binaries: list[tuple[str, bool, str]] = [
         ('7z', True, 'theme extraction'),
         ('ffmpeg', False, 'video playback'),
-    ]:
+    ]
+    if LINUX:
+        _binaries.insert(0, ('sg_raw', True, 'SCSI LCD devices'))
+
+    for name, required, note in _binaries:
         results.append(DepResult(
             name=name, ok=shutil.which(name) is not None,
             required=required, note=note,

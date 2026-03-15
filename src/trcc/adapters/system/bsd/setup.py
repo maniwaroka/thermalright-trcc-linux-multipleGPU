@@ -1,0 +1,86 @@
+"""FreeBSD platform setup — pkg deps."""
+from __future__ import annotations
+
+import logging
+import platform
+import shutil
+import subprocess
+from typing import Any
+
+from trcc.core.ports import PlatformSetup
+
+log = logging.getLogger(__name__)
+
+
+class BSDSetup(PlatformSetup):
+    """FreeBSD setup wizard — pkg deps."""
+
+    def get_distro_name(self) -> str:
+        return f"FreeBSD {platform.release()}"
+
+    def get_pkg_manager(self) -> str | None:
+        return 'pkg' if shutil.which('pkg') else None
+
+    def check_deps(self) -> list[Any]:
+        from trcc.adapters.infra.doctor import check_system_deps
+        return check_system_deps(self.get_pkg_manager())
+
+    def archive_tool_install_help(self) -> str:
+        return (
+            "7z not found. Install via pkg:\n"
+            "  sudo pkg install p7zip"
+        )
+
+    def run(self, auto_yes: bool = False) -> int:
+        from trcc.adapters.infra.doctor import check_system_deps
+
+        pm = self.get_pkg_manager()
+        print(f"\n  TRCC Setup — {self.get_distro_name()}\n")
+        actions: list[str] = []
+
+        # Step 1/1: System dependencies
+        print("  Step 1/1: System dependencies")
+        deps = check_system_deps(pm)
+        for dep in deps:
+            if dep.ok:
+                ver = f" {dep.version}" if dep.version else ""
+                print(f"    [OK]  {dep.name}{ver}")
+            elif dep.required:
+                note = f" ({dep.note})" if dep.note else ""
+                print(f"    [!!]  {dep.name} — MISSING{note}")
+                if dep.install_cmd and pm:
+                    if _confirm(f"Install? -> {dep.install_cmd}", auto_yes):
+                        result = subprocess.run(dep.install_cmd.split())
+                        if result.returncode == 0:
+                            actions.append(f"Installed: {dep.name}")
+                        else:
+                            print(f"    [!!] Install failed (exit {result.returncode})")
+            else:
+                note = f" ({dep.note})" if dep.note else ""
+                print(f"    [--]  {dep.name} — not installed{note}")
+        print()
+
+        _print_summary(actions)
+        return 0
+
+
+def _confirm(prompt: str, auto_yes: bool) -> bool:
+    if auto_yes:
+        print(f"  {prompt} [Y/n]: y (auto)")
+        return True
+    try:
+        answer = input(f"  {prompt} [Y/n]: ").strip().lower()
+        return answer in ('', 'y', 'yes')
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
+def _print_summary(actions: list[str]) -> None:
+    print("  Summary")
+    if actions:
+        for a in actions:
+            print(f"    + {a}")
+    else:
+        print("    Nothing to do — system is ready.")
+    print("\n  Run 'trcc gui' to launch.\n")

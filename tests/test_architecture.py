@@ -330,6 +330,30 @@ class TestHexagonalBoundary(unittest.TestCase):
         self.assertEqual(violations, [], f"core/ → adapters/ violations: {violations}")
 
 
+class TestPlatformSetupABC(unittest.TestCase):
+    """All platform setup adapters implement the PlatformSetup ABC."""
+
+    def test_linux_implements_abc(self):
+        from trcc.adapters.system.setup import LinuxSetup
+        from trcc.core.ports import PlatformSetup
+        self.assertTrue(issubclass(LinuxSetup, PlatformSetup))
+
+    def test_windows_implements_abc(self):
+        from trcc.adapters.system.windows.setup import WindowsSetup
+        from trcc.core.ports import PlatformSetup
+        self.assertTrue(issubclass(WindowsSetup, PlatformSetup))
+
+    def test_macos_implements_abc(self):
+        from trcc.adapters.system.macos.setup import MacOSSetup
+        from trcc.core.ports import PlatformSetup
+        self.assertTrue(issubclass(MacOSSetup, PlatformSetup))
+
+    def test_bsd_implements_abc(self):
+        from trcc.adapters.system.bsd.setup import BSDSetup
+        from trcc.core.ports import PlatformSetup
+        self.assertTrue(issubclass(BSDSetup, PlatformSetup))
+
+
 class TestSensorEnumeratorABC(unittest.TestCase):
     """All platform sensor enumerators implement the SensorEnumerator ABC."""
 

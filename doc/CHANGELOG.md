@@ -3,7 +3,16 @@
 ## v8.4.9
 
 ### Fixes
-- **Windows: GUI silent exit**: Instance lock used `/tmp` (doesn't exist on Windows) — `open()` failed, app thought another instance was running and exited silently with code 0. Now uses `%TEMP%` on Windows
+- **Windows: GUI crash on AF_UNIX/SIGUSR1**: `run_app()` used `socket.AF_UNIX` and `signal.SIGUSR1` unconditionally — both don't exist on Windows. Guarded with platform check
+- **Windows: GUI silent exit on lock path**: Instance lock used `/tmp` (doesn't exist on Windows). Now uses `~/.trcc/` on all platforms
+- **Windows: IPC server crash**: `IPCServer.start()` and `IPCClient` used `AF_UNIX` sockets. Skipped on Windows (no Unix domain sockets)
+- **Windows: bare LEDDevice in IPC**: `run_app()` created `LEDDevice()` without builder deps. Now uses `ControllerBuilder.build_led()`
+
+### Architecture
+- **PlatformSetup ABC**: New port in `core/ports.py` — each OS has its own setup adapter (`LinuxSetup`, `WindowsSetup`, `MacOSSetup`, `BSDSetup`). `trcc setup` dispatches to the right one via `ControllerBuilder.build_setup()`
+- **Cross-platform package managers**: Doctor dep system now supports `winget` (Windows), `brew` (macOS), `pkg` (BSD) alongside all Linux package managers
+- **Platform-aware dep checks**: `check_system_deps()` skips Linux-only deps (sg_raw, libusb, libxcb-cursor) on other platforms
+- **7z install help from adapter**: `data_repository.py` gets 7z install instructions from the platform setup adapter instead of hardcoded strings
 
 ## v8.4.8
 

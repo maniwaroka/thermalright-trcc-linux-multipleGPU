@@ -46,7 +46,7 @@ class TestSudoReexec:
     """_sudo_reexec — builds PYTHONPATH, calls subprocess.run."""
 
     def test_returns_subprocess_returncode(self, capsys):
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)) as mock_run, \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)) as mock_run, \
              patch("site.getsitepackages", return_value=["/usr/lib/python3/dist-packages"]), \
              patch("site.getusersitepackages", return_value="/home/user/.local/lib/python3/site-packages"):
             rc = _sudo_reexec("setup-udev")
@@ -54,7 +54,7 @@ class TestSudoReexec:
         mock_run.assert_called_once()
 
     def test_nonzero_returncode_propagated(self, capsys):
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(1)), \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(1)), \
              patch("site.getsitepackages", return_value=["/usr/lib"]), \
              patch("site.getusersitepackages", return_value="/home/user/.local"):
             rc = _sudo_reexec("setup-selinux")
@@ -67,7 +67,7 @@ class TestSudoReexec:
             captured_cmd.extend(cmd)
             return _completed(0)
 
-        with patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+        with patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("site.getsitepackages", return_value=["/usr/lib/python3"]), \
              patch("site.getusersitepackages", return_value="/home/user/.local"):
             _sudo_reexec("setup-udev")
@@ -85,7 +85,7 @@ class TestSudoReexec:
                     captured_env["pythonpath"] = c[len("PYTHONPATH="):]
             return _completed(0)
 
-        with patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+        with patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("site.getsitepackages", return_value=["/usr/lib/python3"]), \
              patch("site.getusersitepackages", return_value="/home/user/.local"):
             _sudo_reexec("setup-udev")
@@ -103,7 +103,7 @@ class TestSudoReexec:
             captured_cmd.extend(cmd)
             return _completed(0)
 
-        with patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+        with patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("site.getsitepackages", return_value=["/usr/lib"]), \
              patch("site.getusersitepackages", return_value="/home/user"):
             _sudo_reexec("setup-polkit")
@@ -113,7 +113,7 @@ class TestSudoReexec:
         assert "trcc.cli" in captured_cmd
 
     def test_prints_root_required_message(self, capsys):
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("site.getsitepackages", return_value=["/usr/lib"]), \
              patch("site.getusersitepackages", return_value="/home/user"):
             _sudo_reexec("setup-udev")
@@ -132,7 +132,7 @@ class TestSudoReexec:
                     captured_env["pythonpath"] = c[len("PYTHONPATH="):]
             return _completed(0)
 
-        with patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+        with patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("site.getsitepackages", return_value=["/usr/lib/python3"]), \
              patch("site.getusersitepackages", return_value="/home/user/.local"):
             _sudo_reexec("setup-udev")
@@ -147,7 +147,7 @@ class TestSudoReexec:
         assert len(parts) == 3
 
     def test_nonzero_exit_prints_fallback_instructions(self, capsys):
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(1)), \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(1)), \
              patch("site.getsitepackages", return_value=["/usr/lib"]), \
              patch("site.getusersitepackages", return_value="/home/user"):
             _sudo_reexec("setup-udev")
@@ -165,18 +165,18 @@ class TestSudoRun:
     """_sudo_run — prepends sudo to command."""
 
     def test_prepends_sudo(self):
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)) as mock_run:
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)) as mock_run:
             _sudo_run(["rm", "-f", "/tmp/foo"])
         mock_run.assert_called_once_with(["sudo", "rm", "-f", "/tmp/foo"])
 
     def test_returns_completed_process(self):
         completed = _completed(0)
-        with patch("trcc.cli._system.subprocess.run", return_value=completed):
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=completed):
             result = _sudo_run(["udevadm", "trigger"])
         assert result is completed
 
     def test_empty_command_still_prepends_sudo(self):
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)) as mock_run:
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)) as mock_run:
             _sudo_run([])
         mock_run.assert_called_once_with(["sudo"])
 
@@ -345,7 +345,7 @@ class TestSetupRaplPermissions:
 
     def test_no_energy_files_returns_early(self, capsys):
         with patch("trcc.cli._system.Path") as mock_path_cls, \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             mock_rapl = MagicMock()
             mock_rapl.exists.return_value = True
             mock_rapl.glob.return_value = []  # no energy files
@@ -374,7 +374,7 @@ class TestSetupRaplPermissions:
             return m
 
         with patch("trcc.cli._system.Path") as mock_path_cls, \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(1)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(1)):
             mock_rapl = MagicMock()
             mock_rapl.exists.return_value = True
             mock_rapl.glob.return_value = [mock_energy]
@@ -390,7 +390,7 @@ class TestSetupRaplPermissions:
 
         with patch("trcc.cli._system.Path") as mock_path_cls, \
              patch("builtins.open", mock_open()), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(1)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(1)):
             mock_rapl = MagicMock()
             mock_rapl.exists.return_value = True
             mock_rapl.glob.return_value = [mock_energy]
@@ -406,7 +406,7 @@ class TestSetupRaplPermissions:
 
         with patch("trcc.cli._system.Path") as mock_path_cls, \
              patch("builtins.open", mock_open()), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(1)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(1)):
             mock_rapl = MagicMock()
             mock_rapl.exists.return_value = True
             mock_rapl.glob.return_value = [mock_energy]
@@ -430,7 +430,7 @@ class TestSetupRaplPermissions:
 
         with patch("trcc.cli._system.Path") as mock_path_cls, \
              patch("builtins.open", mock_open()), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run):
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run):
             mock_rapl = MagicMock()
             mock_rapl.exists.return_value = True
             mock_rapl.glob.return_value = [mock_energy]
@@ -456,7 +456,7 @@ class TestSetupRaplPermissions:
 
         with patch("trcc.cli._system.Path") as mock_path_cls, \
              patch("builtins.open", mock_open()), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run):
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run):
             mock_rapl = MagicMock()
             mock_rapl.exists.return_value = True
             mock_rapl.glob.return_value = [mock_energy]
@@ -490,7 +490,7 @@ class TestSetupUdev:
     def test_dry_run_returns_zero(self, capsys):
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
              patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
              patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
@@ -502,7 +502,7 @@ class TestSetupUdev:
     def test_dry_run_prints_rules_content(self, capsys):
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
              patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
              patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
@@ -515,7 +515,7 @@ class TestSetupUdev:
     def test_dry_run_does_not_write_files(self, capsys):
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()
-        with patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+        with patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
              patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
              patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
@@ -557,7 +557,7 @@ class TestSetupUdev:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system._setup_rapl_permissions"), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("builtins.open", mock_open()) as m_open:
             rc = setup_udev(dry_run=False)
 
@@ -578,7 +578,7 @@ class TestSetupUdev:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system._setup_rapl_permissions"), \
-             patch("trcc.cli._system.subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("builtins.open", mock_open()):
             setup_udev(dry_run=False)
 
@@ -598,7 +598,7 @@ class TestSetupUdev:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
              patch("trcc.cli._system._setup_rapl_permissions"), \
-             patch("trcc.cli._system.subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("builtins.open", mock_open()):
             setup_udev(dry_run=False)
 
@@ -622,7 +622,7 @@ class TestSetupUdev:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=True), \
              patch("trcc.cli._system._setup_rapl_permissions"), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("builtins.open", side_effect=fake_open):
             setup_udev(dry_run=False)
 
@@ -647,7 +647,7 @@ class TestSetupSelinux:
 
     def test_no_selinux_returns_zero(self, capsys):
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=FileNotFoundError):
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=FileNotFoundError):
             rc = setup_selinux()
         assert rc == 0
         out = capsys.readouterr().out
@@ -660,7 +660,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run):
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run):
             rc = setup_selinux()
         assert rc == 0
         out = capsys.readouterr().out
@@ -679,7 +679,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run):
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run):
             rc = setup_selinux()
         assert rc == 0
         out = capsys.readouterr().out
@@ -697,7 +697,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run):
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run):
             rc = setup_selinux()
         assert rc == 1
         out = capsys.readouterr().out
@@ -712,7 +712,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("shutil.which", return_value=None), \
              patch("trcc.adapters.infra.doctor._detect_pkg_manager", return_value="dnf"), \
              patch("trcc.adapters.infra.doctor._install_hint", return_value="sudo dnf install checkpolicy"):
@@ -728,7 +728,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("shutil.which", return_value="/usr/bin/checkmodule"), \
              patch("os.path.isfile", return_value=False), \
              patch("trcc.adapters.infra.doctor._detect_pkg_manager", return_value="dnf"), \
@@ -747,7 +747,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("shutil.which", return_value="/usr/bin/checkmodule"), \
              patch("os.path.isfile", return_value=True), \
              patch("trcc.adapters.infra.doctor._detect_pkg_manager", return_value="dnf"), \
@@ -774,7 +774,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("shutil.which", return_value="/usr/bin/checkmodule"), \
              patch("os.path.isfile", return_value=True), \
              patch("trcc.adapters.infra.doctor._detect_pkg_manager", return_value="dnf"), \
@@ -795,7 +795,7 @@ class TestSetupSelinux:
             return _completed(0)
 
         with patch("os.geteuid", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", side_effect=fake_run), \
+             patch("trcc.adapters.system.setup.subprocess.run", side_effect=fake_run), \
              patch("shutil.which", return_value="/usr/bin/checkmodule"), \
              patch("os.path.isfile", return_value=True), \
              patch("trcc.adapters.infra.doctor._detect_pkg_manager", return_value="dnf"), \
@@ -822,7 +822,7 @@ class TestInstallDesktop:
         home.mkdir()
 
         with patch("trcc.cli._system._real_user_home", return_value=home), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("shutil.copy2"), \
              patch("trcc.cli._system.Path.exists", return_value=True):
             rc = install_desktop()
@@ -838,7 +838,7 @@ class TestInstallDesktop:
             copied.append((str(src), str(dst)))
 
         with patch("trcc.cli._system._real_user_home", return_value=home), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("shutil.copy2", side_effect=fake_copy2):
             # Patch desktop_src.exists() → True
             with patch.object(Path, "exists", return_value=True):
@@ -858,7 +858,7 @@ class TestInstallDesktop:
             return False
 
         with patch("trcc.cli._system._real_user_home", return_value=home), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("shutil.copy2"):
 
             # Track write_text calls
@@ -884,7 +884,7 @@ class TestInstallDesktop:
         icon_calls = []
 
         with patch("trcc.cli._system._real_user_home", return_value=home), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: icon_calls.append(cmd) or _completed(0)):
             # All Path.exists() → True so both desktop and icons are "present"
             with patch.object(Path, "exists", return_value=True), \
@@ -908,7 +908,7 @@ class TestInstallDesktop:
             return call_count[0] == 1
 
         with patch("trcc.cli._system._real_user_home", return_value=home), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("shutil.copy2"), \
              patch.object(Path, "mkdir"):
             with patch.object(Path, "exists", exists_first_only):
@@ -922,7 +922,7 @@ class TestInstallDesktop:
         home.mkdir()
 
         with patch("trcc.cli._system._real_user_home", return_value=home), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("shutil.copy2"), \
              patch.object(Path, "exists", return_value=False), \
              patch.object(Path, "write_text", MagicMock()), \
@@ -968,7 +968,7 @@ class TestSetupPolkit:
              patch("shutil.which", return_value="/usr/bin/dmidecode"), \
              patch("os.path.realpath", side_effect=lambda p: p), \
              patch("os.environ.get", return_value=""), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             rc = setup_polkit()
         assert rc == 0
 
@@ -986,7 +986,7 @@ class TestSetupPolkit:
              patch.object(Path, "mkdir"), \
              patch("shutil.which", return_value=None), \
              patch("os.environ.get", return_value=""), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             setup_polkit()
 
         policy_writes = {k: v for k, v in written.items() if "trcc.policy" in k}
@@ -1006,7 +1006,7 @@ class TestSetupPolkit:
              patch.object(Path, "mkdir"), \
              patch("shutil.which", return_value=None), \
              patch("os.environ.get", return_value="alice"), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             setup_polkit()
 
         rules_writes = {k: v for k, v in written.items() if ".rules" in k}
@@ -1028,7 +1028,7 @@ class TestSetupPolkit:
              patch.object(Path, "mkdir"), \
              patch("shutil.which", return_value=None), \
              patch("os.environ.get", return_value=""), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             setup_polkit()
 
         rules_writes = {k: v for k, v in written.items() if ".rules" in k}
@@ -1061,7 +1061,7 @@ class TestSetupPolkit:
              patch("shutil.which", side_effect=fake_which), \
              patch("os.path.realpath", side_effect=lambda p: p), \
              patch("os.environ.get", return_value=""), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             setup_polkit()
 
         policy_writes = {k: v for k, v in written.items() if "trcc.policy" in k}
@@ -1083,7 +1083,7 @@ class TestSetupPolkit:
              patch("shutil.which", return_value="/usr/sbin/restorecon"), \
              patch("os.path.realpath", side_effect=lambda p: p), \
              patch("os.environ.get", return_value=""), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)):
             setup_polkit()
 
@@ -1112,7 +1112,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             rc = uninstall(yes=True)
         assert rc == 0
@@ -1127,7 +1127,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
@@ -1145,7 +1145,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
@@ -1163,7 +1163,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=False)
@@ -1181,7 +1181,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=1000), \
              patch("os.path.exists", side_effect=lambda p: "/etc/udev" in str(p)), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
@@ -1200,7 +1200,7 @@ class TestUninstall:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", side_effect=lambda p: "/etc/udev" in str(p)), \
              patch("os.remove", side_effect=lambda p: removed_paths.append(p)), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
@@ -1225,7 +1225,7 @@ class TestUninstall:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", side_effect=selective_exists), \
              patch("shutil.rmtree", side_effect=lambda p, **kw: removed.append(str(p))), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.conf.Settings.clear_installed_resolutions"), \
              patch("trcc.conf.Settings.get_install_info", return_value={'method': 'pip'}), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
@@ -1242,7 +1242,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
 
@@ -1262,7 +1262,7 @@ class TestUninstall:
              patch("os.path.exists", side_effect=lambda p: str(p) == udev_rule), \
              patch("os.remove", return_value=None), \
              patch.object(Path, "exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
@@ -1279,7 +1279,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)), \
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)), \
              patch("trcc.conf.Settings.clear_installed_resolutions") as mock_clear, \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
@@ -1303,7 +1303,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             uninstall(yes=True)
 
         out = capsys.readouterr().out
@@ -1318,7 +1318,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             uninstall(yes=True)
 
         out = capsys.readouterr().out
@@ -1334,7 +1334,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)):
             uninstall(yes=True)
 
@@ -1352,7 +1352,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=True):
             uninstall(yes=True)
@@ -1372,7 +1372,7 @@ class TestUninstall:
         with patch("trcc.cli._system._real_user_home", return_value=home), \
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists", return_value=False), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)), \
              patch("trcc.cli._system._is_externally_managed", return_value=False):
             uninstall(yes=True)
@@ -1398,7 +1398,7 @@ class TestUninstall:
              patch("os.geteuid", return_value=0), \
              patch("os.path.exists",
                    side_effect=lambda p: False if str(p).startswith(("/etc", "/usr")) else real_exists(p)), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             uninstall(yes=True)
 
         assert not stale.exists()
@@ -1725,7 +1725,7 @@ class TestRunSetup:
                 return_value=self._make_polkit(ok=True)
             ),
             "trcc.adapters.infra.doctor.check_desktop_entry": MagicMock(return_value=True),
-            "trcc.cli._system.subprocess.run": MagicMock(return_value=_completed(0)),
+            "trcc.adapters.system.setup.subprocess.run": MagicMock(return_value=_completed(0)),
         }
 
     def test_returns_zero_all_ok(self, capsys):
@@ -1734,7 +1734,7 @@ class TestRunSetup:
             k.replace("trcc.adapters.infra.doctor.", ""): v
             for k, v in patches.items()
             if k.startswith("trcc.adapters.infra.doctor.")
-        }), patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+        }), patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             rc = run_setup(auto_yes=True)
         assert rc == 0
 
@@ -1744,7 +1744,7 @@ class TestRunSetup:
             k.replace("trcc.adapters.infra.doctor.", ""): v
             for k, v in patches.items()
             if k.startswith("trcc.adapters.infra.doctor.")
-        }), patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+        }), patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "Fedora" in out
@@ -1755,7 +1755,7 @@ class TestRunSetup:
             k.replace("trcc.adapters.infra.doctor.", ""): v
             for k, v in patches.items()
             if k.startswith("trcc.adapters.infra.doctor.")
-        }), patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+        }), patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "1/6" in out
@@ -1770,7 +1770,7 @@ class TestRunSetup:
             k.replace("trcc.adapters.infra.doctor.", ""): v
             for k, v in patches.items()
             if k.startswith("trcc.adapters.infra.doctor.")
-        }), patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+        }), patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "Nothing to do" in out
@@ -1794,7 +1794,7 @@ class TestRunSetup:
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=True), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=False)
         out = capsys.readouterr().out
         assert "MISSING" in out or "sg_raw" in out
@@ -1818,7 +1818,7 @@ class TestRunSetup:
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=True), \
-             patch("trcc.cli._system.subprocess.run",
+             patch("trcc.adapters.system.setup.subprocess.run",
                    side_effect=lambda cmd, **kw: calls.append(cmd) or _completed(0)):
             run_setup(auto_yes=True)
 
@@ -1843,7 +1843,7 @@ class TestRunSetup:
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=True), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=False)
         out = capsys.readouterr().out
         assert "Rules missing" in out or "udev" in out.lower()
@@ -1865,7 +1865,7 @@ class TestRunSetup:
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=True), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "4/6" in out or "SELinux" in out
@@ -1887,7 +1887,7 @@ class TestRunSetup:
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=True), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         # Step 4 header only shown when enforcing
@@ -1911,7 +1911,7 @@ class TestRunSetup:
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=True), \
              patch("trcc.cli._system.setup_udev", return_value=0), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "Summary" in out
@@ -1934,7 +1934,7 @@ class TestRunSetup:
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=self._make_polkit(ok=True)), \
              patch("trcc.adapters.infra.doctor.check_desktop_entry", return_value=False), \
-             patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+             patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=False)
         out = capsys.readouterr().out
         assert "No application menu entry" in out or "desktop" in out.lower()
@@ -1945,7 +1945,7 @@ class TestRunSetup:
             k.replace("trcc.adapters.infra.doctor.", ""): v
             for k, v in patches.items()
             if k.startswith("trcc.adapters.infra.doctor.")
-        }), patch("trcc.cli._system.subprocess.run", return_value=_completed(0)):
+        }), patch("trcc.adapters.system.setup.subprocess.run", return_value=_completed(0)):
             run_setup(auto_yes=True)
         out = capsys.readouterr().out
         assert "trcc gui" in out

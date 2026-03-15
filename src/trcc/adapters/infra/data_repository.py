@@ -149,17 +149,10 @@ class DataManager:
         "thermalright-trcc-linux/main/src/trcc/data/"
     )
 
-    _7Z_INSTALL_HELP = (
-        "7z not found. Install p7zip for your distro:\n"
-        "  Fedora/RHEL:    sudo dnf install p7zip p7zip-plugins\n"
-        "  Ubuntu/Debian:  sudo apt install p7zip-full\n"
-        "  Arch:           sudo pacman -S p7zip\n"
-        "  openSUSE:       sudo zypper install p7zip-full\n"
-        "  Void:           sudo xbps-install p7zip\n"
-        "  Alpine:         sudo apk add 7zip\n"
-        "  Gentoo:         sudo emerge p7zip\n"
-        "  NixOS:          add p7zip to environment.systemPackages"
-    )
+    @staticmethod
+    def _7z_install_help() -> str:
+        from trcc.core.builder import ControllerBuilder
+        return ControllerBuilder.build_setup().archive_tool_install_help()
 
     # ------------------------------------------------------------------
     # Archive safety
@@ -203,7 +196,7 @@ class DataManager:
         except FileNotFoundError:
             log.warning(
                 "7z not found — cannot extract %s\n%s",
-                archive, DataManager._7Z_INSTALL_HELP,
+                archive, DataManager._7z_install_help(),
             )
         except Exception as e:
             log.warning("7z extraction failed: %s", e)
