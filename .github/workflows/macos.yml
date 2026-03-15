@@ -83,7 +83,8 @@ jobs:
       - name: Verify bundled dependencies
         run: |
           missing=()
-          [ -f "dist/TRCC.app/Contents/MacOS/TRCC" ] || missing+=("TRCC")
+          # PyInstaller 6.0+ puts executable in Frameworks/, MacOS/ has the launcher
+          [ -f "dist/TRCC.app/Contents/Frameworks/TRCC" ] || [ -f "dist/TRCC.app/Contents/MacOS/TRCC" ] || missing+=("TRCC")
           [ -f "dist/TRCC.app/Contents/MacOS/7z" ] || missing+=("7z")
           [ -f "dist/TRCC.app/Contents/Frameworks/libusb-1.0.dylib" ] || missing+=("libusb-1.0.dylib")
           if [ ${#missing[@]} -gt 0 ]; then
