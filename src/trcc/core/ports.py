@@ -317,3 +317,12 @@ class PlatformSetup(ABC):
     def archive_tool_install_help(self) -> str:
         """Platform-specific instructions for installing 7z/p7zip."""
 
+    @abstractmethod
+    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
+        """Resolve the GUI assets directory for this platform.
+
+        Linux: use package dir directly.
+        Others: copy to ~/.trcc/assets/gui/ to avoid sandboxed paths.
+        Returns the resolved Path.
+        """
+

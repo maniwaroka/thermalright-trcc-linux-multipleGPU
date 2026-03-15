@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 # Must set before ANY Qt import
@@ -108,6 +109,42 @@ class TestAssets(unittest.TestCase):
             active = f"D2\u706f\u5149{i}a"
             self.assertTrue(Assets.exists(normal), f"Missing {normal}")
             self.assertTrue(Assets.exists(active), f"Missing {active}")
+
+
+class TestResolveAssetsDir(unittest.TestCase):
+    """Platform adapters resolve assets directory correctly."""
+
+    def test_linux_uses_package_dir(self):
+        """LinuxSetup returns package dir directly."""
+        from trcc.adapters.system.setup import LinuxSetup
+        from trcc.qt_components.assets import _PKG_ASSETS_DIR
+        result = LinuxSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
+        self.assertEqual(result, _PKG_ASSETS_DIR)
+
+    def test_windows_copies_to_user_dir(self):
+        """WindowsSetup copies assets to ~/.trcc/assets/gui/."""
+        from trcc.adapters.system.windows.setup import WindowsSetup
+        from trcc.qt_components.assets import _PKG_ASSETS_DIR
+        with TemporaryDirectory() as tmpdir:
+            with patch('trcc.adapters.system.windows.setup.Path.home',
+                       return_value=Path(tmpdir)):
+                result = WindowsSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
+            if _PKG_ASSETS_DIR.exists():
+                user_assets = Path(tmpdir) / '.trcc' / 'assets' / 'gui'
+                self.assertEqual(result, user_assets)
+                self.assertTrue(any(user_assets.glob('*.png')))
+
+    def test_set_assets_dir(self):
+        """set_assets_dir updates the module-level _ASSETS_DIR."""
+        from trcc.qt_components import assets as assets_mod
+        from trcc.qt_components.assets import set_assets_dir
+        original = assets_mod._ASSETS_DIR
+        try:
+            test_path = Path('/tmp/test_assets')
+            set_assets_dir(test_path)
+            self.assertEqual(assets_mod._ASSETS_DIR, test_path)
+        finally:
+            set_assets_dir(original)
 
 
 # ============================================================================

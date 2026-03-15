@@ -1970,6 +1970,12 @@ def run_app(data_dir: Path | None = None, decorated: bool = False,
         _raise_existing_instance()
         return 0
 
+    # Resolve assets directory via platform adapter (before any Qt widget loads)
+    from ..core.builder import ControllerBuilder as _Builder
+    from .assets import _PKG_ASSETS_DIR, set_assets_dir
+    setup = _Builder.build_setup()
+    set_assets_dir(setup.resolve_assets_dir(_PKG_ASSETS_DIR))
+
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
     QApplication.setDesktopFileName("trcc-linux")

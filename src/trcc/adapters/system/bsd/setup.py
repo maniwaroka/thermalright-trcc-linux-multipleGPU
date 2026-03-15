@@ -5,6 +5,7 @@ import logging
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from trcc.core.ports import PlatformSetup
@@ -24,6 +25,10 @@ class BSDSetup(PlatformSetup):
     def check_deps(self) -> list[Any]:
         from trcc.adapters.infra.doctor import check_system_deps
         return check_system_deps(self.get_pkg_manager())
+
+    def resolve_assets_dir(self, pkg_assets_dir: Path) -> Path:
+        """BSD: copy to ~/.trcc/assets/gui/ to avoid pkg paths."""
+        return _copy_assets_to_user_dir(pkg_assets_dir)
 
     def archive_tool_install_help(self) -> str:
         return (
@@ -62,6 +67,24 @@ class BSDSetup(PlatformSetup):
 
         _print_summary(actions)
         return 0
+
+
+def _copy_assets_to_user_dir(pkg_assets_dir: Path) -> Path:
+    """Copy bundled assets to ~/.trcc/assets/gui/ on first run."""
+    user_assets = Path.home() / '.trcc' / 'assets' / 'gui'
+    if user_assets.exists() and any(user_assets.glob('*.png')):
+        return user_assets
+    if pkg_assets_dir.exists():
+        user_assets.mkdir(parents=True, exist_ok=True)
+        try:
+            for f in pkg_assets_dir.iterdir():
+                shutil.copy2(f, user_assets / f.name)
+            log.info("Copied %d assets to %s",
+                     len(list(user_assets.glob('*'))), user_assets)
+            return user_assets
+        except Exception:
+            log.warning("Failed to copy assets to user dir", exc_info=True)
+    return pkg_assets_dir
 
 
 def _confirm(prompt: str, auto_yes: bool) -> bool:

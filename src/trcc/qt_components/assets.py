@@ -17,38 +17,20 @@ from PySide6.QtGui import QPixmap
 
 log = logging.getLogger(__name__)
 
-# Asset directory — on non-Linux, copy to ~/.trcc/assets/gui/ to avoid
-# sandboxed package paths (e.g. Microsoft Store Python) mangling filenames.
+# Bundled asset directory (inside package)
 _PKG_ASSETS_DIR = Path(__file__).parent.parent / 'assets' / 'gui'
 
-
-def _init_assets_dir() -> Path:
-    """Resolve asset directory, copying to user dir on non-Linux."""
-    from trcc.core.platform import LINUX
-    if LINUX:
-        return _PKG_ASSETS_DIR
-
-    user_assets = Path.home() / '.trcc' / 'assets' / 'gui'
-    if user_assets.exists() and any(user_assets.glob('*.png')):
-        return user_assets
-
-    # First run on non-Linux — copy bundled assets to user dir
-    if _PKG_ASSETS_DIR.exists():
-        import shutil
-        user_assets.mkdir(parents=True, exist_ok=True)
-        try:
-            for f in _PKG_ASSETS_DIR.iterdir():
-                shutil.copy2(f, user_assets / f.name)
-            log.info("Copied %d assets to %s",
-                     len(list(user_assets.glob('*'))), user_assets)
-            return user_assets
-        except Exception:
-            log.warning("Failed to copy assets to user dir", exc_info=True)
-
-    return _PKG_ASSETS_DIR
+# Resolved at runtime by the platform adapter via set_assets_dir().
+# Falls back to package dir until the builder initializes it.
+_ASSETS_DIR = _PKG_ASSETS_DIR
 
 
-_ASSETS_DIR = _init_assets_dir()
+def set_assets_dir(path: Path) -> None:
+    """Set the resolved asset directory (called by platform adapter)."""
+    global _ASSETS_DIR  # noqa: PLW0603
+    _ASSETS_DIR = path
+    _resolve.cache_clear()
+    log.debug("Assets dir set to %s", path)
 
 
 @lru_cache(maxsize=256)
