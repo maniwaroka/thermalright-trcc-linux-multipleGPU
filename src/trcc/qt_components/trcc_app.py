@@ -1949,6 +1949,9 @@ def _acquire_instance_lock() -> object | None:
 
 
 def _raise_existing_instance() -> None:
+    from trcc.core.platform import WINDOWS
+    if WINDOWS:
+        return  # No SIGUSR1 on Windows — user must close manually
     import signal
     try:
         pid = int(_lock_path().read_text().strip())
@@ -1980,14 +1983,14 @@ def run_app(data_dir: Path | None = None, decorated: bool = False,
     window = TRCCApp(data_dir, decorated=decorated)
 
     # IPC server
+    from ..core.builder import ControllerBuilder
     from ..core.lcd_device import LCDDevice
-    from ..core.led_device import LEDDevice as LEDDev
     from ..ipc import IPCServer
 
     ipc_display = LCDDevice(
         device_svc=window._lcd_handler.display.device_service
         if window._lcd_handler else None)
-    ipc_led = LEDDev()
+    ipc_led = ControllerBuilder().build_led()
     ipc_server = IPCServer(ipc_display, ipc_led)
     ipc_server.start()
     window._ipc_server = ipc_server
@@ -1997,35 +2000,40 @@ def run_app(data_dir: Path | None = None, decorated: bool = False,
         window._lcd_handler.display.device_service.on_frame_sent = (
             ipc_server.capture_frame)
 
-    # SIGUSR1 handler
+    # SIGUSR1 handler (Unix only — Windows has no SIGUSR1 or AF_UNIX sockets)
     import signal
-    import socket
-    rsock, wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-    rsock.setblocking(False)
-    wsock.setblocking(False)
 
-    def _on_sigusr1(signum, frame):
-        try:
-            wsock.send(b'\x01')
-        except OSError:
-            pass
+    from ..core.platform import WINDOWS
 
-    signal.signal(signal.SIGUSR1, _on_sigusr1)
     signal.signal(signal.SIGINT, lambda *_: app.quit())
 
-    from PySide6.QtCore import QSocketNotifier
-    notifier = QSocketNotifier(rsock.fileno(), QSocketNotifier.Type.Read, app)
+    if not WINDOWS:
+        import socket
+        rsock, wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        rsock.setblocking(False)
+        wsock.setblocking(False)
 
-    def _raise_window():
-        try:
-            rsock.recv(1)
-        except OSError:
-            pass
-        window.showNormal()
-        window.raise_()
-        window.activateWindow()
+        def _on_sigusr1(signum, frame):
+            try:
+                wsock.send(b'\x01')
+            except OSError:
+                pass
 
-    notifier.activated.connect(_raise_window)
+        signal.signal(signal.SIGUSR1, _on_sigusr1)
+
+        from PySide6.QtCore import QSocketNotifier
+        notifier = QSocketNotifier(rsock.fileno(), QSocketNotifier.Type.Read, app)
+
+        def _raise_window():
+            try:
+                rsock.recv(1)
+            except OSError:
+                pass
+            window.showNormal()
+            window.raise_()
+            window.activateWindow()
+
+        notifier.activated.connect(_raise_window)
 
     if not start_hidden:
         window.show()
