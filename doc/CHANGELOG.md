@@ -1,5 +1,10 @@
 # Changelog
 
+## v8.4.11
+
+### Fixes
+- **Rotation crushed on non-square displays**: 90°/270° rotation on landscape devices (640x480, 800x480, 1280x480, 1600x720, etc.) produced a squished image. The rotated image (480x640) was sent as-is but the device firmware expects native dimensions (640x480). Now `encode_for_device()` resizes back to native dims before encoding — matching C# behavior. Preview shows portrait orientation correctly
+
 ## v8.4.10
 
 ### Fixes

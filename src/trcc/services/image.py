@@ -111,16 +111,32 @@ class ImageService:
                           resolution: tuple[int, int],
                           fbl: int | None,
                           use_jpeg: bool) -> bytes:
-        """Encode surface for LCD device — JPEG or RGB565."""
+        """Encode surface for LCD device — JPEG or RGB565.
+
+        For non-square displays, user rotation (90/270) changes image
+        dimensions (640x480 -> 480x640). Device firmware expects native
+        dims — resize back before encoding. C# does the same: composes
+        at swapped dims, rotates back, sends native. Preview shows
+        portrait; device always gets landscape.
+        """
         from ..core.models import get_profile
 
+        r = ImageService._r()
         profile = get_profile(fbl) if fbl is not None else None
+
+        # Ensure image matches device native resolution before encoding.
+        # User rotation may have swapped dimensions (640x480 -> 480x640).
+        native_w, native_h = resolution
+        if native_w and native_h and native_w != native_h:
+            img_w, img_h = r.surface_size(img)
+            if (img_w, img_h) != (native_w, native_h):
+                img = r.resize(img, native_w, native_h)
 
         if use_jpeg or (profile and profile.jpeg):
             return ImageService.to_jpeg(img)
 
         if profile and profile.rotate:
-            img = ImageService._r().apply_rotation(img, 90)
+            img = r.apply_rotation(img, 90)
         byte_order = profile.byte_order if profile else '<'
         return ImageService.to_rgb565(img, byte_order)
 

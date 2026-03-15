@@ -317,7 +317,14 @@ class DisplayService:
         return self._apply_adjustments(image)
 
     def _apply_adjustments(self, image: Any) -> Any:
-        """Apply brightness, rotation, and split overlay to image."""
+        """Apply brightness, rotation, and split overlay to image.
+
+        For non-square displays at 90/270, rotation swaps dimensions
+        (640x480 -> 480x640). The preview shows this portrait image.
+        The resize-back to native dims happens at encoding time in
+        encode_for_device() — matching C# which also shows a portrait
+        preview but sends landscape data.
+        """
         if self.brightness >= 100 and self.rotation == 0 and not self.split_mode:
             return image
         image = ImageService.apply_brightness(image, self.brightness)
