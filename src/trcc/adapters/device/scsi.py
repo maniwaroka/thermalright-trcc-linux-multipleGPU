@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import binascii
 import ctypes
-import fcntl
 import logging
 import os
 import struct
@@ -128,6 +127,8 @@ def _get_write_bufs(cdb_len: int, data_len: int) -> tuple:
 
 def _sg_io_write(dev: str, cdb: bytes, data: bytes) -> bool:
     """SCSI write via SG_IO ioctl. No subprocess, no temp file."""
+    import fcntl  # Unix-only — Windows uses windows/scsi.py
+
     fd = _get_device_fd(dev)
 
     cdb_buf, data_buf, _sense, hdr, ioctl_buf = _get_write_bufs(len(cdb), len(data))
@@ -144,6 +145,8 @@ def _sg_io_write(dev: str, cdb: bytes, data: bytes) -> bool:
 
 def _sg_io_read(dev: str, cdb: bytes, length: int) -> bytes:
     """SCSI read via SG_IO ioctl. No subprocess."""
+    import fcntl  # Unix-only — Windows uses windows/scsi.py
+
     fd = _get_device_fd(dev)
 
     cdb_buf = (ctypes.c_ubyte * len(cdb)).from_buffer_copy(cdb)

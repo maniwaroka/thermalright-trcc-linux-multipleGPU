@@ -1932,10 +1932,16 @@ def _lock_path() -> Path:
 
 
 def _acquire_instance_lock() -> object | None:
-    import fcntl
+    from trcc.core.platform import WINDOWS
     try:
-        fh = open(_lock_path(), "w")  # noqa: SIM115
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if WINDOWS:
+            import msvcrt  # pyright: ignore[reportMissingImports]
+            fh = open(_lock_path(), "w")  # noqa: SIM115
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
+        else:
+            import fcntl
+            fh = open(_lock_path(), "w")  # noqa: SIM115
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fh.write(str(os.getpid()))
         fh.flush()
         return fh
