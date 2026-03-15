@@ -665,6 +665,12 @@ def _cmd_setup_polkit() -> int:
     return _system.setup_polkit()
 
 
+@app.command("setup-winusb")
+def _cmd_setup_winusb() -> int:
+    """Install WinUSB driver for Thermalright USB devices (Windows only)."""
+    return _system.setup_winusb()
+
+
 @app.command("install-desktop")
 def _cmd_install_desktop() -> int:
     """Install application menu entry and icon."""

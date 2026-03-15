@@ -29,7 +29,7 @@ def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
     (pkexec matches the exec.path annotation, so it must be absolute).
     Otherwise, call directly (will fail silently if root is needed).
     """
-    if os.geteuid() == 0:
+    if hasattr(os, 'geteuid') and os.geteuid() == 0:
         return [binary] + args
     full_path = shutil.which(binary)
     if full_path and os.path.isfile(_POLKIT_POLICY) and shutil.which('pkexec'):

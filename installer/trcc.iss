@@ -40,6 +40,8 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 [Files]
 ; PyInstaller output directory (all DLLs, Python runtime, Qt, app code)
 Source: "..\dist\trcc\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; WinUSB driver .inf for non-SCSI USB devices
+Source: "trcc-usb.inf"; DestDir: "{app}\driver"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\TRCC"; Filename: "{app}\trcc-gui.exe"; Comment: "Thermalright LCD Control Center"
@@ -49,6 +51,9 @@ Name: "{commondesktop}\TRCC"; Filename: "{app}\trcc-gui.exe"; Tasks: desktopicon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\TRCC"; Filename: "{app}\trcc-gui.exe"; Tasks: quicklaunchicon
 
 [Run]
+; Install WinUSB driver for Thermalright USB devices (best-effort — device may not be connected yet)
+Filename: "pnputil.exe"; Parameters: "/add-driver ""{app}\driver\trcc-usb.inf"" /install"; \
+    StatusMsg: "Installing USB drivers..."; Flags: runhidden runascurrentuser
 Filename: "{app}\trcc-gui.exe"; Description: "{cm:LaunchProgram,TRCC}"; Flags: nowait postinstall skipifsilent
 
 [Registry]

@@ -10,6 +10,29 @@ import sys
 from pathlib import Path
 
 from trcc.cli import _cli_handler
+from trcc.core.platform import LINUX
+
+
+def _is_root() -> bool:
+    """Check if running as root/admin (cross-platform)."""
+    if LINUX:
+        return os.geteuid() == 0
+    # Windows: check via ctypes
+    try:
+        import ctypes
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]
+    except Exception:
+        return False
+
+
+def _require_linux(command: str) -> int | None:
+    """Return error code if not on Linux, None if OK to proceed."""
+    if not LINUX:
+        print(f"'{command}' is for Linux only.")
+        if sys.platform == 'win32':
+            print("On Windows, use: trcc setup-winusb")
+        return 1
+    return None
 
 
 def _real_user_home() -> Path:
@@ -172,6 +195,8 @@ def setup_udev(dry_run=False):
     Without quirks, UAS claims these LCD devices and the kernel ignores them
     (no /dev/sgX created). The :u quirk forces usb-storage bulk-only transport.
     """
+    if err := _require_linux("setup-udev"):
+        return err
     from trcc.adapters.device.detector import (
         _BULK_DEVICES,
         _HID_LCD_DEVICES,
@@ -233,7 +258,7 @@ def setup_udev(dry_run=False):
         return 0
 
     # Need root — re-exec with sudo automatically
-    if os.geteuid() != 0:
+    if not _is_root():
         return _sudo_reexec("setup-udev")
 
     # Write udev rules
@@ -291,10 +316,12 @@ def setup_selinux():
     Required on SELinux-enforcing systems (Bazzite, Silverblue) where
     detach_kernel_driver() is silently blocked.
     """
+    if err := _require_linux("setup-selinux"):
+        return err
     import tempfile
 
     # Must be root
-    if os.geteuid() != 0:
+    if not _is_root():
         return _sudo_reexec("setup-selinux")
 
     # Check if SELinux is enforcing
@@ -389,11 +416,13 @@ def setup_selinux():
 
 
 def install_desktop():
-    """Install .desktop menu entry and icon for app launchers.
+    """Install .desktop menu entry and icon for app launchers (Linux only).
 
     Reads the shipped .desktop file from the package assets directory.
     Works from both pip install and git clone.
     """
+    if err := _require_linux("install-desktop"):
+        return err
     home = _real_user_home()
     app_dir = home / ".local" / "share" / "applications"
 
@@ -448,9 +477,11 @@ def setup_polkit():
 
     Copies the shipped policy XML to /usr/share/polkit-1/actions/ so that
     active desktop sessions can run dmidecode and smartctl without a
-    password prompt. Requires root.
+    password prompt. Requires root. Linux only.
     """
-    if os.geteuid() != 0:
+    if err := _require_linux("setup-polkit"):
+        return err
+    if not _is_root():
         return _sudo_reexec("setup-polkit")
 
     # Package root: __file__ is trcc/cli/_system.py — parent.parent = trcc/
@@ -505,6 +536,55 @@ def setup_polkit():
     return 0
 
 
+def setup_winusb():
+    """Install WinUSB driver for Thermalright USB devices (Windows only).
+
+    Stages the bundled trcc-usb.inf via pnputil so Windows recognises
+    HID LCD, LED, Bulk, and LY devices.  SCSI devices use the default
+    USB Mass Storage driver and are not affected.
+
+    Must run as Administrator.
+    """
+    from trcc.core.platform import WINDOWS
+    if not WINDOWS:
+        print("This command is for Windows only.")
+        print("On Linux, use: trcc setup-udev")
+        return 1
+
+    # Locate the .inf — bundled next to the exe by Inno Setup,
+    # or in the installer/ directory for source installs.
+    pkg_root = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidates = [
+        Path(sys.executable).parent / "driver" / "trcc-usb.inf",  # installed
+        pkg_root.parent / "installer" / "trcc-usb.inf",           # source tree
+    ]
+    inf_path = next((p for p in candidates if p.exists()), None)
+    if inf_path is None:
+        print("trcc-usb.inf not found.")
+        print("If installed via .exe, it should be in the driver/ folder.")
+        return 1
+
+    print(f"Installing WinUSB driver from {inf_path} ...")
+    try:
+        result = subprocess.run(
+            ["pnputil", "/add-driver", str(inf_path), "/install"],
+            capture_output=True, text=True, timeout=30,
+        )
+        print(result.stdout)
+        if result.returncode != 0:
+            print(result.stderr)
+            print("\nFailed. Make sure you are running as Administrator.")
+            return 1
+        print("WinUSB driver installed. Replug your device to activate.")
+        return 0
+    except FileNotFoundError:
+        print("pnputil.exe not found — this requires Windows 10 or later.")
+        return 1
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def _detect_install_method() -> str:
     """Detect how trcc-linux was installed.
 
@@ -544,14 +624,14 @@ def uninstall(*, yes: bool = False):
 
     home = _real_user_home()
 
-    # Files that require root to remove
+    # Files that require root to remove (Linux only)
     root_files = [
         "/etc/udev/rules.d/99-trcc-lcd.rules",
         "/etc/modprobe.d/trcc-lcd.conf",
         "/etc/modules-load.d/trcc-sg.conf",
         "/usr/share/polkit-1/actions/com.github.lexonight1.trcc.policy",
         "/etc/polkit-1/rules.d/50-trcc.rules",
-    ]
+    ] if LINUX else []
 
     # User files/dirs to remove
     user_items = [
@@ -566,7 +646,7 @@ def uninstall(*, yes: bool = False):
 
     # Handle root files — auto-elevate with sudo if needed
     root_exists = [p for p in root_files if os.path.exists(p)]
-    if root_exists and os.geteuid() != 0:
+    if root_exists and not _is_root():
         print("Root files found — requesting sudo to remove...")
         result = _sudo_run(["rm", "-f"] + root_exists)
         if result.returncode == 0:
@@ -595,7 +675,7 @@ def uninstall(*, yes: bool = False):
         print("Nothing to remove — TRCC is already clean.")
 
     # Reload udev if we removed rules (and we're root — non-root already did it above)
-    if os.geteuid() == 0 and any("udev" in r for r in removed):
+    if _is_root() and any("udev" in r for r in removed):
         subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
         subprocess.run(["udevadm", "trigger"], check=False)
 
@@ -796,7 +876,7 @@ def run_setup(auto_yes: bool = False) -> int:
             if _confirm(
                 "Fix RAPL permissions? (requires sudo)", auto_yes,
             ):
-                if os.geteuid() != 0:
+                if not _is_root():
                     rc = _sudo_reexec("setup-udev")
                 else:
                     _setup_rapl_permissions()

@@ -1,5 +1,14 @@
 # Changelog
 
+## v8.4.4
+
+### Features
+- **WinUSB driver installer**: Bundled `trcc-usb.inf` with all non-SCSI VID/PIDs (HID LCD, LED, Bulk, LY). Windows installer auto-installs via `pnputil`. Manual install: `trcc setup-winusb` (run as Administrator)
+
+### Fixes
+- **Windows: `os.geteuid()` crash**: Replaced all bare `os.geteuid()` calls with cross-platform `_is_root()` helper. Linux-only commands (`setup-udev`, `setup-selinux`, `setup-polkit`, `install-desktop`) now show "Linux only" message on Windows instead of crashing
+- **Windows: hardware.py guard**: `_build_cmd()` guarded against missing `os.geteuid` on Windows
+
 ## v8.4.3
 
 ### Fixes
