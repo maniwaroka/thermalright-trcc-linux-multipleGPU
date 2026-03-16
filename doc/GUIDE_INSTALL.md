@@ -33,15 +33,18 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
    - [SteamOS (Steam Deck)](#steamos-steam-deck)
    - [Vanilla OS](#vanilla-os)
    - [ChromeOS (Crostini)](#chromeos-crostini)
-8. [Special Hardware](#special-hardware)
-   - [Asahi Linux (Apple Silicon)](#asahi-linux-apple-silicon)
-   - [Raspberry Pi / ARM SBCs](#raspberry-pi--arm-sbcs)
-   - [WSL2 (Windows Subsystem for Linux)](#wsl2-windows-subsystem-for-linux)
-9. [After Installing](#after-installing)
-10. [Verify Your Download](#verify-your-download)
-11. [What Each Package Does](#what-each-package-does)
-12. [Troubleshooting](#troubleshooting)
-13. [Uninstalling](#uninstalling)
+8. [Windows](#windows-experimental)
+9. [macOS](#macos-experimental)
+10. [FreeBSD](#freebsd-experimental)
+11. [Special Hardware](#special-hardware)
+    - [Asahi Linux (Apple Silicon)](#asahi-linux-apple-silicon)
+    - [Raspberry Pi / ARM SBCs](#raspberry-pi--arm-sbcs)
+    - [WSL2 (Windows Subsystem for Linux)](#wsl2-windows-subsystem-for-linux)
+12. [After Installing](#after-installing)
+13. [Verify Your Download](#verify-your-download)
+14. [What Each Package Does](#what-each-package-does)
+15. [Troubleshooting](#troubleshooting)
+16. [Uninstalling](#uninstalling)
 
 ---
 
@@ -743,6 +746,65 @@ trcc gui
 ```
 
 > **ChromeOS USB passthrough:** Go to **Settings > Advanced > Developers > Linux > Manage USB devices** and enable your Thermalright LCD device. You may need to replug after enabling.
+
+---
+
+## Windows (experimental)
+
+Download `trcc-8.6.5-setup.exe` from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) and run the installer.
+
+**What you get:**
+- **TRCC** shortcut in Start Menu — launches the GUI
+- **`trcc`** command in Command Prompt/PowerShell — CLI access (installer adds it to PATH)
+- **7z, ffmpeg, libusb** bundled — no extra downloads needed
+
+**Requirements:**
+- Windows 10 or 11
+- For NVIDIA GPU sensors: install [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) — trcc reads its sensors automatically
+- For bulk USB devices (GrandVision, Mjolnir Vision, Stream Vision, Wonder Vision): install [Zadig](https://zadig.akeo.ie/) and switch the driver to WinUSB. Run `trcc setup-winusb` for guidance. SCSI devices (most models) work with the default Windows driver.
+- Run as Administrator for full hardware access
+
+**Verify:**
+```powershell
+trcc detect --all
+trcc doctor
+```
+
+---
+
+## macOS (experimental)
+
+Download `trcc-8.6.5-macos.dmg` from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), open the DMG, and drag **TRCC** to Applications.
+
+**Requirements:**
+- macOS 11+ (Big Sur or later)
+- Install `libusb`: `brew install libusb`
+- LCD devices using SCSI (most models) need `sudo` to detach the kernel driver — HID devices work without root
+- On Apple Silicon Macs, sensor reading requires `sudo` for `powermetrics` access
+
+**CLI access:**
+```bash
+# Add to your shell profile for CLI access:
+alias trcc='/Applications/TRCC.app/Contents/MacOS/TRCC'
+```
+
+---
+
+## FreeBSD (experimental)
+
+```bash
+pkg install py311-pip libusb py311-pyusb py311-hid
+pip install trcc-linux
+trcc setup
+trcc gui
+```
+
+**Notes:**
+- SCSI devices use `/dev/pass*` via `camcontrol` (part of base system)
+- CPU temp requires `kldload coretemp` (Intel) or `kldload amdtemp` (AMD)
+- HID devices work via hidapi
+- Run as root for full hardware access
+- No native package — install from PyPI
 
 ---
 

@@ -98,30 +98,15 @@ trcc gui
 
 That's it! If your device isn't detected, run `trcc detect --all` to see what's connected, or `trcc report` and [open an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) with the output.
 
-### Windows (experimental)
+### Windows / macOS / FreeBSD (experimental)
 
-Download `trcc-8.6.5-setup.exe` from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) and run the installer. It installs both the GUI and CLI:
+| OS | Download | Notes |
+|----|----------|-------|
+| **Windows 10/11** | [`trcc-8.6.5-setup.exe`](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) | GUI + CLI, bundles 7z/ffmpeg/libusb |
+| **macOS 11+** | [`trcc-8.6.5-macos.dmg`](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) | Drag to Applications, `brew install libusb` first |
+| **FreeBSD** | `pip install trcc-linux` | PyPI only, needs `libusb` + `py311-pyusb` |
 
-- **TRCC** shortcut in Start Menu — launches the GUI
-- **`trcc`** command in Command Prompt/PowerShell — CLI access (installer adds it to PATH)
-
-> Requires Windows 10 or 11. For GPU sensors (hotspot temp, memory junction temp, voltage), [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) must be running — trcc reads its sensors automatically. Run as Administrator for full hardware access.
-
-### macOS (experimental)
-
-Download `trcc-8.6.5-macos.dmg` from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), open the DMG, and drag **TRCC** to Applications.
-
-> Requires macOS 11+. Install `libusb` first: `brew install libusb`. LCD devices using SCSI (most models) need `sudo` to detach the kernel driver — HID devices work without root. On Apple Silicon Macs, sensor reading requires `sudo` for `powermetrics` access.
-
-### FreeBSD (experimental)
-
-```bash
-pkg install py311-pip libusb py311-pyusb py311-hid
-pip install trcc-linux
-trcc gui
-```
-
-> SCSI devices use `/dev/pass*` via `camcontrol` (part of base system). CPU temp requires `kldload coretemp` (Intel) or `kldload amdtemp` (AMD). HID devices work via hidapi. Run as root for full hardware access.
+See the **[Install Guide](doc/GUIDE_INSTALL.md)** for detailed setup instructions, requirements, and troubleshooting for each platform.
 
 ### Verify your download
 
