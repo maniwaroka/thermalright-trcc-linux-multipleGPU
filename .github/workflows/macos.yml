@@ -84,13 +84,12 @@ jobs:
           cp "$(which 7z)" dist/TRCC.app/Contents/MacOS/7z
           # Bundle ffmpeg for video playback (LGPL, like C# app)
           cp "$(which ffmpeg)" dist/TRCC.app/Contents/MacOS/ffmpeg
-          # CLI symlink
-          ln -sf TRCC dist/TRCC.app/Contents/MacOS/trcc 2>/dev/null || true
+          # NOTE: no CLI symlink — macOS APFS is case-insensitive,
+          # ln -sf TRCC .../trcc would DELETE the TRCC executable
 
           # Bundle libusb (pyusb loads via ctypes, PyInstaller misses it)
           LIBUSB_DYLIB="$(brew --prefix libusb)/lib/libusb-1.0.dylib"
           if [ -f "$LIBUSB_DYLIB" ]; then
-            mkdir -p dist/TRCC.app/Contents/Frameworks
             cp "$LIBUSB_DYLIB" dist/TRCC.app/Contents/Frameworks/
           fi
 
@@ -108,31 +107,35 @@ jobs:
 
       - name: Verify bundled dependencies
         run: |
-          echo "=== Full Bundle Structure ==="
-          find dist/TRCC.app/Contents -type f | head -50
+          echo "=== Full Bundle Structure (following symlinks) ==="
+          find -L dist/TRCC.app/Contents -type f | head -50
           echo ""
           echo "=== Contents/MacOS/ ==="
           ls -la dist/TRCC.app/Contents/MacOS/ 2>/dev/null || echo "(empty or missing)"
           echo "=== Contents/Frameworks/ (first 20) ==="
-          ls dist/TRCC.app/Contents/Frameworks/ 2>/dev/null | head -20 || echo "(empty or missing)"
+          ls -la dist/TRCC.app/Contents/Frameworks/ 2>/dev/null | head -20 || echo "(empty or missing)"
           echo "=== Contents/Resources/ (first 10) ==="
           ls dist/TRCC.app/Contents/Resources/ 2>/dev/null | head -10 || echo "(empty or missing)"
           echo ""
           echo "=== Verification ==="
           missing=()
-          # Find TRCC executable anywhere in the bundle (follow symlinks — PyInstaller 6.0+ uses them)
-          TRCC_EXE=$(find -L dist/TRCC.app -name "TRCC" -type f 2>/dev/null | head -1)
-          if [ -n "$TRCC_EXE" ]; then
-            echo "  TRCC executable: $TRCC_EXE"
+          # Check TRCC executable directly (PyInstaller puts it in Contents/MacOS/)
+          if [ -f "dist/TRCC.app/Contents/MacOS/TRCC" ]; then
+            echo "  TRCC executable: dist/TRCC.app/Contents/MacOS/TRCC ($(wc -c < dist/TRCC.app/Contents/MacOS/TRCC) bytes)"
           else
-            echo "  TRCC executable: NOT FOUND"
+            echo "  TRCC executable: NOT FOUND in Contents/MacOS/"
             echo "  All executables in bundle (following symlinks):"
             find -L dist/TRCC.app -type f -perm +111 2>/dev/null | head -20
             missing+=("TRCC")
           fi
           [ -f "dist/TRCC.app/Contents/MacOS/7z" ] && echo "  7z: OK" || missing+=("7z")
           [ -f "dist/TRCC.app/Contents/MacOS/ffmpeg" ] && echo "  ffmpeg: OK" || missing+=("ffmpeg")
-          [ -f "dist/TRCC.app/Contents/Frameworks/libusb-1.0.dylib" ] && echo "  libusb: OK" || missing+=("libusb")
+          # libusb could be in Frameworks (PyInstaller) or copied there by us
+          if find -L dist/TRCC.app/Contents/Frameworks -name "libusb*" -type f 2>/dev/null | grep -q .; then
+            echo "  libusb: OK"
+          else
+            missing+=("libusb")
+          fi
           echo ""
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::FAILED — Missing: ${missing[*]}"

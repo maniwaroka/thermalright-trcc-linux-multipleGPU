@@ -88,8 +88,13 @@ jobs:
             fedora:latest bash -c '
           set -e
           dnf install -y python3-devel python3-hatchling python3-pip python3-installer rpm-build >/dev/null 2>&1
+          echo "=== RPM Build Environment ==="
+          echo "Fedora: $(cat /etc/fedora-release)"
+          echo "Python: $(python3 --version)"
+          echo "RPM: $(rpm --version)"
           VER=${{ steps.version.outputs.ver }}
           WHL=$(ls /src/dist/trcc_linux-*.whl)
+          echo "Wheel: $WHL"
           PKG=/tmp/buildroot
           mkdir -p "$PKG"
           python3 -m installer --destdir="$PKG" --prefix=/usr "$WHL"
@@ -158,6 +163,13 @@ jobs:
           SPEC
 
           rpmbuild -bb --buildroot="$PKG" --define "_rpmdir /output" /tmp/trcc.spec
+          echo "=== RPM Verification ==="
+          RPM=$(find /output -name "*.rpm" | head -1)
+          echo "  Package: $RPM ($(du -h "$RPM" | cut -f1))"
+          rpm -qlp "$RPM" | head -20
+          echo "  Entry points:"
+          rpm -qlp "$RPM" | grep "/usr/bin/" || echo "  (none)"
+          echo "RPM build PASSED"
           '
 
       - name: Build DEB (Ubuntu/Debian)
@@ -169,6 +181,10 @@ jobs:
           set -e
           apt-get update -qq >/dev/null 2>&1
           apt-get install -y -qq python3 python3-pip python3-installer >/dev/null 2>&1
+          echo "=== DEB Build Environment ==="
+          echo "Ubuntu: $(cat /etc/lsb-release | grep DISTRIB_DESCRIPTION | cut -d= -f2)"
+          echo "Python: $(python3 --version)"
+          echo "dpkg: $(dpkg --version | head -1)"
           VER=${{ steps.version.outputs.ver }}
           WHL=$(ls /src/dist/trcc_linux-*.whl)
           PKG=/tmp/deb-root
@@ -213,6 +229,11 @@ jobs:
           chmod 755 "$PKG/DEBIAN/postinst"
 
           dpkg-deb --build "$PKG" "/output/trcc-linux_${VER}-1_all.deb"
+          echo "=== DEB Verification ==="
+          DEB="/output/trcc-linux_${VER}-1_all.deb"
+          echo "  Package: $DEB ($(du -h "$DEB" | cut -f1))"
+          dpkg-deb -c "$DEB" | grep "/usr/bin/" || echo "  (no entry points)"
+          echo "DEB build PASSED"
           '
 
       - name: Build Arch package
@@ -223,6 +244,10 @@ jobs:
             archlinux bash -c '
           set -e
           pacman -Sy --noconfirm python python-pip python-installer python-packaging zstd >/dev/null 2>&1
+          echo "=== Arch Build Environment ==="
+          echo "Arch: $(cat /etc/arch-release 2>/dev/null || echo rolling)"
+          echo "Python: $(python --version)"
+          echo "pacman: $(pacman --version | head -1)"
           VER=${{ steps.version.outputs.ver }}
           WHL=$(ls /src/dist/trcc_linux-*.whl)
           PKG=/tmp/pkg-root
@@ -277,6 +302,11 @@ jobs:
 
           cd "$PKG"
           tar -cf - .PKGINFO * | zstd -o "/output/trcc-linux-${VER}-1-any.pkg.tar.zst"
+          echo "=== Arch Verification ==="
+          ARCHPKG="/output/trcc-linux-${VER}-1-any.pkg.tar.zst"
+          echo "  Package: $ARCHPKG ($(du -h "$ARCHPKG" | cut -f1))"
+          tar -tf "$ARCHPKG" | grep "usr/bin/" || echo "  (no entry points)"
+          echo "Arch build PASSED"
           '
 
       - name: Fix package directory permissions
