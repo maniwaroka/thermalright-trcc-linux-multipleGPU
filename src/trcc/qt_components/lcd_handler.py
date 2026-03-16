@@ -214,6 +214,8 @@ class LCDHandler:
             enabled = overlay.get('enabled', False)
             config = overlay.get('config', {})
             if config:
+                w, h = self._lcd.lcd_size
+                self._lcd.overlay.service.set_config_resolution(w, h)
                 self._w['theme_setting'].load_from_overlay_config(config)
                 self._lcd.overlay.set_config(config)
             self._w['theme_setting'].set_overlay_enabled(enabled)
@@ -391,6 +393,8 @@ class LCDHandler:
         Settings.apply_format_prefs(overlay_config)
         self._w['theme_setting'].set_overlay_enabled(True)
         self._w['theme_setting'].load_from_overlay_config(overlay_config)
+        w, h = self._lcd.lcd_size
+        self._lcd.overlay.service.set_config_resolution(w, h)
         self._lcd.overlay.set_config(overlay_config)
         self._lcd.overlay.enable(True)
         self._render_and_send()

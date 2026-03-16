@@ -101,9 +101,22 @@ class DisplayService:
             self._setup_dirs(self.lcd_width, self.lcd_height)
 
     def _setup_dirs(self, width: int, height: int) -> None:
-        """Extract, locate, and set theme/web/mask directories."""
+        """Extract, locate, and set theme/web/mask directories.
+
+        Data download/extraction runs in a background thread to avoid
+        blocking the Qt main thread (#70). Directories are updated
+        immediately from whatever is already on disk.
+        """
         if self._ensure_data_fn is not None:
-            self._ensure_data_fn(width, height)
+            import threading
+            fn = self._ensure_data_fn
+
+            def _bg():
+                fn(width, height)
+                # Re-resolve paths after extraction completes
+                _conf.settings._resolve_paths()
+
+            threading.Thread(target=_bg, daemon=True, name="data-extract").start()
         _conf.settings._resolve_paths()
 
         td = _conf.settings.theme_dir

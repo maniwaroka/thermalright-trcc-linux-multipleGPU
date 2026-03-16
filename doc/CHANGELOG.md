@@ -1,5 +1,11 @@
 # Changelog
 
+## v8.6.3
+
+### Fixes
+- **GUI unresponsive on startup (#70)**: `DataManager.ensure_all()` downloaded and extracted theme archives synchronously on the Qt main thread, freezing the GUI. Now runs in a background thread
+- **Overlay scaled wrong on resume (#70)**: `_restore_overlay()` and `_load_theme_overlay_config()` called `set_config()` without `set_config_resolution()`. The overlay scale factor used a stale default resolution, causing elements to render at wrong size on non-square displays (e.g. 320x240 → 75% scale)
+
 ## v8.6.2
 
 ### Improvements
