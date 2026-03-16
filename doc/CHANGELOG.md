@@ -1,5 +1,10 @@
 # Changelog
 
+## v8.6.1
+
+### Fixes
+- **Windows: GUI doesn't launch from installer**: `trcc-gui.exe` ran `main()` which showed help and exited. Now detects `trcc-gui` executable name and auto-launches GUI
+
 ## v8.6.0
 
 ### Architecture
