@@ -67,18 +67,31 @@ jobs:
             --noconfirm \
             src/trcc/__main__.py
 
-          # Add CLI symlink inside the app bundle
-          mkdir -p dist/TRCC.app/Contents/MacOS
-          ln -sf TRCC dist/TRCC.app/Contents/MacOS/trcc
+      - name: Log PyInstaller output
+        run: |
+          echo "=== dist/ contents ==="
+          ls -la dist/
+          echo "=== Looking for TRCC executable ==="
+          find dist -name "TRCC" -type f 2>/dev/null || echo "No TRCC found"
+          find dist -name "__main__" -type f 2>/dev/null || echo "No __main__ found"
+          echo "=== .app bundle MacOS/ ==="
+          ls -la dist/TRCC.app/Contents/MacOS/ 2>/dev/null || echo "No MacOS/ dir"
+          echo "=== .app bundle Frameworks/ (executables) ==="
+          find dist/TRCC.app/Contents/Frameworks -maxdepth 1 -type f -perm +111 2>/dev/null | head -10 || echo "No executables in Frameworks/"
 
+      - name: Bundle dependencies
+        run: |
           # Bundle 7z for theme extraction (p7zip is LGPL, redistributable)
           cp "$(which 7z)" dist/TRCC.app/Contents/MacOS/7z
           # Bundle ffmpeg for video playback (LGPL, like C# app)
           cp "$(which ffmpeg)" dist/TRCC.app/Contents/MacOS/ffmpeg
+          # CLI symlink
+          ln -sf TRCC dist/TRCC.app/Contents/MacOS/trcc 2>/dev/null || true
 
           # Bundle libusb (pyusb loads via ctypes, PyInstaller misses it)
           LIBUSB_DYLIB="$(brew --prefix libusb)/lib/libusb-1.0.dylib"
           if [ -f "$LIBUSB_DYLIB" ]; then
+            mkdir -p dist/TRCC.app/Contents/Frameworks
             cp "$LIBUSB_DYLIB" dist/TRCC.app/Contents/Frameworks/
           fi
 
@@ -108,15 +121,14 @@ jobs:
           echo ""
           echo "=== Verification ==="
           missing=()
-          # PyInstaller 6.0+ may put executable in Frameworks/ or MacOS/
-          if [ -f "dist/TRCC.app/Contents/MacOS/TRCC" ]; then
-            echo "  TRCC executable: Contents/MacOS/TRCC"
-          elif [ -f "dist/TRCC.app/Contents/Frameworks/TRCC" ]; then
-            echo "  TRCC executable: Contents/Frameworks/TRCC"
+          # Find TRCC executable anywhere in the bundle
+          TRCC_EXE=$(find dist/TRCC.app -name "TRCC" -type f 2>/dev/null | head -1)
+          if [ -n "$TRCC_EXE" ]; then
+            echo "  TRCC executable: $TRCC_EXE"
           else
-            echo "  Searching for TRCC executable..."
-            find dist/TRCC.app -name "TRCC" -type f 2>/dev/null || echo "  NOT FOUND"
-            find dist/TRCC.app -name "__main__" -type f 2>/dev/null || echo "  No __main__ either"
+            echo "  TRCC executable: NOT FOUND"
+            echo "  All executables in bundle:"
+            find dist/TRCC.app -type f -perm +111 2>/dev/null | head -20
             missing+=("TRCC")
           fi
           [ -f "dist/TRCC.app/Contents/MacOS/7z" ] && echo "  7z: OK" || missing+=("7z")
