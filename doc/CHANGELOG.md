@@ -1,5 +1,10 @@
 # Changelog
 
+## v8.6.4
+
+### Fixes
+- **Theme browsers empty after background extraction**: Background `ensure_all()` (v8.6.3) didn't notify the GUI when done. Now fires `on_data_ready` callback which refreshes theme browsers on the main thread via `QTimer.singleShot`
+
 ## v8.6.3
 
 ### Fixes

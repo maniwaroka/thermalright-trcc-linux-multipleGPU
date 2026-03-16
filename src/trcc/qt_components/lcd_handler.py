@@ -98,6 +98,13 @@ class LCDHandler:
         # Always refresh — first run downloads themes after widget init
         self._update_theme_directories()
 
+        # Wire background extraction callback — refresh theme browsers when done
+        if self._lcd._display_svc:
+            from PySide6.QtCore import QTimer
+            def _on_data_ready():
+                QTimer.singleShot(0, self._update_theme_directories)
+            self._lcd._display_svc.on_data_ready = _on_data_ready
+
         # Restore per-device settings
         cfg = Settings.get_device_config(self._device_key)
         self._restore_brightness(cfg)

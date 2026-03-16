@@ -67,6 +67,9 @@ class DisplayService:
         # Pre-baked video frame cache (None when inactive)
         self._cache: Any | None = None  # VideoFrameCache
 
+        # Callback: fired when background data extraction finishes
+        self.on_data_ready: Any | None = None
+
         # Theme directories
         self._local_dir: Path | None = None
         self._web_dir: Path | None = None
@@ -105,7 +108,8 @@ class DisplayService:
 
         Data download/extraction runs in a background thread to avoid
         blocking the Qt main thread (#70). Directories are updated
-        immediately from whatever is already on disk.
+        immediately from whatever is already on disk. When extraction
+        finishes, on_data_ready callback notifies the GUI to refresh.
         """
         if self._ensure_data_fn is not None:
             import threading
@@ -113,8 +117,9 @@ class DisplayService:
 
             def _bg():
                 fn(width, height)
-                # Re-resolve paths after extraction completes
                 _conf.settings._resolve_paths()
+                if self.on_data_ready is not None:
+                    self.on_data_ready()
 
             threading.Thread(target=_bg, daemon=True, name="data-extract").start()
         _conf.settings._resolve_paths()
