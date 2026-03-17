@@ -152,16 +152,8 @@ class ThemeLoader:
         result['mask_source_dir'] = mask_source_dir
         return result
 
-    def load_cloud_theme(
-        self, theme, working_dir: Path,
-        lcd_size: tuple[int, int],
-    ) -> dict:
-        """Load a cloud video theme as background.
-
-        Cloud theme directories contain video + mask (01.png) + overlay
-        config (config1.dc). C# case 16 reads mask and config directly
-        from the cloud directory — we do the same.
-        """
+    def load_cloud_theme(self, theme, working_dir: Path) -> dict:
+        """Load a cloud video theme as background."""
         self._media.stop()
 
         if theme.animation_path:
@@ -172,27 +164,12 @@ class ThemeLoader:
                     shutil.copy2(str(video_path), str(dest))
             self._load_and_play_video(theme.animation_path)
 
-        # Cloud theme directory may contain mask + overlay config
-        # (C# GetFileListMBDir() + themeName → 01.png + config1.dc)
-        mask_source_dir: Path | None = None
-        if theme.path:
-            td = ThemeDir(theme.path)
-            if td.dc.exists():
-                _copy_flat_files(theme.path, working_dir)
-                wd = ThemeDir(working_dir)
-                self._overlay.load_from_dc(wd.dc)
-            if td.mask.exists():
-                mask_source_dir = theme.path
-                self._load_mask(td.mask, td.dc if td.dc.exists() else None,
-                                lcd_size)
-                self._overlay.enabled = True
-
         return {
             'image': None,
             'is_animated': True,
             'status': f"Cloud Theme: {theme.name}",
-            'mask_source_dir': mask_source_dir,
-            'theme_path': theme.path,
+            'mask_source_dir': None,
+            'theme_path': None,
         }
 
     def apply_mask(

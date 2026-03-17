@@ -237,7 +237,7 @@ class DisplayService:
     def load_cloud_theme(self, theme) -> dict:
         """Load a cloud video theme as background."""
         self._cache = None  # Invalidate previous video cache
-        result = self._loader.load_cloud_theme(theme, self.working_dir, self.lcd_size)
+        result = self._loader.load_cloud_theme(theme, self.working_dir)
         log.debug("load_cloud_theme: loader result keys=%s", list(result.keys()))
 
         # Wire up state from loader result
