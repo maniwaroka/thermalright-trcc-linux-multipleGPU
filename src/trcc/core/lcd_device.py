@@ -326,6 +326,7 @@ class LCDDevice(Device):
             ovl.enabled = True
             # Track mask source for theme save
             self._display_svc._mask_source_dir = p if p.is_dir() else p.parent
+            log.debug("load_mask_standalone: _mask_source_dir=%s", self._display_svc._mask_source_dir)
             # Use current theme bg, fall back to black
             bg = self._display_svc._clean_background or \
                 self._display_svc.current_image or \

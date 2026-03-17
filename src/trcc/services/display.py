@@ -212,6 +212,7 @@ class DisplayService:
         # Wire up state from loader result
         self._mask_source_dir = result.get('mask_source_dir')
         self.current_theme_path = result.get('theme_path')
+        log.debug("load_local_theme: _mask_source_dir=%s", self._mask_source_dir)
 
         # Set current_image from result or from video first frame
         if result.get('image'):
@@ -274,6 +275,7 @@ class DisplayService:
 
         self._mask_source_dir = self._loader.apply_mask(
             mask_dir, self.working_dir, self.lcd_size)
+        log.debug("apply_mask: _mask_source_dir=%s", self._mask_source_dir)
 
         # Invalidate pre-baked video cache (old mask baked in)
         self._cache = None

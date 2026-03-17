@@ -42,6 +42,15 @@ class ThemePersistence:
         mask_img, mask_pos = overlay.get_mask()
         overlay_config = overlay.config
 
+        log.debug(
+            "ThemePersistence.save: mask_source_dir=%s, mask_img=%s (type=%s), "
+            "mask_pos=%s, overlay_config keys=%s",
+            mask_source_dir,
+            bool(mask_img), type(mask_img).__name__,
+            mask_pos,
+            list(overlay_config.keys()) if overlay_config else None,
+        )
+
         return ThemeService.save(
             name, data_dir, lcd_size,
             background=current_image,

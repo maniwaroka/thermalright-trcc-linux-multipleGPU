@@ -355,8 +355,19 @@ class ThemeService:
 
             # Determine mask source path
             mask_path_str = None
+            log.debug(
+                "ThemeService.save: mask=%s (type=%s), mask_source=%s, "
+                "mask_source exists=%s",
+                bool(mask), type(mask).__name__,
+                mask_source,
+                mask_source.exists() if mask_source else 'N/A',
+            )
             if mask and mask_source:
                 mask_file = ThemeDir(mask_source).mask
+                log.debug(
+                    "ThemeService.save: mask_file=%s, exists=%s",
+                    mask_file, mask_file.exists(),
+                )
                 if mask_file.exists():
                     mask_path_str = str(mask_source)
 
