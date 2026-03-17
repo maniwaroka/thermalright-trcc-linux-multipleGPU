@@ -1895,11 +1895,15 @@ class TRCCApp(QMainWindow):
         event.accept()
 
     def closeEvent(self, event):
+        from trcc.core.platform import WINDOWS
         if (not self._force_quit
                 and self._tray.isSystemTrayAvailable()
                 and self._tray.isVisible()):
             event.ignore()
-            self.hide()
+            if WINDOWS:
+                self.showMinimized()
+            else:
+                self.hide()
             return
 
         # Full quit
@@ -1915,6 +1919,9 @@ class TRCCApp(QMainWindow):
             self._lcd_handler.cleanup()
         if self._ipc_server:
             self._ipc_server.shutdown()
+        # Release USB device handles so the device can be reopened
+        from ..adapters.device.factory import DeviceProtocolFactory
+        DeviceProtocolFactory.close_all()
         TRCCApp._instance = None
         event.accept()
         app = QApplication.instance()
