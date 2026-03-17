@@ -237,15 +237,11 @@ class DisplayService:
     def load_cloud_theme(self, theme) -> dict:
         """Load a cloud video theme as background."""
         self._cache = None  # Invalidate previous video cache
-        result = self._loader.load_cloud_theme(theme, self.working_dir)
+        result = self._loader.load_cloud_theme(theme, self.working_dir, self.lcd_size)
         log.debug("load_cloud_theme: loader result keys=%s", list(result.keys()))
 
-        # Wire up state — preserve existing mask source dir if the cloud
-        # loader doesn't provide one (cloud themes are video backgrounds;
-        # the user's applied mask should persist)
-        cloud_mask = result.get('mask_source_dir')
-        if cloud_mask is not None:
-            self._mask_source_dir = cloud_mask
+        # Wire up state from loader result
+        self._mask_source_dir = result.get('mask_source_dir')
         self.current_theme_path = result.get('theme_path')
 
         # Convert PIL frames → native renderer surfaces

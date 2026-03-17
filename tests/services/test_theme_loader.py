@@ -172,13 +172,14 @@ class TestLoadCloudTheme:
 
         theme = MagicMock()
         theme.name = 'CloudTheme'
+        theme.path = None
         theme.animation_path = str(tmp_path / 'cloud.mp4')
         (tmp_path / 'cloud.mp4').write_bytes(b'video')
 
         working_dir = tmp_path / 'work'
         working_dir.mkdir()
 
-        result = loader.load_cloud_theme(theme, working_dir)
+        result = loader.load_cloud_theme(theme, working_dir, (320, 320))
         assert result['is_animated'] is True
         assert result['theme_path'] is None
         assert result['mask_source_dir'] is None
@@ -191,13 +192,39 @@ class TestLoadCloudTheme:
 
         theme = MagicMock()
         theme.name = 'Cloud'
+        theme.path = None
         theme.animation_path = str(video)
 
         working_dir = tmp_path / 'work'
         working_dir.mkdir()
 
-        loader.load_cloud_theme(theme, working_dir)
+        loader.load_cloud_theme(theme, working_dir, (320, 320))
         assert (working_dir / 'cloud.mp4').exists()
+
+    def test_cloud_theme_with_mask(self, tmp_path):
+        """Cloud theme dir with 01.png returns mask_source_dir."""
+        loader = _make_loader()
+
+        # Create cloud theme dir with mask + dc
+        cloud_dir = tmp_path / 'zt320320' / '002c'
+        cloud_dir.mkdir(parents=True)
+        (cloud_dir / '01.png').write_bytes(b'mask')
+        (cloud_dir / 'config1.dc').write_text('[]')
+
+        video = cloud_dir / 'Theme.mp4'
+        video.write_bytes(b'video')
+
+        theme = MagicMock()
+        theme.name = '002c'
+        theme.path = cloud_dir
+        theme.animation_path = str(video)
+
+        working_dir = tmp_path / 'work'
+        working_dir.mkdir()
+
+        result = loader.load_cloud_theme(theme, working_dir, (320, 320))
+        assert result['mask_source_dir'] == cloud_dir
+        assert result['theme_path'] == cloud_dir
 
 
 # =========================================================================
