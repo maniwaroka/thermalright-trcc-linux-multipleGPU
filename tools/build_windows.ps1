@@ -15,7 +15,8 @@
 #   .\dist\trcc\trcc.exe report
 #   .\dist\trcc\trcc-gui.exe
 
-$ErrorActionPreference = "Stop"
+# Don't use "Stop" — it treats native command stderr as fatal errors
+# (PyInstaller, taskkill, etc. write info to stderr). Use exit code checks instead.
 
 # Build log — everything goes to console AND build.log
 $logFile = "build.log"
@@ -37,10 +38,8 @@ if ($scriptsDir -and (Test-Path $scriptsDir)) {
 
 # Kill running TRCC processes before build
 Log "--- Stopping running TRCC processes ---"
-$ErrorActionPreference = "SilentlyContinue"
 taskkill /F /IM trcc-gui.exe *>$null
 taskkill /F /IM trcc.exe *>$null
-$ErrorActionPreference = "Stop"
 Start-Sleep -Seconds 1
 
 # Log build environment
