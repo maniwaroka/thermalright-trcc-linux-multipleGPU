@@ -3,7 +3,7 @@
 %global srcname trcc-linux
 
 Name:           trcc-linux
-Version:        8.1.7
+Version:        8.7.6
 Release:        1%{?dist}
 Summary:        Thermalright LCD/LED Control Center for Linux
 
@@ -50,8 +50,8 @@ and AIO liquid coolers. Supports SCSI, HID, Bulk, and LY USB protocols.
 
 Features:
 - GUI (PySide6) with full Windows TRCC feature parity
-- CLI (Typer) with 50 commands
-- REST API (FastAPI) with 43 endpoints
+- CLI (Typer) with 50+ commands
+- REST API (FastAPI) with 49 endpoints
 - Theme management (local + cloud)
 - Video playback on LCD
 - LED RGB effects and segment display control
@@ -121,6 +121,14 @@ udevadm control --reload-rules 2>/dev/null || :
 %endif
 
 %changelog
+* Mon Mar 17 2026 TRCC Linux Contributors <noreply@github.com> - 8.7.6-1
+- Fix CLI video/test/screencast renderer initialization
+- Fix PIL-to-QImage conversion in encode_for_device
+- Show DRM GPU sensors in sensor picker for multi-GPU systems
+- 4-platform support (Linux, Windows, macOS, FreeBSD)
+- 5269 tests, 49 API endpoints
+- See https://github.com/Lexonight1/thermalright-trcc-linux/releases
+
 * Fri Mar 07 2026 TRCC Linux Contributors <noreply@github.com> - 8.1.3-1
 - Strict DI across all services — full hexagonal SOLID purity
 - CPU optimization: 48%% to 6%% with MP4 playback
