@@ -10,7 +10,7 @@ from unittest.mock import call, patch
 
 import pytest
 
-from tests.adapters.device.conftest import make_mock_transport as _make_mock_transport
+from tests.adapters.transport.conftest import make_mock_transport as _make_mock_transport
 from trcc.adapters.transport.adapter_hid import (
     DEFAULT_TIMEOUT_MS,
     EP_READ_01,

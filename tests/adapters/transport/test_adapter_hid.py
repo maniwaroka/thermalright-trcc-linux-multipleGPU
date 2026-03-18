@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from tests.adapters.device.conftest import make_mock_transport as _make_mock_transport
+from tests.adapters.transport.conftest import make_mock_transport as _make_mock_transport
 from trcc.adapters.transport.adapter_hid import (
     DELAY_FRAME_TYPE2_S,
     DELAY_POST_INIT_S,
