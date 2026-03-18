@@ -1,9 +1,639 @@
-"""Re-export stub — moved to adapters/detection/factory_detector.py."""
-from trcc.adapters.detection.factory_detector import *  # noqa: F401,F403
-from trcc.adapters.detection.factory_detector import (  # noqa: F401 — private names
-    _BULK_DEVICES,
-    _HID_LCD_DEVICES,
-    _LED_DEVICES,
-    _LY_DEVICES,
-    _get_all_devices,
+#!/usr/bin/env python3
+"""
+USB LCD/LED Device Detector
+Finds Thermalright LCD and LED devices and maps them to SCSI or HID devices.
+
+Supported devices (SCSI — stable):
+- Thermalright: VID=0x87CD, PID=0x70DB
+- Winbond:      VID=0x0416, PID=0x5406
+- ALi Corp:     VID=0x0402, PID=0x3922
+
+Supported devices (HID LCD — auto-detected when plugged in):
+- Winbond:      VID=0x0416, PID=0x5302  (Type 2)
+- ALi Corp:     VID=0x0418, PID=0x5303  (Type 3)
+- ALi Corp:     VID=0x0418, PID=0x5304  (Type 3)
+
+Supported devices (HID LED — RGB controllers, auto-detected when plugged in):
+- Winbond:      VID=0x0416, PID=0x8001  (64-byte reports)
+
+Supported devices (Raw USB bulk — bInterfaceClass=255, Vendor Specific):
+- ChiZhu Tech:  VID=0x87AD, PID=0x70DB  (GrandVision/Mjolnir Vision, USBLCDNew protocol)
+
+Supported devices (LY USB bulk — bInterfaceClass=255, Trofeo Vision 9.16 LCD):
+- Winbond:      VID=0x0416, PID=0x5408  (LY — Trofeo Vision 9.16 LCD)
+- Winbond:      VID=0x0416, PID=0x5409  (LY1 — Trofeo Vision 9.16 LCD)
+"""
+
+import logging
+import os
+import re
+import subprocess
+from typing import List, Optional
+
+from trcc.adapters.infra.data_repository import SysUtils
+from trcc.core.models import (
+    DetectedDevice,  # noqa: F401 — re-export
+    DeviceEntry,  # noqa: F401 — re-export
 )
+from trcc.core.platform import BSD, MACOS, WINDOWS
+
+log = logging.getLogger(__name__)
+
+
+# =========================================================================
+# Device registries
+# =========================================================================
+
+# Known LCD devices (SCSI/USB Mass Storage)
+KNOWN_DEVICES: dict[tuple[int, int], DeviceEntry] = {
+    (0x87CD, 0x70DB): DeviceEntry(
+        vendor="Thermalright", product="LCD Display",
+        implementation="thermalright_lcd_v1",
+    ),
+    # NOTE: 87AD:70DB (GrandVision) moved to _BULK_DEVICES — it's raw USB bulk, not SCSI.
+    (0x0416, 0x5406): DeviceEntry(
+        vendor="Winbond", product="LCD Display",
+        implementation="ali_corp_lcd_v1",
+    ),
+    # USB 0402:3922 - shared by multiple products (Frozen Warframe SE/PRO/Ultra,
+    # Elite Vision 360, AS120, BA120, etc). Real product resolved after handshake
+    # via PM→DEVICE_BUTTON_IMAGE (C# SetButtonImage).
+    (0x0402, 0x3922): DeviceEntry(
+        vendor="Thermalright", product="LCD Display",
+        model="FROZEN_WARFRAME", button_image="A1CZTV",
+        implementation="ali_corp_lcd_v1",
+    ),
+}
+
+# HID LCD devices — auto-detected when plugged in.
+_HID_LCD_DEVICES: dict[tuple[int, int], DeviceEntry] = {
+    (0x0416, 0x5302): DeviceEntry(
+        vendor="Winbond", product="USBDISPLAY",
+        implementation="hid_type2", protocol="hid", device_type=2,
+    ),
+    (0x0418, 0x5303): DeviceEntry(
+        vendor="ALi Corp", product="LCD Display",
+        implementation="hid_type3", protocol="hid", device_type=3,
+    ),
+    (0x0418, 0x5304): DeviceEntry(
+        vendor="ALi Corp", product="LCD Display",
+        implementation="hid_type3", protocol="hid", device_type=3,
+    ),
+}
+
+# LED HID devices (RGB controllers)
+_LED_DEVICES: dict[tuple[int, int], DeviceEntry] = {
+    (0x0416, 0x8001): DeviceEntry(
+        vendor="Winbond", product="LED Controller",
+        model="LED_DIGITAL", implementation="hid_led",
+        protocol="hid", device_type=1,
+    ),
+}
+
+# Raw USB bulk devices (bInterfaceClass=255, Vendor Specific)
+_BULK_DEVICES: dict[tuple[int, int], DeviceEntry] = {
+    (0x87AD, 0x70DB): DeviceEntry(
+        vendor="ChiZhu Tech", product="GrandVision 360 AIO",
+        model="GRAND_VISION", button_image="A1GRAND VISION",
+        implementation="bulk_usblcdnew",
+        protocol="bulk", device_type=4,
+    ),
+}
+
+# LY USB bulk devices (bInterfaceClass=255, TRCC v2.1.2 ThreadSendDeviceDataLY)
+_LY_DEVICES: dict[tuple[int, int], DeviceEntry] = {
+    (0x0416, 0x5408): DeviceEntry(
+        vendor="Winbond", product="Trofeo Vision 9.16 LCD",
+        implementation="ly_bulk", protocol="ly", device_type=5,
+    ),
+    (0x0416, 0x5409): DeviceEntry(
+        vendor="Winbond", product="Trofeo Vision 9.16 LCD",
+        implementation="ly_bulk", protocol="ly", device_type=5,
+    ),
+}
+
+# Backward-compat aliases
+KNOWN_LED_DEVICES = _LED_DEVICES
+KNOWN_BULK_DEVICES = _BULK_DEVICES
+
+# Legacy flag — kept for backward compat but no longer checked.
+_hid_testing_enabled = False
+
+
+def enable_hid_testing():
+    """No-op, kept for backward compatibility. HID devices are now auto-detected."""
+    global _hid_testing_enabled
+    _hid_testing_enabled = True
+
+
+# =========================================================================
+# DeviceDetector — all detection and utility logic
+# =========================================================================
+
+class DeviceDetector:
+    """USB LCD/LED device detection and management."""
+
+    @staticmethod
+    def _get_all_registries() -> dict[tuple[int, int], DeviceEntry]:
+        """Return combined device lookup dict (SCSI + HID LCD + LED + Bulk)."""
+        all_devices = dict(KNOWN_DEVICES)
+        all_devices.update(_HID_LCD_DEVICES)
+        all_devices.update(_LED_DEVICES)
+        all_devices.update(_BULK_DEVICES)
+        all_devices.update(_LY_DEVICES)
+        return all_devices
+
+    @staticmethod
+    def run_command(cmd: List[str]) -> str:
+        """Run command and return output."""
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=5,
+            )
+            return result.stdout.strip() if result.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return ""
+
+    # ------------------------------------------------------------------
+    # USB scanning
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def find_usb_devices_sysfs() -> List[DetectedDevice]:
+        """Find known USB devices via sysfs (no subprocess).
+
+        Reads ``/sys/bus/usb/devices/*/idVendor`` + ``idProduct`` directly.
+        Much cheaper than fork+exec of ``lsusb`` every poll cycle.
+        """
+        all_known = DeviceDetector._get_all_registries()
+        devices: List[DetectedDevice] = []
+        usb_base = '/sys/bus/usb/devices'
+        try:
+            entries = os.listdir(usb_base)
+        except OSError:
+            return devices
+        for entry in entries:
+            dev_dir = os.path.join(usb_base, entry)
+            vid_path = os.path.join(dev_dir, 'idVendor')
+            pid_path = os.path.join(dev_dir, 'idProduct')
+            if not os.path.isfile(vid_path):
+                continue
+            try:
+                with open(vid_path) as f:
+                    vid = int(f.read().strip(), 16)
+                with open(pid_path) as f:
+                    pid = int(f.read().strip(), 16)
+            except (OSError, ValueError):
+                continue
+            if (vid, pid) not in all_known:
+                continue
+            info = all_known[(vid, pid)]
+            log.debug("Found known device via sysfs: %04X:%04X %s (%s)",
+                      vid, pid, info.vendor, info.protocol)
+            devices.append(DetectedDevice(
+                vid=vid, pid=pid,
+                vendor_name=info.vendor,
+                product_name=info.product,
+                usb_path=entry,
+                implementation=info.implementation,
+                model=info.model,
+                button_image=info.button_image,
+                protocol=info.protocol,
+                device_type=info.device_type,
+            ))
+        log.debug("Sysfs USB scan found %d known device(s)", len(devices))
+        return devices
+
+    @staticmethod
+    def find_usb_devices() -> List[DetectedDevice]:
+        """Find all USB LCD devices using lsusb (subprocess fallback)."""
+        devices = []
+        log.debug("Scanning USB devices via lsusb...")
+        output = DeviceDetector.run_command(['lsusb'])
+
+        if not output:
+            log.debug("lsusb returned no output")
+            return devices
+
+        pattern = r'Bus (\d+) Device (\d+): ID ([0-9a-f]{4}):([0-9a-f]{4})\s+(.*)'
+
+        for line in output.split('\n'):
+            match = re.search(pattern, line, re.IGNORECASE)
+            if not match:
+                continue
+
+            bus, device, vid_str, pid_str, _description = match.groups()
+            vid = int(vid_str, 16)
+            pid = int(pid_str, 16)
+
+            all_devices = DeviceDetector._get_all_registries()
+            if (vid, pid) not in all_devices:
+                continue
+
+            device_info = all_devices[(vid, pid)]
+            usb_path = f"{int(bus)}-{device}"
+
+            log.debug("Found known device: %04X:%04X %s (%s)",
+                      vid, pid, device_info.vendor, device_info.protocol)
+            devices.append(DetectedDevice(
+                vid=vid, pid=pid,
+                vendor_name=device_info.vendor,
+                product_name=device_info.product,
+                usb_path=usb_path,
+                implementation=device_info.implementation,
+                model=device_info.model,
+                button_image=device_info.button_image,
+                protocol=device_info.protocol,
+                device_type=device_info.device_type,
+            ))
+
+        log.debug("USB scan found %d known device(s)", len(devices))
+        return devices
+
+    # ------------------------------------------------------------------
+    # SCSI mapping
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def find_scsi_device_by_usb_path(usb_path: str) -> Optional[str]:
+        """Find SCSI device corresponding to USB path.
+
+        Matches by VID/PID against ``KNOWN_DEVICES`` — never by vendor string.
+        """
+        # Method 1: Scan sysfs directly for sg devices with known VID/PID
+        for sg_name in SysUtils.find_scsi_devices():
+            sysfs_base = f"/sys/class/scsi_generic/{sg_name}/device"
+            if not os.path.exists(sysfs_base):
+                continue
+            resolved = DeviceDetector._resolve_usblcd_vid_pid(sysfs_base)
+            if resolved and (resolved[0], resolved[1]) in KNOWN_DEVICES:
+                return f"/dev/{sg_name}"
+
+        # Method 2: sg module not loaded — fall back to /dev/sd* block devices.
+        # SG_IO ioctl works on block devices too.
+        for sd_name in SysUtils.find_scsi_block_devices():
+            dev_path = f"/dev/{sd_name}"
+            if os.path.exists(dev_path):
+                log.info("sg module not loaded — using block device %s", dev_path)
+                return dev_path
+
+        return None
+
+    @staticmethod
+    def _resolve_usblcd_vid_pid(
+        sysfs_base: str,
+    ) -> Optional[tuple[int, int, str, str]]:
+        """Walk sysfs parents to find VID/PID for a USBLCD SCSI device.
+
+        Returns ``(vid, pid, model, button_image)`` or ``None`` if sysfs
+        walk fails — callers must skip the device, never guess a VID/PID.
+        """
+        try:
+            device_path = os.path.realpath(sysfs_base)
+            for _ in range(10):
+                device_path = os.path.dirname(device_path)
+                vid_path = os.path.join(device_path, "idVendor")
+                pid_path = os.path.join(device_path, "idProduct")
+                if os.path.exists(vid_path) and os.path.exists(pid_path):
+                    with open(vid_path) as vf:
+                        dev_vid = int(vf.read().strip(), 16)
+                    with open(pid_path) as pf:
+                        dev_pid = int(pf.read().strip(), 16)
+                    dev_model = "CZTV"
+                    dev_button = "A1CZTV"
+                    if (dev_vid, dev_pid) in KNOWN_DEVICES:
+                        dev_info = KNOWN_DEVICES[(dev_vid, dev_pid)]
+                        dev_model = dev_info.model
+                        dev_button = dev_info.button_image
+                    return dev_vid, dev_pid, dev_model, dev_button
+        except (IOError, OSError, ValueError):
+            pass
+        log.warning("sysfs VID/PID walk failed for %s — skipping device", sysfs_base)
+        return None
+
+    @staticmethod
+    def find_scsi_usblcd_devices() -> List[DetectedDevice]:
+        """Find Thermalright LCD devices directly via sysfs.
+
+        Matches by VID/PID against ``KNOWN_DEVICES`` — never by vendor string.
+
+        Scans SCSI generic devices (``/dev/sg*``) first.  If the ``sg`` kernel
+        module is not loaded, falls back to block devices (``/dev/sd*``) which
+        also support SG_IO ioctl.
+        """
+        devices = []
+
+        # --- Pass 1: SCSI generic (/dev/sg*) ---
+        for sg_name in SysUtils.find_scsi_devices():
+            sg_path = f"/dev/{sg_name}"
+            sysfs_base = f"/sys/class/scsi_generic/{sg_name}/device"
+
+            if not os.path.exists(sysfs_base):
+                continue
+
+            try:
+                resolved = DeviceDetector._resolve_usblcd_vid_pid(sysfs_base)
+                if resolved is None:
+                    continue
+                vid, pid, dev_model, dev_button = resolved
+                if (vid, pid) not in KNOWN_DEVICES:
+                    continue
+
+                # Read model string for display name (best-effort)
+                try:
+                    with open(f"{sysfs_base}/model", 'r') as f:
+                        model = f.read().strip()
+                except (IOError, OSError):
+                    model = "LCD"
+
+                devices.append(DetectedDevice(
+                    vid=vid, pid=pid,
+                    vendor_name="Thermalright",
+                    product_name=f"LCD Display ({model})",
+                    usb_path="unknown",
+                    scsi_device=sg_path,
+                    implementation="thermalright_lcd_v1",
+                    model=dev_model,
+                    button_image=dev_button,
+                ))
+            except (IOError, OSError):
+                continue
+
+        if devices:
+            return devices
+
+        # --- Pass 2: block devices (/dev/sd*) — sg module not loaded ---
+        for sd_name in SysUtils.find_scsi_block_devices():
+            sd_path = f"/dev/{sd_name}"
+            sysfs_base = f"/sys/block/{sd_name}/device"
+
+            try:
+                with open(f"{sysfs_base}/model", 'r') as f:
+                    model = f.read().strip()
+            except (IOError, OSError):
+                model = "USB PRC System"
+
+            resolved = DeviceDetector._resolve_usblcd_vid_pid(sysfs_base)
+            if resolved is None:
+                continue
+            vid, pid, dev_model, dev_button = resolved
+            log.info("sg module not loaded — detected USBLCD via block device %s", sd_path)
+            devices.append(DetectedDevice(
+                vid=vid, pid=pid,
+                vendor_name="Thermalright",
+                product_name=f"LCD Display ({model})",
+                usb_path="unknown",
+                scsi_device=sd_path,
+                implementation="thermalright_lcd_v1",
+                model=dev_model,
+                button_image=dev_button,
+            ))
+
+        return devices
+
+    # ------------------------------------------------------------------
+    # Main detection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def detect() -> List[DetectedDevice]:
+        """Detect all USB LCD devices and their SCSI mappings.
+
+        Uses sysfs first (pure file reads, no subprocess). Falls back to
+        ``lsusb`` if sysfs returns nothing (e.g. unusual kernel config).
+        """
+        log.debug("Starting device detection...")
+        devices = DeviceDetector.find_usb_devices_sysfs()
+        if not devices:
+            devices = DeviceDetector.find_usb_devices()
+
+        for device in devices:
+            scsi_dev = DeviceDetector.find_scsi_device_by_usb_path(device.usb_path)
+            device.scsi_device = scsi_dev
+            if scsi_dev:
+                log.debug("Mapped %04X:%04X → %s", device.vid, device.pid, scsi_dev)
+
+        # If we found USB devices but none have SCSI mappings, try sysfs fallback
+        if devices and not any(d.scsi_device for d in devices):
+            log.debug("No SCSI mappings found, trying sysfs fallback...")
+            scsi_devices = DeviceDetector.find_scsi_usblcd_devices()
+            if scsi_devices and scsi_devices[0].scsi_device:
+                devices[0].scsi_device = scsi_devices[0].scsi_device
+
+        # Fallback: scan SCSI devices directly for USBLCD if no USB devices found
+        if not devices:
+            log.debug("No USB devices found, scanning SCSI directly...")
+            devices = DeviceDetector.find_scsi_usblcd_devices()
+
+        log.info(
+            "Detected %d device(s): %s", len(devices),
+            ", ".join(f"{d.vendor_name} {d.product_name} [{d.protocol}]"
+                      for d in devices) or "none",
+        )
+        return devices
+
+    # ------------------------------------------------------------------
+    # Convenience / utility
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def check_udev_rules(device: DetectedDevice) -> bool:
+        """Check if udev rules file contains the VID:PID for *device*."""
+        vid_hex = f"{device.vid:04x}"
+        try:
+            with open("/etc/udev/rules.d/99-trcc-lcd.rules") as f:
+                return vid_hex in f.read()
+        except (IOError, OSError):
+            return False
+
+    @staticmethod
+    def get_default() -> Optional[DetectedDevice]:
+        """Get the first available LCD device."""
+        devices = DeviceDetector.detect()
+        if not devices:
+            return None
+        for device in devices:
+            if device.vid == 0x87CD:
+                return device
+        return devices[0]
+
+    @staticmethod
+    def get_device_path() -> Optional[str]:
+        """Get SCSI device path for LCD (convenience function)."""
+        device = DeviceDetector.get_default()
+        return device.scsi_device if device else None
+
+    @staticmethod
+    def usb_reset(usb_path: str) -> bool:
+        """Soft reset USB device by unbinding/rebinding (simulates unplug/replug)."""
+        try:
+            import time
+
+            busnum_path = f"/sys/bus/usb/devices/{usb_path}/busnum"
+            devnum_path = f"/sys/bus/usb/devices/{usb_path}/devnum"
+
+            if not os.path.exists(busnum_path):
+                return False
+
+            with open(busnum_path) as f:
+                _bus = f.read().strip()
+            with open(devnum_path) as f:
+                _dev = f.read().strip()
+
+            # Method 1: Try authorized=0/1 (safest)
+            auth_path = f"/sys/bus/usb/devices/{usb_path}/authorized"
+            if os.path.exists(auth_path):
+                try:
+                    with open(auth_path, 'w') as f:
+                        f.write('0')
+                    time.sleep(0.5)
+                    with open(auth_path, 'w') as f:
+                        f.write('1')
+                    time.sleep(1)
+                    log.info("USB device %s reset successfully", usb_path)
+                    return True
+                except PermissionError:
+                    log.warning("Permission denied for USB reset (need root)")
+
+            # Method 2: Try unbind/bind (requires root)
+            driver_path = f"/sys/bus/usb/devices/{usb_path}/driver"
+            if os.path.exists(driver_path):
+                try:
+                    unbind_path = os.path.join(os.readlink(driver_path), 'unbind')
+                    bind_path = os.path.join(os.readlink(driver_path), 'bind')
+
+                    with open(unbind_path, 'w') as f:
+                        f.write(usb_path)
+                    time.sleep(0.5)
+                    with open(bind_path, 'w') as f:
+                        f.write(usb_path)
+                    time.sleep(1)
+                    log.info("USB device %s reset via unbind/bind", usb_path)
+                    return True
+                except Exception as e:
+                    log.warning("Failed to reset via unbind/bind: %s", e)
+
+            return False
+        except Exception as e:
+            log.warning("USB reset failed: %s", e)
+            return False
+
+    @staticmethod
+    def check_health(device_path: str) -> bool:
+        """Check if device is responding properly (not in bad binary mode)."""
+        try:
+            result = subprocess.run(
+                ['sg_inq', device_path],
+                capture_output=True, text=True, timeout=3,
+            )
+            if result.returncode != 0:
+                return False
+
+            output_lower = result.stdout.lower() + result.stderr.lower()
+            bad_states = [
+                'error', 'failed', 'not ready', 'medium not present',
+                'i/o error', 'device not responding',
+            ]
+            return not any(state in output_lower for state in bad_states)
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return False
+
+    @staticmethod
+    def print_info(device: DetectedDevice) -> None:
+        """Pretty print device information."""
+        print(f"Device: {device.vendor_name} {device.product_name}")
+        print(f"  USB VID:PID: {device.vid:04X}:{device.pid:04X}")
+        print(f"  USB Path: {device.usb_path}")
+        print(f"  Protocol: {device.protocol.upper()} (type {device.device_type})")
+        if device.protocol == "scsi":
+            print(f"  SCSI Device: {device.scsi_device or 'Not found'}")
+        print(f"  Model: {device.model}")
+        print(f"  Button Image: {device.button_image}")
+        print(f"  Implementation: {device.implementation}")
+
+
+# =========================================================================
+# CLI entry point
+# =========================================================================
+
+def main():
+    """CLI interface"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Detect Thermalright LCD USB devices'
+    )
+    parser.add_argument(
+        '--path-only', action='store_true',
+        help='Only output device path (for scripts)',
+    )
+    parser.add_argument(
+        '--all', action='store_true',
+        help='Show all detected devices',
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        devices = DeviceDetector.detect()
+        if not devices:
+            print("No LCD devices found")
+            return 1
+
+        print(f"Found {len(devices)} device(s):\n")
+        for i, device in enumerate(devices, 1):
+            print(f"Device {i}:")
+            DeviceDetector.print_info(device)
+            print()
+        return 0
+
+    device = DeviceDetector.get_default()
+
+    if not device:
+        if not args.path_only:
+            print("No LCD device found")
+        return 1
+
+    if args.path_only:
+        if device.scsi_device:
+            print(device.scsi_device)
+            return 0
+        else:
+            return 1
+
+    DeviceDetector.print_info(device)
+    return 0
+
+
+# Aliases used by cli/, __init__.py, and tests.
+# Platform-aware: route to the correct detector based on OS.
+_get_all_devices = DeviceDetector._get_all_registries
+check_udev_rules = DeviceDetector.check_udev_rules
+get_device_path = DeviceDetector.get_device_path
+
+if WINDOWS:
+    from trcc.adapters.device.windows.detector import WindowsDeviceDetector
+    detect_devices = WindowsDeviceDetector.detect
+elif MACOS:
+    from trcc.adapters.device.macos.detector import MacOSDeviceDetector
+    detect_devices = MacOSDeviceDetector.detect
+elif BSD:
+    from trcc.adapters.device.bsd.detector import BSDDeviceDetector
+    detect_devices = BSDDeviceDetector.detect
+else:
+    detect_devices = DeviceDetector.detect
+
+
+def get_default_device() -> 'Optional[DetectedDevice]':
+    """Get the first available LCD device (platform-aware)."""
+    devices = detect_devices()
+    if not devices:
+        return None
+    for device in devices:
+        if device.vid == 0x87CD:
+            return device
+    return devices[0]
+
+
+if __name__ == '__main__':
+    import sys
+    sys.exit(main())

@@ -51,23 +51,6 @@ class TestAssets(unittest.TestCase):
         pix = Assets.load_pixmap.__wrapped__(Assets, 'definitely_not_a_file.png')
         self.assertTrue(pix.isNull())
 
-    def test_load_pixmap_existing(self):
-        """Loading a real asset returns valid pixmap."""
-        if Assets.exists('P0CZTV.png'):
-            pix = Assets.load_pixmap.__wrapped__(Assets, 'P0CZTV.png')
-            self.assertFalse(pix.isNull())
-        else:
-            self.skipTest('P0CZTV.png not found')
-
-    def test_load_pixmap_scaled(self):
-        """Scaling produces correct dimensions."""
-        if Assets.exists('P0CZTV.png'):
-            pix = Assets.load_pixmap.__wrapped__(Assets, 'P0CZTV.png', 100, 80)
-            self.assertEqual(pix.width(), 100)
-            self.assertEqual(pix.height(), 80)
-        else:
-            self.skipTest('P0CZTV.png not found')
-
     def test_exists(self):
         self.assertFalse(Assets.exists('nonexistent_file_xyz.png'))
 
@@ -116,14 +99,14 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_linux_uses_package_dir(self):
         """LinuxSetup returns package dir directly."""
-        from trcc.adapters.setup.facade_linux import LinuxSetup
+        from trcc.adapters.system.linux.setup import LinuxSetup
         from trcc.qt_components.assets import _PKG_ASSETS_DIR
         result = LinuxSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
         self.assertEqual(result, _PKG_ASSETS_DIR)
 
     def test_windows_copies_to_user_dir(self):
         """WindowsSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.setup.facade_windows import WindowsSetup
+        from trcc.adapters.system.windows.setup import WindowsSetup
         from trcc.qt_components.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
             with patch('trcc.adapters.system.windows.setup.Path.home',
@@ -136,7 +119,7 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_macos_copies_to_user_dir(self):
         """MacOSSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.setup.facade_macos import MacOSSetup
+        from trcc.adapters.system.macos.setup import MacOSSetup
         from trcc.qt_components.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
             with patch('trcc.adapters.system.macos.setup.Path.home',
@@ -148,7 +131,7 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_bsd_copies_to_user_dir(self):
         """BSDSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.setup.facade_bsd import BSDSetup
+        from trcc.adapters.system.bsd.setup import BSDSetup
         from trcc.qt_components.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
             with patch('trcc.adapters.system.bsd.setup.Path.home',

@@ -458,10 +458,9 @@ class DisplayService:
         from .video_cache import VideoFrameCache
 
         device = self.devices.selected
-        if device:
-            protocol, resolution, fbl, use_jpeg = device.encoding_params
-        else:
-            protocol, resolution, fbl, use_jpeg = 'scsi', (320, 320), None, False
+        if not device:
+            raise RuntimeError("Cannot build video cache — no device selected")
+        protocol, resolution, fbl, use_jpeg = device.encoding_params
         cache = VideoFrameCache()
         cache.build(
             frames=self.media._frames,
@@ -636,10 +635,9 @@ class DisplayService:
     def _encode_for_device(self, img: Any) -> bytes:
         """Encode image for LCD device."""
         device = self.devices.selected
-        if device:
-            protocol, resolution, fbl, use_jpeg = device.encoding_params
-        else:
-            protocol, resolution, fbl, use_jpeg = 'scsi', (320, 320), None, True
+        if not device:
+            raise RuntimeError("Cannot encode for device — no device selected")
+        protocol, resolution, fbl, use_jpeg = device.encoding_params
         return ImageService.encode_for_device(img, protocol, resolution, fbl, use_jpeg)
 
     # -- Theme save (delegates to ThemePersistence) ------------------------

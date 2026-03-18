@@ -1267,7 +1267,17 @@ class UCLedControl(QWidget):
     def _populate_memory_identity(self) -> None:
         """Populate memory timing labels from DRAM SPD info."""
         try:
-            from ..adapters.system.hardware import get_memory_info
+            from trcc.core.platform import BSD, LINUX, MACOS, WINDOWS
+            if LINUX:
+                from ..adapters.system.linux.hardware import get_memory_info
+            elif WINDOWS:
+                from ..adapters.system.windows.hardware import get_memory_info
+            elif MACOS:
+                from ..adapters.system.macos.hardware import get_memory_info
+            elif BSD:
+                from ..adapters.system.bsd.hardware import get_memory_info
+            else:
+                raise ImportError("Unsupported platform")
             self._mem_slots = get_memory_info()
             if self._mem_slots:
                 s = self._mem_slots[0]
@@ -1297,7 +1307,17 @@ class UCLedControl(QWidget):
     def _populate_disk_identity(self) -> None:
         """Populate disk selector dropdown (C# ucComboBoxC)."""
         try:
-            from ..adapters.system.hardware import get_disk_info
+            from trcc.core.platform import BSD, LINUX, MACOS, WINDOWS
+            if LINUX:
+                from ..adapters.system.linux.hardware import get_disk_info
+            elif WINDOWS:
+                from ..adapters.system.windows.hardware import get_disk_info
+            elif MACOS:
+                from ..adapters.system.macos.hardware import get_disk_info
+            elif BSD:
+                from ..adapters.system.bsd.hardware import get_disk_info
+            else:
+                raise ImportError("Unsupported platform")
             self._disk_slots = get_disk_info()
 
             self._disk_selector.blockSignals(True)

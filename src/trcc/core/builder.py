@@ -197,7 +197,7 @@ class ControllerBuilder:
             from ..adapters.system.bsd.sensors import BSDSensorEnumerator
             enumerator = BSDSensorEnumerator()
         else:
-            from ..adapters.system.sensors import SensorEnumerator
+            from ..adapters.system.linux.sensors import SensorEnumerator
             enumerator = SensorEnumerator()
 
         return SystemService(enumerator=enumerator)
@@ -249,5 +249,5 @@ class ControllerBuilder:
         if BSD:
             from ..adapters.system.bsd.setup import BSDSetup
             return BSDSetup()
-        from ..adapters.system.setup import LinuxSetup
+        from ..adapters.system.linux.setup import LinuxSetup
         return LinuxSetup()

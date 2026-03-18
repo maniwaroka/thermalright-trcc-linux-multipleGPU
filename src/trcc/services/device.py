@@ -222,10 +222,9 @@ class DeviceService:
         else:
             from .image import ImageService
 
-            if self._selected:
-                protocol, resolution, fbl, use_jpeg = self._selected.encoding_params
-            else:
-                protocol, resolution, fbl, use_jpeg = 'scsi', (320, 320), None, True
+            if not self._selected:
+                raise RuntimeError("Cannot encode for device — no device selected")
+            protocol, resolution, fbl, use_jpeg = self._selected.encoding_params
 
             data = ImageService.encode_for_device(image, protocol, resolution, fbl, use_jpeg)
             self._last_encode_id = img_id
@@ -259,10 +258,9 @@ class DeviceService:
         else:
             from .image import ImageService
 
-            if self._selected:
-                protocol, resolution, fbl, use_jpeg = self._selected.encoding_params
-            else:
-                protocol, resolution, fbl, use_jpeg = 'scsi', (320, 320), None, True
+            if not self._selected:
+                raise RuntimeError("Cannot encode for device — no device selected")
+            protocol, resolution, fbl, use_jpeg = self._selected.encoding_params
 
             data = ImageService.encode_for_device(
                 image, protocol, resolution, fbl, use_jpeg)

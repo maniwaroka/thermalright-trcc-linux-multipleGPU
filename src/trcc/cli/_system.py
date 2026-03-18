@@ -24,7 +24,7 @@ def _require_linux(command: str) -> int | None:
 
 
 # Setup functions moved to adapters/setup/facade_linux.py — import from there
-from trcc.adapters.setup.facade_linux import (  # noqa: E402,F401
+from trcc.adapters.system.linux.setup import (  # noqa: E402,F401
     _real_user_home,
     install_desktop,
     setup_polkit,

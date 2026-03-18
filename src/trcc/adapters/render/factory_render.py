@@ -11,8 +11,8 @@ def create_renderer() -> Renderer:
     otherwise falls back to PilRenderer (CPU-only PIL/Pillow).
     """
     try:
-        from trcc.adapters.render.strategy_qt import QtRenderer
+        from trcc.adapters.render.qt import QtRenderer
         return QtRenderer()
     except Exception:
-        from trcc.adapters.render.strategy_pil import PilRenderer
+        from trcc.adapters.render.pil import PilRenderer
         return PilRenderer()

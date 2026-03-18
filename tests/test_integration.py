@@ -24,7 +24,7 @@ from tests.conftest import (  # noqa: E402
 from tests.conftest import (  # noqa: E402
     save_test_png as _make_png,
 )
-from trcc.adapters.detection.factory_detector import DetectedDevice  # noqa: E402
+from trcc.adapters.device.detector import DetectedDevice  # noqa: E402
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,14 +44,14 @@ def _make_device(vid=0x87CD, pid=0x70DB, scsi="/dev/sg0", usb_path="2-1",
 class TestDetectToSend(unittest.TestCase):
     """Full pipeline: detect device → create LCDDriver → send_frame."""
 
-    @patch("trcc.adapters.transport.adapter_scsi._sg_io_write", return_value=True)
-    @patch("trcc.adapters.transport.adapter_scsi._sg_io_read", return_value=b"\x00" * 512)
-    @patch("trcc.adapters.transport.facade_lcd.detect_devices")
-    @patch("trcc.adapters.transport.facade_lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.device.scsi._sg_io_write", return_value=True)
+    @patch("trcc.adapters.device.scsi._sg_io_read", return_value=b"\x00" * 512)
+    @patch("trcc.adapters.device.lcd.detect_devices")
+    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_detect_init_send(self, _, mock_detect, mock_read, mock_write):
         """detect_devices → LCDDriver(path) → send_frame goes through all layers."""
-        from trcc.adapters.transport.adapter_scsi import ScsiDevice
-        from trcc.adapters.transport.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
+        from trcc.adapters.device.scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -76,13 +76,13 @@ class TestDetectToSend(unittest.TestCase):
         expected_writes = 1 + len(chunks)  # init + chunks
         self.assertEqual(mock_write.call_count, expected_writes)
 
-    @patch("trcc.adapters.transport.adapter_scsi._sg_io_write", return_value=True)
-    @patch("trcc.adapters.transport.adapter_scsi._sg_io_read", return_value=b"\x00" * 512)
-    @patch("trcc.adapters.transport.facade_lcd.detect_devices")
-    @patch("trcc.adapters.transport.facade_lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.device.scsi._sg_io_write", return_value=True)
+    @patch("trcc.adapters.device.scsi._sg_io_read", return_value=b"\x00" * 512)
+    @patch("trcc.adapters.device.lcd.detect_devices")
+    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_send_image_pipeline(self, _, mock_detect, mock_read, mock_write):
         """LCDDriver.load_image → send_frame end-to-end."""
-        from trcc.adapters.transport.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -280,7 +280,7 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
     @patch("trcc.adapters.device.detector.DeviceDetector.find_usb_devices_sysfs", return_value=[])
     def test_usb_to_scsi_mapping(self, _mock_sysfs, mock_find_usb, mock_find_scsi):
         """USB device found → SCSI path assigned → returned in detect_devices."""
-        from trcc.adapters.detection.factory_detector import detect_devices
+        from trcc.adapters.device.detector import detect_devices
 
         dev = _make_device(scsi=None)
         mock_find_usb.return_value = [dev]
@@ -295,7 +295,7 @@ class TestDeviceDetectorRoundTrip(unittest.TestCase):
     @patch("trcc.adapters.device.detector.DeviceDetector.find_usb_devices_sysfs", return_value=[])
     def test_get_default_prefers_thermalright(self, _mock_sysfs, mock_find_usb, mock_find_scsi):
         """get_default_device prefers Thermalright (VID 0x87CD)."""
-        from trcc.adapters.detection.factory_detector import get_default_device
+        from trcc.adapters.device.detector import get_default_device
 
         devs = [
             _make_device(vid=0x0416, pid=0x5406, scsi="/dev/sg1",
@@ -324,8 +324,8 @@ class TestMultiResolution(unittest.TestCase):
     @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_480x480_frame_size(self, _, mock_detect, mock_run, mock_sg):
         """480x480 produces correct frame size and chunk count."""
-        from trcc.adapters.transport.adapter_scsi import ScsiDevice
-        from trcc.adapters.transport.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
+        from trcc.adapters.device.scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -351,8 +351,8 @@ class TestMultiResolution(unittest.TestCase):
     @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
     def test_240x240_frame_size(self, _, mock_detect, mock_run, mock_sg):
         """240x240 produces correct frame size and chunk count."""
-        from trcc.adapters.transport.adapter_scsi import ScsiDevice
-        from trcc.adapters.transport.facade_lcd import LCDDriver
+        from trcc.adapters.device.lcd import LCDDriver
+        from trcc.adapters.device.scsi import ScsiDevice
 
         dev = _make_device()
         mock_detect.return_value = [dev]
@@ -537,7 +537,7 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
         """_build_header produces 20-byte header with valid CRC32."""
         import binascii
 
-        from trcc.adapters.transport.adapter_scsi import ScsiDevice
+        from trcc.adapters.device.scsi import ScsiDevice
 
         header = ScsiDevice._build_header(0xF5, 0xE100)
         self.assertEqual(len(header), 20)
@@ -557,7 +557,7 @@ class TestSCSIHeaderIntegrity(unittest.TestCase):
 
     def test_frame_chunk_headers_unique(self):
         """Each frame chunk has a unique command with incrementing index."""
-        from trcc.adapters.transport.adapter_scsi import ScsiDevice
+        from trcc.adapters.device.scsi import ScsiDevice
 
         chunks = ScsiDevice._get_frame_chunks(320, 320)
         cmds = [cmd for cmd, _ in chunks]
