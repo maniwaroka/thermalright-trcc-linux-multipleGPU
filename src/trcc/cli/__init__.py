@@ -164,6 +164,7 @@ def gui(verbose=0, decorated=False, start_hidden=False):
     # Root logger at DEBUG — handlers filter independently
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
+    root.handlers.clear()  # remove early basicConfig handler from __main__.py
 
     # Console handler — verbosity-controlled
     console = logging.StreamHandler()

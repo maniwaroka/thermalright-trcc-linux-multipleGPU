@@ -1,5 +1,11 @@
 # Changelog
 
+## v9.0.2
+
+### Fixes
+- **Duplicate log entries on startup**: Every log line was written twice because `__main__.py` set up an early `RotatingFileHandler` via `basicConfig`, then `cli/__init__.py` added a second one without clearing the first. Fixed by calling `root.handlers.clear()` before adding handlers in CLI init
+- **pynvml error logging**: Split broad `except Exception` into `ImportError` (debug) vs init failure (warning) for clearer diagnostics when NVIDIA GPU sensors are unavailable
+
 ## v9.0.1
 
 ### Fixes

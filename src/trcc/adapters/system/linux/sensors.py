@@ -29,15 +29,20 @@ from trcc.adapters.infra.data_repository import SysUtils
 from trcc.core.models import SensorInfo
 from trcc.core.ports import SensorEnumerator as SensorEnumeratorABC
 
+log = logging.getLogger(__name__)
+
 try:
     import pynvml  # pyright: ignore[reportMissingImports]
     pynvml.nvmlInit()
     NVML_AVAILABLE = True
-except Exception:
+except ImportError:
     pynvml = None  # type: ignore[assignment]
     NVML_AVAILABLE = False
-
-log = logging.getLogger(__name__)
+    log.debug("pynvml not installed — NVIDIA GPU sensors unavailable. Install nvidia-ml-py to enable.")
+except Exception as e:
+    pynvml = None  # type: ignore[assignment]
+    NVML_AVAILABLE = False
+    log.warning("pynvml init failed — NVIDIA GPU sensors unavailable: %s", e)
 
 
 # Maps hwmon input prefix to (category, unit)
