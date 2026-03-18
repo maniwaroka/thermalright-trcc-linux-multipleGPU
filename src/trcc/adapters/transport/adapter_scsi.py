@@ -1,16 +1,7 @@
-"""
-SCSI Device Bridge — connects MVC models to lcd_driver/device_detector.
+"""SCSI LCD protocol adapter — command blocks, frame chunking, boot animation.
 
-models.py imports `from ..device_scsi import find_lcd_devices, send_image_to_device`
-This module provides those two functions.
-
-SCSI send protocol is inlined here (from trcc_handshake_v2) so everything
-lives in one place under src/trcc/.  LCDDriver is used only for resolution
-auto-detection during device discovery.
-
-Performance: uses native SG_IO ioctl when available (no subprocess fork).
-Falls back to sg_raw subprocess automatically on older kernels or permission
-issues.
+Platform-agnostic SCSI protocol logic. Linux SG_IO ioctl lives in
+bridge_linux.py; this adapter calls it with sg_raw subprocess fallback.
 """
 from __future__ import annotations
 
