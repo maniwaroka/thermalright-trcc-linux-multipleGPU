@@ -1,6 +1,6 @@
 # Changelog
 
-## v8.8.0
+## v8.8.1
 
 ### Features
 - **CLI overlay pipeline — `trcc theme` command**: Compose video/image + mask + live system metrics entirely from CLI. Hexagonal architecture — core domain (`build_overlay_config`), service (`DisplayService.run_video_loop`), and input port (`LCDDevice.play_video_loop`) shared by CLI, GUI, and API

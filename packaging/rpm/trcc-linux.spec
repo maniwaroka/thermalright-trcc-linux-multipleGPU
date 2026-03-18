@@ -3,7 +3,7 @@
 %global srcname trcc-linux
 
 Name:           trcc-linux
-Version:        8.8.0
+Version:        8.8.1
 Release:        1%{?dist}
 Summary:        Thermalright LCD/LED Control Center for Linux
 
@@ -121,7 +121,7 @@ udevadm control --reload-rules 2>/dev/null || :
 %endif
 
 %changelog
-* Mon Mar 17 2026 TRCC Linux Contributors <noreply@github.com> - 8.8.0-1
+* Mon Mar 17 2026 TRCC Linux Contributors <noreply@github.com> - 8.8.1-1
 - Fix CLI video/test/screencast renderer initialization
 - Fix PIL-to-QImage conversion in encode_for_device
 - Show DRM GPU sensors in sensor picker for multi-GPU systems

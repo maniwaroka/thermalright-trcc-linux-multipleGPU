@@ -5,7 +5,7 @@ Complete reference for the `trcc` command-line interface.
 ## Usage
 
 ```
-trcc [--version] [-v] <command> [options]
+trcc [--version] [-v] <command> [options]is
 ```
 
 ### Global Options

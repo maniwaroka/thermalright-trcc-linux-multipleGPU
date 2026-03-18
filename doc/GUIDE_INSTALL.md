@@ -80,7 +80,7 @@ Covers: Fedora 39+, Nobara 39+
 
 **One-liner** (download + install in one command):
 ```bash
-sudo dnf install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.8.0-1.fc43.noarch.rpm
+sudo dnf install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.8.1-1.fc43.noarch.rpm
 ```
 
 **Or manually:** Download the `.rpm` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
@@ -112,7 +112,7 @@ Covers: Ubuntu 24.04+, Debian 13+, Linux Mint 22+, Pop!_OS 24.04+, Zorin OS 17+,
 
 **One-liner** (download + install in one command):
 ```bash
-curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux_8.8.0-1_all.deb && sudo dpkg -i trcc-linux_8.8.0-1_all.deb && sudo apt-get install -f
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux_8.8.1-1_all.deb && sudo dpkg -i trcc-linux_8.8.1-1_all.deb && sudo apt-get install -f
 ```
 
 **Or manually:** Download the `.deb` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
@@ -150,7 +150,7 @@ Covers: Arch Linux, CachyOS, Manjaro, EndeavourOS, Garuda Linux, Artix Linux, Ar
 
 **One-liner** (download + install in one command):
 ```bash
-curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.8.0-1-any.pkg.tar.zst && sudo pacman -U trcc-linux-8.8.0-1-any.pkg.tar.zst
+curl -LO https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.8.1-1-any.pkg.tar.zst && sudo pacman -U trcc-linux-8.8.1-1-any.pkg.tar.zst
 ```
 
 **Or manually:** Download the `.pkg.tar.zst` file from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
@@ -530,7 +530,7 @@ These use an immutable root filesystem — you can't `sudo dnf install` like nor
 
 **One-liner** (download + install, requires reboot):
 ```bash
-rpm-ostree install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.8.0-1.fc43.noarch.rpm && systemctl reboot
+rpm-ostree install https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest/download/trcc-linux-8.8.1-1.fc43.noarch.rpm && systemctl reboot
 ```
 
 **Or manually:** Download the `.rpm` from the [latest release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest), then:
