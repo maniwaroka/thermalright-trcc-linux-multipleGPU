@@ -328,3 +328,34 @@ When the user says one bare word — `patch`, `minor`, or `major` — execute th
 - **Architecture history** (GoF refactoring, SOLID evolution, v6.0–v8.1): `doc/HISTORY_ARCHITECTURE.md`
 - **Project history** (reverse engineering journey, protocols, lessons learned): `doc/HISTORY_PROJECT.md`
 - **Changelog** (per-version release notes): `doc/CHANGELOG.md`
+## Execution Boundaries (Non-Negotiable)
+
+### File Modification Rules
+- Only modify files explicitly named in the request
+- If a fix requires touching an unspecified file, STOP and ask first
+- Do not clean up related code while inside a file
+- Do not create new files without explicit instruction
+- If something breaks, report exactly what changed — do not attempt self-repair
+
+### Before Every File You Touch
+State:
+1. Which layer is this file in?
+2. Which port interface does it implement or consume?
+3. Does any import violate the layer law?
+
+### Complexity Calibration
+- Trivial: execute directly, one turn, no preamble
+- Moderate: one sentence stating approach, then execute
+- Complex: propose full plan, wait for confirmation, then implement in one clean pass
+
+### On Uncertainty
+If the boundary is unclear — stop and ask.
+Do not infer. Do not fill gaps with plausible-looking code.
+A precise question is better than a confident wrong answer.
+
+### The No That Must Hold
+If a requested change violates any rule above:
+- Say no
+- State which rule it violates
+- Propose the correct alternative
+- Do not proceed until confirmed

@@ -18,8 +18,8 @@ def _enable_hid_for_tests():
 @pytest.fixture(autouse=True)
 def _patch_hid_sleep():
     """Disable time.sleep in HID device modules for fast tests."""
-    with patch("trcc.adapters.device.hid.time.sleep"), \
-         patch("trcc.adapters.device.led.time.sleep"):
+    with patch("trcc.adapters.transport.adapter_hid.time.sleep"), \
+         patch("trcc.adapters.transport.adapter_led.time.sleep"):
         yield
 
 

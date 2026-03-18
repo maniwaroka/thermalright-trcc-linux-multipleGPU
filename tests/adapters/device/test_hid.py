@@ -310,7 +310,7 @@ class TestType2Handshake:
         transport.write.return_value = TYPE2_INIT_SIZE
 
         dev = HidDeviceType2(transport)
-        with patch("trcc.adapters.device.hid.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.transport.adapter_hid.time.sleep") as mock_sleep:
             dev.handshake()
             # Should call sleep(0.05) then sleep(0.2)
             calls = mock_sleep.call_args_list
@@ -424,7 +424,7 @@ class TestType2FrameSend:
     def test_send_frame_timing(self):
         """Verify C# Sleep(1) inter-frame delay."""
         dev, transport = self._init_device()
-        with patch("trcc.adapters.device.hid.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.transport.adapter_hid.time.sleep") as mock_sleep:
             dev.send_frame(b'\xFF' * 100)
             mock_sleep.assert_called_once_with(DELAY_FRAME_TYPE2_S)
 
@@ -611,7 +611,7 @@ class TestType3Handshake:
         transport.write.return_value = TYPE3_INIT_SIZE
 
         dev = HidDeviceType3(transport)
-        with patch("trcc.adapters.device.hid.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.transport.adapter_hid.time.sleep") as mock_sleep:
             dev.handshake()
             calls = mock_sleep.call_args_list
             assert len(calls) == 2
@@ -842,7 +842,7 @@ class TestPyUsbTransport:
 
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = False
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=mock_dev):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=mock_dev):
             t = PyUsbTransport(0x0416, 0x5302)
             t.open()
 
@@ -856,7 +856,7 @@ class TestPyUsbTransport:
 
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = True
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=mock_dev):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=mock_dev):
             t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             mock_dev.detach_kernel_driver.assert_called_once_with(USB_INTERFACE)
@@ -866,7 +866,7 @@ class TestPyUsbTransport:
         """open() raises RuntimeError when device not found."""
         from trcc.adapters.device.hid import PyUsbTransport
 
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=None):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=None):
             t = PyUsbTransport(0x0416, 0x5302)
             with pytest.raises(RuntimeError, match="not found"):
                 t.open()
@@ -878,10 +878,10 @@ class TestPyUsbTransport:
 
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = False
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=mock_dev), \
-             patch("trcc.adapters.device.hid.usb.util.claim_interface"), \
-             patch("trcc.adapters.device.hid.usb.util.release_interface") as mock_release, \
-             patch("trcc.adapters.device.hid.usb.util.dispose_resources") as mock_dispose:
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=mock_dev), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.claim_interface"), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.release_interface") as mock_release, \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.dispose_resources") as mock_dispose:
             t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             t.close()
@@ -897,8 +897,8 @@ class TestPyUsbTransport:
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = False
         mock_dev.write.return_value = 512
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=mock_dev), \
-             patch("trcc.adapters.device.hid.usb.util.claim_interface"):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=mock_dev), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.claim_interface"):
             t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             result = t.write(EP_WRITE_02, b'\xFF' * 512, timeout=100)
@@ -913,8 +913,8 @@ class TestPyUsbTransport:
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = False
         mock_dev.read.return_value = bytearray(b'\xDA\xDB\xDC\xDD')
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=mock_dev), \
-             patch("trcc.adapters.device.hid.usb.util.claim_interface"):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=mock_dev), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.claim_interface"):
             t = PyUsbTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
@@ -936,10 +936,10 @@ class TestPyUsbTransport:
 
         mock_dev = MagicMock()
         mock_dev.is_kernel_driver_active.return_value = False
-        with patch("trcc.adapters.device.hid.usb.core.find", return_value=mock_dev), \
-             patch("trcc.adapters.device.hid.usb.util.claim_interface"), \
-             patch("trcc.adapters.device.hid.usb.util.release_interface"), \
-             patch("trcc.adapters.device.hid.usb.util.dispose_resources"):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find", return_value=mock_dev), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.claim_interface"), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.release_interface"), \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.dispose_resources"):
             with PyUsbTransport(0x0416, 0x5302) as t:
                 assert t.is_open
             assert not t.is_open
@@ -954,7 +954,7 @@ class TestHidApiTransport:
 
     def test_import_error_when_hidapi_missing(self):
         """HidApiTransport raises ImportError when hidapi not installed."""
-        import trcc.adapters.device.hid as mod
+        import trcc.adapters.transport.adapter_hid as mod
         orig = mod.HIDAPI_AVAILABLE
         mod.HIDAPI_AVAILABLE = False
         try:
@@ -969,7 +969,7 @@ class TestHidApiTransport:
         from trcc.adapters.device.hid import HidApiTransport
 
         mock_hid_dev = MagicMock()
-        with patch("trcc.adapters.device.hid.hidapi.Device", return_value=mock_hid_dev) as mock_cls:
+        with patch("trcc.adapters.transport.adapter_hid.hidapi.Device", return_value=mock_hid_dev) as mock_cls:
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             mock_cls.assert_called_once_with(vid=0x0416, pid=0x5302)
@@ -981,7 +981,7 @@ class TestHidApiTransport:
         from trcc.adapters.device.hid import HidApiTransport
 
         mock_hid_dev = MagicMock()
-        with patch("trcc.adapters.device.hid.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.adapters.transport.adapter_hid.hidapi.Device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             t.close()
@@ -995,7 +995,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         mock_hid_dev.write.return_value = 5
-        with patch("trcc.adapters.device.hid.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.adapters.transport.adapter_hid.hidapi.Device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             t.write(EP_WRITE_02, b'\xFF\xFE\xFD\xFC')
@@ -1010,7 +1010,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         mock_hid_dev.read.return_value = [0xDA, 0xDB, 0xDC, 0xDD]
-        with patch("trcc.adapters.device.hid.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.adapters.transport.adapter_hid.hidapi.Device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
@@ -1024,7 +1024,7 @@ class TestHidApiTransport:
 
         mock_hid_dev = MagicMock()
         mock_hid_dev.read.return_value = None
-        with patch("trcc.adapters.device.hid.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.adapters.transport.adapter_hid.hidapi.Device", return_value=mock_hid_dev):
             t = HidApiTransport(0x0416, 0x5302)
             t.open()
             result = t.read(EP_READ_01, 512, timeout=100)
@@ -1049,7 +1049,7 @@ class TestHidApiTransport:
         from trcc.adapters.device.hid import HidApiTransport
 
         mock_hid_dev = MagicMock()
-        with patch("trcc.adapters.device.hid.hidapi.Device", return_value=mock_hid_dev):
+        with patch("trcc.adapters.transport.adapter_hid.hidapi.Device", return_value=mock_hid_dev):
             with HidApiTransport(0x0416, 0x5302) as t:
                 assert t.is_open
             assert not t.is_open
@@ -1067,8 +1067,8 @@ class TestFindHidDevices:
         """find_hid_devices finds devices via pyusb."""
         mock_dev = MagicMock()
         mock_dev.iSerialNumber = 3
-        with patch("trcc.adapters.device.hid.usb.core.find") as mock_find, \
-             patch("trcc.adapters.device.hid.usb.util.get_string", return_value="ABC123"):
+        with patch("trcc.adapters.transport.adapter_hid.usb.core.find") as mock_find, \
+             patch("trcc.adapters.transport.adapter_hid.usb.util.get_string", return_value="ABC123"):
             mock_find.return_value = [mock_dev]
             devices = find_hid_devices()
             assert len(devices) >= 1

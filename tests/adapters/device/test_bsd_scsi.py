@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-MODULE = 'trcc.adapters.device.bsd.scsi'
+MODULE = 'trcc.adapters.transport.bridge_bsd'
 
 
 class TestBSDScsiTransport:

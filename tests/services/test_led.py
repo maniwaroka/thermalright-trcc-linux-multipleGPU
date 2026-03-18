@@ -302,7 +302,7 @@ class TestLEDServiceTickDispatch:
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
-    @patch("trcc.adapters.device.led.ColorEngine.get_table")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.get_table")
     def test_tick_rainbow(self, mock_table, led_svc):
         # Provide a minimal table
         mock_table.return_value = [(i, i, i) for i in range(768)]
@@ -310,14 +310,14 @@ class TestLEDServiceTickDispatch:
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value", return_value=(0, 255, 255))
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value", return_value=(0, 255, 255))
     def test_tick_temp_linked(self, mock_cfv, led_svc):
         led_svc.set_mode(LEDMode.TEMP_LINKED)
         led_svc.update_metrics(HardwareMetrics(cpu_temp=25))
         colors = led_svc.tick()
         assert len(colors) == led_svc.state.segment_count
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value", return_value=(255, 255, 0))
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value", return_value=(255, 255, 0))
     def test_tick_load_linked(self, mock_cfv, led_svc):
         led_svc.set_mode(LEDMode.LOAD_LINKED)
         led_svc.update_metrics(HardwareMetrics(cpu_percent=60))
@@ -523,7 +523,7 @@ class TestTickColorful:
 class TestTickRainbow:
     """CHMS_Timer: 768-entry table, offset per segment."""
 
-    @patch("trcc.adapters.device.led.ColorEngine.get_table")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.get_table")
     def test_uses_rgb_table(self, mock_table, led_svc):
         table = [(i, 0, 0) for i in range(768)]
         mock_table.return_value = table
@@ -533,21 +533,21 @@ class TestTickRainbow:
         assert len(colors) == led_svc.state.segment_count
         mock_table.assert_called()
 
-    @patch("trcc.adapters.device.led.ColorEngine.get_table")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.get_table")
     def test_advances_by_4(self, mock_table, led_svc):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_svc.state.rgb_timer = 0
         led_svc._tick_rainbow_for(led_svc.state.segment_count)
         assert led_svc.state.rgb_timer == 4
 
-    @patch("trcc.adapters.device.led.ColorEngine.get_table")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.get_table")
     def test_timer_wraps(self, mock_table, led_svc):
         mock_table.return_value = [(0, 0, 0)] * 768
         led_svc.state.rgb_timer = 764
         led_svc._tick_rainbow_for(led_svc.state.segment_count)
         assert led_svc.state.rgb_timer == 0  # (764 + 4) % 768 = 0
 
-    @patch("trcc.adapters.device.led.ColorEngine.get_table")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.get_table")
     def test_segments_get_different_offsets(self, mock_table, led_svc):
         """Different segments get different colors from the table."""
         table = [(i, i, i) for i in range(768)]
@@ -567,7 +567,7 @@ class TestTickRainbow:
 class TestTickTempLinked:
     """WDLD_Timer: color from CPU/GPU temperature thresholds."""
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_uses_cpu_temp_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc.state.temp_source = "cpu"
@@ -577,7 +577,7 @@ class TestTickTempLinked:
         # First positional arg is the temp value
         assert mock_cfv.call_args[0][0] == 45
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_uses_gpu_temp(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 0, 0)
         led_svc.state.temp_source = "gpu"
@@ -585,14 +585,14 @@ class TestTickTempLinked:
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 92
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
         led_svc.update_metrics(HardwareMetrics())
         led_svc._tick_temp_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 0
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_uniform_color(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 0)
         led_svc.update_metrics(HardwareMetrics(cpu_temp=40))
@@ -608,7 +608,7 @@ class TestTickTempLinked:
 class TestTickLoadLinked:
     """FZLD_Timer: color from CPU/GPU load thresholds."""
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_uses_cpu_load_by_default(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 255, 0)
         led_svc.state.load_source = "cpu"
@@ -616,7 +616,7 @@ class TestTickLoadLinked:
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 60
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_uses_gpu_load(self, mock_cfv, led_svc):
         mock_cfv.return_value = (255, 110, 0)
         led_svc.state.load_source = "gpu"
@@ -624,7 +624,7 @@ class TestTickLoadLinked:
         led_svc._tick_load_linked_for(led_svc.state.segment_count)
         assert mock_cfv.call_args[0][0] == 85
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value")
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value")
     def test_missing_metric_defaults_to_zero(self, mock_cfv, led_svc):
         mock_cfv.return_value = (0, 255, 255)
         led_svc.update_metrics(HardwareMetrics())
@@ -786,20 +786,20 @@ class TestTickSingleMode:
             LEDMode.COLORFUL, (0, 0, 0), 4)
         assert len(colors) == 4
 
-    @patch("trcc.adapters.device.led.ColorEngine.get_table",
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.get_table",
            return_value=[(i, i, i) for i in range(768)])
     def test_rainbow(self, mock_table, led_svc):
         colors = led_svc._tick_single_mode(
             LEDMode.RAINBOW, (0, 0, 0), 6)
         assert len(colors) == 6
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value", return_value=(0, 255, 255))
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value", return_value=(0, 255, 255))
     def test_temp_linked(self, mock_cfv, led_svc):
         colors = led_svc._tick_single_mode(
             LEDMode.TEMP_LINKED, (0, 0, 0), 3)
         assert len(colors) == 3
 
-    @patch("trcc.adapters.device.led.ColorEngine.color_for_value", return_value=(255, 0, 0))
+    @patch("trcc.adapters.transport.adapter_led.ColorEngine.color_for_value", return_value=(255, 0, 0))
     def test_load_linked(self, mock_cfv, led_svc):
         colors = led_svc._tick_single_mode(
             LEDMode.LOAD_LINKED, (0, 0, 0), 3)

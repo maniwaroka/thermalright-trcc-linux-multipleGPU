@@ -44,10 +44,10 @@ def _make_device(vid=0x87CD, pid=0x70DB, scsi="/dev/sg0", usb_path="2-1",
 class TestDetectToSend(unittest.TestCase):
     """Full pipeline: detect device → create LCDDriver → send_frame."""
 
-    @patch("trcc.adapters.device.scsi._sg_io_write", return_value=True)
-    @patch("trcc.adapters.device.scsi._sg_io_read", return_value=b"\x00" * 512)
-    @patch("trcc.adapters.device.lcd.detect_devices")
-    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.transport.adapter_scsi._sg_io_write", return_value=True)
+    @patch("trcc.adapters.transport.adapter_scsi._sg_io_read", return_value=b"\x00" * 512)
+    @patch("trcc.adapters.transport.facade_lcd.detect_devices")
+    @patch("trcc.adapters.transport.facade_lcd.LCDDriver._detect_resolution", return_value=False)
     def test_detect_init_send(self, _, mock_detect, mock_read, mock_write):
         """detect_devices → LCDDriver(path) → send_frame goes through all layers."""
         from trcc.adapters.device.lcd import LCDDriver
@@ -76,10 +76,10 @@ class TestDetectToSend(unittest.TestCase):
         expected_writes = 1 + len(chunks)  # init + chunks
         self.assertEqual(mock_write.call_count, expected_writes)
 
-    @patch("trcc.adapters.device.scsi._sg_io_write", return_value=True)
-    @patch("trcc.adapters.device.scsi._sg_io_read", return_value=b"\x00" * 512)
-    @patch("trcc.adapters.device.lcd.detect_devices")
-    @patch("trcc.adapters.device.lcd.LCDDriver._detect_resolution", return_value=False)
+    @patch("trcc.adapters.transport.adapter_scsi._sg_io_write", return_value=True)
+    @patch("trcc.adapters.transport.adapter_scsi._sg_io_read", return_value=b"\x00" * 512)
+    @patch("trcc.adapters.transport.facade_lcd.detect_devices")
+    @patch("trcc.adapters.transport.facade_lcd.LCDDriver._detect_resolution", return_value=False)
     def test_send_image_pipeline(self, _, mock_detect, mock_read, mock_write):
         """LCDDriver.load_image → send_frame end-to-end."""
         from trcc.adapters.device.lcd import LCDDriver

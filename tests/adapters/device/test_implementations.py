@@ -152,7 +152,7 @@ class TestDetectResolution(unittest.TestCase):
     def _detect(self, poll_response):
         """Create LCDDriver with mocked SCSI read, return its implementation."""
         from trcc.adapters.device.lcd import LCDDriver
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
+        with patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read', return_value=poll_response):
             driver = LCDDriver(device_path='/dev/sg0')
         return driver.implementation
 
@@ -189,7 +189,7 @@ class TestDetectResolution(unittest.TestCase):
     def test_detect_scsi_error(self):
         """SCSI read exception → resolution stays at default."""
         from trcc.adapters.device.lcd import LCDDriver
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', side_effect=OSError("sg_raw fail")):
+        with patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read', side_effect=OSError("sg_raw fail")):
             driver = LCDDriver(device_path='/dev/sg0')
         self.assertFalse(getattr(driver.implementation, 'resolution_detected', False))
 
@@ -204,7 +204,7 @@ class TestDetectResolutionEdge(unittest.TestCase):
         """Resolution detection works for FBL 72 → 480x480."""
         from trcc.adapters.device.lcd import LCDDriver
         poll_response = bytes([72]) + b'\x00' * 0xE0FF
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
+        with patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read', return_value=poll_response):
             driver = LCDDriver(device_path='/dev/sg0')
         self.assertEqual(driver.implementation.width, 480)
         self.assertEqual(driver.implementation.height, 480)
@@ -212,7 +212,7 @@ class TestDetectResolutionEdge(unittest.TestCase):
     def test_detect_verbose_failure(self):
         """SCSI failure → resolution stays at default."""
         from trcc.adapters.device.lcd import LCDDriver
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', side_effect=OSError("fail")):
+        with patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read', side_effect=OSError("fail")):
             driver = LCDDriver(device_path='/dev/sg0')
         self.assertEqual(driver.implementation.width, 320)  # default unchanged
 

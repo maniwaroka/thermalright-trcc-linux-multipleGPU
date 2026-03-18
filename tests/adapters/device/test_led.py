@@ -899,7 +899,7 @@ class TestLedHidSenderHandshake:
         transport.read.return_value = _make_valid_handshake_response()
 
         sender = LedHidSender(transport)
-        with patch("trcc.adapters.device.led.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.transport.adapter_led.time.sleep") as mock_sleep:
             sender.handshake()
             calls = mock_sleep.call_args_list
             assert len(calls) == 2
@@ -1041,7 +1041,7 @@ class TestLedHidSenderSendLedData:
         transport = _make_mock_transport()
         sender = LedHidSender(transport)
 
-        with patch("trcc.adapters.device.led.time.sleep") as mock_sleep:
+        with patch("trcc.adapters.transport.adapter_led.time.sleep") as mock_sleep:
             sender.send_led_data(b'\xAA' * 20)
             mock_sleep.assert_not_called()
 

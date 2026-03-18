@@ -122,7 +122,7 @@ class TestDeviceProtocolABC:
 class TestObserverCallbacks:
     """Test observer pattern on protocol instances."""
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device", return_value=True)
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device", return_value=True)
     def test_on_send_complete_fires_on_success(self, mock_send):
         s = ScsiProtocol("/dev/sg0")
         callback = MagicMock()
@@ -132,7 +132,7 @@ class TestObserverCallbacks:
 
         callback.assert_called_once_with(True)
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device", return_value=False)
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device", return_value=False)
     def test_on_send_complete_fires_on_failure(self, mock_send):
         s = ScsiProtocol("/dev/sg0")
         callback = MagicMock()
@@ -142,7 +142,7 @@ class TestObserverCallbacks:
 
         callback.assert_called_once_with(False)
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device", side_effect=Exception("SCSI error"))
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device", side_effect=Exception("SCSI error"))
     def test_on_error_fires_on_exception(self, mock_send):
         s = ScsiProtocol("/dev/sg0")
         error_cb = MagicMock()
@@ -153,9 +153,9 @@ class TestObserverCallbacks:
         error_cb.assert_called_once()
         assert "SCSI" in error_cb.call_args[0][0]
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.PyUsbTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image", return_value=True)
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PyUsbTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image", return_value=True)
     def test_hid_state_changed_on_transport_open(self, mock_send, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -202,7 +202,7 @@ class TestScsiProtocol:
         assert s.protocol_name == "scsi"
         assert "/dev/sg0" in repr(s)
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device")
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device")
     def test_send_calls_scsi_send_image(self, mock_scsi_send):
         mock_scsi_send.return_value = True
         s = ScsiProtocol("/dev/sg0")
@@ -211,14 +211,14 @@ class TestScsiProtocol:
         assert result is True
         mock_scsi_send.assert_called_once_with("/dev/sg0", data, 320, 320)
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device")
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device")
     def test_send_returns_false_on_failure(self, mock_scsi_send):
         mock_scsi_send.return_value = False
         s = ScsiProtocol("/dev/sg0")
         result = s.send_image(b'\x00', 320, 320)
         assert result is False
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device", side_effect=Exception("hw err"))
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device", side_effect=Exception("hw err"))
     def test_send_returns_false_on_exception(self, mock_scsi_send):
         s = ScsiProtocol("/dev/sg0")
         result = s.send_image(b'\x00', 320, 320)
@@ -261,9 +261,9 @@ class TestHidProtocol:
         assert "5303" in repr(s)
         assert "type=3" in repr(s)
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.PyUsbTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image")
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PyUsbTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image")
     def test_send_creates_pyusb_transport(self, mock_send_hid, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -277,10 +277,10 @@ class TestHidProtocol:
         mock_transport.open.assert_called_once()
         mock_send_hid.assert_called_once_with(mock_transport, b'\x00' * 100, 2)
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", False)
-    @patch("trcc.adapters.device.hid.HIDAPI_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.HidApiTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image")
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.HIDAPI_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.HidApiTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image")
     def test_send_falls_back_to_hidapi(self, mock_send_hid, MockHidApi, *_):
         mock_transport = MagicMock()
         MockHidApi.return_value = mock_transport
@@ -294,8 +294,8 @@ class TestHidProtocol:
         mock_transport.open.assert_called_once()
         mock_send_hid.assert_called_once_with(mock_transport, b'\xFF' * 50, 3)
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", False)
-    @patch("trcc.adapters.device.hid.HIDAPI_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.HIDAPI_AVAILABLE", False)
     def test_send_returns_false_when_no_backend(self):
         """No backend → error callback + returns False (not exception to caller)."""
         s = HidProtocol(0x0416, 0x5302, 2)
@@ -307,9 +307,9 @@ class TestHidProtocol:
         assert result is False
         error_cb.assert_called_once()
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.PyUsbTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image")
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PyUsbTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image")
     def test_transport_reused_across_sends(self, mock_send_hid, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -328,9 +328,9 @@ class TestHidProtocol:
         s = HidProtocol(0x0416, 0x5302, 2)
         s.close()  # No transport, should not raise
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.PyUsbTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image")
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PyUsbTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image")
     def test_close_closes_transport(self, mock_send_hid, MockPyUsb):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -450,7 +450,7 @@ class TestDeviceServiceFactoryWiring:
         svc.select(dev)
         return svc
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device")
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device")
     def test_scsi_device_routes_to_scsi(self, mock_scsi_send, scsi_device):
         mock_scsi_send.return_value = True
         svc = self._make_svc(scsi_device)
@@ -461,9 +461,9 @@ class TestDeviceServiceFactoryWiring:
         assert result is True
         mock_scsi_send.assert_called_once_with("/dev/sg0", data, 320, 320)
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.PyUsbTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image")
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PyUsbTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image")
     def test_hid_type2_routes_to_hid(self, mock_hid_send, MockPyUsb, hid_type2_device):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -476,9 +476,9 @@ class TestDeviceServiceFactoryWiring:
         assert result is True
         mock_hid_send.assert_called_once_with(mock_transport, data, 2)
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.PyUsbTransport")
-    @patch("trcc.adapters.device.hid.HidDeviceManager.send_image")
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PyUsbTransport")
+    @patch("trcc.adapters.transport.adapter_hid.HidDeviceManager.send_image")
     def test_hid_type3_routes_to_hid(self, mock_hid_send, MockPyUsb, hid_type3_device):
         mock_transport = MagicMock()
         MockPyUsb.return_value = mock_transport
@@ -491,7 +491,7 @@ class TestDeviceServiceFactoryWiring:
         assert result is True
         mock_hid_send.assert_called_once_with(mock_transport, data, 3)
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device")
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device")
     def test_send_returns_false_on_failure(self, mock_scsi_send, scsi_device):
         mock_scsi_send.return_value = False
         svc = self._make_svc(scsi_device)
@@ -510,7 +510,7 @@ class TestDeviceServiceFactoryWiring:
         result = svc.send_rgb565(b'\x00', 320, 320)
         assert result is False
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device", side_effect=Exception("SCSI error"))
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device", side_effect=Exception("SCSI error"))
     def test_exception_clears_busy_flag(self, mock_scsi_send, scsi_device):
         svc = self._make_svc(scsi_device)
         result = svc.send_rgb565(b'\x00', 320, 320)
@@ -626,7 +626,7 @@ class TestFindLcdDevicesHid:
         from trcc.adapters.device.scsi import find_lcd_devices
 
         # Patch LCDDriver to avoid real SCSI access
-        with patch("trcc.adapters.device.lcd.LCDDriver", side_effect=Exception("no hw")):
+        with patch("trcc.adapters.transport.facade_lcd.LCDDriver", side_effect=Exception("no hw")):
             devices = find_lcd_devices()
 
         assert len(devices) == 2
@@ -656,7 +656,7 @@ class TestFindLcdDevicesHid:
         ]
         from trcc.adapters.device.scsi import find_lcd_devices
 
-        with patch("trcc.adapters.device.lcd.LCDDriver", side_effect=Exception("no hw")):
+        with patch("trcc.adapters.transport.facade_lcd.LCDDriver", side_effect=Exception("no hw")):
             devices = find_lcd_devices()
 
         indices = [d['device_index'] for d in devices]
@@ -751,22 +751,22 @@ class TestProtocolInfo:
         # has_backend depends on sg_raw being installed
         assert info.has_backend == info.backends["sg_raw"]
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", True)
-    @patch("trcc.adapters.device.hid.HIDAPI_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.HIDAPI_AVAILABLE", False)
     def test_hid_active_backend_pyusb(self, hid_type2_device):
         info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.active_backend == "pyusb"
         assert info.has_backend is True
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", False)
-    @patch("trcc.adapters.device.hid.HIDAPI_AVAILABLE", True)
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.HIDAPI_AVAILABLE", True)
     def test_hid_active_backend_hidapi(self, hid_type3_device):
         info = DeviceProtocolFactory.get_protocol_info(hid_type3_device)
         assert info.active_backend == "hidapi"
         assert info.has_backend is True
 
-    @patch("trcc.adapters.device.hid.PYUSB_AVAILABLE", False)
-    @patch("trcc.adapters.device.hid.HIDAPI_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.PYUSB_AVAILABLE", False)
+    @patch("trcc.adapters.transport.adapter_hid.HIDAPI_AVAILABLE", False)
     def test_hid_no_backend(self, hid_type2_device):
         info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.active_backend == "none"
@@ -782,7 +782,7 @@ class TestProtocolInfo:
         info = DeviceProtocolFactory.get_protocol_info(hid_type2_device)
         assert info.transport_open is False
 
-    @patch("trcc.adapters.device.scsi.send_image_to_device", return_value=True)
+    @patch("trcc.adapters.transport.adapter_scsi.send_image_to_device", return_value=True)
     def test_cached_protocol_delegates_get_info(self, mock_send, scsi_device):
         """When a protocol is cached, get_protocol_info delegates to proto.get_info()."""
         # Create and cache a protocol
