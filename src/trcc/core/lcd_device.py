@@ -677,6 +677,56 @@ class LCDDevice(Device):
     def playing(self) -> bool:
         return self._display_svc.is_video_playing() if self._display_svc else False
 
+    # ── Blocking video loop (CLI / API) ──────────────────────────
+
+    def play_video_loop(
+        self,
+        video_path: Any,
+        *,
+        overlay_config: dict | None = None,
+        mask_path: Any | None = None,
+        metrics_fn: Any | None = None,
+        on_frame: Any | None = None,
+        on_progress: Any | None = None,
+        loop: bool = True,
+        duration: float = 0,
+    ) -> dict:
+        """Play video with optional overlay, blocking until done.
+
+        This is the single entry point for all adapters (CLI, GUI, API)
+        to play video with live metric overlays.
+
+        Args:
+            video_path: Video/GIF/ZT file to play.
+            overlay_config: Overlay element config dict (from
+                ``build_overlay_config()``). Enables overlay if provided.
+            mask_path: Mask PNG file or directory. Auto-resized to LCD dims.
+            metrics_fn: Callable returning ``HardwareMetrics`` — polled
+                once per second for live overlay updates.
+            on_frame: Callback ``(processed_image)`` — adapter sends to device.
+            on_progress: Callback ``(percent, current_time, total_time)``.
+            loop: Whether to loop the video.
+            duration: Stop after N seconds (0 = no limit).
+
+        Returns:
+            Result dict with success/error/message.
+        """
+        if not self._display_svc:
+            return {"success": False, "error": "DisplayService not initialized"}
+        log.info("play_video_loop: %s overlay=%s mask=%s",
+                 video_path, bool(overlay_config), bool(mask_path))
+        from pathlib import Path
+        return self._display_svc.run_video_loop(
+            Path(video_path),
+            overlay_config=overlay_config,
+            mask_path=Path(mask_path) if mask_path else None,
+            metrics_fn=metrics_fn,
+            on_frame=on_frame,
+            on_progress=on_progress,
+            loop=loop,
+            duration=duration,
+        )
+
     # ── Flat convenience aliases ──────────────────────────────────
 
     def load_video(self, path: Any) -> dict:

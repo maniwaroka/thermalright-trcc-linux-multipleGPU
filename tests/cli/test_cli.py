@@ -261,12 +261,13 @@ class TestNewCommandDispatch(unittest.TestCase):
                 '/tmp/dc', device=None, send=False, output=None, preview=False)
 
     def test_theme_save_dispatches(self):
-        """'theme-save MyTheme' calls _theme.save_theme()."""
+        """'theme-save MyTheme' routes through _cmd_theme(save='MyTheme')."""
         with patch('sys.argv', ['trcc', 'theme-save', 'MyTheme']), \
              patch('trcc.cli._theme.save_theme',
                           return_value=0) as mock:
             main()
-            mock.assert_called_once_with('MyTheme', device=None, video=None)
+            mock.assert_called_once()
+            assert mock.call_args[0][0] == 'MyTheme'
 
     def test_theme_export_dispatches(self):
         """'theme-export Foo /tmp/out.tr' calls _theme.export_theme()."""

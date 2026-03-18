@@ -8,7 +8,6 @@ Blocking loops (video, screencast, test) remain here — terminal-only.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from trcc.cli import _cli_handler, _device
 from trcc.core.lcd_device import LCDDevice
@@ -114,70 +113,95 @@ def test(device=None, loop=False, preview=False):
 
 
 def play_video(video_path, *, device=None, loop=True, duration=0,
-               preview=False):
-    """Play video/GIF/ZT on LCD device."""
+               preview=False, metrics=None, mask=None,
+               font_size=14, color='ffffff', font='Microsoft YaHei',
+               font_style='regular', temp_unit=0, time_format=0,
+               date_format=0):
+    """Play video/GIF/ZT on LCD device with optional overlay."""
     try:
-        import time
-
         if not os.path.exists(video_path):
             print(f"Error: File not found: {video_path}")
             return 1
 
-        from trcc.adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
-        from trcc.cli import _ensure_renderer
-        from trcc.services import ImageService, MediaService
+        from trcc.cli import _ensure_renderer, _ensure_settings
+        from trcc.core.models import build_overlay_config
 
+        _ensure_settings()
         _ensure_renderer()
-        svc = _device._get_service(device)
-        if not svc.selected:
-            print("No device found.")
-            return 1
+        lcd, rc = _connect_or_fail(device)
+        if rc:
+            return rc
 
-        dev = svc.selected
-        w, h = dev.resolution
+        dev_path = lcd.device_path
+        w, h = lcd.lcd_size
 
-        media = MediaService(
-            video_decoder_cls=VideoDecoder,
-            zt_decoder_cls=ThemeZtDecoder,
-        )
-        media.set_target_size(w, h)
-        if not media.load(Path(video_path)):
-            print(f"Error: Failed to load video: {video_path}")
-            return 1
+        # Build overlay config from --metric specs
+        overlay_config = None
+        if metrics:
+            try:
+                overlay_config = build_overlay_config(
+                    metrics,
+                    default_color=color,
+                    default_font_size=font_size,
+                    default_font=font,
+                    default_style=font_style,
+                    temp_unit=temp_unit,
+                    time_format=time_format,
+                    date_format=date_format,
+                )
+            except ValueError as e:
+                print(f"Error: {e}")
+                return 1
 
-        total = media._state.total_frames
-        fps = media._state.fps
-        print(f"Playing {video_path} ({total} frames, {fps:.0f}fps) "
-              f"on {dev.path} [{w}x{h}]")
+        # Metrics supplier for live overlay updates
+        metrics_fn = None
+        if overlay_config:
+            from trcc.cli import _ensure_system
+            from trcc.services.system import get_all_metrics
+            _ensure_system()
+            metrics_fn = get_all_metrics
+
+        print(f"Playing {video_path} on {dev_path} [{w}x{h}]")
+        if overlay_config:
+            print(f"  Overlay: {len(overlay_config)} elements")
+        if mask:
+            print(f"  Mask: {mask}")
         if loop:
             print("Press Ctrl+C to stop.")
 
-        media._state.loop = loop
-        media.play()
-
-        interval = media.frame_interval_ms / 1000.0
-        start = time.monotonic()
         if preview:
             print('\033[2J', end='', flush=True)
 
-        while media.is_playing:
-            frame, should_send, progress = media.tick()
-            if frame is None:
-                break
-            if should_send:
-                svc.send_pil(frame, w, h)
-            if preview and frame:
-                print(ImageService.to_ansi_cursor_home(frame), flush=True)
-            elif progress:
-                pct, cur, total_t = progress
+        def _on_frame(img):
+            svc = lcd._device_svc
+            if svc:
+                svc.send_pil(img, w, h)
+            if preview:
+                from trcc.services import ImageService
+                print(ImageService.to_ansi_cursor_home(img), flush=True)
+
+        def _on_progress(pct, cur, total_t):
+            if not preview:
                 print(f"\r  {cur} / {total_t} ({pct:.0f}%)",
                       end="", flush=True)
-            if duration and (time.monotonic() - start) >= duration:
-                break
-            time.sleep(interval)
 
-        print("\nDone.")
-        return 0
+        result = lcd.play_video_loop(
+            video_path,
+            overlay_config=overlay_config,
+            mask_path=mask,
+            metrics_fn=metrics_fn,
+            on_frame=_on_frame,
+            on_progress=_on_progress,
+            loop=loop,
+            duration=duration,
+        )
+
+        if result["success"]:
+            print(f"\n{result['message']}.")
+            return 0
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        return 1
+
     except KeyboardInterrupt:
         print("\nStopped.")
         return 0

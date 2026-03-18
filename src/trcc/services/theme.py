@@ -226,6 +226,15 @@ class ThemeService:
                     if bg_path.suffix in ('.mp4', '.avi', '.mkv', '.webm', '.zt'):
                         data.animation_path = bg_path
                         data.is_animated = True
+                    elif bg_path.suffix == '.gif':
+                        try:
+                            from PIL import Image
+                            with Image.open(bg_path) as im:
+                                if getattr(im, 'n_frames', 1) > 1:
+                                    data.animation_path = bg_path
+                                    data.is_animated = True
+                        except Exception:
+                            pass
                     else:
                         data.background = ThemeService._open_image(
                             bg_path, w, h)

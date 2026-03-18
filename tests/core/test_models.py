@@ -599,5 +599,168 @@ class TestGetButtonImage:
         assert get_button_image(255) is None
 
 
+# =============================================================================
+# Overlay config builders (parse_metric_spec, build_overlay_config)
+# =============================================================================
+
+
+class TestParseMetricSpec:
+    """Tests for parse_metric_spec() — CLI metric spec → overlay element."""
+
+    def test_basic_spec(self):
+        from trcc.core.models import parse_metric_spec
+        key, elem = parse_metric_spec('gpu_temp:10,20', 0)
+        assert key == 'cli_elem_0'
+        assert elem['x'] == 10
+        assert elem['y'] == 20
+        assert elem['metric'] == 'gpu_temp'
+        assert elem['enabled'] is True
+        assert elem['color'] == '#ffffff'
+        assert elem['font']['size'] == 14
+
+    def test_with_color_override(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('cpu_percent:50,100:ff0000', 1)
+        assert elem['color'] == '#ff0000'
+        assert elem['font']['size'] == 14
+
+    def test_with_color_and_size_override(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('time:150,10:ffffff:24', 2)
+        assert elem['color'] == '#ffffff'
+        assert elem['font']['size'] == 24
+        assert elem['metric'] == 'time'
+
+    def test_custom_defaults(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec(
+            'gpu_usage:5,5', 0,
+            default_color='00ff00', default_size=20,
+            default_font='Arial', default_style='bold')
+        assert elem['color'] == '#00ff00'
+        assert elem['font']['size'] == 20
+        assert elem['font']['name'] == 'Arial'
+        assert elem['font']['style'] == 'bold'
+
+    def test_time_format_field(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('time:10,10', 0)
+        assert 'time_format' in elem
+
+    def test_date_format_field(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('date:10,10', 0)
+        assert 'date_format' in elem
+
+    def test_temp_metric_has_temp_unit(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('cpu_temp:10,10', 0)
+        assert 'temp_unit' in elem
+
+    def test_invalid_key_raises(self):
+        from trcc.core.models import parse_metric_spec
+        with pytest.raises(ValueError, match="Unknown metric key"):
+            parse_metric_spec('not_a_metric:10,10', 0)
+
+    def test_missing_coords_raises(self):
+        from trcc.core.models import parse_metric_spec
+        with pytest.raises(ValueError, match="Invalid"):
+            parse_metric_spec('gpu_temp', 0)
+
+    def test_bad_coords_raises(self):
+        from trcc.core.models import parse_metric_spec
+        with pytest.raises(ValueError, match="Invalid coordinates"):
+            parse_metric_spec('gpu_temp:abc,def', 0)
+
+    def test_bad_size_raises(self):
+        from trcc.core.models import parse_metric_spec
+        with pytest.raises(ValueError, match="Invalid size"):
+            parse_metric_spec('gpu_temp:10,20:ff0000:notanint', 0)
+
+    def test_color_with_hash_stripped(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('gpu_temp:10,20:#aabbcc', 0)
+        assert elem['color'] == '#aabbcc'
+
+    def test_empty_color_uses_default(self):
+        from trcc.core.models import parse_metric_spec
+        _, elem = parse_metric_spec('gpu_temp:10,20::18', 0)
+        assert elem['color'] == '#ffffff'
+        assert elem['font']['size'] == 18
+
+
+class TestBuildOverlayConfig:
+    """Tests for build_overlay_config() — multiple specs → config dict."""
+
+    def test_single_metric(self):
+        from trcc.core.models import build_overlay_config
+        config = build_overlay_config(['gpu_temp:10,20'])
+        assert len(config) == 1
+        assert 'cli_elem_0' in config
+
+    def test_multiple_metrics(self):
+        from trcc.core.models import build_overlay_config
+        config = build_overlay_config([
+            'gpu_temp:10,20',
+            'cpu_percent:10,50',
+            'time:150,10',
+        ])
+        assert len(config) == 3
+
+    def test_global_defaults_applied(self):
+        from trcc.core.models import build_overlay_config
+        config = build_overlay_config(
+            ['gpu_temp:10,20'],
+            default_color='00ff00',
+            default_font_size=20,
+            default_font='Arial',
+            default_style='bold',
+        )
+        elem = config['cli_elem_0']
+        assert elem['color'] == '#00ff00'
+        assert elem['font']['size'] == 20
+        assert elem['font']['name'] == 'Arial'
+        assert elem['font']['style'] == 'bold'
+
+    def test_format_overrides(self):
+        from trcc.core.models import build_overlay_config
+        config = build_overlay_config(
+            ['time:10,10', 'date:10,30', 'cpu_temp:10,50'],
+            time_format=1, date_format=2, temp_unit=1,
+        )
+        assert config['cli_elem_0']['time_format'] == 1
+        assert config['cli_elem_1']['date_format'] == 2
+        assert config['cli_elem_2']['temp_unit'] == 1
+
+    def test_invalid_metric_raises(self):
+        from trcc.core.models import build_overlay_config
+        with pytest.raises(ValueError, match="Unknown metric key"):
+            build_overlay_config(['bogus:10,10'])
+
+    def test_empty_list(self):
+        from trcc.core.models import build_overlay_config
+        config = build_overlay_config([])
+        assert config == {}
+
+
+class TestValidOverlayKeys:
+    """Tests for VALID_OVERLAY_KEYS completeness."""
+
+    def test_contains_hardware_metrics(self):
+        from trcc.core.models import HARDWARE_METRICS, VALID_OVERLAY_KEYS
+        for metric_name in HARDWARE_METRICS.values():
+            assert metric_name in VALID_OVERLAY_KEYS
+
+    def test_contains_time_date_weekday(self):
+        from trcc.core.models import VALID_OVERLAY_KEYS
+        assert 'time' in VALID_OVERLAY_KEYS
+        assert 'date' in VALID_OVERLAY_KEYS
+        assert 'weekday' in VALID_OVERLAY_KEYS
+
+    def test_is_frozenset(self):
+        from trcc.core.models import VALID_OVERLAY_KEYS
+        assert isinstance(VALID_OVERLAY_KEYS, frozenset)
+
+
 if __name__ == '__main__':
     unittest.main()

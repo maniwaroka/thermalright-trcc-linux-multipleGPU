@@ -326,6 +326,13 @@ class TestLoadTheme:
             }
         mock_lcd = MagicMock()
         mock_lcd.load_image.return_value = {"success": True, "image": img}
+        # load_local_theme returns static (not animated) result
+        mock_lcd._display_svc.load_local_theme.return_value = {
+            'image': img, 'is_animated': False,
+            'status': 'Theme loaded', 'theme_path': Path('/tmp/theme'),
+        }
+        mock_lcd._display_svc.media.has_frames = False
+        mock_lcd._display_svc.overlay.enabled = False
 
         return svc, themes, img, img_svc, settings_mock, settings_cls, mock_lcd
 
@@ -389,7 +396,7 @@ class TestLoadTheme:
         out = capsys.readouterr().out
         assert "not found" in out.lower()
 
-    def test_animated_theme_redirects_to_video(self, capsys):
+    def test_animated_theme_plays_video(self, capsys):
         svc = _make_mock_service()
         animated = _make_local_theme("AnimTheme", is_animated=True,
                                      animation_path="/path/to/vid.gif")
@@ -398,15 +405,26 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [animated]
+        mock_lcd = MagicMock()
+        # Animated theme: load_local_theme returns is_animated=True
+        mock_lcd._display_svc.load_local_theme.return_value = {
+            'image': None, 'is_animated': True,
+            'status': 'Theme loaded', 'theme_path': Path('/tmp/theme'),
+        }
+        mock_lcd._display_svc.media.has_frames = True
+        mock_lcd._display_svc.media.is_playing = False  # stop immediately
+        mock_lcd._display_svc.media.frame_interval_ms = 33
+        mock_lcd._display_svc.overlay.enabled = False
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS), \
              patch(_PATCH_DATA_MANAGER), \
-             patch(_PATCH_THEME_SVC, theme_svc):
+             patch(_PATCH_THEME_SVC, theme_svc), \
+             patch(_PATCH_LCD_FROM_SVC, return_value=mock_lcd):
             rc = load_theme("AnimTheme")
         assert rc == 0
         out = capsys.readouterr().out
-        assert "animated" in out.lower() or "video" in out.lower()
+        assert "playing" in out.lower() or "animtheme" in out.lower()
 
     def test_no_background_path_returns_1(self, capsys):
         svc = _make_mock_service()
@@ -417,11 +435,18 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [t]
+        mock_lcd = MagicMock()
+        mock_lcd._display_svc.load_local_theme.return_value = {
+            'image': None, 'is_animated': False,
+            'status': 'No bg', 'theme_path': Path('/tmp'),
+        }
+        mock_lcd._display_svc.media.has_frames = False
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS), \
              patch(_PATCH_DATA_MANAGER), \
-             patch(_PATCH_THEME_SVC, theme_svc):
+             patch(_PATCH_THEME_SVC, theme_svc), \
+             patch(_PATCH_LCD_FROM_SVC, return_value=mock_lcd):
             rc = load_theme("NoBg")
         assert rc == 1
 
@@ -433,11 +458,18 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [t]
+        mock_lcd = MagicMock()
+        mock_lcd._display_svc.load_local_theme.return_value = {
+            'image': None, 'is_animated': False,
+            'status': 'No bg', 'theme_path': Path('/tmp'),
+        }
+        mock_lcd._display_svc.media.has_frames = False
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS), \
              patch(_PATCH_DATA_MANAGER), \
-             patch(_PATCH_THEME_SVC, theme_svc):
+             patch(_PATCH_THEME_SVC, theme_svc), \
+             patch(_PATCH_LCD_FROM_SVC, return_value=mock_lcd):
             rc = load_theme("NoBg")
         assert rc == 1
         assert "no background" in capsys.readouterr().out.lower()
@@ -520,7 +552,7 @@ class TestLoadTheme:
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             load_theme("T")
         ml.restore_device_settings.assert_called_once()
-        ml.load_image.assert_called_once()
+        ml._display_svc.load_local_theme.assert_called_once()
         ml.send.assert_called_once()
 
     def test_saves_theme_path_to_settings(self):
@@ -607,7 +639,7 @@ class TestSaveTheme:
              patch(_PATCH_SETTINGS_CLS, sc):
             rc = save_theme("MyTheme")
         assert rc == 1
-        assert "No current theme" in capsys.readouterr().out
+        assert "No background to save" in capsys.readouterr().out
 
     def test_bg_file_not_exists_returns_1(self, capsys):
         svc, sc, td, img = self._base_setup()
@@ -618,7 +650,7 @@ class TestSaveTheme:
              patch("trcc.core.models.ThemeDir", return_value=td):
             rc = save_theme("MyTheme")
         assert rc == 1
-        assert "No current theme" in capsys.readouterr().out
+        assert "No background to save" in capsys.readouterr().out
 
     def test_save_fails_returns_1(self, capsys):
         svc, sc, td, img = self._base_setup()
@@ -638,11 +670,15 @@ class TestSaveTheme:
             rc = save_theme("MyTheme")
         assert rc == 1
 
-    def test_video_path_passed_to_service(self, capsys):
+    def test_video_path_passed_to_service(self, capsys, tmp_path):
         svc, sc, td, img = self._base_setup()
         pil_mock = MagicMock()
         pil_mock.open.return_value = MagicMock(convert=MagicMock(return_value=img))
         img.resize.return_value = img
+
+        # Create a real file so existence check passes
+        video_file = tmp_path / "video.gif"
+        video_file.write_bytes(b"GIF89a")
 
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
@@ -652,11 +688,12 @@ class TestSaveTheme:
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch("trcc.core.models.ThemeDir", return_value=td), \
              patch(_PATCH_THEME_SVC, theme_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock):
-            save_theme("MyTheme", video="/path/to/video.gif")
+             patch(_PATCH_PIL_IMAGE, pil_mock), \
+             patch("trcc.cli._ensure_renderer"):
+            save_theme("MyTheme", video=str(video_file))
 
         call_kwargs = theme_svc.save.call_args[1]
-        assert call_kwargs.get("video_path") == Path("/path/to/video.gif")
+        assert call_kwargs.get("video_path") == video_file
 
     def test_no_video_path_is_none(self, capsys):
         svc, sc, td, img = self._base_setup()

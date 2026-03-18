@@ -1249,6 +1249,140 @@ METRIC_TO_IDS: Dict[str, Tuple[int, int]] = {v: k for k, v in HARDWARE_METRICS.i
 
 
 # =============================================================================
+# Overlay config builders (CLI/API metric spec → OverlayService config dict)
+# =============================================================================
+
+# Valid metric keys for overlay elements (hardware sensors + time/date/weekday).
+VALID_OVERLAY_KEYS: frozenset[str] = frozenset(
+    set(HARDWARE_METRICS.values()) | {'time', 'date', 'weekday'}
+)
+
+
+def parse_metric_spec(
+    spec: str,
+    index: int,
+    default_color: str = 'ffffff',
+    default_size: int = 14,
+    default_font: str = 'Microsoft YaHei',
+    default_style: str = 'regular',
+) -> tuple[str, dict]:
+    """Parse a metric spec string into an overlay config element.
+
+    Format: ``key:x,y[:color[:size]]``
+
+    Examples:
+        ``"gpu_temp:10,20"``            → uses all defaults
+        ``"cpu_usage:10,50:ff0000"``     → red, default size
+        ``"time:150,10:ffffff:24"``      → white, 24px
+
+    Returns:
+        (element_key, config_dict) for ``OverlayService.set_config()``.
+
+    Raises:
+        ValueError: if spec is malformed or metric key is invalid.
+    """
+    parts = spec.split(':')
+    if len(parts) < 2:
+        raise ValueError(
+            f"Invalid metric spec '{spec}' — expected 'key:x,y' "
+            f"(e.g. 'gpu_temp:10,20')")
+
+    metric_key = parts[0]
+    if metric_key not in VALID_OVERLAY_KEYS:
+        raise ValueError(
+            f"Unknown metric key '{metric_key}'. "
+            f"Valid keys: {', '.join(sorted(VALID_OVERLAY_KEYS))}")
+
+    try:
+        coords = parts[1].split(',')
+        x, y = int(coords[0]), int(coords[1])
+    except (ValueError, IndexError) as e:
+        raise ValueError(
+            f"Invalid coordinates in '{spec}' — expected 'key:x,y' "
+            f"(e.g. 'gpu_temp:10,20')") from e
+
+    color = default_color
+    size = default_size
+    if len(parts) >= 3 and parts[2]:
+        color = parts[2]
+    if len(parts) >= 4 and parts[3]:
+        try:
+            size = int(parts[3])
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid size in '{spec}' — expected integer") from e
+
+    element_key = f"cli_elem_{index}"
+    config: dict = {
+        'x': x,
+        'y': y,
+        'color': f"#{color.lstrip('#')}",
+        'font': {
+            'size': size,
+            'style': default_style,
+            'name': default_font,
+        },
+        'enabled': True,
+        'metric': metric_key,
+    }
+
+    # Add format fields for time/date/temp metrics
+    if metric_key == 'time':
+        config['time_format'] = 0
+    elif metric_key == 'date':
+        config['date_format'] = 0
+    elif metric_key.endswith('_temp'):
+        config['temp_unit'] = 0
+
+    return element_key, config
+
+
+def build_overlay_config(
+    metrics: list[str],
+    *,
+    default_color: str = 'ffffff',
+    default_font_size: int = 14,
+    default_font: str = 'Microsoft YaHei',
+    default_style: str = 'regular',
+    temp_unit: int = 0,
+    time_format: int = 0,
+    date_format: int = 0,
+) -> dict:
+    """Build an overlay config dict from CLI metric spec strings.
+
+    Args:
+        metrics: List of spec strings (``"key:x,y[:color[:size]]"``).
+        default_color: Global hex color for elements without per-metric override.
+        default_font_size: Global font size (px).
+        default_font: Global font family name.
+        default_style: Global font style (``'regular'`` or ``'bold'``).
+        temp_unit: Temperature unit (0=Celsius, 1=Fahrenheit).
+        time_format: Time format (0=24h HH:MM, 1=12h hh:MM).
+        date_format: Date format (0=yyyy/MM/dd, 1=same, 2=dd/MM/yyyy, etc.).
+
+    Returns:
+        Dict suitable for ``OverlayService.set_config()``.
+
+    Raises:
+        ValueError: if any metric spec is invalid.
+    """
+    config: dict = {}
+    for i, spec in enumerate(metrics):
+        key, elem = parse_metric_spec(
+            spec, i, default_color, default_font_size,
+            default_font, default_style)
+        # Apply global format overrides
+        if 'time_format' in elem:
+            elem['time_format'] = time_format
+        if 'date_format' in elem:
+            elem['date_format'] = date_format
+        if 'temp_unit' in elem:
+            elem['temp_unit'] = temp_unit
+        config[key] = elem
+    return config
+
+
+# =============================================================================
 # Theme Config DTOs (dc_writer save/export format)
 # =============================================================================
 

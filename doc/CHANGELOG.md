@@ -1,5 +1,20 @@
 # Changelog
 
+## v8.8.0
+
+### Features
+- **CLI overlay pipeline — `trcc theme` command**: Compose video/image + mask + live system metrics entirely from CLI. Hexagonal architecture — core domain (`build_overlay_config`), service (`DisplayService.run_video_loop`), and input port (`LCDDevice.play_video_loop`) shared by CLI, GUI, and API
+  - `trcc theme --background animated.gif --mask /path/to/mask --metric "cpu_temp:10,20"` — play with live overlay
+  - `trcc theme --save MyTheme ...` — save as reusable theme in one shot
+  - Per-metric color/size overrides: `--metric "gpu_temp:10,20:ff0000:18"`
+  - Global font/color/size: `--font Arial --font-style bold --font-size 18 --color 00ff00`
+  - `trcc theme-save` deprecated — alias for `trcc theme --save`
+- **`trcc theme-load` plays animated themes**: Previously animated themes just printed "use trcc video". Now loads and plays with full overlay + mask, same as GUI
+- **GIF animated theme support**: Theme loader and discovery now detect multi-frame GIFs as animated (checks `n_frames > 1`), not just MP4/ZT/AVI
+
+### Fixes
+- **Mask not saved from CLI**: `theme-save --mask` passed the path but not the loaded mask image to `ThemeService.save()`, resulting in `"mask": null` in config.json
+
 ## v8.7.6
 
 ### Fixes

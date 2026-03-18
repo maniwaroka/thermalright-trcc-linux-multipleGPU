@@ -76,35 +76,87 @@ def load_theme(name, *, device=None, preview=False):
         print("Use 'trcc theme-list' to see available themes.")
         return 1
 
-    # Load the theme image
-    if match.is_animated and match.animation_path:
-        print(f"Theme '{match.name}' is animated — use 'trcc video {match.animation_path}'")
-        return 0
+    # Build LCD with full service stack (DisplayService, OverlayService, etc.)
+    from trcc.core.builder import ControllerBuilder
+    lcd = ControllerBuilder().lcd_from_service(svc)
+    lcd.restore_device_settings()
 
-    if match.background_path and match.background_path.exists():
-        from trcc.core.builder import ControllerBuilder
-        lcd = ControllerBuilder().lcd_from_service(svc)
-        lcd.restore_device_settings()
-        result = lcd.load_image(match.background_path)
-        img = result.get("image")
+    # Use DisplayService.load_local_theme() — same path as GUI
+    result = lcd._display_svc.load_local_theme(match)
+
+    # Save as last-used theme
+    key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+    Settings.save_device_setting(key, 'theme_path', str(match.path))
+
+    if result.get('is_animated') and lcd._display_svc.media.has_frames:
+        print(f"Playing '{match.name}' → {dev.path}")
+        print("Press Ctrl+C to stop.")
+
+        # Get metrics supplier if overlay is enabled
+        metrics_fn = None
+        if lcd._display_svc.overlay.enabled:
+            from trcc.cli import _ensure_system
+            from trcc.services.system import get_all_metrics
+            _ensure_system()
+            metrics_fn = get_all_metrics
+
+        def _on_frame(img):
+            svc.send_pil(img, w, h)
+
+        def _on_progress(pct, cur, total_t):
+            print(f"\r  {cur} / {total_t} ({pct:.0f}%)", end="", flush=True)
+
+        import time as _time
+        interval = lcd._display_svc.media.frame_interval_ms / 1000.0
+        last_metrics = 0.0
+        media = lcd._display_svc.media
+        overlay = lcd._display_svc.overlay
+
+        media._state.loop = True
+        media.play()
+
+        try:
+            while media.is_playing:
+                frame, should_send, progress = media.tick()
+                if frame is None:
+                    break
+                if metrics_fn and overlay.enabled:
+                    now = _time.monotonic()
+                    if now - last_metrics >= 1.0:
+                        overlay.update_metrics(metrics_fn())
+                        last_metrics = now
+                if overlay.enabled:
+                    frame = overlay.render(frame)
+                processed = lcd._display_svc._apply_adjustments(frame)
+                if should_send:
+                    _on_frame(processed)
+                if progress:
+                    _on_progress(*progress)
+                _time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nStopped.")
+            return 0
+        print("\nDone.")
+    else:
+        # Static theme
+        img = result.get('image')
         if img:
             lcd.send(img)
-
-        # Save as last-used theme
-        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-        Settings.save_device_setting(key, 'theme_path', str(match.path))
-        print(f"Loaded '{match.name}' → {dev.path}")
-        if preview and img:
-            print(ImageService.to_ansi(img))
-    else:
-        print(f"Theme '{match.name}' has no background image.")
-        return 1
+            print(f"Loaded '{match.name}' → {dev.path}")
+            if preview:
+                print(ImageService.to_ansi(img))
+        else:
+            print(f"Theme '{match.name}' has no background image.")
+            return 1
 
     return 0
 
 
 @_cli_handler
-def save_theme(name, *, device=None, video=None):
+def save_theme(name, *, device=None, video=None, background=None,
+               metrics=None, mask=None, font_size=14, color='ffffff',
+               font='Microsoft YaHei', font_style='regular',
+               temp_unit=0, time_format=0, date_format=0):
     """Save current display state as a custom theme."""
     from pathlib import Path
 
@@ -119,32 +171,89 @@ def save_theme(name, *, device=None, video=None):
     dev = svc.selected
     w, h = dev.resolution
 
-    # Load current background from last-used theme
-    from trcc.conf import Settings
-    key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-    cfg = Settings.get_device_config(key)
-    theme_path = cfg.get('theme_path')
-
+    # --background replaces --video (auto-detect animated vs static)
+    bg_source = background or video
+    video_path = None
     bg = None
-    if theme_path:
-        from trcc.core.models import ThemeDir as TDir
-        td = TDir(theme_path)
-        if td.bg.exists():
-            bg = ImageService.open_and_resize(td.bg, w, h)
+
+    if bg_source:
+        p = Path(bg_source)
+        if not p.exists():
+            print(f"Error: File not found: {bg_source}")
+            return 1
+        suffix = p.suffix.lower()
+        if suffix in ('.mp4', '.gif', '.zt', '.webm', '.avi', '.mkv'):
+            video_path = p
+            # Load first frame as background thumbnail
+            from trcc.cli import _ensure_renderer
+            _ensure_renderer()
+            bg = ImageService.open_and_resize(p, w, h)
+        else:
+            from trcc.cli import _ensure_renderer
+            _ensure_renderer()
+            bg = ImageService.open_and_resize(p, w, h)
 
     if not bg:
-        print("No current theme to save. Load a theme first.")
+        # Fall back to current theme's background
+        from trcc.conf import Settings
+        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
+        cfg = Settings.get_device_config(key)
+        theme_path = cfg.get('theme_path')
+        if theme_path:
+            from trcc.core.models import ThemeDir as TDir
+            td = TDir(theme_path)
+            if td.bg.exists():
+                from trcc.cli import _ensure_renderer
+                _ensure_renderer()
+                bg = ImageService.open_and_resize(td.bg, w, h)
+
+    if not bg:
+        print("No background to save. Provide --background or load a theme first.")
         return 1
 
-    video_path = Path(video) if video else None
+    # Build overlay config from --metric specs
+    overlay_config: dict = {}
+    if metrics:
+        from trcc.core.models import build_overlay_config
+        try:
+            overlay_config = build_overlay_config(
+                metrics,
+                default_color=color,
+                default_font_size=font_size,
+                default_font=font,
+                default_style=font_style,
+                temp_unit=temp_unit,
+                time_format=time_format,
+                date_format=date_format,
+            )
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+
+    # Load mask image if provided
+    mask_img = None
+    mask_source = None
+    if mask:
+        from trcc.cli import _ensure_renderer
+        from trcc.services.overlay import OverlayService
+        _ensure_renderer()
+        r = ImageService._r()
+        mask_img = OverlayService.load_mask_from_path(Path(mask), r, w, h)
+        mask_source = Path(mask)
+
     data_dir = _settings.user_data_dir
     ok, msg = ThemeService.save(
         name, data_dir, (w, h),
-        background=bg, overlay_config={},
+        background=bg, overlay_config=overlay_config,
         video_path=video_path,
-        current_theme_path=Path(theme_path) if theme_path else None,
+        mask=mask_img,
+        mask_source=mask_source,
     )
     print(msg)
+    if overlay_config:
+        print(f"  Overlay: {len(overlay_config)} elements")
+    if mask:
+        print(f"  Mask: {mask}")
     return 0 if ok else 1
 
 

@@ -442,3 +442,130 @@ class TestLCDDeviceIntegration:
         saved = renderer.open_image(theme_path / '00.png')
         r, g, b = get_pixel(saved, 160, 160)[:3]
         assert b > 200
+
+
+# =============================================================================
+# Group 5: run_video_loop() — blocking video+overlay pipeline
+# =============================================================================
+
+
+class TestRunVideoLoop:
+    """Tests for DisplayService.run_video_loop()."""
+
+    def test_returns_error_for_missing_file(
+        self, display_svc: DisplayService, mock_media: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        mock_media.load.return_value = False
+        result = display_svc.run_video_loop(tmp_path / 'nonexistent.gif')
+        assert result['success'] is False
+        assert 'Failed to load' in result['error']
+
+    def test_plays_frames_and_calls_on_frame(
+        self, display_svc: DisplayService, mock_media: MagicMock,
+        renderer: Any, tmp_path: Path,
+    ) -> None:
+        """Simulate a 3-frame video and verify on_frame is called."""
+        # Set up mock media to return 3 frames then stop
+        frames_sent: list[Any] = []
+        frame = renderer.create_surface(320, 320, (255, 0, 0))
+
+        call_count = 0
+
+        def mock_tick():
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 3:
+                return frame, True, None
+            return None, False, None
+
+        mock_media.load.return_value = True
+        mock_media.tick.side_effect = mock_tick
+        mock_media.is_playing = True
+        mock_media.frame_interval_ms = 0
+        mock_media._state = MagicMock()
+        mock_media._state.total_frames = 3
+        mock_media._state.fps = 30
+        mock_media._state.loop = False
+        mock_media._frames = []
+
+        result = display_svc.run_video_loop(
+            tmp_path / 'fake.gif',
+            on_frame=lambda img: frames_sent.append(img),
+        )
+        assert result['success'] is True
+        assert len(frames_sent) == 3
+
+    def test_overlay_config_enables_overlay(
+        self, display_svc: DisplayService, mock_media: MagicMock,
+        renderer: Any, tmp_path: Path,
+    ) -> None:
+        """Overlay should be enabled when config is provided."""
+        mock_media.load.return_value = True
+        mock_media.tick.return_value = (None, False, None)
+        mock_media.is_playing = False
+        mock_media.frame_interval_ms = 33
+        mock_media._state = MagicMock()
+        mock_media._state.total_frames = 0
+        mock_media._state.fps = 16
+        mock_media._frames = []
+
+        overlay_config = {
+            'test': {
+                'x': 10, 'y': 10,
+                'color': '#ffffff',
+                'font': {'size': 14, 'style': 'regular', 'name': 'Arial'},
+                'enabled': True, 'metric': 'cpu_temp',
+            }
+        }
+
+        display_svc.run_video_loop(
+            tmp_path / 'fake.gif',
+            overlay_config=overlay_config,
+        )
+        assert display_svc.overlay.enabled is True
+
+    def test_duration_limit(
+        self, display_svc: DisplayService, mock_media: MagicMock,
+        renderer: Any, tmp_path: Path,
+    ) -> None:
+        """Loop should stop after duration limit."""
+        frame = renderer.create_surface(320, 320, (0, 255, 0))
+        mock_media.load.return_value = True
+        mock_media.tick.return_value = (frame, True, None)
+        mock_media.is_playing = True
+        mock_media.frame_interval_ms = 0
+        mock_media._state = MagicMock()
+        mock_media._state.total_frames = 100
+        mock_media._state.fps = 30
+        mock_media._frames = []
+
+        frames_sent: list[Any] = []
+        result = display_svc.run_video_loop(
+            tmp_path / 'fake.gif',
+            on_frame=lambda img: frames_sent.append(img),
+            duration=0.05,
+        )
+        assert result['success'] is True
+        assert len(frames_sent) > 0  # at least some frames
+
+
+class TestLCDDevicePlayVideoLoop:
+    """Tests for LCDDevice.play_video_loop() delegation."""
+
+    def test_delegates_to_display_service(
+        self, lcd: LCDDevice, display_svc: DisplayService, tmp_path: Path,
+    ) -> None:
+        """play_video_loop should delegate to DisplayService.run_video_loop."""
+        with patch.object(display_svc, 'run_video_loop',
+                          return_value={'success': True, 'message': 'Done'}) as mock_run:
+            result = lcd.play_video_loop(tmp_path / 'test.gif')
+            assert result['success'] is True
+            mock_run.assert_called_once()
+
+    def test_returns_error_without_display_svc(self) -> None:
+        """play_video_loop should return error if no display service."""
+        lcd = LCDDevice()
+        result = lcd.play_video_loop('/tmp/test.gif')
+        assert result['success'] is False
+        assert 'not initialized' in result['error']

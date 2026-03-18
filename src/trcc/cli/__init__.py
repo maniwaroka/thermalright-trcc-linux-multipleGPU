@@ -309,10 +309,74 @@ def _cmd_video(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
-    """Play video/GIF on LCD."""
+    """Play video/GIF on LCD. For overlays, use 'trcc theme' instead."""
     return _display.play_video(
         path, device=device, loop=not no_loop, duration=duration,
         preview=preview)
+
+
+@app.command("theme")
+def _cmd_theme(
+    background: Annotated[str, typer.Option(
+        "--background", "-b", help="Background image/video/GIF",
+    )],
+    device: Annotated[Optional[str], typer.Option(
+        "--device", "-d", help="Device path",
+    )] = None,
+    no_loop: Annotated[bool, typer.Option(
+        "--no-loop", "-n", help="Play once without looping",
+    )] = False,
+    duration: Annotated[int, typer.Option(
+        "--duration", "-t", help="Stop after N seconds (0=unlimited)",
+    )] = 0,
+    preview: Annotated[bool, typer.Option(
+        "--preview", "-p", help="Show ANSI terminal preview",
+    )] = False,
+    metric: Annotated[Optional[list[str]], typer.Option(
+        "--metric", "-m",
+        help="Overlay metric: key:x,y[:color[:size]] (repeatable)",
+    )] = None,
+    mask: Annotated[Optional[str], typer.Option(
+        "--mask", help="Mask PNG file or directory",
+    )] = None,
+    font: Annotated[str, typer.Option(
+        "--font", help="Font family name",
+    )] = "Microsoft YaHei",
+    font_style: Annotated[str, typer.Option(
+        "--font-style", help="Font style: regular or bold",
+    )] = "regular",
+    font_size: Annotated[int, typer.Option(
+        "--font-size", help="Font size in pixels",
+    )] = 14,
+    color: Annotated[str, typer.Option(
+        "--color", "-c", help="Hex color for overlay text",
+    )] = "ffffff",
+    temp_unit: Annotated[int, typer.Option(
+        "--temp-unit", help="Temperature unit: 0=Celsius, 1=Fahrenheit",
+    )] = 0,
+    time_format: Annotated[int, typer.Option(
+        "--time-format", help="Time format: 0=24h HH:MM, 1=12h hh:MM",
+    )] = 0,
+    date_format: Annotated[int, typer.Option(
+        "--date-format", help="Date format: 0=yyyy/MM/dd, 2=dd/MM/yyyy",
+    )] = 0,
+    save: Annotated[Optional[str], typer.Option(
+        "--save", "-s", help="Save as named theme (e.g. --save MyTheme)",
+    )] = None,
+) -> int:
+    """Play background with mask + metrics overlay. Use --save to persist."""
+    if save:
+        return _theme.save_theme(
+            save, device=device, background=background,
+            metrics=metric, mask=mask, font_size=font_size, color=color,
+            font=font, font_style=font_style, temp_unit=temp_unit,
+            time_format=time_format, date_format=date_format)
+    return _display.play_video(
+        background, device=device, loop=not no_loop, duration=duration,
+        preview=preview, metrics=metric, mask=mask,
+        font_size=font_size, color=color, font=font,
+        font_style=font_style, temp_unit=temp_unit,
+        time_format=time_format, date_format=date_format)
 
 
 @app.command("brightness")
@@ -627,18 +691,51 @@ def _cmd_test_lcd(
     return _led.test_lcd(cols=cols)
 
 
-@app.command("theme-save")
+@app.command("theme-save", deprecated=True)
 def _cmd_theme_save(
     name: Annotated[str, typer.Argument(help="Theme name")],
+    background: Annotated[Optional[str], typer.Option(
+        "--background", "-b", help="Background image/video (auto-detects format)",
+    )] = None,
     device: Annotated[Optional[str], typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
-    video: Annotated[Optional[str], typer.Option(
-        "--video", "-v", help="Video path for animated theme",
+    metric: Annotated[Optional[list[str]], typer.Option(
+        "--metric", "-m",
+        help="Overlay metric: key:x,y[:color[:size]] (repeatable)",
     )] = None,
+    mask: Annotated[Optional[str], typer.Option(
+        "--mask", help="Mask PNG file or directory",
+    )] = None,
+    font: Annotated[str, typer.Option(
+        "--font", help="Font family name",
+    )] = "Microsoft YaHei",
+    font_style: Annotated[str, typer.Option(
+        "--font-style", help="Font style: regular or bold",
+    )] = "regular",
+    font_size: Annotated[int, typer.Option(
+        "--font-size", help="Font size in pixels",
+    )] = 14,
+    color: Annotated[str, typer.Option(
+        "--color", "-c", help="Hex color for overlay text",
+    )] = "ffffff",
+    temp_unit: Annotated[int, typer.Option(
+        "--temp-unit", help="Temperature unit: 0=Celsius, 1=Fahrenheit",
+    )] = 0,
+    time_format: Annotated[int, typer.Option(
+        "--time-format", help="Time format: 0=24h HH:MM, 1=12h hh:MM",
+    )] = 0,
+    date_format: Annotated[int, typer.Option(
+        "--date-format", help="Date format: 0=yyyy/MM/dd, 2=dd/MM/yyyy",
+    )] = 0,
 ) -> int:
-    """Save current display as a custom theme."""
-    return _theme.save_theme(name, device=device, video=video)
+    """(Deprecated) Alias for 'trcc theme --save NAME'."""
+    return _cmd_theme(
+        background=background or '', device=device,
+        metric=metric, mask=mask, font=font, font_style=font_style,
+        font_size=font_size, color=color, temp_unit=temp_unit,
+        time_format=time_format, date_format=date_format,
+        save=name)
 
 
 @app.command("theme-export")

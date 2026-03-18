@@ -104,6 +104,9 @@ class ThemeLoader:
                 if bg_path.suffix in ('.mp4', '.avi', '.mkv', '.webm', '.zt'):
                     self._load_and_play_video(bg_path)
                     result['is_animated'] = True
+                elif bg_path.suffix == '.gif' and self._is_animated_gif(bg_path):
+                    self._load_and_play_video(bg_path)
+                    result['is_animated'] = True
                 else:
                     result['image'] = self._load_static_image(bg_path, lcd_size)
         elif td.bg.exists():
@@ -209,6 +212,16 @@ class ThemeLoader:
         """Load video and start playback."""
         self._media.load(path)
         self._media.play()
+
+    @staticmethod
+    def _is_animated_gif(path: Path) -> bool:
+        """Check if a GIF file has multiple frames."""
+        try:
+            from PIL import Image
+            with Image.open(path) as img:
+                return getattr(img, 'n_frames', 1) > 1
+        except Exception:
+            return False
 
     def _load_mask(self, mask_path: Path, dc_path: Path | None,
                    lcd_size: tuple[int, int]) -> None:

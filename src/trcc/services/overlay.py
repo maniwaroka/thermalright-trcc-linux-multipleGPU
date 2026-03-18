@@ -267,6 +267,32 @@ class OverlayService:
         """Get current theme mask image and position."""
         return self.theme_mask, self.theme_mask_position
 
+    @staticmethod
+    def load_mask_from_path(
+        path: Path, renderer: Any, width: int, height: int,
+    ) -> Any | None:
+        """Load a mask PNG from file or directory, resized to LCD dims.
+
+        Args:
+            path: PNG file or directory containing ``01.png``.
+            renderer: Renderer instance for image I/O.
+            width: LCD width to resize to.
+            height: LCD height to resize to.
+
+        Returns:
+            Native surface (QImage) or None if path doesn't exist.
+        """
+        p = Path(path)
+        if p.is_dir():
+            p = p / '01.png'
+        if not p.exists():
+            log.warning("Mask not found: %s", p)
+            return None
+        img = renderer.open_image(str(p))
+        if img is None:
+            return None
+        return renderer.resize(img, width, height)
+
     def set_mask_visible(self, visible: bool) -> None:
         """Toggle mask visibility without destroying it (Windows SetDrawMengBan)."""
         self.theme_mask_visible = visible

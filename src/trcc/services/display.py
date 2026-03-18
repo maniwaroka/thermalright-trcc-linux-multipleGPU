@@ -486,6 +486,120 @@ class DisplayService:
             self._cache.rebuild_from_metrics(
                 self.overlay if self.overlay.enabled else None, metrics)
 
+    # -- Blocking video loop (CLI / API) ------------------------------------
+
+    def run_video_loop(
+        self,
+        video_path: Path,
+        *,
+        overlay_config: dict | None = None,
+        mask_path: Path | None = None,
+        metrics_fn: Any | None = None,
+        on_frame: Any | None = None,
+        on_progress: Any | None = None,
+        loop: bool = True,
+        duration: float = 0,
+    ) -> dict:
+        """Unified video+overlay pipeline for CLI and API adapters.
+
+        Loads video, sets up overlay (config + mask + metrics polling),
+        runs the tick loop, and calls ``on_frame`` per processed frame.
+
+        Args:
+            video_path: Video/GIF/ZT file to play.
+            overlay_config: Overlay element config dict (from
+                ``build_overlay_config()``). Enables overlay if provided.
+            mask_path: Mask PNG file or directory. Auto-resized to LCD dims.
+            metrics_fn: Callable returning ``HardwareMetrics`` — polled once
+                per second for live overlay updates.
+            on_frame: Callback ``(processed_image)`` — adapter sends to device.
+            on_progress: Callback ``(percent, current_time, total_time)``.
+            loop: Whether to loop the video.
+            duration: Stop after N seconds (0 = no limit).
+
+        Returns:
+            Result dict with success/error/message.
+        """
+        import time as _time
+
+        log.info("run_video_loop: path=%s overlay=%s mask=%s loop=%s duration=%s",
+                 video_path, bool(overlay_config), bool(mask_path), loop, duration)
+
+        # 1. Load video
+        w, h = self.lcd_size
+        self.media.set_target_size(w, h)
+        if not self.media.load(video_path):
+            log.error("run_video_loop: failed to load %s", video_path)
+            return {"success": False, "error": f"Failed to load: {video_path}"}
+
+        self._convert_media_frames()
+
+        total = self.media.state.total_frames
+        fps = self.media.state.fps
+        log.info("run_video_loop: loaded %d frames, %.0ffps, %dx%d", total, fps, w, h)
+
+        # 2. Set up overlay if config or mask provided
+        if overlay_config or mask_path:
+            if overlay_config:
+                log.debug("run_video_loop: overlay config with %d elements", len(overlay_config))
+                self.overlay.set_config(overlay_config)
+            if mask_path:
+                mask_img = OverlayService.load_mask_from_path(
+                    Path(mask_path), self.overlay._renderer, w, h)
+                if mask_img is not None:
+                    log.debug("run_video_loop: mask loaded from %s", mask_path)
+                    self.overlay.set_theme_mask(mask_img)
+            self.overlay.enabled = True
+
+        # 3. Start playback
+        self.media._state.loop = loop
+        self.media.play()
+        interval = self.media.frame_interval_ms / 1000.0
+        start = _time.monotonic()
+        last_metrics = 0.0
+
+        # 4. Tick loop
+        try:
+            while self.media.is_playing:
+                frame, should_send, progress = self.media.tick()
+                if frame is None:
+                    break
+
+                # Poll metrics once per second
+                if metrics_fn and self.overlay.enabled:
+                    now = _time.monotonic()
+                    if now - last_metrics >= 1.0:
+                        self.overlay.update_metrics(metrics_fn())
+                        last_metrics = now
+
+                # Composite overlay
+                if self.overlay.enabled:
+                    frame = self.overlay.render(frame)
+
+                # Apply brightness/rotation
+                processed = self._apply_adjustments(frame)
+
+                # Send to device
+                if on_frame and should_send:
+                    on_frame(processed)
+
+                # Progress callback
+                if on_progress and progress:
+                    on_progress(*progress)
+
+                # Duration limit
+                if duration and (_time.monotonic() - start) >= duration:
+                    break
+
+                _time.sleep(interval)
+
+        except KeyboardInterrupt:
+            return {"success": True, "message": "Stopped",
+                    "frames": total, "fps": fps}
+
+        return {"success": True, "message": "Done",
+                "frames": total, "fps": fps}
+
     # -- LCD send ----------------------------------------------------------
 
     def send_current_image(self) -> bytes | None:

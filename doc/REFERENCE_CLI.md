@@ -556,7 +556,7 @@ Persists to per-device config.
 
 ### `trcc video`
 
-Play a video, GIF, or ZT file on the LCD.
+Play a video, GIF, or ZT file on the LCD. No overlay support — for overlays, use `trcc theme`.
 
 ```bash
 trcc video clip.mp4
@@ -570,6 +570,86 @@ trcc video clip.mp4 --duration 30
 | `--no-loop` | Play once instead of looping |
 | `--duration` | Stop after N seconds (default: 0 = forever) |
 | `--preview`, `-p` | Animate ANSI preview in terminal |
+
+---
+
+### `trcc theme`
+
+Play a background (image, GIF, or video) with optional mask overlay and live system metrics. Same flags as `trcc theme-save` — use `--save` to persist as a reusable theme.
+
+```bash
+# Static image with metrics overlay
+trcc theme --background wallpaper.png \
+  --metric "cpu_temp:10,20" \
+  --metric "gpu_temp:10,50"
+
+# Animated GIF with mask + metrics
+trcc theme --background animated.gif \
+  --mask ~/.trcc/data/web/zt320320/001a \
+  --metric "time:50,30:ffffff:24" \
+  --metric "cpu_temp:30,60:ff0000:14"
+
+# Custom font, color, and size
+trcc theme --background animated.gif \
+  --metric "gpu_usage:10,20" \
+  --font Arial --font-style bold --font-size 18 --color 00ff00
+
+# Play + save in one shot
+trcc theme --background animated.gif \
+  --mask ~/.trcc/data/web/zt320320/001a \
+  --metric "time:50,30:ffffff:24" \
+  --save MyTheme
+```
+
+| Option | Description |
+|--------|-------------|
+| `--background`, `-b` | Background image/video/GIF (required) |
+| `--metric`, `-m` | Overlay metric: `key:x,y[:color[:size]]` (repeatable) |
+| `--mask` | Mask PNG file or directory (auto-resized to LCD) |
+| `--font` | Font family name (default: Microsoft YaHei) |
+| `--font-style` | Font style: `regular` or `bold` (default: regular) |
+| `--font-size` | Font size in pixels (default: 14) |
+| `--color`, `-c` | Hex color for overlay text (default: ffffff) |
+| `--temp-unit` | Temperature unit: 0=Celsius, 1=Fahrenheit |
+| `--time-format` | Time format: 0=24h HH:MM, 1=12h hh:MM |
+| `--date-format` | Date format: 0=yyyy/MM/dd, 2=dd/MM/yyyy |
+| `--save`, `-s` | Save as named theme (e.g. `--save MyTheme`) |
+| `--device`, `-d` | Device path (default: auto-detect) |
+| `--no-loop` | Play once instead of looping |
+| `--duration` | Stop after N seconds (default: 0 = forever) |
+| `--preview`, `-p` | Animate ANSI preview in terminal |
+
+**Metric spec format:** `key:x,y[:color[:size]]`
+
+- `gpu_temp:10,20` — uses global defaults
+- `cpu_temp:10,50:ff0000` — red, global font size
+- `time:150,10:ffffff:24` — white, 24px
+
+Per-metric color/size override the globals (`--color`, `--font-size`). Font name and style always come from the global flags.
+
+**Available metric keys:**
+
+| Category | Keys |
+|----------|------|
+| CPU | `cpu_temp`, `cpu_percent`, `cpu_freq`, `cpu_power` |
+| GPU | `gpu_temp`, `gpu_usage`, `gpu_clock`, `gpu_power` |
+| Memory | `mem_percent`, `mem_clock`, `mem_available`, `mem_temp` |
+| Disk | `disk_read`, `disk_write`, `disk_activity`, `disk_temp` |
+| Network | `net_down`, `net_up`, `net_total_down`, `net_total_up` |
+| Fan | `fan_cpu`, `fan_gpu`, `fan_ssd`, `fan_sys2` |
+| Time | `time`, `date`, `weekday` |
+
+---
+
+### `trcc theme-save` *(deprecated)*
+
+Alias for `trcc theme --save NAME`. Use `trcc theme --save` instead.
+
+```bash
+# These are equivalent:
+trcc theme-save MyTheme --background animated.gif --metric "cpu_temp:10,20"
+trcc theme --save MyTheme --background animated.gif --metric "cpu_temp:10,20"
+```
 
 ---
 
