@@ -193,7 +193,13 @@ class ScsiDevice(FrameDevice):
                 break
 
         # Extract FBL from poll response byte[0]
-        fbl = response[0] if response else 100  # default FBL 100 = 320x320
+        if not response:
+            log.warning("SCSI poll returned empty response on %s", dev)
+            raise RuntimeError(
+                f"SCSI poll returned empty response on {dev}. "
+                "Device may not be connected or may need a reboot."
+            )
+        fbl = response[0]
         log.debug("SCSI poll byte[0] = %d (FBL)", fbl)
 
         # Step 2: Init

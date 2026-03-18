@@ -247,7 +247,8 @@ class TestLCDDriverInitDevice(unittest.TestCase):
         return driver
 
     @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_write', return_value=True)
-    @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read', return_value=b'')
+    @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read',
+           return_value=b'\x64' + b'\x00' * 63)  # FBL=100 valid response
     def test_init_device_calls_poll_then_init(self, mock_read, mock_write):
         driver = self._make_driver()
         driver.init_device()
@@ -256,7 +257,8 @@ class TestLCDDriverInitDevice(unittest.TestCase):
         self.assertTrue(driver.initialized)
 
     @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_write', return_value=True)
-    @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read', return_value=b'')
+    @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read',
+           return_value=b'\x64' + b'\x00' * 63)
     def test_init_device_skips_if_already_initialized(self, mock_read, mock_write):
         driver = self._make_driver()
         driver.initialized = True

@@ -279,13 +279,11 @@ class TestInitDevice(unittest.TestCase):
     @patch('trcc.adapters.transport.adapter_scsi.time.sleep')
     @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_write')
     @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_read')
-    def test_empty_poll_response_no_wait(self, mock_read, mock_write, mock_sleep):
-        """Empty poll response (error) doesn't trigger boot wait."""
+    def test_empty_poll_response_raises(self, mock_read, mock_write, mock_sleep):
+        """Empty poll response raises RuntimeError instead of silently defaulting."""
         mock_read.return_value = b''  # Command failed
-        ScsiDevice._init_device('/dev/sg0')
-        mock_read.assert_called_once()
-        # Only post-init delay, no boot wait
-        mock_sleep.assert_called_once_with(_POST_INIT_DELAY)
+        with self.assertRaises(RuntimeError, msg="SCSI poll returned empty response"):
+            ScsiDevice._init_device('/dev/sg0')
 
     @patch('trcc.adapters.transport.adapter_scsi.time.sleep')
     @patch('trcc.adapters.transport.adapter_scsi.ScsiDevice._scsi_write')
