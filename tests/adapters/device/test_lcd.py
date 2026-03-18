@@ -187,14 +187,16 @@ class TestLCDDriverScsiIO(unittest.TestCase):
 
     def setUp(self):
         import trcc.adapters.transport.adapter_scsi as scsi_mod
+        import trcc.adapters.transport.bridge_linux as bridge_mod
         # Force subprocess fallback — these tests verify the sg_raw path
         scsi_mod._sg_io_available = False
-        scsi_mod._device_fds.clear()
+        bridge_mod._device_fds.clear()
 
     def tearDown(self):
         import trcc.adapters.transport.adapter_scsi as scsi_mod
+        import trcc.adapters.transport.bridge_linux as bridge_mod
         scsi_mod._sg_io_available = None
-        scsi_mod._device_fds.clear()
+        bridge_mod._device_fds.clear()
 
     @patch('trcc.adapters.infra.data_repository.SysUtils.require_sg_raw')
     @patch('trcc.adapters.transport.adapter_scsi.subprocess.run')
