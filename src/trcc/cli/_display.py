@@ -67,8 +67,10 @@ def test(device=None, loop=False, preview=False):
     try:
         import time
 
+        from trcc.cli import _ensure_renderer
         from trcc.services import ImageService
 
+        _ensure_renderer()
         svc = _device._get_service(device)
         if not svc.selected:
             print("No device found.")
@@ -122,8 +124,10 @@ def play_video(video_path, *, device=None, loop=True, duration=0,
             return 1
 
         from trcc.adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
+        from trcc.cli import _ensure_renderer
         from trcc.services import ImageService, MediaService
 
+        _ensure_renderer()
         svc = _device._get_service(device)
         if not svc.selected:
             print("No device found.")
@@ -189,8 +193,10 @@ def screencast(*, device=None, x=0, y=0, w=0, h=0, fps=10, preview=False):
 
         from PIL import ImageGrab
 
+        from trcc.cli import _ensure_renderer
         from trcc.services import ImageService
 
+        _ensure_renderer()
         svc = _device._get_service(device)
         if not svc.selected:
             print("No device found.")

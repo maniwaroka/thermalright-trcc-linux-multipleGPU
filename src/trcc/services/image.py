@@ -122,6 +122,8 @@ class ImageService:
         from ..core.models import get_profile
 
         r = ImageService._r()
+        if hasattr(img, 'mode'):  # PIL Image → native surface
+            img = r.from_pil(img)
         profile = get_profile(fbl) if fbl is not None else None
 
         # Ensure image matches device native resolution before encoding.

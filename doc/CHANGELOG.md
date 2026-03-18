@@ -1,5 +1,12 @@
 # Changelog
 
+## v8.7.6
+
+### Fixes
+- **CLI video/test/screencast crash — renderer not initialized**: `trcc video`, `trcc test`, and `trcc screencast` failed with `ImageService.set_renderer() must be called before use` because they bypassed `_connect_lcd()` which wires the renderer. Added `_ensure_renderer()` to all three commands
+- **CLI video/screencast crash — PIL Image passed to QtRenderer**: `encode_for_device()` received PIL Images from MediaService but QtRenderer's `encode_rgb565()` expected QImage, causing `'NoneType' object is not callable`. Added PIL→QImage conversion guard in `encode_for_device()`
+- **Sensor picker missing DRM GPU sensors**: AMD/Intel GPU utilization sensors from `/sys/class/drm/` were discovered but never shown in the sensor picker dialog — `'drm'` source was missing from the display loop. Multi-GPU users couldn't select GPU utilization for either card
+
 ## v8.7.5
 
 ### Fixes
