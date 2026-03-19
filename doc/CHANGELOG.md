@@ -1,5 +1,11 @@
 # Changelog
 
+## v9.0.5
+
+### Features
+- **API `POST /display/create-theme` — file uploads**: `background`, `mask`, and `overlay` are now uploaded directly as multipart files. No server paths needed — send an image/video, optional mask PNG, and optional overlay JSON config in one request from any client (phone, tablet, remote app)
+- **API `POST /display/upload`**: standalone upload endpoint — saves any image or video to `~/.trcc/uploads/` and returns the server path for use in other endpoints
+
 ## v9.0.4
 
 ### Fixes

@@ -6,9 +6,17 @@ import hmac
 import io
 import json
 import logging
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import Response
 
 from trcc.api.models import (
@@ -235,6 +243,41 @@ def test_display() -> dict:
     return {"success": True, "message": f"Test complete — cycled {len(colors)} colors on {w}x{h}"}
 
 
+# ── Upload endpoint ───────────────────────────────────────────────────
+
+_ALLOWED_UPLOAD_SUFFIXES = frozenset({
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp',
+    '.mp4', '.zt', '.webm', '.avi', '.mkv', '.mov',
+})
+
+
+@router.post("/upload")
+async def upload_file(file: UploadFile) -> dict:
+    """Upload an image or video file to the server for use with create-theme.
+
+    Returns the server-side path to pass as ``background`` or ``mask`` in
+    subsequent ``POST /display/create-theme`` calls.
+    """
+    import trcc.conf as _conf
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _ALLOWED_UPLOAD_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_UPLOAD_SUFFIXES)}",
+        )
+
+    uploads_dir = _conf.settings.user_data_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    dest = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
+    content = await file.read()
+    dest.write_bytes(content)
+
+    log.info("Uploaded %s → %s (%d bytes)", file.filename, dest, len(content))
+    return {"path": str(dest), "filename": dest.name, "size": len(content)}
+
+
 # ── Create-theme endpoint ─────────────────────────────────────────────
 
 _VIDEO_SUFFIXES = frozenset({'.mp4', '.zt', '.webm', '.avi', '.mkv'})
@@ -256,29 +299,35 @@ def _is_animated(path: Path) -> bool:
 
 
 @router.post("/create-theme")
-def create_theme(
-    background: str,
-    mask: str | None = None,
-    metric: list[str] = Query(default=[]),
-    loop: bool = True,
-    font_size: int = 14,
-    color: str = "ffffff",
-    font: str = "Microsoft YaHei",
-    font_style: str = "regular",
-    temp_unit: int = 0,
-    time_format: int = 0,
-    date_format: int = 0,
+async def create_theme(
+    background: UploadFile,
+    mask: UploadFile | None = None,
+    overlay: UploadFile | None = None,
+    metric: list[str] = Form(default=[]),
+    loop: bool = Form(True),
+    font_size: int = Form(14),
+    color: str = Form("ffffff"),
+    font: str = Form("Microsoft YaHei"),
+    font_style: str = Form("regular"),
+    temp_unit: int = Form(0),
+    time_format: int = Form(0),
+    date_format: int = Form(0),
 ) -> dict:
-    """Send a custom theme to the LCD device.
+    """Send a custom theme to the LCD device via file upload.
 
-    Auto-detects animated backgrounds (video, animated GIF) and loops them
-    by default. Add ``&loop=false`` to play once.
+    Upload ``background`` (image or video), optional ``mask`` (PNG), and
+    optional ``overlay`` (JSON overlay config file) as multipart form files.
+    Alternatively use repeatable ``metric`` form fields instead of an overlay file.
+    Auto-detects animated backgrounds (video, animated GIF).
 
-    ``metric`` is repeatable: ``&metric=cpu_temp:10,20&metric=time:150,10:ffffff:24``
+    ``metric`` is repeatable: ``metric=cpu_temp:10,20`` ``metric=time:150,10:ffffff:24``
 
     Metric spec format: ``key:x,y[:color[:size[:font[:style]]]]``
+
+    ``overlay`` JSON format: ``{"elements": [{"key": "cpu_temp", "x": 10, "y": 20, ...}]}``
     """
     import trcc.api as api
+    import trcc.conf as _conf
     from trcc.core.models import build_overlay_config
     from trcc.services import ImageService
 
@@ -286,18 +335,30 @@ def create_theme(
     api.stop_video_playback()
     api.stop_overlay_loop()
 
-    bg_path = Path(background)
-    if '\0' in background or not bg_path.exists():
-        raise HTTPException(status_code=400, detail=f"Background file not found: {background}")
+    # Save uploads to ~/.trcc/uploads/
+    uploads_dir = _conf.settings.user_data_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    if mask is not None and ('\0' in mask or not Path(mask).exists()):
-        raise HTTPException(status_code=400, detail=f"Mask file not found: {mask}")
+    bg_suffix = Path(background.filename or "").suffix.lower() or ".jpg"
+    bg_path = uploads_dir / f"{uuid.uuid4().hex}{bg_suffix}"
+    bg_path.write_bytes(await background.read())
+
+    mask_path: Path | None = None
+    if mask is not None:
+        mask_path = uploads_dir / f"{uuid.uuid4().hex}.png"
+        mask_path.write_bytes(await mask.read())
 
     w, h = lcd.resolution  # type: ignore[union-attr]
     animated = _is_animated(bg_path)
 
     overlay_config = None
-    if metric:
+    if overlay is not None:
+        # Uploaded JSON overlay config takes precedence over metric strings
+        try:
+            overlay_config = json.loads(await overlay.read())
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid overlay JSON: {e}")
+    elif metric:
         try:
             overlay_config = build_overlay_config(
                 metric,
@@ -325,8 +386,8 @@ def create_theme(
     if img is None:
         raise HTTPException(status_code=400, detail="Failed to open background image")
 
-    if mask:
-        result = lcd.load_mask_standalone(mask)
+    if mask_path:
+        result = lcd.load_mask_standalone(str(mask_path))
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Mask load failed"))
         img = result.get("image", img)
@@ -337,18 +398,17 @@ def create_theme(
         from trcc.cli import _ensure_system
         from trcc.services.overlay import OverlayService
         _ensure_system()
-        overlay = OverlayService(
+        overlay_svc = OverlayService(
             w, h, renderer=api._renderer,
             load_config_json_fn=load_config_json,
             dc_config_cls=DcConfig,
         )
-        overlay.set_background(img)
-        overlay.set_config(overlay_config)
-        overlay.enabled = True
-        api._overlay_svc = overlay
-        # render one frame immediately and send
+        overlay_svc.set_background(img)
+        overlay_svc.set_config(overlay_config)
+        overlay_svc.enabled = True
+        api._overlay_svc = overlay_svc
         from trcc.services.system import get_all_metrics
-        frame = overlay.render(get_all_metrics())
+        frame = overlay_svc.render(get_all_metrics())
         lcd.frame.send_pil(frame)
         api.set_current_image(frame)
     else:
