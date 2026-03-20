@@ -1983,55 +1983,19 @@ class TRCCApp(QMainWindow):
 # Entry point
 # =============================================================================
 
-def _lock_path() -> Path:
-    lock_dir = Path.home() / '.trcc'
-    lock_dir.mkdir(parents=True, exist_ok=True)
-    return lock_dir / "trcc-linux.lock"
-
-
-def _acquire_instance_lock() -> object | None:
-    from trcc.core.platform import WINDOWS
-    try:
-        if WINDOWS:
-            import msvcrt  # pyright: ignore[reportMissingImports]
-            fh = open(_lock_path(), "w")  # noqa: SIM115
-            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
-        else:
-            import fcntl
-            fh = open(_lock_path(), "w")  # noqa: SIM115
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fh.write(str(os.getpid()))
-        fh.flush()
-        return fh
-    except OSError:
-        return None
-
-
-def _raise_existing_instance() -> None:
-    from trcc.core.platform import WINDOWS
-    if WINDOWS:
-        return  # No SIGUSR1 on Windows — user must close manually
-    import signal
-    try:
-        pid = int(_lock_path().read_text().strip())
-        os.kill(pid, signal.SIGUSR1)
-    except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
-        pass
-
-
 def run_app(data_dir: Path | None = None, decorated: bool = False,
             start_hidden: bool = False):
     """Run the TRCC application."""
-    lock = _acquire_instance_lock()
-    if lock is None:
-        _raise_existing_instance()
-        return 0
-
-    # Platform adapter — resolves assets, paths, deps for this OS
     from ..conf import init_settings
     from ..core.builder import ControllerBuilder as _Builder
     from .assets import _PKG_ASSETS_DIR, set_assets_dir
+
     setup = _Builder.build_setup()
+    lock = setup.acquire_instance_lock()
+    if lock is None:
+        setup.raise_existing_instance()
+        return 0
+
     set_assets_dir(setup.resolve_assets_dir(_PKG_ASSETS_DIR))
     init_settings(setup)
 

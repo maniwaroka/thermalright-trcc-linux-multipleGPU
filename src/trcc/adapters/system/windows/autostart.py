@@ -46,7 +46,7 @@ class WindowsAutostartManager(AutostartManager):
             wr.DeleteValue(key, _REG_VALUE)
             wr.CloseKey(key)
         except OSError:
-            pass
+            pass  # Key not present — already disabled
         log.info("Autostart disabled")
 
     def refresh(self) -> None:
@@ -65,5 +65,5 @@ class WindowsAutostartManager(AutostartManager):
                 wr.SetValueEx(key, _REG_VALUE, 0, wr.REG_SZ, expected)
                 log.info("Autostart refreshed: HKCU\\%s", _REG_KEY)
             wr.CloseKey(key)
-        except OSError:
-            pass
+        except OSError as e:
+            log.warning("Autostart refresh failed — registry inaccessible: %s", e)

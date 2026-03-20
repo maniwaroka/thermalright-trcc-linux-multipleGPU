@@ -170,7 +170,8 @@ class DeviceDetector:
         usb_base = '/sys/bus/usb/devices'
         try:
             entries = os.listdir(usb_base)
-        except OSError:
+        except OSError as e:
+            log.warning("sysfs USB scan failed (%s): %s", usb_base, e)
             return devices
         for entry in entries:
             dev_dir = os.path.join(usb_base, entry)

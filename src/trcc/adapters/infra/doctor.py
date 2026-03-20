@@ -15,8 +15,6 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 
-from trcc.core.platform import LINUX, WINDOWS
-
 # ── Distro → package manager mapping ────────────────────────────────────────
 
 _DISTRO_TO_PM: dict[str, str] = {
@@ -129,17 +127,7 @@ def _read_os_release() -> dict[str, str]:
 
 
 def _detect_pkg_manager() -> str | None:
-    """Detect the system package manager."""
-    from trcc.core.platform import BSD, MACOS, WINDOWS
-
-    if WINDOWS:
-        return 'winget' if shutil.which('winget') else None
-    if MACOS:
-        return 'brew' if shutil.which('brew') else None
-    if BSD:
-        return 'pkg' if shutil.which('pkg') else None
-
-    # Linux: detect from os-release
+    """Detect the Linux package manager from os-release."""
     info = _read_os_release()
     distro_id = info.get('ID', '').lower()
 
@@ -272,9 +260,6 @@ def _enable_ansi_windows() -> None:
     except Exception:
         pass
 
-
-if WINDOWS:
-    _enable_ansi_windows()
 
 _OK = "\033[32m[OK]\033[0m"
 _MISS = "\033[31m[MISSING]\033[0m"
@@ -411,28 +396,24 @@ class SetupInfo:
 
 def get_setup_info() -> SetupInfo:
     """Get system info for setup wizard."""
-    from trcc.core.platform import BSD, MACOS, WINDOWS
+    from trcc.core.builder import ControllerBuilder
 
+    config = ControllerBuilder.build_setup().get_doctor_config()
     v = sys.version_info
-    if WINDOWS:
-        distro = f"Windows {platform.version()}"
-    elif MACOS:
-        distro = f"macOS {platform.mac_ver()[0]}"
-    elif BSD:
-        distro = f"FreeBSD {platform.release()}"
-    else:
-        distro = _read_os_release().get('PRETTY_NAME', 'Unknown Linux')
     return SetupInfo(
-        distro=distro,
-        pkg_manager=_detect_pkg_manager(),
+        distro=config.distro_name,
+        pkg_manager=config.pkg_manager,
         python_version=f"{v.major}.{v.minor}.{v.micro}",
     )
 
 
 def check_system_deps(pm: str | None = None) -> list[DepResult]:
     """Check all dependencies and return structured results."""
+    from trcc.core.builder import ControllerBuilder
+
+    config = ControllerBuilder.build_setup().get_doctor_config()
     if pm is None:
-        pm = _detect_pkg_manager()
+        pm = config.pkg_manager
     results: list[DepResult] = []
 
     # Python version
@@ -462,24 +443,20 @@ def check_system_deps(pm: str | None = None) -> list[DepResult]:
         version=hid_ver or '', install_cmd='pip install hidapi',
     ))
 
-    from trcc.core.platform import LINUX, WINDOWS
-
-    # System libraries — libusb (not needed on Windows, WinUSB provides it)
-    if not WINDOWS:
+    # System library — libusb (not needed on Windows, WinUSB provides it)
+    if config.check_libusb:
         libusb_ok = ctypes.util.find_library('usb-1.0') is not None
         results.append(DepResult(
             name='libusb-1.0', ok=libusb_ok, required=True,
             install_cmd=_install_hint('libusb', pm),
         ))
 
-    # System binaries
+    # System binaries — platform-specific extras first, then universal
     _binaries: list[tuple[str, bool, str]] = [
+        *config.extra_binaries,
         ('7z', True, 'theme extraction'),
         ('ffmpeg', False, 'video playback'),
     ]
-    if LINUX:
-        _binaries.insert(0, ('sg_raw', True, 'SCSI LCD devices'))
-
     for name, required, note in _binaries:
         results.append(DepResult(
             name=name, ok=shutil.which(name) is not None,
@@ -717,14 +694,16 @@ def check_desktop_entry() -> bool:
 
 def run_doctor() -> int:
     """Run dependency health check. Returns 0 if all required deps pass."""
-    pm = _detect_pkg_manager()
-    if LINUX:
-        distro = _read_os_release().get('PRETTY_NAME', 'Unknown')
-    else:
-        distro = platform.platform()
+    from trcc.core.builder import ControllerBuilder
+
+    config = ControllerBuilder.build_setup().get_doctor_config()
+    if config.enable_ansi:
+        _enable_ansi_windows()
+
+    pm = config.pkg_manager
     all_ok = True
 
-    print(f"\n  TRCC Doctor — {distro}\n")
+    print(f"\n  TRCC Doctor — {config.distro_name}\n")
 
     # Python version
     v = sys.version_info
@@ -750,13 +729,13 @@ def run_doctor() -> int:
     # Python modules (optional)
     _check_python_module('hidapi', 'hid', required=False, pm=pm)
 
-    # GPU detection
-    print()
-    _check_gpu_packages()
+    # GPU detection (sysfs-based — Linux only)
+    if config.run_gpu_check:
+        print()
+        _check_gpu_packages()
 
-    # Linux-only checks — system libraries, binaries, udev, SELinux, RAPL, polkit
-    if LINUX:
-        # System libraries
+    # System libraries
+    if config.check_libusb:
         print()
         if not _check_library('libusb-1.0', 'usb-1.0', required=True, pm=pm,
                               dep_key='libusb'):
@@ -766,22 +745,23 @@ def run_doctor() -> int:
                                   dep_key='libxcb-cursor'):
                 all_ok = False
 
-        # System binaries
-        print()
-        if not _check_binary('sg_raw', required=True, pm=pm,
-                             note='SCSI LCD devices'):
+    # System binaries — platform-specific extras then universal
+    print()
+    for name, required, note in config.extra_binaries:
+        if not _check_binary(name, required=required, pm=pm, note=note):
             all_ok = False
-        if not _check_binary('7z', required=True, pm=pm,
-                             note='theme extraction'):
-            all_ok = False
-        _check_binary('ffmpeg', required=False, pm=pm, note='video playback')
+    if not _check_binary('7z', required=True, pm=pm, note='theme extraction'):
+        all_ok = False
+    _check_binary('ffmpeg', required=False, pm=pm, note='video playback')
 
-        # udev rules
+    # udev rules
+    if config.run_udev_check:
         print()
         if not _check_udev_rules():
             all_ok = False
 
-        # SELinux
+    # SELinux
+    if config.run_selinux_check:
         se = check_selinux()
         if se.enforcing:
             print()
@@ -792,11 +772,13 @@ def run_doctor() -> int:
                 print("         run: sudo trcc setup-selinux")
                 all_ok = False
 
-        # RAPL power sensors
+    # RAPL power sensors
+    if config.run_rapl_check:
         print()
         _check_rapl_permissions()
 
-        # Polkit policy
+    # Polkit policy
+    if config.run_polkit_check:
         print()
         pk = check_polkit()
         if pk.ok:
@@ -805,8 +787,8 @@ def run_doctor() -> int:
             print(f"  {_OPT}  {pk.message}")
             print("         run: trcc setup (or sudo trcc setup-polkit)")
 
-    # Windows-only: check for devices needing WinUSB
-    if WINDOWS:
+    # WinUSB driver check
+    if config.run_winusb_check:
         print()
         _check_winusb_devices()
 

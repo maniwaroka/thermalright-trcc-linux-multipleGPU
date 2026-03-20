@@ -381,8 +381,9 @@ class LCDDevice(Device):
                         center_pos[0] - mask_w // 2,
                         center_pos[1] - mask_h // 2,
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("DC config parse failed for %s — using centered mask position: %s",
+                        dc_path, e)
         # Fallback: center the mask
         return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
 

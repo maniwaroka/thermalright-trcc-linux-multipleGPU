@@ -14,6 +14,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from trcc.adapters.system._shared import (
+    _confirm,
+    _posix_acquire_instance_lock,
+    _posix_raise_existing_instance,
+    _print_summary,
+)
 from trcc.core.platform import is_root
 from trcc.core.ports import PlatformSetup
 
@@ -487,6 +493,40 @@ class LinuxSetup(PlatformSetup):
             "/etc/polkit-1/rules.d/50-trcc.rules",
         ]
 
+    def acquire_instance_lock(self) -> object | None:
+        return _posix_acquire_instance_lock(self.config_dir())
+
+    def raise_existing_instance(self) -> None:
+        _posix_raise_existing_instance(self.config_dir())
+
+    def get_doctor_config(self):
+        from trcc.core.ports import DoctorPlatformConfig
+        return DoctorPlatformConfig(
+            distro_name=self.get_distro_name(),
+            pkg_manager=self.get_pkg_manager(),
+            check_libusb=True,
+            extra_binaries=[('sg_raw', True, 'SCSI LCD devices')],
+            run_gpu_check=True,
+            run_udev_check=True,
+            run_selinux_check=True,
+            run_rapl_check=True,
+            run_polkit_check=True,
+            run_winusb_check=False,
+            enable_ansi=False,
+        )
+
+    def get_report_config(self):
+        from trcc.core.ports import ReportPlatformConfig
+        return ReportPlatformConfig(
+            distro_name=self.get_distro_name(),
+            collect_lsusb=True,
+            collect_udev=True,
+            collect_selinux=True,
+            collect_rapl=True,
+            collect_device_permissions=True,
+            get_process_lines_fn=_linux_process_usage_lines,
+        )
+
     def run(self, auto_yes: bool = False) -> int:
         from trcc.adapters.infra.doctor import (
             check_desktop_entry,
@@ -633,27 +673,24 @@ class LinuxSetup(PlatformSetup):
                     actions.append("Installed desktop entry")
         print()
 
-        _print_summary(actions)
+        _print_summary(actions, "Run 'trcc gui' to launch, or find TRCC in your app menu.")
         return 0
 
 
-def _confirm(prompt: str, auto_yes: bool) -> bool:
-    if auto_yes:
-        print(f"  {prompt} [Y/n]: y (auto)")
-        return True
-    try:
-        answer = input(f"  {prompt} [Y/n]: ").strip().lower()
-        return answer in ('', 'y', 'yes')
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return False
+def _linux_process_usage_lines() -> list[str]:
+    """Return formatted process usage lines for trcc processes (Linux ps)."""
+    result = subprocess.run(
+        ["ps", "-eo", "pid,pcpu,pmem,rss,comm", "--no-headers"],
+        capture_output=True, text=True, timeout=5,
+    )
+    lines = []
+    for line in result.stdout.splitlines():
+        if "trcc" in line.split()[-1]:
+            parts = line.strip().split(None, 4)
+            if len(parts) >= 5:
+                pid, cpu, mem, rss, cmd = parts
+                rss_mb = f"{int(rss) / 1024:.0f}"
+                lines.append(f"  {pid:>6}  {cpu:>5}  {mem:>4}  {rss_mb:>7}  {cmd}")
+    return lines
 
 
-def _print_summary(actions: list[str]) -> None:
-    print("  Summary")
-    if actions:
-        for a in actions:
-            print(f"    + {a}")
-    else:
-        print("    Nothing to do — system is ready.")
-    print("\n  Run 'trcc gui' to launch, or find TRCC in your app menu.\n")

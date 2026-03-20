@@ -14,6 +14,7 @@ SOLID:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -226,6 +227,43 @@ PrivilegedCmdFn = Callable[[str, list[str]], list[str]]
 GetMemoryInfoFn = Callable[[], list[dict[str, str]]]
 GetDiskInfoFn = Callable[[], list[dict[str, str]]]
 
+
+@dataclass
+class DoctorPlatformConfig:
+    """Platform-specific constants for the doctor health check.
+
+    Each OS adapter returns one of these from get_doctor_config().
+    doctor.py reads the fields and stays OS-blind.
+    """
+    distro_name: str
+    pkg_manager: Optional[str]
+    check_libusb: bool
+    extra_binaries: list[tuple[str, bool, str]]   # (name, required, note)
+    run_gpu_check: bool
+    run_udev_check: bool
+    run_selinux_check: bool
+    run_rapl_check: bool
+    run_polkit_check: bool
+    run_winusb_check: bool
+    enable_ansi: bool
+
+
+@dataclass
+class ReportPlatformConfig:
+    """Platform-specific constants for the diagnostic report.
+
+    Each OS adapter returns one of these from get_report_config().
+    debug_report.py reads the fields and stays OS-blind.
+    """
+    distro_name: str
+    collect_lsusb: bool
+    collect_udev: bool
+    collect_selinux: bool
+    collect_rapl: bool
+    collect_device_permissions: bool
+    get_process_lines_fn: Callable[[], list[str]]
+
+
 # =========================================================================
 # Sensor Enumerator ABC — contract for platform sensor adapters
 # =========================================================================
@@ -393,6 +431,30 @@ class PlatformSetup(ABC):
         Used by uninstall to remove files that require root.
         Linux: udev rules, modprobe, polkit policy files.
         Other platforms: returns [].
+        """
+
+    @abstractmethod
+    def get_doctor_config(self) -> DoctorPlatformConfig:
+        """Return platform-specific constants for the doctor health check."""
+
+    @abstractmethod
+    def get_report_config(self) -> ReportPlatformConfig:
+        """Return platform-specific constants for the diagnostic report."""
+
+    @abstractmethod
+    def acquire_instance_lock(self) -> object | None:
+        """Acquire an exclusive single-instance lock.
+
+        Returns an open file handle on success, or None if another instance
+        already holds the lock.
+        """
+
+    @abstractmethod
+    def raise_existing_instance(self) -> None:
+        """Signal the already-running instance to raise its window.
+
+        Linux/macOS/BSD: sends SIGUSR1 to the PID stored in the lock file.
+        Windows: no-op (user must switch manually — no POSIX signals).
         """
 
 

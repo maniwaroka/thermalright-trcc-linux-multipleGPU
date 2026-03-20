@@ -1084,7 +1084,7 @@ class TestEbusyFallback:
 class TestProcessUsageExtra:
     """_process_usage edge cases."""
 
-    @patch("trcc.adapters.infra.debug_report.subprocess.run")
+    @patch("trcc.adapters.system.linux.setup.subprocess.run")
     def test_trcc_proc_found(self, mock_run):
         mock_run.return_value = MagicMock(stdout=(
             "  123  0.5  0.2  51200 trcc\n"
@@ -1096,7 +1096,7 @@ class TestProcessUsageExtra:
         assert "trcc" in body
         assert "50" in body  # RSS in MB
 
-    @patch("trcc.adapters.infra.debug_report.subprocess.run")
+    @patch("trcc.adapters.system.linux.setup.subprocess.run")
     def test_no_trcc_proc(self, mock_run):
         mock_run.return_value = MagicMock(stdout=(
             "  1    0.0  0.0  4096 systemd\n"
@@ -1106,7 +1106,7 @@ class TestProcessUsageExtra:
         _, body = _section(rpt)
         assert "no trcc process running" in body
 
-    @patch("trcc.adapters.infra.debug_report.subprocess.run",
+    @patch("trcc.adapters.system.linux.setup.subprocess.run",
            side_effect=RuntimeError("ps failed"))
     def test_subprocess_error(self, _):
         rpt = DebugReport()
@@ -1114,7 +1114,7 @@ class TestProcessUsageExtra:
         _, body = _section(rpt)
         assert "Error" in body
 
-    @patch("trcc.adapters.infra.debug_report.subprocess.run")
+    @patch("trcc.adapters.system.linux.setup.subprocess.run")
     def test_multiple_trcc_procs(self, mock_run):
         mock_run.return_value = MagicMock(stdout=(
             "  100  1.0  0.1  20480 trcc\n"
@@ -1141,7 +1141,7 @@ class TestConfigExtra:
     })
     def test_shows_all_present_keys(self, _):
         rpt = DebugReport()
-        rpt._config()
+        rpt._app_config()
         _, body = _section(rpt)
         assert "temp_unit" in body
         assert "format_prefs" in body
@@ -1149,7 +1149,7 @@ class TestConfigExtra:
     @patch("trcc.conf.load_config", side_effect=RuntimeError("read error"))
     def test_exception_shows_error(self, _):
         rpt = DebugReport()
-        rpt._config()
+        rpt._app_config()
         _, body = _section(rpt)
         assert "Error" in body
 
@@ -1157,7 +1157,7 @@ class TestConfigExtra:
     def test_no_devices_key_not_shown(self, _):
         """Missing 'devices' key → no device count line."""
         rpt = DebugReport()
-        rpt._config()
+        rpt._app_config()
         _, body = _section(rpt)
         assert "configured" not in body
 

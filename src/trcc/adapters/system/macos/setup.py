@@ -9,6 +9,14 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from trcc.adapters.system._shared import (
+    _confirm,
+    _copy_assets_to_user_dir,
+    _posix_acquire_instance_lock,
+    _posix_raise_existing_instance,
+    _print_summary,
+    _psutil_process_usage_lines,
+)
 from trcc.core.ports import PlatformSetup
 
 log = logging.getLogger(__name__)
@@ -73,6 +81,40 @@ class MacOSSetup(PlatformSetup):
     def get_system_files(self) -> list[str]:
         return []
 
+    def acquire_instance_lock(self) -> object | None:
+        return _posix_acquire_instance_lock(self.config_dir())
+
+    def raise_existing_instance(self) -> None:
+        _posix_raise_existing_instance(self.config_dir())
+
+    def get_doctor_config(self):
+        from trcc.core.ports import DoctorPlatformConfig
+        return DoctorPlatformConfig(
+            distro_name=self.get_distro_name(),
+            pkg_manager=self.get_pkg_manager(),
+            check_libusb=True,
+            extra_binaries=[],
+            run_gpu_check=False,
+            run_udev_check=False,
+            run_selinux_check=False,
+            run_rapl_check=False,
+            run_polkit_check=False,
+            run_winusb_check=False,
+            enable_ansi=False,
+        )
+
+    def get_report_config(self):
+        from trcc.core.ports import ReportPlatformConfig
+        return ReportPlatformConfig(
+            distro_name=self.get_distro_name(),
+            collect_lsusb=False,
+            collect_udev=False,
+            collect_selinux=False,
+            collect_rapl=False,
+            collect_device_permissions=False,
+            get_process_lines_fn=_psutil_process_usage_lines,
+        )
+
     def run(self, auto_yes: bool = False) -> int:
         from trcc.adapters.infra.doctor import check_system_deps
 
@@ -116,41 +158,3 @@ class MacOSSetup(PlatformSetup):
         return 0
 
 
-def _copy_assets_to_user_dir(pkg_assets_dir: Path) -> Path:
-    """Copy bundled assets to ~/.trcc/assets/gui/ on first run."""
-    user_assets = Path.home() / '.trcc' / 'assets' / 'gui'
-    if user_assets.exists() and any(user_assets.glob('*.png')):
-        return user_assets
-    if pkg_assets_dir.exists():
-        user_assets.mkdir(parents=True, exist_ok=True)
-        try:
-            for f in pkg_assets_dir.iterdir():
-                shutil.copy2(f, user_assets / f.name)
-            log.info("Copied %d assets to %s",
-                     len(list(user_assets.glob('*'))), user_assets)
-            return user_assets
-        except Exception:
-            log.warning("Failed to copy assets to user dir", exc_info=True)
-    return pkg_assets_dir
-
-
-def _confirm(prompt: str, auto_yes: bool) -> bool:
-    if auto_yes:
-        print(f"  {prompt} [Y/n]: y (auto)")
-        return True
-    try:
-        answer = input(f"  {prompt} [Y/n]: ").strip().lower()
-        return answer in ('', 'y', 'yes')
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return False
-
-
-def _print_summary(actions: list[str]) -> None:
-    print("  Summary")
-    if actions:
-        for a in actions:
-            print(f"    + {a}")
-    else:
-        print("    Nothing to do — system is ready.")
-    print("\n  Run 'trcc gui' to launch.\n")

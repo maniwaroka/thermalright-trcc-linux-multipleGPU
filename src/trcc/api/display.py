@@ -293,7 +293,8 @@ def _is_animated(path: Path) -> bool:
             from PIL import Image
             with Image.open(path) as img:
                 return getattr(img, 'n_frames', 1) > 1
-        except Exception:
+        except Exception as e:
+            log.warning("GIF animation check failed for %s: %s", path, e)
             return False
     return False
 
@@ -434,8 +435,8 @@ def _fetch_ipc_frame():
         result = IPCClient.send("display.get_frame")
         if result.get("success") and result.get("frame"):
             return base64.b64decode(result["frame"])
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("IPC frame fetch failed (GUI daemon down?): %s", e)
     return None
 
 
@@ -485,7 +486,7 @@ def display_preview() -> Response:
     try:
         data = _encode_frame(frame, fmt='PNG')
     except Exception:
-        log.debug("Preview encode failed", exc_info=True)
+        log.warning("Preview encode failed (frame type: %s)", type(frame).__name__, exc_info=True)
         raise HTTPException(status_code=503, detail="Frame encode failed")
     if data is None:
         raise HTTPException(status_code=503, detail="Frame encode failed")

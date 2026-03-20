@@ -249,7 +249,8 @@ class WindowsSensorEnumerator(SensorEnumeratorABC):
                      len(self._sensors), self._lhm_gpu_used)
 
         except Exception:
-            log.debug("LibreHardwareMonitor discovery failed", exc_info=True)
+            log.warning("LibreHardwareMonitor discovery failed — falling back to pynvml",
+                        exc_info=True)
 
     def _discover_nvidia(self) -> None:
         """Probe NVIDIA GPU via pynvml (fallback when LHM unavailable).
@@ -294,7 +295,7 @@ class WindowsSensorEnumerator(SensorEnumeratorABC):
                         SensorInfo(sid, 'Thermal Zone', 'temperature', '°C', 'wmi'),
                     )
             except Exception:
-                pass  # Requires admin elevation
+                log.debug("WMI thermal zones not accessible (requires admin elevation)")
 
         except ImportError:
             log.debug("wmi package not available")
@@ -428,8 +429,8 @@ class WindowsSensorEnumerator(SensorEnumeratorABC):
                     readings[f'{prefix}:mem_total'] = float(mem_info.total) / (1024 * 1024)
                 except Exception:
                     pass
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("NVIDIA GPU poll failed: %s", e)
 
     def _read_computed(self, readings: dict[str, float]) -> None:
         """Read computed I/O rate sensors (disk, network) via psutil."""
@@ -452,8 +453,8 @@ class WindowsSensorEnumerator(SensorEnumeratorABC):
                             100.0, busy_ms / (dt * 10))
             if disk:
                 self._disk_prev = (disk, now)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Disk I/O poll failed: %s", e)
 
         # Network I/O
         try:
@@ -470,8 +471,8 @@ class WindowsSensorEnumerator(SensorEnumeratorABC):
                         readings['computed:net_down'] = (
                             (net.bytes_recv - prev_net.bytes_recv) / (dt * 1024))
                 self._net_prev = (net, now)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Network I/O poll failed: %s", e)
 
     # ── Default sensor mapping (legacy compat) ────────────────────
 

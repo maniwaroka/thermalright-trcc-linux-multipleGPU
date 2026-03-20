@@ -21,8 +21,6 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from trcc.core.platform import LINUX
-
 log = logging.getLogger(__name__)
 
 # All known Thermalright VIDs (lowercase hex, no prefix)
@@ -43,8 +41,10 @@ class DebugReport:
     """Collects and formats system diagnostics for GitHub issues."""
 
     def __init__(self) -> None:
+        from trcc.core.builder import ControllerBuilder
         self._sections: list[_Section] = []
         self._detected_devices: list = []  # Cached DetectedDevice list
+        self._config = ControllerBuilder.build_setup().get_report_config()
 
     # ------------------------------------------------------------------
     # Public API
@@ -53,18 +53,21 @@ class DebugReport:
     def collect(self) -> None:
         """Gather all diagnostic sections."""
         self._version()
-        if LINUX:
+        if self._config.collect_lsusb:
             self._lsusb()
+        if self._config.collect_udev:
             self._udev_rules()
+        if self._config.collect_selinux:
             self._selinux()
+        if self._config.collect_rapl:
             self._rapl_permissions()
         self._dependencies()
         self._devices()
-        if LINUX:
+        if self._config.collect_device_permissions:
             self._device_permissions()
         self._handshakes()
         self._process_usage()
-        self._config()
+        self._app_config()
         self._recent_log()
 
     @property
@@ -98,7 +101,7 @@ class DebugReport:
         sec.lines.append(f"  trcc-linux:  {__version__}")
         sec.lines.append(f"  Python:      {platform.python_version()}")
         sec.lines.append(f"  Installed:   {self._install_method()}")
-        sec.lines.append(f"  Distro:      {self._distro_name()}")
+        sec.lines.append(f"  Distro:      {self._config.distro_name}")
         sec.lines.append(f"  OS:          {platform.platform()}")
         sec.lines.append(f"  Kernel:      {platform.release()}")
 
@@ -117,18 +120,6 @@ class DebugReport:
             return detect_install_method()
         except Exception:
             return "unknown"
-
-    @staticmethod
-    def _distro_name() -> str:
-        """Get OS/distro name (e.g. 'Fedora 43', 'Windows 11')."""
-        if not LINUX:
-            return platform.platform()
-        try:
-            # Python 3.10+ — pyright may not know about this on older stubs
-            info: dict[str, str] = platform.freedesktop_os_release()  # type: ignore[attr-defined]
-            return info.get("PRETTY_NAME", info.get("NAME", "Unknown"))
-        except (OSError, AttributeError):
-            return "Unknown"
 
     def _lsusb(self) -> None:
         sec = self._add("lsusb (filtered)")
@@ -298,63 +289,31 @@ class DebugReport:
     def _process_usage(self) -> None:
         sec = self._add("Process usage")
         try:
-            if LINUX:
-                result = subprocess.run(
-                    ["ps", "-eo", "pid,pcpu,pmem,rss,comm", "--no-headers"],
-                    capture_output=True, text=True, timeout=5,
-                )
-                trcc_procs = [
-                    line.strip() for line in result.stdout.splitlines()
-                    if "trcc" in line.split()[-1]
-                ]
-                if not trcc_procs:
-                    sec.lines.append("  (no trcc process running)")
-                    return
-                sec.lines.append("  PID    %CPU  %MEM   RSS(MB)  CMD")
-                for proc in trcc_procs:
-                    parts = proc.split(None, 4)
-                    if len(parts) >= 5:
-                        pid, cpu, mem, rss, cmd = parts
-                        rss_mb = f"{int(rss) / 1024:.0f}"
-                        sec.lines.append(
-                            f"  {pid:>6}  {cpu:>5}  {mem:>4}  {rss_mb:>7}  {cmd}")
-            else:
-                # Windows/macOS: use psutil for cross-platform process listing
-                import psutil
-                trcc_procs = [
-                    p for p in psutil.process_iter(['pid', 'name', 'cpu_percent',
-                                                    'memory_percent', 'memory_info'])
-                    if 'trcc' in (p.info['name'] or '').lower()
-                ]
-                if not trcc_procs:
-                    sec.lines.append("  (no trcc process running)")
-                    return
-                sec.lines.append("  PID    %CPU  %MEM   RSS(MB)  CMD")
-                for p in trcc_procs:
-                    info = p.info
-                    rss_mb = f"{(info['memory_info'].rss / 1024 / 1024):.0f}"
-                    sec.lines.append(
-                        f"  {info['pid']:>6}  {info['cpu_percent']:>5.1f}  "
-                        f"{info['memory_percent']:>4.1f}  {rss_mb:>7}  {info['name']}")
+            lines = self._config.get_process_lines_fn()
+            if not lines:
+                sec.lines.append("  (no trcc process running)")
+                return
+            sec.lines.append("  PID    %CPU  %MEM   RSS(MB)  CMD")
+            sec.lines.extend(lines)
         except Exception as e:
             sec.lines.append(f"  Error: {e}")
 
-    def _config(self) -> None:
+    def _app_config(self) -> None:
         sec = self._add("Config")
         try:
             from trcc.conf import CONFIG_PATH, load_config
 
-            config = load_config()
-            if not config:
+            app_config = load_config()
+            if not app_config:
                 sec.lines.append(f"  {CONFIG_PATH}: (empty or missing)")
                 return
             sec.lines.append(f"  path: {CONFIG_PATH}")
             # Show non-sensitive keys
             for key in ("resolution", "temp_unit", "format_prefs"):
-                if key in config:
-                    sec.lines.append(f"  {key}: {config[key]}")
+                if key in app_config:
+                    sec.lines.append(f"  {key}: {app_config[key]}")
             # Device count
-            devices = config.get("devices", {})
+            devices = app_config.get("devices", {})
             if devices:
                 sec.lines.append(f"  devices: {len(devices)} configured")
         except Exception as e:

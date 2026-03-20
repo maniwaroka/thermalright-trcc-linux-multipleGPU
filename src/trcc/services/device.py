@@ -107,11 +107,11 @@ class DeviceService:
                 device.led_style_id = info.style.style_id
                 device.led_style_sub = getattr(info, 'style_sub', 0)
                 device.model = info.style.model_name
-                log.debug("LED probe: PM=%d → style=%d sub=%d model=%s",
-                          info.pm, info.style.style_id,
-                          device.led_style_sub, info.style.model_name)
+                log.info("LED probe: PM=%d → style=%d sub=%d model=%s",
+                         info.pm, info.style.style_id,
+                         device.led_style_sub, info.style.model_name)
         except Exception as e:
-            log.debug("LED probe failed: %s", e)
+            log.warning("LED probe failed for %04X:%04X: %s", device.vid, device.pid, e)
 
     # ── Selection ────────────────────────────────────────────────────
 
@@ -177,8 +177,11 @@ class DeviceService:
                 fbl = getattr(result, 'fbl', None) or getattr(result, 'model_id', None)
                 if fbl:
                     dev.fbl_code = fbl
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(
+                "Resolution discovery failed for %s [%04X:%04X]: %s",
+                dev.path, dev.vid, dev.pid, e,
+            )
 
     # ── Send ─────────────────────────────────────────────────────────
 
