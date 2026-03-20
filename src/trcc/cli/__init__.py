@@ -16,30 +16,45 @@ import functools
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import TYPE_CHECKING, Annotated, Optional
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
 
 import click.exceptions
 import typer
 
+log = logging.getLogger(__name__)
+
 # =========================================================================
 # CLI error handler decorator (imported by submodules via circular import)
 # =========================================================================
+
+_qt_app: "QApplication | None" = None  # kept alive to prevent PySide6 teardown segfault
+
 
 def _ensure_renderer() -> None:
     """Initialize ImageService renderer for CLI (once).
 
     QtRenderer requires a QApplication/QCoreApplication to exist
     (for QFontDatabase, QImage, etc.). Create one if needed.
+
+    The QApplication instance is stored in _qt_app so the Python wrapper
+    is never garbage-collected — without this, PySide6 destroys Qt on exit
+    in a bad order and segfaults (reproducible with PySide6 ≥ 6.10).
     """
+    global _qt_app
     from trcc.services.image import ImageService
     if ImageService._renderer is None:
         import os
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from PySide6.QtWidgets import QApplication
         if QApplication.instance() is None:
-            QApplication([])
+            log.debug("Creating QApplication for CLI renderer (offscreen)")
+            _qt_app = QApplication([])
         from trcc.adapters.render.qt import QtRenderer
         ImageService.set_renderer(QtRenderer())
+        log.debug("CLI renderer initialised: QtRenderer")
 
 
 def _ensure_settings() -> None:

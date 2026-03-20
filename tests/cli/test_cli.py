@@ -727,5 +727,67 @@ class TestI18nCommands(unittest.TestCase):
         self.assertIn("Unknown", buf.getvalue())
 
 
+class TestEnsureRenderer(unittest.TestCase):
+    """_ensure_renderer stores QApplication in _qt_app to prevent teardown segfault."""
+
+    def test_qt_app_stored_when_created(self):
+        """QApplication created by _ensure_renderer must be held in _qt_app."""
+        import trcc.cli as cli_mod
+        from trcc.services.image import ImageService
+
+        original_renderer = ImageService._renderer
+        original_qt_app = cli_mod._qt_app
+        try:
+            ImageService._renderer = None
+            cli_mod._qt_app = None
+
+            # Configure the mock class so .instance() returns None (no app yet)
+            # and calling the class returns a sentinel instance.
+            fake_instance = MagicMock(name="qt_app_instance")
+            mock_qapp_cls = MagicMock(name="QApplication")
+            mock_qapp_cls.instance.return_value = None
+            mock_qapp_cls.return_value = fake_instance
+
+            with patch('trcc.services.image.ImageService.set_renderer'), \
+                 patch('trcc.adapters.render.qt.QtRenderer'), \
+                 patch('PySide6.QtWidgets.QApplication', mock_qapp_cls):
+                from trcc.cli import _ensure_renderer
+                _ensure_renderer()
+
+            # _qt_app must be populated so Python keeps the wrapper alive
+            self.assertIsNotNone(
+                cli_mod._qt_app,
+                "_qt_app must hold the QApplication to prevent PySide6 teardown segfault",
+            )
+        finally:
+            ImageService._renderer = original_renderer
+            cli_mod._qt_app = original_qt_app
+
+    def test_no_new_app_when_instance_exists(self):
+        """If a QApplication already exists, _qt_app is not overwritten."""
+        import trcc.cli as cli_mod
+        from trcc.services.image import ImageService
+
+        original_renderer = ImageService._renderer
+        original_qt_app = cli_mod._qt_app
+        try:
+            ImageService._renderer = None
+            sentinel = MagicMock(name="existing_qapp")
+            cli_mod._qt_app = sentinel
+
+            with patch('trcc.services.image.ImageService.set_renderer'), \
+                 patch('trcc.adapters.render.qt.QtRenderer'), \
+                 patch('PySide6.QtWidgets.QApplication.instance',
+                       return_value=MagicMock()):  # instance already exists
+                from trcc.cli import _ensure_renderer
+                _ensure_renderer()
+
+            self.assertIs(cli_mod._qt_app, sentinel,
+                          "_qt_app must not be overwritten when QApplication already exists")
+        finally:
+            ImageService._renderer = original_renderer
+            cli_mod._qt_app = original_qt_app
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.0.7
+
+### Fixes
+- **CLI segfault on exit when using offscreen Qt (SSH / headless)**: `QApplication` created by `_ensure_renderer` was not stored in a module-level variable, so the Python wrapper was garbage-collected before program exit. PySide6 then tore down Qt internals in a bad order, causing a segmentation fault. The instance is now held in `_qt_app` for the lifetime of the process. Affects `trcc theme-load`, `trcc send`, and any CLI command that uses the Qt renderer over SSH or in a display-less environment (reproducible with PySide6 ≥ 6.10)
+
 ## v9.0.6
 
 ### Fixes
