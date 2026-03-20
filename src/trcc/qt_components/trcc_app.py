@@ -1935,7 +1935,8 @@ class TRCCApp(QMainWindow):
         from trcc.core.platform import WINDOWS
         if (not self._force_quit
                 and self._tray.isSystemTrayAvailable()
-                and self._tray.isVisible()):
+                and self._tray.isVisible()
+                and not (WINDOWS and self.isMinimized())):
             event.ignore()
             if WINDOWS:
                 self.showMinimized()
