@@ -20,14 +20,46 @@ def _require_linux(command: str) -> int | None:
     return None
 
 
-# Setup functions moved to adapters/setup/facade_linux.py — import from there
-from trcc.adapters.system.linux.setup import (  # noqa: E402,F401
-    _real_user_home,
-    install_desktop,
-    setup_polkit,
-    setup_selinux,
-    setup_udev,
-)
+def _real_user_home():
+    """Lazy proxy — only available on Linux."""
+    from trcc.adapters.system.linux.setup import _real_user_home as _fn
+    return _fn()
+
+
+def setup_udev(dry_run: bool = False) -> int:
+    """Install udev rules for LCD device access (Linux only)."""
+    err = _require_linux("setup-udev")
+    if err is not None:
+        return err
+    from trcc.adapters.system.linux.setup import setup_udev as _fn
+    return _fn(dry_run=dry_run)
+
+
+def setup_selinux() -> int:
+    """Install SELinux policy module (Linux only)."""
+    err = _require_linux("setup-selinux")
+    if err is not None:
+        return err
+    from trcc.adapters.system.linux.setup import setup_selinux as _fn
+    return _fn()
+
+
+def setup_polkit() -> int:
+    """Install polkit policy for passwordless dmidecode/smartctl (Linux only)."""
+    err = _require_linux("setup-polkit")
+    if err is not None:
+        return err
+    from trcc.adapters.system.linux.setup import setup_polkit as _fn
+    return _fn()
+
+
+def install_desktop() -> int:
+    """Install .desktop menu entry and icon (Linux only)."""
+    err = _require_linux("install-desktop")
+    if err is not None:
+        return err
+    from trcc.adapters.system.linux.setup import install_desktop as _fn
+    return _fn()
 
 
 def _sudo_run(cmd):
