@@ -304,9 +304,9 @@ jobs:
           PRERM
           chmod 755 "$PKG/DEBIAN/prerm"
 
-          dpkg-deb --build "$PKG" "/output/trcc-linux_${VER}-1~legacy_all.deb"
+          dpkg-deb --build "$PKG" "/output/trcc-linux_${VER}-1.legacy_all.deb"
           echo "=== DEB Legacy Verification ==="
-          DEB="/output/trcc-linux_${VER}-1~legacy_all.deb"
+          DEB="/output/trcc-linux_${VER}-1.legacy_all.deb"
           echo "  Package: $DEB ($(du -h "$DEB" | cut -f1))"
           dpkg-deb -I "$DEB"
           echo "DEB legacy build PASSED"
