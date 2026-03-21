@@ -44,6 +44,14 @@ def _make_device(vid=0x87CD, pid=0x70DB, scsi="/dev/sg0", usb_path="2-1",
 class TestDetectToSend(unittest.TestCase):
     """Full pipeline: detect device → create LCDDriver → send_frame."""
 
+    def setUp(self):
+        import trcc.adapters.device.scsi as scsi_mod
+        scsi_mod._sg_io_available = None  # ensure sg_io path is attempted (mock will handle it)
+
+    def tearDown(self):
+        import trcc.adapters.device.scsi as scsi_mod
+        scsi_mod._sg_io_available = None
+
     @patch("trcc.adapters.device.scsi._sg_io_write", return_value=True)
     @patch("trcc.adapters.device.scsi._sg_io_read", return_value=b"\x00" * 512)
     @patch("trcc.adapters.device.lcd.detect_devices")

@@ -161,6 +161,14 @@ class TestGetFrameChunks(unittest.TestCase):
 class TestScsiRead(unittest.TestCase):
     """Low-level SCSI READ via sg_raw."""
 
+    def setUp(self):
+        import trcc.adapters.device.scsi as scsi_mod
+        scsi_mod._sg_io_available = False  # force sg_raw path; avoid OSError side-effects
+
+    def tearDown(self):
+        import trcc.adapters.device.scsi as scsi_mod
+        scsi_mod._sg_io_available = None  # reset for subsequent tests
+
     @patch('trcc.adapters.device.scsi.subprocess.run')
     def test_success_returns_stdout(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout=b'\xAA\xBB')
@@ -190,6 +198,14 @@ class TestScsiRead(unittest.TestCase):
 
 class TestScsiWrite(unittest.TestCase):
     """Low-level SCSI WRITE via sg_raw with temp file."""
+
+    def setUp(self):
+        import trcc.adapters.device.scsi as scsi_mod
+        scsi_mod._sg_io_available = False
+
+    def tearDown(self):
+        import trcc.adapters.device.scsi as scsi_mod
+        scsi_mod._sg_io_available = None
 
     @patch('trcc.adapters.device.scsi.subprocess.run')
     def test_success_returns_true(self, mock_run):

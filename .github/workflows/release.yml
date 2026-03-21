@@ -404,8 +404,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           RPM=$(find packages -name "*.rpm" | head -1)
-          DEB=$(find packages -name "*_all.deb" | head -1)
-          DEB_LEGACY=$(find packages -name "*legacy*" | head -1)
+          DEB=$(find packages -name "*_all.deb" ! -name "*legacy*" | head -1)
+          DEB_LEGACY=$(find packages -name "*legacy*_all.deb" | head -1)
           ARCH=$(find packages -name "*.pkg.tar.zst" | head -1)
           gh release upload "${{ github.ref_name }}" \
             "$RPM" "$DEB" "$DEB_LEGACY" "$ARCH" \
