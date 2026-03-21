@@ -4,7 +4,12 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v9.1.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -46,15 +51,15 @@ jobs:
       - name: Create GitHub Release and upload artifacts
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          tag: ${{ inputs.tag || github.ref_name }}
+          name: Release ${{ inputs.tag || github.ref_name }}
           artifacts: dist/*
           skipIfReleaseExists: true
 
       - name: Upload dist to actions artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: dist-${{ github.ref_name }}
+          name: dist-${{ inputs.tag || github.ref_name }}
           path: dist/*
 
       - name: Publish to PyPI
@@ -74,12 +79,14 @@ jobs:
       - name: Download wheel from release
         uses: actions/download-artifact@v8
         with:
-          name: dist-${{ github.ref_name }}
+          name: dist-${{ inputs.tag || github.ref_name }}
           path: dist/
 
       - name: Extract version
         id: version
-        run: echo "ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "ver=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build RPM (Fedora)
         run: |
@@ -408,7 +415,7 @@ jobs:
           DEB=$(find packages -name "*_all.deb" ! -name "*legacy*" | head -1)
           DEB_LEGACY=$(find packages -name "*legacy*_all.deb" | head -1)
           ARCH=$(find packages -name "*.pkg.tar.zst" | head -1)
-          gh release upload "${{ github.ref_name }}" \
+          gh release upload "${{ inputs.tag || github.ref_name }}" \
             "$RPM" "$DEB" "$DEB_LEGACY" "$ARCH" \
             packages/SHA256SUMS.txt \
             --clobber
