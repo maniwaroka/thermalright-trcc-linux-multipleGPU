@@ -1,5 +1,16 @@
 # Changelog
 
+## v9.1.1
+
+### Fixes
+- **Static theme blinks to USB standby symbol every ~30 s**: No frames were sent after the initial theme load when no dynamic overlay elements triggered a re-render. A keepalive fires every ~20 s to resend the current frame and prevent USB timeout
+- **Device polled every 15 s while connected**: `find_lcd_devices()` ran a full sysfs USB scan on every poll tick regardless of connection state. The scan now only runs when no device is connected
+
+### Internal
+- **Startup log**: GUI logs `TRCC v{version} starting` on launch
+- **Overlay tick guard**: Changed from `is_overlay_enabled OR is_background_active` to `device.connected` — simpler and correct for all theme types
+- **Comprehensive debug logging**: CLI commands log entry/args/result via `_cli_handler`; API logs every request (method, path, status, latency); `_guarded_send` logs frame send success/failure; device disconnect detected and logged in GUI poll
+
 ## v9.1.0
 
 ### Internal
