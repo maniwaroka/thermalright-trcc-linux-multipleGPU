@@ -1,5 +1,17 @@
 # Changelog
 
+## v9.0.9
+
+### Fixes
+- **`temp_linked` / `load_linked` LED modes show 0°C and display turns off**: These modes were not included in the animated set, so the CLI sent a single packet with uninitialised (zero) metrics and exited. The LED controller then timed out and powered off. Both modes now run a continuous loop with sensor metrics refreshed every ~1 second
+- **`trcc serve` LED display turns off**: No background keepalive existed for LED in the API server. A background tick thread (50 ms ticks, 1 s metric refresh) now starts when an animated mode is set via `/led/mode` and stops on `/led/off` or static colour
+- **JPEG images blurry on 1280×480 HID Type 2 devices**: JPEG size cap was 450 KB — too small for large displays at quality 95, forcing the encoder to reduce quality. The HID Type 2 transfer buffer is 691 200 bytes (~672 KB usable); cap raised to 650 KB. `JPEG_MAX_BYTES` constant centralised in `core/models.py`
+- **`~/.trcc/trcc.log` not written for CLI / API commands**: File logging was only set up in the GUI path. All CLI commands (including `trcc serve`) now write to the log file via `_ensure_file_logging()` in the Typer callback
+
+### Internal
+- **PIL fully eliminated**: `ImageService`, `OverlayService`, screen capture, video decode, mask pipeline, IPC frame serialisation, and all tests now use Qt surfaces (QImage/QPainter) exclusively. `PilRenderer` and `FontResolver` deleted. ffmpeg replaces `PIL.ImageGrab` for screencast
+- **`JPEG_MAX_BYTES` constant**: Single source of truth in `core/models.py`, imported by `core/ports.py`, `adapters/render/qt.py`, and `services/image.py`
+
 ## v9.0.8
 
 ### Fixes
