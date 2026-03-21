@@ -42,14 +42,24 @@ def _led_route(method: str, *args, **kwargs) -> dict:
 @router.post("/color")
 def set_color(body: HexColorRequest) -> dict:
     """Set LED static color."""
+    from trcc.api import stop_led_loop
+
+    stop_led_loop()
     r, g, b = parse_hex_or_400(body.hex)
     return _led_route("set_color", r, g, b)
 
 
 @router.post("/mode")
 def set_mode(body: ModeRequest) -> dict:
-    """Set LED effect mode (static, breathing, colorful, rainbow)."""
-    return _led_route("set_mode", body.mode)
+    """Set LED effect mode (static, breathing, colorful, rainbow, temp_linked, load_linked)."""
+    from trcc.api import start_led_loop, stop_led_loop
+
+    result = _led_route("set_mode", body.mode)
+    if result.get("animated"):
+        start_led_loop()
+    else:
+        stop_led_loop()
+    return result
 
 
 @router.post("/brightness")
@@ -61,6 +71,9 @@ def set_brightness(body: LEDBrightnessRequest) -> dict:
 @router.post("/off")
 def turn_off() -> dict:
     """Turn LEDs off."""
+    from trcc.api import stop_led_loop
+
+    stop_led_loop()
     return _led_route("off")
 
 

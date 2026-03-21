@@ -295,7 +295,8 @@ class LEDDevice(Device):
         self._svc.set_mode(resolved)
         colors = self._apply_and_send()
         animated = resolved in (LEDMode.BREATHING, LEDMode.COLORFUL,
-                                LEDMode.RAINBOW)
+                                LEDMode.RAINBOW, LEDMode.TEMP_LINKED,
+                                LEDMode.LOAD_LINKED)
         return {"success": True, "colors": colors, "animated": animated,
                 "message": f"LED mode: {resolved.name.lower()}"}
 

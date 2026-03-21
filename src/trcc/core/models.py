@@ -1512,6 +1512,10 @@ class SensorInfo:
 BRIGHTNESS_LEVELS: Dict[int, int] = {1: 25, 2: 50, 3: 100}
 DEFAULT_BRIGHTNESS_LEVEL = 3  # 100%
 
+# JPEG encoding — max payload bytes (HID Type 2 transfer buffer is 691,200 bytes,
+# leaving ~672 KB for payload; 650 KB gives safe margin at full quality 95)
+JPEG_MAX_BYTES = 650_000
+
 
 # Time formats matching Windows TRCC (UCXiTongXianShiSub.cs)
 TIME_FORMATS: Dict[int, str] = {

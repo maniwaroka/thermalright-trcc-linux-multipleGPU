@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol, runtime_checkable
 
+from trcc.core.models import JPEG_MAX_BYTES
+
 if TYPE_CHECKING:
     from trcc.core.models import SensorInfo
 
@@ -112,7 +114,7 @@ class Renderer(ABC):
 
     @abstractmethod
     def encode_jpeg(self, surface: Any, quality: int = 95,
-                    max_size: int = 450_000) -> bytes:
+                    max_size: int = JPEG_MAX_BYTES) -> bytes:
         """Encode surface to JPEG bytes with size constraint."""
 
     # ── File I/O ──────────────────────────────────────────────────

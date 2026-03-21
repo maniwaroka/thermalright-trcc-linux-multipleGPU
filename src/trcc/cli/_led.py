@@ -103,11 +103,19 @@ def set_mode(mode_name, *, preview=False):
         return 1
 
     if result["animated"]:
+        from trcc.cli import _ensure_system
         from trcc.services import LEDService
+        from trcc.services.system import get_all_metrics
 
-        print(f"LED mode: {mode_name} (running animation, Ctrl+C to stop)")
+        _ensure_system()
+        print(f"LED mode: {mode_name} (running, Ctrl+C to stop)")
+        _metric_ticks = 0
         try:
             while True:
+                # Refresh sensor metrics every 20 ticks (~1 s)
+                if _metric_ticks % 20 == 0:
+                    led.update_metrics(get_all_metrics())
+                _metric_ticks += 1
                 tick = led.tick()
                 if preview and tick.get("colors"):
                     print(LEDService.zones_to_ansi(tick["colors"]),

@@ -23,6 +23,7 @@ from PySide6.QtGui import (
     QTransform,
 )
 
+from ...core.models import JPEG_MAX_BYTES
 from ...core.ports import Renderer
 from ..infra.data_repository import FONT_SEARCH_DIRS
 
@@ -272,7 +273,7 @@ class QtRenderer(Renderer):
         return data
 
     def encode_jpeg(self, surface: Any, quality: int = 95,
-                    max_size: int = 450_000) -> bytes:
+                    max_size: int = JPEG_MAX_BYTES) -> bytes:
         # JPEG encoder needs RGB888 (not RGB32)
         rgb = surface.convertToFormat(QImage.Format.Format_RGB888)
         hint = self._jpeg_quality_hint

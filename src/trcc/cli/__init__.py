@@ -138,6 +138,23 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _ensure_file_logging() -> None:
+    """Set up ~/.trcc/trcc.log if not already done (e.g. when run via entrypoint)."""
+    root = logging.getLogger()
+    if any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
+        return  # Already set up by __main__.py
+    log_dir = Path.home() / '.trcc'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    fh = logging.handlers.RotatingFileHandler(
+        log_dir / 'trcc.log', maxBytes=1_000_000, backupCount=3)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter(
+        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'))
+    root.setLevel(logging.DEBUG)
+    root.addHandler(fh)
+
+
 @app.callback(invoke_without_command=True)
 def _main_callback(
     ctx: typer.Context,
@@ -156,6 +173,7 @@ def _main_callback(
 ) -> None:
     global _verbose
     _verbose = verbose
+    _ensure_file_logging()
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 

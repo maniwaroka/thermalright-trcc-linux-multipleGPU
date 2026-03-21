@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, ClassVar
 
+from ..core.models import JPEG_MAX_BYTES
 from ..core.ports import Renderer
 
 log = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class ImageService:
 
     @staticmethod
     def to_jpeg(img: Any, quality: int = 95,
-                max_size: int = 450_000) -> bytes:
+                max_size: int = JPEG_MAX_BYTES) -> bytes:
         """Encode surface to JPEG bytes with size constraint."""
         return ImageService._r().encode_jpeg(img, quality, max_size)
 
