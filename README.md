@@ -5,6 +5,8 @@
 
 > **Solo hobbyist project** — built in my spare time, one device, no corporate backing. Just a Linux user who got tired of waiting for Thermalright to support us. If something breaks, please be patient — I do this for free because I like helping people. If this project helps you, consider [buying me a beer](https://buymeacoffee.com/Lexonight1) 🍺 or [Ko-fi](https://ko-fi.com/lexonight1) ☕
 
+> **Need help?** [Open a GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — that's the only place I see support requests. I don't monitor Reddit, forums, Discord, or Discussions. Run `trcc report` and paste the output so I can actually help you.
+
 [![GitHub Release](https://img.shields.io/github/v/release/Lexonight1/thermalright-trcc-linux?color=green&logo=github)](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest)
 [![PyPI](https://img.shields.io/pypi/v/trcc-linux)](https://pypi.org/project/trcc-linux/)
 [![GitHub Downloads](https://img.shields.io/github/downloads/Lexonight1/thermalright-trcc-linux/total?color=blue&logo=github&label=downloads)](https://github.com/Lexonight1/thermalright-trcc-linux/releases)
@@ -122,10 +124,6 @@ Fedora, Nobara, Ubuntu, Debian, Mint, Pop!_OS, Zorin, elementary OS, Arch, Manja
 
 > See the **[Install Guide](doc/GUIDE_INSTALL.md)** for distro-specific instructions and troubleshooting.
 
-### Something not working?
-
-**[Open a GitHub issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new)** — that's the only place I see bug reports. I don't monitor Reddit, forums, or Discussions. Run `trcc report`, paste the output, and I'll get back to you.
-
 ### Have an untested device?
 
 Run `trcc report` and [paste the output in an issue](https://github.com/Lexonight1/thermalright-trcc-linux/issues/new) — takes 30 seconds. See the **[full list of devices that need testers](doc/TESTERS_WANTED.md)**.
@@ -187,6 +185,11 @@ curl -X POST http://localhost:9876/led/color \
   -H "Content-Type: application/json" \
   -d '{"color": "#ff0000"}'                    # Set LED color
 ```
+
+### Tips
+
+**Mounting your device vertically?**
+Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — the browser will automatically show portrait-orientation themes for your device's rotated dimensions. Download and apply one of those for a proper vertical layout. Local themes are landscape-only; portrait layouts come from the cloud theme packs.
 
 ## Documentation
 
