@@ -1345,7 +1345,7 @@ class TRCCApp(QMainWindow):
             has_lcd = bool(self._lcd_handler and self._lcd_handler.display.connected)
             has_device = has_lcd or self._led.active
 
-            if self._prev_had_lcd and not has_lcd:
+            if getattr(self, '_prev_had_lcd', False) and not has_lcd:
                 log.info("LCD device disconnected — resuming scan")
             self._prev_had_lcd = has_lcd
 

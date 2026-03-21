@@ -455,6 +455,7 @@ class TestOverlay:
 
     def test_overlay_tick_no_change_noop(self):
         h = _make_handler()
+        h._lcd.overlay.enabled = True
         h._lcd.overlay.has_changed.return_value = False
         h._lcd.video.playing = False
         metrics = MagicMock()
@@ -465,6 +466,7 @@ class TestOverlay:
 
     def test_overlay_tick_with_change_renders(self):
         h = _make_handler()
+        h._lcd.overlay.enabled = True
         h._lcd.overlay.has_changed.return_value = True
         h._lcd.video.playing = False
         h._lcd.overlay.render.return_value = {'image': MagicMock()}
@@ -474,6 +476,7 @@ class TestOverlay:
 
     def test_overlay_tick_during_video_rebuilds_cache(self):
         h = _make_handler()
+        h._lcd.overlay.enabled = True
         h._lcd.video.playing = True
         h._lcd.overlay.has_changed.return_value = True
         metrics = MagicMock()
