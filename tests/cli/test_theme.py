@@ -85,7 +85,6 @@ _PATCH_DATA_MANAGER = "trcc.adapters.infra.data_repository.DataManager"
 _PATCH_THEME_SVC = "trcc.services.ThemeService"
 _PATCH_IMAGE_SVC = "trcc.services.ImageService"
 _PATCH_LCD_FROM_SVC = "trcc.core.lcd_device.LCDDevice.from_service"
-_PATCH_PIL_IMAGE = "PIL.Image"
 _PATCH_GET_SERVICE = "trcc.cli._device._get_service"
 
 
@@ -342,17 +341,12 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = themes
-        pil_mock = MagicMock()
-        pil_mock.open.return_value.__enter__ = lambda s: s
-        pil_mock.open.return_value.convert.return_value = img
-        pil_mock.open.return_value = MagicMock(convert=lambda m: img)
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch(_PATCH_DATA_MANAGER), \
              patch(_PATCH_THEME_SVC, theme_svc), \
              patch(_PATCH_IMAGE_SVC, img_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             rc = load_theme("ExactTheme")
         assert rc == 0
@@ -366,15 +360,12 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [t]
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=lambda m: img)
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch(_PATCH_DATA_MANAGER), \
              patch(_PATCH_THEME_SVC, theme_svc), \
              patch(_PATCH_IMAGE_SVC, img_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             rc = load_theme("super")  # partial, case-insensitive
         assert rc == 0
@@ -500,15 +491,12 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = themes
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=lambda m: img)
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch(_PATCH_DATA_MANAGER), \
              patch(_PATCH_THEME_SVC, theme_svc), \
              patch(_PATCH_IMAGE_SVC, img_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             rc = load_theme("PreviewTheme", preview=True)
         assert rc == 0
@@ -521,15 +509,12 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = themes
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=lambda m: img)
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch(_PATCH_DATA_MANAGER), \
              patch(_PATCH_THEME_SVC, theme_svc), \
              patch(_PATCH_IMAGE_SVC, img_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             load_theme("Theme", preview=False)
         img_svc.to_ansi.assert_not_called()
@@ -540,15 +525,12 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = themes
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=lambda m: img)
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch(_PATCH_DATA_MANAGER), \
              patch(_PATCH_THEME_SVC, theme_svc), \
              patch(_PATCH_IMAGE_SVC, img_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             load_theme("T")
         ml.restore_device_settings.assert_called_once()
@@ -562,15 +544,12 @@ class TestLoadTheme:
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = themes
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=lambda m: img)
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch(_PATCH_DATA_MANAGER), \
              patch(_PATCH_THEME_SVC, theme_svc), \
              patch(_PATCH_IMAGE_SVC, img_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch(_PATCH_LCD_FROM_SVC, return_value=ml):
             load_theme("T")
         sc.save_device_setting.assert_called_once()
@@ -604,8 +583,6 @@ class TestSaveTheme:
 
     def test_success_returns_0(self, capsys):
         svc, sc, td, img = self._base_setup()
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=MagicMock(return_value=img))
         img.resize.return_value = img
 
         theme_svc = MagicMock()
@@ -615,8 +592,7 @@ class TestSaveTheme:
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch("trcc.core.models.ThemeDir", return_value=td), \
-             patch(_PATCH_THEME_SVC, theme_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock):
+             patch(_PATCH_THEME_SVC, theme_svc):
             rc = save_theme("MyTheme")
         assert rc == 0
         assert "Saved" in capsys.readouterr().out
@@ -654,8 +630,6 @@ class TestSaveTheme:
 
     def test_save_fails_returns_1(self, capsys):
         svc, sc, td, img = self._base_setup()
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=MagicMock(return_value=img))
         img.resize.return_value = img
 
         theme_svc = MagicMock()
@@ -665,15 +639,12 @@ class TestSaveTheme:
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch("trcc.core.models.ThemeDir", return_value=td), \
-             patch(_PATCH_THEME_SVC, theme_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock):
+             patch(_PATCH_THEME_SVC, theme_svc):
             rc = save_theme("MyTheme")
         assert rc == 1
 
     def test_video_path_passed_to_service(self, capsys, tmp_path):
         svc, sc, td, img = self._base_setup()
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=MagicMock(return_value=img))
         img.resize.return_value = img
 
         # Create a real file so existence check passes
@@ -688,7 +659,6 @@ class TestSaveTheme:
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch("trcc.core.models.ThemeDir", return_value=td), \
              patch(_PATCH_THEME_SVC, theme_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock), \
              patch("trcc.cli._ensure_renderer"):
             save_theme("MyTheme", video=str(video_file))
 
@@ -697,8 +667,6 @@ class TestSaveTheme:
 
     def test_no_video_path_is_none(self, capsys):
         svc, sc, td, img = self._base_setup()
-        pil_mock = MagicMock()
-        pil_mock.open.return_value = MagicMock(convert=MagicMock(return_value=img))
         img.resize.return_value = img
 
         theme_svc = MagicMock()
@@ -708,8 +676,7 @@ class TestSaveTheme:
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch("trcc.core.models.ThemeDir", return_value=td), \
-             patch(_PATCH_THEME_SVC, theme_svc), \
-             patch(_PATCH_PIL_IMAGE, pil_mock):
+             patch(_PATCH_THEME_SVC, theme_svc):
             save_theme("MyTheme")
 
         call_kwargs = theme_svc.save.call_args[1]

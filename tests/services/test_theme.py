@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import make_test_surface
-from PIL import Image
+from PySide6.QtGui import QImage
 
 from trcc.adapters.infra.data_repository import ThemeDir
 from trcc.core.models import ThemeData, ThemeInfo, ThemeType
@@ -29,9 +29,9 @@ def lcd_size() -> tuple[int, int]:
 
 
 @pytest.fixture()
-def test_image() -> Image.Image:
+def test_image() -> QImage:
     """Small 4x4 RGB image for testing."""
-    return Image.new('RGB', (4, 4), (255, 0, 0))
+    return make_test_surface(4, 4, (255, 0, 0))
 
 
 @pytest.fixture()
@@ -57,13 +57,13 @@ def _make_theme_dir(
     d = base / name
     d.mkdir(parents=True, exist_ok=True)
     if has_bg:
-        Image.new('RGB', (4, 4), (255, 0, 0)).save(str(d / '00.png'))
+        make_test_surface(4, 4, (255, 0, 0)).save(str(d / '00.png'), "PNG")
     if has_mask:
-        Image.new('RGBA', (4, 4), (0, 0, 0, 128)).save(str(d / '01.png'))
+        make_test_surface(4, 4, (0, 0, 0, 128)).save(str(d / '01.png'), "PNG")
     if has_dc:
         (d / 'config1.dc').write_bytes(b'\x00' * 16)
     if has_preview:
-        Image.new('RGB', (4, 4), (0, 255, 0)).save(str(d / 'Theme.png'))
+        make_test_surface(4, 4, (0, 255, 0)).save(str(d / 'Theme.png'), "PNG")
     if has_zt:
         (d / 'Theme.zt').write_bytes(b'\x00' * 64)
     if has_mp4:
@@ -80,7 +80,7 @@ def _make_cloud_dir(base: Path, videos: list[str]) -> Path:
     for name in videos:
         stem = name.removesuffix('.mp4')
         (base / f'{stem}.mp4').write_bytes(b'\x00' * 32)
-        Image.new('RGB', (4, 4), (0, 0, 0)).save(str(base / f'{stem}.png'))
+        make_test_surface(4, 4, (0, 0, 0)).save(str(base / f'{stem}.png'), "PNG")
     return base
 
 
@@ -1106,9 +1106,8 @@ class TestSave:
 
         theme_path = tmp_path / 'theme320320' / 'Custom_CleanBg'
         # 00.png should exist and be a valid image
-        from PIL import Image
-        with Image.open(theme_path / '00.png') as saved_bg:
-            assert saved_bg.size == (320, 320)
+        saved_bg = QImage(str(theme_path / '00.png'))
+        assert (saved_bg.width(), saved_bg.height()) == (320, 320)
 
 
 # ── export_tr / import_tr ─────────────────────────────────────────────────────

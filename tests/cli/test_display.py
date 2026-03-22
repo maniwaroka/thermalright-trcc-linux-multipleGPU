@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PIL import Image
+from conftest import make_test_surface
 
 from trcc.core.lcd_device import LCDDevice
 
@@ -106,8 +106,7 @@ def mock_connect_fail():
 
 def _make_png(path: Path, w=10, h=10, color=(255, 0, 0)) -> Path:
     """Write a minimal PNG to *path* and return it."""
-    img = Image.new("RGB", (w, h), color)
-    img.save(path)
+    make_test_surface(w, h, color).save(str(path), "PNG")
     return path
 
 
@@ -242,7 +241,7 @@ class TestFrameOps:
 
     def test_send_image_success(self, lcd, mock_device_svc, tmp_path):
         img_path = str(_make_png(tmp_path / "test.png"))
-        mock_img = Image.new("RGB", (10, 10))
+        mock_img = make_test_surface(10, 10)
 
         with patch(f"{_IMG_SVC}.open_and_resize", return_value=mock_img):
             result = lcd.frame.send_image(img_path)
@@ -253,7 +252,7 @@ class TestFrameOps:
         mock_device_svc.send_pil.assert_called_once()
 
     def test_send_color_success(self, lcd, mock_device_svc):
-        mock_img = Image.new("RGB", (320, 320), (255, 0, 0))
+        mock_img = make_test_surface(320, 320, (255, 0, 0))
 
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img):
             result = lcd.frame.send_color(255, 0, 0)
@@ -263,7 +262,7 @@ class TestFrameOps:
         mock_device_svc.send_pil.assert_called_once_with(mock_img, 320, 320)
 
     def test_send_color_args(self, lcd):
-        mock_img = Image.new("RGB", (320, 320))
+        mock_img = make_test_surface(320, 320)
 
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img) as mock_sc:
             lcd.frame.send_color(0, 128, 255)
@@ -271,7 +270,7 @@ class TestFrameOps:
         mock_sc.assert_called_once_with(0, 128, 255, 320, 320)
 
     def test_reset_sends_red_frame(self, lcd, mock_device_svc):
-        mock_img = Image.new("RGB", (320, 320), (255, 0, 0))
+        mock_img = make_test_surface(320, 320, (255, 0, 0))
 
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img) as mock_sc:
             result = lcd.frame.reset()
@@ -410,8 +409,8 @@ class TestOverlayOps:
 
     def test_load_mask_standalone_with_file(self, lcd, tmp_path):
         mask_file = tmp_path / "mask.png"
-        Image.new("RGBA", (10, 10), (255, 255, 255, 128)).save(str(mask_file))
-        result_img = Image.new("RGB", (10, 10))
+        make_test_surface(10, 10, (255, 255, 255, 128)).save(str(mask_file), "PNG")
+        result_img = make_test_surface(10, 10)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -433,8 +432,8 @@ class TestOverlayOps:
     def test_load_mask_standalone_directory_01_png(self, lcd, tmp_path):
         mask_dir = tmp_path / "masks"
         mask_dir.mkdir()
-        Image.new("RGBA", (10, 10)).save(str(mask_dir / "01.png"))
-        result_img = Image.new("RGB", (10, 10))
+        make_test_surface(10, 10, (0, 0, 0, 255)).save(str(mask_dir / "01.png"), "PNG")
+        result_img = make_test_surface(10, 10)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -456,8 +455,8 @@ class TestOverlayOps:
     def test_load_mask_standalone_directory_fallback_png(self, lcd, tmp_path):
         mask_dir = tmp_path / "masks2"
         mask_dir.mkdir()
-        Image.new("RGBA", (10, 10)).save(str(mask_dir / "other.png"))
-        result_img = Image.new("RGB", (10, 10))
+        make_test_surface(10, 10, (0, 0, 0, 255)).save(str(mask_dir / "other.png"), "PNG")
+        result_img = make_test_surface(10, 10)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -491,7 +490,7 @@ class TestOverlayOps:
     def test_render_overlay_success(self, lcd, tmp_path):
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
-        result_img = Image.new("RGB", (320, 320))
+        result_img = make_test_surface(320, 320)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -510,7 +509,7 @@ class TestOverlayOps:
     def test_render_overlay_with_send(self, lcd, mock_device_svc, tmp_path):
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
-        result_img = Image.new("RGB", (320, 320))
+        result_img = make_test_surface(320, 320)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -553,7 +552,7 @@ class TestOverlayOps:
         theme_dir = tmp_path / "theme"
         theme_dir.mkdir()
         (theme_dir / "config1.dc").write_bytes(b"\xDD" + b"\x00" * 50)
-        result_img = Image.new("RGB", (320, 320))
+        result_img = make_test_surface(320, 320)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -688,7 +687,7 @@ class TestCLIImageCommands:
         from trcc.cli._display import send_image
 
         img_path = str(_make_png(tmp_path / "pic.png", w=10, h=10))
-        mock_img = Image.new("RGB", (10, 10))
+        mock_img = make_test_surface(10, 10)
 
         with patch(f"{_IMG_SVC}.open_and_resize", return_value=mock_img):
             rc = send_image(img_path)
@@ -704,7 +703,7 @@ class TestCLIImageCommands:
     def test_send_color_cli_valid_hex(self, mock_connect):
         from trcc.cli._display import send_color
 
-        mock_img = Image.new("RGB", (320, 320))
+        mock_img = make_test_surface(320, 320)
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img):
             rc = send_color("ff0000")
         assert rc == 0
@@ -712,7 +711,7 @@ class TestCLIImageCommands:
     def test_send_color_cli_with_hash_prefix(self, mock_connect):
         from trcc.cli._display import send_color
 
-        mock_img = Image.new("RGB", (320, 320))
+        mock_img = make_test_surface(320, 320)
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img):
             rc = send_color("#00ff00")
         assert rc == 0
@@ -845,8 +844,8 @@ class TestCLIOverlayCommands:
         from trcc.cli._display import load_mask
 
         mask_file = tmp_path / "mask.png"
-        Image.new("RGBA", (10, 10), (255, 255, 255, 128)).save(str(mask_file))
-        result_img = Image.new("RGB", (10, 10))
+        make_test_surface(10, 10, (255, 255, 255, 128)).save(str(mask_file), "PNG")
+        result_img = make_test_surface(10, 10)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -874,7 +873,7 @@ class TestCLIOverlayCommands:
 
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
-        result_img = Image.new("RGB", (320, 320))
+        result_img = make_test_surface(320, 320)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -904,7 +903,7 @@ class TestCLIOverlayCommands:
 
         dc_file = tmp_path / "config1.dc"
         dc_file.write_bytes(b"\xDD" + b"\x00" * 50)
-        result_img = Image.new("RGB", (320, 320))
+        result_img = make_test_surface(320, 320)
 
         with patch(_OVL_SVC) as mock_cls, \
              patch(f"{_IMG_SVC}.solid_color", return_value=result_img), \
@@ -930,7 +929,7 @@ class TestCLIReset:
     def test_reset_cli_success(self, mock_connect, capsys):
         from trcc.cli._display import reset
 
-        mock_img = Image.new("RGB", (320, 320), (255, 0, 0))
+        mock_img = make_test_surface(320, 320, (255, 0, 0))
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img):
             rc = reset()
 
@@ -947,7 +946,7 @@ class TestCLIReset:
     def test_reset_cli_prints_device_path(self, mock_connect, capsys):
         from trcc.cli._display import reset
 
-        mock_img = Image.new("RGB", (320, 320), (255, 0, 0))
+        mock_img = make_test_surface(320, 320, (255, 0, 0))
         with patch(f"{_IMG_SVC}.solid_color", return_value=mock_img):
             reset()
 

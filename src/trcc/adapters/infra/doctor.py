@@ -426,7 +426,7 @@ def check_system_deps(pm: str | None = None) -> list[DepResult]:
 
     # Python modules (required)
     for label, imp in [
-        ('PySide6', 'PySide6'), ('Pillow', 'PIL'), ('numpy', 'numpy'),
+        ('PySide6', 'PySide6'), ('numpy', 'numpy'),
         ('psutil', 'psutil'), ('pyusb', 'usb.core'),
     ]:
         mod_ver = get_module_version(imp)
@@ -718,7 +718,6 @@ def run_doctor() -> int:
     print()
     for label, imp in [
         ('PySide6', 'PySide6'),
-        ('Pillow', 'PIL'),
         ('numpy', 'numpy'),
         ('psutil', 'psutil'),
         ('pyusb', 'usb.core'),

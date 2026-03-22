@@ -21,7 +21,6 @@ IUSE="nvidia wayland hid"
 
 RDEPEND="
 	dev-python/pyside6[${PYTHON_USEDEP}]
-	dev-python/pillow[${PYTHON_USEDEP}]
 	dev-python/numpy[${PYTHON_USEDEP}]
 	dev-python/psutil[${PYTHON_USEDEP}]
 	dev-python/pyusb[${PYTHON_USEDEP}]

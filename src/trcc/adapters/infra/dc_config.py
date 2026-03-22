@@ -163,7 +163,7 @@ class DcConfig:
 
     @classmethod
     def from_overlay_config(cls, overlay_config: dict,
-                            width: int = 320, height: int = 320) -> DcConfig:
+                            width: int, height: int) -> DcConfig:
         """Create DcConfig from an overlay renderer config dict."""
         from .dc_writer import overlay_to_theme
 

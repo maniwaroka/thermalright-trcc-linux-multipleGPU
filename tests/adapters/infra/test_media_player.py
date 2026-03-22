@@ -1,13 +1,13 @@
 """Tests for media_player – video/animation frame decoders."""
 
-import io
 import os
 import struct
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from PIL import Image
+from PySide6.QtCore import QBuffer, QIODevice
+from PySide6.QtGui import QColor, QImage
 
 from trcc.adapters.infra.media_player import (
     ThemeZtDecoder,
@@ -22,12 +22,15 @@ def _make_theme_zt(frames=4, size=(8, 8), quality=50):
     fd, path = tempfile.mkstemp(suffix='.zt')
     os.close(fd)
 
+    w, h = size
     jpeg_blobs = []
     for i in range(frames):
-        img = Image.new('RGB', size, color=(0, i * 60, 0))
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=quality)
-        jpeg_blobs.append(buf.getvalue())
+        img = QImage(w, h, QImage.Format.Format_RGB32)
+        img.fill(QColor(0, i * 60, 0))
+        buf = QBuffer()
+        buf.open(QIODevice.OpenModeFlag.WriteOnly)
+        img.save(buf, "JPEG", quality)
+        jpeg_blobs.append(bytes(buf.data()))
 
     # Timestamps: 0, 42, 84, ...
     timestamps = [i * 42 for i in range(frames)]
@@ -314,10 +317,12 @@ class TestThemeZtDecoderEdge(unittest.TestCase):
         fd, path = tempfile.mkstemp(suffix='.zt')
         os.close(fd)
 
-        img = Image.new('RGB', (8, 8), 'red')
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG')
-        jpeg_data = buf.getvalue()
+        img = QImage(8, 8, QImage.Format.Format_RGB32)
+        img.fill(QColor(255, 0, 0))
+        buf = QBuffer()
+        buf.open(QIODevice.OpenModeFlag.WriteOnly)
+        img.save(buf, "JPEG")
+        jpeg_data = bytes(buf.data())
 
         with open(path, 'wb') as f:
             f.write(struct.pack('B', 0xDC))

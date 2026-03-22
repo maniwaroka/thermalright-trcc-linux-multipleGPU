@@ -1,6 +1,6 @@
 """Memory and resource leak tests for TRCC Linux services.
 
-Verifies that long-running GUI sessions do not accumulate PIL Images,
+Verifies that long-running GUI sessions do not accumulate QImages,
 video frames, overlay caches, or USB handles across repeated cycles.
 Uses tracemalloc (memory growth), weakref (object reclaimability),
 and gc (no uncollectable cycles).
@@ -17,7 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from conftest import make_test_surface
-from PIL import Image
+from PySide6.QtGui import QImage
 
 from trcc.core.models import (
     HardwareMetrics,
@@ -73,11 +73,11 @@ def lcd_png(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 1. PIL Image Lifecycle
+# 1. QImage Lifecycle
 # ═══════════════════════════════════════════════════════════════════════
 
 class TestImageLifecycle:
-    """Verify PIL Images are reclaimable after resize/convert operations."""
+    """Verify QImages are reclaimable after resize/convert operations."""
 
     def test_resize_returns_new_object(self):
         """ImageService.resize() returns a different object — old is GC-eligible."""
@@ -87,12 +87,12 @@ class TestImageLifecycle:
         assert id(resized) != original_id
 
     def test_image_weakref_dies_after_delete(self):
-        """PIL Image is reclaimable after all strong references are dropped."""
-        img = Image.new("RGB", (320, 320), (0, 0, 255))
+        """QImage is reclaimable after all strong references are dropped."""
+        img = make_test_surface(320, 320, (0, 0, 255))
         ref = weakref.ref(img)
         del img
         gc.collect()
-        assert ref() is None, "PIL Image was not reclaimed after del + gc.collect()"
+        assert ref() is None, "QImage was not reclaimed after del + gc.collect()"
 
     def test_repeated_open_resize_bounded_memory(self, lcd_png, request):
         """50 open/resize cycles do not accumulate unbounded memory."""
@@ -128,7 +128,7 @@ class TestMediaFrameAccumulation:
     @pytest.fixture()
     def loaded_media(self, media_svc):
         """MediaService with 10 injected frames (no ffmpeg needed)."""
-        frames = [Image.new("RGB", (4, 4), (i * 25, 0, 0)) for i in range(10)]
+        frames = [make_test_surface(4, 4, (i * 25, 0, 0)) for i in range(10)]
         media_svc._frames = frames
         media_svc._state.total_frames = 10
         media_svc._state.fps = 16
@@ -153,12 +153,12 @@ class TestMediaFrameAccumulation:
 
     def test_load_clears_previous_frames(self, media_svc):
         """Second load() releases first frame set."""
-        first_frames = [Image.new("RGB", (4, 4), (255, 0, 0)) for _ in range(5)]
+        first_frames = [make_test_surface(4, 4, (255, 0, 0)) for _ in range(5)]
         refs = [weakref.ref(f) for f in first_frames]
         media_svc._frames = first_frames
 
         # Simulate second load by clearing and injecting new frames
-        second_frames = [Image.new("RGB", (4, 4), (0, 255, 0)) for _ in range(5)]
+        second_frames = [make_test_surface(4, 4, (0, 255, 0)) for _ in range(5)]
         media_svc._frames.clear()
         media_svc._frames = second_frames
         del first_frames
@@ -258,15 +258,13 @@ class TestThemeImageCycles:
     """Verify theme load cycles release old images."""
 
     def test_open_and_resize_intermediate_released(self, lcd_png):
-        """Intermediate Image.open() result is reclaimable after resize."""
-        # Open the raw image, take weakref, then let open_and_resize overwrite
-        raw = Image.open(lcd_png)
-        raw.load()  # Force decode so PIL doesn't hold lazy fd
+        """Intermediate QImage load result is reclaimable after delete."""
+        raw = QImage(lcd_png)
         ref_raw = weakref.ref(raw)
         del raw
         gc.collect()
         # Raw image with no other references should be dead
-        assert ref_raw() is None, "Raw Image.open() result was not released"
+        assert ref_raw() is None, "Raw QImage was not released"
 
     def test_repeated_theme_load_bounded(self, lcd_png, request):
         """20 open_and_resize cycles stay within memory bounds."""
@@ -415,7 +413,7 @@ class TestGarbageCollectability:
         garbage_before = len(gc.garbage)
 
         media_svc._frames = [
-            Image.new("RGB", (4, 4), (i, 0, 0)) for i in range(10)
+            make_test_surface(4, 4, (i, 0, 0)) for i in range(10)
         ]
         media_svc._frames.clear()
         media_svc._decoder = None

@@ -20,7 +20,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from conftest import make_test_surface
-from PIL import Image
 
 from trcc.core.models import (
     HardwareMetrics,
@@ -98,7 +97,7 @@ class TestImageCPU:
     def test_open_and_resize_cpu(self, tmp_path, perf):
         """open_and_resize 320x320 PNG stays under 5ms/iter."""
         p = tmp_path / "test.png"
-        Image.new("RGB", (320, 320), (128, 0, 64)).save(str(p), "PNG")
+        make_test_surface(320, 320, (128, 0, 64)).save(str(p), "PNG")
 
         limit = 0.005
         avg = _cpu_per_iter(lambda: ImageService.open_and_resize(str(p), 320, 320))
@@ -258,7 +257,7 @@ class TestDisplayServiceCPU:
 
     def test_video_tick_cpu(self, display_svc, perf):
         """video_tick() with injected frames under 3ms/iter."""
-        frames = [Image.new("RGB", (320, 320), (i * 25, 0, 0)) for i in range(10)]
+        frames = [make_test_surface(320, 320, (i * 25, 0, 0)) for i in range(10)]
         display_svc.media._frames = frames
         display_svc.media._state.total_frames = 10
         display_svc.media._state.fps = 30

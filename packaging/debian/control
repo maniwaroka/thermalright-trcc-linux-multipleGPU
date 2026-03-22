@@ -22,7 +22,6 @@ Depends:
  ${python3:Depends},
  ${misc:Depends},
  python3-pyside6 (>= 6.5.0),
- python3-pil (>= 10.0.0),
  python3-numpy (>= 1.24.0),
  python3-psutil (>= 5.9.0),
  python3-usb (>= 1.2.0),

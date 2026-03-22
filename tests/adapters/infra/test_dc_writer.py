@@ -7,6 +7,9 @@ import struct
 import tempfile
 import unittest
 
+from conftest import make_test_surface
+from PySide6.QtGui import QImage
+
 from trcc.adapters.infra.dc_parser import parse_dc_file
 from trcc.adapters.infra.dc_writer import (
     _hex_to_argb,
@@ -215,7 +218,7 @@ class TestOverlayConfigToTheme(unittest.TestCase):
             'color': '#FF6B35', 'font': {'size': 24, 'style': 'bold'},
             'enabled': True,
         }}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         self.assertEqual(len(theme.elements), 1)
         self.assertEqual(theme.elements[0].mode, 1)
         self.assertEqual(theme.elements[0].x, 10)
@@ -226,7 +229,7 @@ class TestOverlayConfigToTheme(unittest.TestCase):
             'color': '#FFFFFF', 'font': {'size': 16},
             'enabled': True,
         }}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         self.assertEqual(theme.elements[0].mode, 0)
         self.assertEqual(theme.elements[0].main_count, 0)
         self.assertEqual(theme.elements[0].sub_count, 1)
@@ -236,7 +239,7 @@ class TestOverlayConfigToTheme(unittest.TestCase):
             'x': 0, 'y': 0, 'text': 'Hello',
             'color': '#00FF00', 'enabled': True,
         }}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         self.assertEqual(theme.elements[0].mode, 4)
         self.assertEqual(theme.elements[0].text, 'Hello')
 
@@ -245,7 +248,7 @@ class TestOverlayConfigToTheme(unittest.TestCase):
             'x': 0, 'y': 0, 'metric': 'time',
             'color': '#FFF', 'enabled': False,
         }}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         self.assertEqual(len(theme.elements), 0)
 
     def test_display_size_applied(self):
@@ -312,9 +315,8 @@ class TestTrExportImport(unittest.TestCase):
              tempfile.TemporaryDirectory() as dst:
 
             # Create source theme with background
-            from PIL import Image
-            bg = Image.new('RGB', (320, 320), (0, 100, 200))
-            bg.save(os.path.join(src, '00.png'))
+            bg = make_test_surface(320, 320, (0, 100, 200))
+            bg.save(os.path.join(src, '00.png'), "PNG")
 
             # Write config1.dc
             config = ThemeConfig(
@@ -370,21 +372,19 @@ class TestSaveTheme(unittest.TestCase):
     """Test save_theme() full theme directory creation."""
 
     def test_save_with_background(self):
-        from PIL import Image
-        bg = Image.new('RGB', (320, 320), (255, 0, 0))
+        bg = make_test_surface(320, 320, (255, 0, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             theme_dir = os.path.join(tmpdir, 'MyTheme')
-            save_theme(theme_dir, background_image=bg)
+            save_theme(theme_dir, background_image=bg, display_width=320, display_height=320)
             self.assertTrue(os.path.exists(os.path.join(theme_dir, '00.png')))
             self.assertTrue(os.path.exists(os.path.join(theme_dir, 'Theme.png')))
             self.assertTrue(os.path.exists(os.path.join(theme_dir, 'config1.dc')))
 
     def test_save_with_mask(self):
-        from PIL import Image
-        mask = Image.new('RGBA', (200, 200), (0, 255, 0, 128))
+        mask = make_test_surface(200, 200, (0, 255, 0, 128))
         with tempfile.TemporaryDirectory() as tmpdir:
             theme_dir = os.path.join(tmpdir, 'MaskTheme')
-            save_theme(theme_dir, mask_image=mask, mask_position=(50, 50))
+            save_theme(theme_dir, mask_image=mask, mask_position=(50, 50), display_width=320, display_height=320)
             self.assertTrue(os.path.exists(os.path.join(theme_dir, '01.png')))
             # Verify config has mask enabled
             parsed = parse_dc_file(os.path.join(theme_dir, 'config1.dc'))
@@ -402,7 +402,7 @@ class TestSaveTheme(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmpdir:
             theme_dir = os.path.join(tmpdir, 'OverlayTheme')
-            save_theme(theme_dir, overlay_config=overlay)
+            save_theme(theme_dir, overlay_config=overlay, display_width=320, display_height=320)
             self.assertTrue(os.path.exists(os.path.join(theme_dir, 'config1.dc')))
             parsed = parse_dc_file(os.path.join(theme_dir, 'config1.dc'))
             self.assertGreater(len(parsed.get('display_elements', [])), 0)
@@ -411,18 +411,17 @@ class TestSaveTheme(unittest.TestCase):
         """Save theme with no images or config → creates empty config."""
         with tempfile.TemporaryDirectory() as tmpdir:
             theme_dir = os.path.join(tmpdir, 'EmptyTheme')
-            save_theme(theme_dir)
+            save_theme(theme_dir, display_width=320, display_height=320)
             self.assertTrue(os.path.exists(os.path.join(theme_dir, 'config1.dc')))
 
     def test_save_thumbnail_size(self):
-        from PIL import Image
-        bg = Image.new('RGB', (480, 480), (0, 0, 255))
+        bg = make_test_surface(480, 480, (0, 0, 255))
         with tempfile.TemporaryDirectory() as tmpdir:
             theme_dir = os.path.join(tmpdir, 'ThumbTheme')
-            save_theme(theme_dir, background_image=bg)
-            with Image.open(os.path.join(theme_dir, 'Theme.png')) as thumb:
-                self.assertLessEqual(thumb.width, 120)
-                self.assertLessEqual(thumb.height, 120)
+            save_theme(theme_dir, background_image=bg, display_width=480, display_height=480)
+            thumb = QImage(os.path.join(theme_dir, 'Theme.png'))
+            self.assertLessEqual(thumb.width(), 120)
+            self.assertLessEqual(thumb.height(), 120)
 
 
 # ── export_theme wrapper ─────────────────────────────────────────────────────
@@ -431,12 +430,11 @@ class TestExportTheme(unittest.TestCase):
     """Test export_theme() high-level wrapper."""
 
     def test_export_with_config(self):
-        from PIL import Image
         with tempfile.TemporaryDirectory() as src, \
              tempfile.TemporaryDirectory() as dst:
             # Create source theme
-            bg = Image.new('RGB', (320, 320), (0, 100, 200))
-            bg.save(os.path.join(src, '00.png'))
+            bg = make_test_surface(320, 320, (0, 100, 200))
+            bg.save(os.path.join(src, '00.png'), "PNG")
             config = ThemeConfig(
                 elements=[
                     DisplayElement(mode=1, mode_sub=0, x=30, y=40,
@@ -462,11 +460,10 @@ class TestExportTheme(unittest.TestCase):
 
     def test_export_no_config(self):
         """Export theme dir with no config1.dc → minimal .tr created."""
-        from PIL import Image
         with tempfile.TemporaryDirectory() as src, \
              tempfile.TemporaryDirectory() as dst:
-            bg = Image.new('RGB', (320, 320), (50, 50, 50))
-            bg.save(os.path.join(src, '00.png'))
+            bg = make_test_surface(320, 320, (50, 50, 50))
+            bg.save(os.path.join(src, '00.png'), "PNG")
 
             tr_path = os.path.join(dst, 'noconfig.tr')
             export_theme(src, tr_path)
@@ -478,13 +475,12 @@ class TestExportTheme(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(import_dir, 'config1.dc')))
 
     def test_export_preserves_mask(self):
-        from PIL import Image
         with tempfile.TemporaryDirectory() as src, \
              tempfile.TemporaryDirectory() as dst:
-            bg = Image.new('RGB', (320, 320), (0, 0, 0))
-            bg.save(os.path.join(src, '00.png'))
-            mask = Image.new('RGBA', (100, 100), (255, 0, 0, 128))
-            mask.save(os.path.join(src, '01.png'))
+            bg = make_test_surface(320, 320, (0, 0, 0))
+            bg.save(os.path.join(src, '00.png'), "PNG")
+            mask = make_test_surface(100, 100, (255, 0, 0, 128))
+            mask.save(os.path.join(src, '01.png'), "PNG")
 
             config = ThemeConfig(mask_enabled=True, mask_x=50, mask_y=60)
             write_dc_file(config, os.path.join(src, 'config1.dc'))
@@ -586,32 +582,32 @@ class TestOverlayConfigToThemeMetrics(unittest.TestCase):
 
     def test_weekday_metric(self):
         config = {'weekday_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'weekday'}}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         elem = theme.elements[0]
         self.assertEqual(elem.mode, 2)
 
     def test_date_metric(self):
         config = {'date_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'date', 'date_format': 3}}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         elem = theme.elements[0]
         self.assertEqual(elem.mode, 3)
         self.assertEqual(elem.mode_sub, 3)
 
     def test_cpu_metric(self):
         config = {'cpu_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'cpu_temp'}}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         elem = theme.elements[0]
         self.assertEqual(elem.mode, 0)
 
     def test_other_metric(self):
         config = {'mem_0': {'enabled': True, 'x': 10, 'y': 20, 'metric': 'mem_percent'}}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         elem = theme.elements[0]
         self.assertEqual(elem.mode, 0)
 
     def test_text_element(self):
         config = {'text_0': {'enabled': True, 'x': 10, 'y': 20, 'text': 'Hello'}}
-        theme = overlay_config_to_theme(config)
+        theme = overlay_config_to_theme(config, 320, 320)
         elem = theme.elements[0]
         self.assertEqual(elem.mode, 4)
         self.assertEqual(elem.text, 'Hello')
@@ -622,11 +618,9 @@ class TestSaveThemeMask(unittest.TestCase):
 
     def test_mask_image_only(self):
         with tempfile.TemporaryDirectory() as d:
-            # Create minimal theme with mask but no position
-            from PIL import Image
-            bg = Image.new('RGB', (320, 320), 'black')
-            mask = Image.new('RGBA', (320, 320), (255, 0, 0, 128))
-            save_theme(d, bg, mask_image=mask, mask_position=None)
+            bg = make_test_surface(320, 320, (0, 0, 0))
+            mask = make_test_surface(320, 320, (255, 0, 0, 128))
+            save_theme(d, bg, mask_image=mask, mask_position=None, display_width=320, display_height=320)
             self.assertTrue(os.path.exists(os.path.join(d, 'config1.dc')))
 
 
@@ -743,7 +737,7 @@ class TestWriteConfigJson(unittest.TestCase):
                                 'font': {'name': 'Arial', 'size': 24, 'size_raw': 18.0,
                                           'style': 'regular', 'unit': 3, 'charset': 134},
                                 'metric': 'time', 'enabled': True}}
-            save_theme(d, overlay_config=overlay)
+            save_theme(d, overlay_config=overlay, display_width=320, display_height=320)
             self.assertTrue(os.path.exists(os.path.join(d, 'config1.dc')))
             self.assertTrue(os.path.exists(os.path.join(d, 'config.json')))
 
@@ -755,7 +749,7 @@ class TestWriteConfigJson(unittest.TestCase):
             mp4_path = os.path.join(d, 'a001.mp4')
             with open(mp4_path, 'wb') as f:
                 f.write(b'\x00' * 100)
-            save_theme(d, overlay_config={})
+            save_theme(d, overlay_config={}, display_width=320, display_height=320)
             with open(os.path.join(d, 'config.json')) as f:
                 data = json.load(f)
             self.assertEqual(data['animation']['file'], 'a001.mp4')

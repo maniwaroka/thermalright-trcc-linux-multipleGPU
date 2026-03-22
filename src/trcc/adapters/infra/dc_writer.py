@@ -196,8 +196,8 @@ def _write_tr_zt_frames(f: IO[bytes], zt_path: str) -> None:
 
 
 def overlay_to_theme(overlay_config: dict,
-                     display_width: int = 320,
-                     display_height: int = 320) -> ThemeConfig:
+                     display_width: int,
+                     display_height: int) -> ThemeConfig:
     """Convert overlay renderer config dict to ThemeConfig for saving."""
     theme = ThemeConfig()
     theme.overlay_w = display_width
@@ -269,8 +269,9 @@ def save_theme(theme_path: str,
                mask_image=None,
                overlay_config: Optional[dict] = None,
                mask_position: Optional[Tuple[int, int]] = None,
-               display_width: int = 320,
-               display_height: int = 320,
+               *,
+               display_width: int,
+               display_height: int,
                dc_data: Optional[dict] = None) -> None:
     """Save a complete theme to disk in Windows-compatible format.
 
@@ -280,16 +281,22 @@ def save_theme(theme_path: str,
 
     if background_image:
         bg_path = os.path.join(theme_path, "00.png")
-        background_image.save(bg_path)
+        background_image.save(bg_path, "PNG")
         preview_path = os.path.join(theme_path, "Theme.png")
         if not os.path.exists(preview_path):
-            thumb = background_image.copy()
-            thumb.thumbnail((120, 120))
-            thumb.save(preview_path)
+            from PySide6.QtCore import Qt
+            iw, ih = background_image.width(), background_image.height()
+            scale = min(120 / iw, 120 / ih, 1.0)
+            thumb = background_image.scaled(
+                max(1, int(iw * scale)),
+                max(1, int(ih * scale)),
+                Qt.AspectRatioMode.KeepAspectRatio,
+            )
+            thumb.save(preview_path, "PNG")
 
     if mask_image:
         mask_path = os.path.join(theme_path, "01.png")
-        mask_image.save(mask_path)
+        mask_image.save(mask_path, "PNG")
 
     if overlay_config:
         theme = overlay_to_theme(overlay_config, display_width, display_height)

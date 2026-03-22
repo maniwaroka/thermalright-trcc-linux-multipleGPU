@@ -283,11 +283,11 @@ class TestLCDDriverLoadImage(unittest.TestCase):
         driver = self._make_driver()
 
         # Create a small test image
-        from PIL import Image
-        img = Image.new('RGB', (10, 10), (255, 0, 0))
+        from conftest import make_test_surface
+        img = make_test_surface(10, 10, (255, 0, 0))
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
-            img.save(f, 'PNG')
             tmp_path = f.name
+        img.save(tmp_path, "PNG")
 
         try:
             data = driver.load_image(tmp_path)

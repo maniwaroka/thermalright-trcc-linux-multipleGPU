@@ -9,7 +9,6 @@ license=('GPL-3.0-or-later')
 depends=(
     'python'
     'pyside6'
-    'python-pillow'
     'python-numpy'
     'python-psutil'
     'python-pyusb'

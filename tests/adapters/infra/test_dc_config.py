@@ -453,19 +453,19 @@ class TestFromOverlayConfig:
         assert dc.overlay_h == 600
 
     @patch('trcc.adapters.infra.dc_writer.overlay_to_theme')
-    def test_default_dimensions(self, mock_overlay_to_theme):
-        fake_tc = ThemeConfig(elements=[], overlay_w=320, overlay_h=320)
+    def test_explicit_dimensions_passed_through(self, mock_overlay_to_theme):
+        fake_tc = ThemeConfig(elements=[], overlay_w=480, overlay_h=320)
         mock_overlay_to_theme.return_value = fake_tc
 
-        DcConfig.from_overlay_config({})
-        mock_overlay_to_theme.assert_called_once_with({}, 320, 320)
+        DcConfig.from_overlay_config({}, 480, 320)
+        mock_overlay_to_theme.assert_called_once_with({}, 480, 320)
 
     @patch('trcc.adapters.infra.dc_writer.overlay_to_theme')
     def test_returns_dc_config_instance(self, mock_overlay_to_theme):
         fake_tc = ThemeConfig()
         mock_overlay_to_theme.return_value = fake_tc
 
-        dc = DcConfig.from_overlay_config({})
+        dc = DcConfig.from_overlay_config({}, 320, 320)
         assert isinstance(dc, DcConfig)
 
 

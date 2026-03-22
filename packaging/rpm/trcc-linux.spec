@@ -17,7 +17,6 @@ BuildRequires:  python3-hatchling
 BuildRequires:  python3-pip
 
 Requires:       python3-pyside6 >= 6.5.0
-Requires:       python3-pillow >= 10.0.0
 Requires:       python3-numpy >= 1.24.0
 Requires:       python3-psutil >= 5.9.0
 Requires:       python3-pyusb >= 1.2.0

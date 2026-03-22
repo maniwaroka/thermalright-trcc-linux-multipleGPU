@@ -23,7 +23,6 @@
 
           dependencies = with python.pkgs; [
             pyside6
-            pillow
             numpy
             psutil
             pyusb
@@ -77,7 +76,7 @@
         devShells.default = pkgs.mkShell {
           packages = [
             (python.withPackages (ps: with ps; [
-              pyside6 pillow numpy psutil pyusb click typer fastapi uvicorn
+              pyside6 numpy psutil pyusb click typer fastapi uvicorn
               pytest pytest-cov ruff
             ]))
             pkgs.p7zip
