@@ -83,6 +83,9 @@ class LCDHandler:
         self._animation_timer: QTimer = make_timer(self._on_video_tick)
         self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
         self._flash_timer: QTimer = make_timer(self._on_flash_timeout, single_shot=True)
+        self._rebuild_debounce_timer: QTimer = make_timer(
+            self._on_rebuild_debounce, single_shot=True)
+        self._pending_metrics: Any = None
 
     @property
     def display(self) -> LCDDevice:
@@ -516,8 +519,9 @@ class LCDHandler:
 
         if self._lcd.video.playing:
             if self._lcd.overlay.has_changed(metrics):
-                log.debug("overlay_tick: video playing, metrics changed — rebuilding cache")
-                self._lcd.overlay.rebuild_video_cache(metrics)
+                log.debug("overlay_tick: video playing, metrics changed — debouncing cache rebuild")
+                self._pending_metrics = metrics
+                self._rebuild_debounce_timer.start(300)
             else:
                 log.debug("overlay_tick: video playing, no change — skip")
             return
@@ -528,6 +532,13 @@ class LCDHandler:
 
         log.debug("overlay_tick: static theme, metrics changed — render+send")
         self._render_and_send()
+
+    def _on_rebuild_debounce(self) -> None:
+        """Fire after metrics settle — rebuild video cache once."""
+        if self._pending_metrics is not None:
+            log.debug("overlay_tick: debounce fired — rebuilding cache")
+            self._lcd.overlay.rebuild_video_cache(self._pending_metrics)
+            self._pending_metrics = None
 
     def keepalive(self) -> None:
         """Periodic keepalive: resend current frame to prevent USB standby.

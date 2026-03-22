@@ -132,15 +132,16 @@ class TestConstruction:
         h.is_background_active = True
         assert h.is_background_active is True
 
-    def test_three_timers_created(self):
+    def test_four_timers_created(self):
         calls = []
         def track_timer(cb, single_shot=False):
             calls.append((cb, single_shot))
             return MagicMock(spec=QTimer)
         _make_handler(make_timer=track_timer)
-        assert len(calls) == 3
-        # Flash timer is single_shot
+        assert len(calls) == 4
+        # Flash and debounce timers are single_shot
         assert calls[2][1] is True
+        assert calls[3][1] is True
 
 
 # =========================================================================
@@ -474,14 +475,24 @@ class TestOverlay:
         h.on_overlay_tick(metrics)
         h._lcd.overlay.render.assert_called_once()
 
-    def test_overlay_tick_during_video_rebuilds_cache(self):
+    def test_overlay_tick_during_video_debounces_cache_rebuild(self):
         h = _make_handler()
         h._lcd.overlay.enabled = True
         h._lcd.video.playing = True
         h._lcd.overlay.has_changed.return_value = True
         metrics = MagicMock()
         h.on_overlay_tick(metrics)
+        # rebuild is deferred — debounce timer starts, cache not rebuilt yet
+        h._rebuild_debounce_timer.start.assert_called_with(300)
+        h._lcd.overlay.rebuild_video_cache.assert_not_called()
+
+    def test_rebuild_debounce_fires_cache_rebuild(self):
+        h = _make_handler()
+        h._pending_metrics = MagicMock()
+        metrics = h._pending_metrics
+        h._on_rebuild_debounce()
         h._lcd.overlay.rebuild_video_cache.assert_called_with(metrics)
+        assert h._pending_metrics is None
 
     def test_flash_element_sets_skip_index(self):
         h = _make_handler()
