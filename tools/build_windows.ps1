@@ -1,6 +1,6 @@
 # TRCC Windows Development Build Script
 #
-# Emulates windows.yml CI exactly — same tools, same bundle contents.
+# Emulates windows.yml CI exactly - same tools, same bundle contents.
 #
 # Prerequisites (one-time setup):
 #   1. Install Python 3.12 from python.org (check "Add to PATH")
@@ -13,7 +13,7 @@
 #   cd <repo-root>
 #   powershell -ExecutionPolicy Bypass -File .\tools\build_windows.ps1
 #
-# Output: dist\trcc\ — run directly, no installer needed.
+# Output: dist\trcc\ - run directly, no installer needed.
 #   .\dist\trcc\trcc.exe detect
 #   .\dist\trcc\trcc.exe report
 #   .\dist\trcc\trcc-gui.exe
@@ -51,7 +51,7 @@ Log ""
 # Download 7-Zip standalone (LGPL) for theme extraction
 Log "--- Downloading 7-Zip standalone ---"
 if (Test-Path "7z-standalone/7za.exe") {
-  Log "7za.exe already present — skipping download"
+  Log "7za.exe already present - skipping download"
 } else {
   Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2409-extra.7z" -OutFile 7z-extra.7z
   7z x 7z-extra.7z -o7z-standalone 7za.exe 7za.dll
@@ -62,7 +62,7 @@ if (Test-Path "7z-standalone/7za.exe") {
 # Download ffmpeg essentials (LGPL) for video playback
 Log "--- Downloading ffmpeg ---"
 if (Test-Path "ffmpeg.exe") {
-  Log "ffmpeg.exe already present — skipping download"
+  Log "ffmpeg.exe already present - skipping download"
 } else {
   Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
   Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp -Force
@@ -158,12 +158,12 @@ $size  = (Get-ChildItem "dist/trcc" -Recurse | Measure-Object -Property Length -
 Log "Total: $total files, $([math]::Round($size, 1)) MB"
 
 if ($missing.Count -gt 0) {
-  Log "FAILED — Missing: $($missing -join ', ')"
+  Log "FAILED - Missing: $($missing -join ', ')"
   exit 1
 }
 
 $ver = python -c "from trcc.__version__ import __version__; print(__version__)" 2>&1
-Log "PASSED — trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb OK"
+Log "PASSED - trcc.exe, trcc-gui.exe, 7z.exe, ffmpeg.exe, libusb OK"
 Log "Version: $ver"
 Log ""
 Log "=== Build Complete ==="
