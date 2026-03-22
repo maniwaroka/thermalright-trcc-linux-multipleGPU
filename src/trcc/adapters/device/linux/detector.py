@@ -11,6 +11,20 @@ from typing import Dict, List
 log = logging.getLogger(__name__)
 
 
+class LinuxDeviceDetector:
+    """Detect and enrich Thermalright USB devices on Linux.
+
+    Matches the interface of MacOSDeviceDetector and BSDDeviceDetector.
+    Wraps find_lcd_devices() so callers get a consistent class-based API
+    across all platforms.
+    """
+
+    @staticmethod
+    def detect(detect_fn=None) -> list[dict]:
+        """Return enriched device dicts for all connected Thermalright devices."""
+        return find_lcd_devices(detect_fn=detect_fn)
+
+
 def _load_saved_identity(
     dev_index: int, vid: int, pid: int,
 ) -> tuple[str | None, str | None]:

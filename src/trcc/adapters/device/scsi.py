@@ -15,12 +15,7 @@ import zlib
 from typing import Set
 
 from trcc.adapters.device.frame import FrameDevice
-from trcc.adapters.device.linux.scsi import (
-    sg_io_read as _sg_io_read,
-)
-from trcc.adapters.device.linux.scsi import (
-    sg_io_write as _sg_io_write,
-)
+from trcc.adapters.device.linux.scsi import LinuxScsiTransport
 from trcc.adapters.infra.data_repository import SysUtils
 from trcc.core.models import HandshakeResult, fbl_to_resolution
 
@@ -29,6 +24,17 @@ log = logging.getLogger(__name__)
 # Fallback state: None = untested, True/False = tested.
 # Controls whether _scsi_read/_scsi_write try SG_IO or fall back to sg_raw.
 _sg_io_available: bool | None = None
+
+# Per-device transport instances (keyed by /dev/sgX path)
+_transports: dict[str, LinuxScsiTransport] = {}
+
+
+def _get_transport(dev: str) -> LinuxScsiTransport:
+    if dev not in _transports:
+        t = LinuxScsiTransport(dev)
+        t.open()
+        _transports[dev] = t
+    return _transports[dev]
 
 # Boot signature: device still initializing its display controller
 _BOOT_SIGNATURE = b'\xa1\xa2\xa3\xa4'
@@ -124,7 +130,7 @@ class ScsiDevice(FrameDevice):
         global _sg_io_available
         if _sg_io_available is not False:
             try:
-                result = _sg_io_read(dev, cdb, length)
+                result = _get_transport(dev).read_cdb(cdb, length)
                 _sg_io_available = True
                 return result
             except OSError as e:
@@ -147,7 +153,7 @@ class ScsiDevice(FrameDevice):
 
         if _sg_io_available is not False:
             try:
-                ok = _sg_io_write(dev, cdb, data)
+                ok = _get_transport(dev).send_cdb(cdb, data)
                 _sg_io_available = True
                 return ok
             except OSError as e:

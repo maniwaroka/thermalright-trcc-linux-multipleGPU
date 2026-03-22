@@ -1,7 +1,8 @@
 """Linux SG_IO ioctl bridge — direct SCSI passthrough (no subprocess fork).
 
-Provides raw SG_IO read/write via fcntl.ioctl. Platform-specific — only
-works on Linux. Other platforms use bridge_windows.py, bridge_macos.py, etc.
+Provides LinuxScsiTransport: a class-based SCSI transport matching the
+interface of MacOSScsiTransport and BSDScsiTransport. Uses fcntl.ioctl
+with the kernel SG_IO interface for zero-copy SCSI command execution.
 """
 from __future__ import annotations
 
@@ -49,107 +50,128 @@ class _SgIoHdr(ctypes.Structure):
     ]
 
 
-# Module state: None = untested, True/False = tested
-sg_io_available: bool | None = None
-# Cached file descriptors per device path
-_device_fds: dict[str, int] = {}
-
-# Pre-allocated SG_IO buffers per data size (avoids ctypes alloc per write).
-# Key: data length → (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)
 _SG_HDR_SIZE = ctypes.sizeof(_SgIoHdr)
-_write_bufs: dict[int, tuple] = {}
 
 
-def _get_device_fd(dev: str) -> int:
-    """Get or open a file descriptor for the SCSI generic device."""
-    fd = _device_fds.get(dev)
-    if fd is not None:
-        return fd
-    fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
-    _device_fds[dev] = fd
-    return fd
+class LinuxScsiTransport:
+    """Send raw SCSI commands to a /dev/sgX device on Linux via SG_IO ioctl.
 
+    Matches the interface of MacOSScsiTransport and BSDScsiTransport.
 
-def close_device_fd(dev: str) -> None:
-    """Close and remove cached fd."""
-    fd = _device_fds.pop(dev, None)
-    if fd is not None:
+    Usage:
+        transport = LinuxScsiTransport('/dev/sg0')
+        if transport.open():
+            transport.send_cdb(cdb_bytes, data_bytes)
+            result = transport.read_cdb(cdb_bytes, length)
+            transport.close()
+    """
+
+    def __init__(self, device_path: str) -> None:
+        self._path = device_path
+        self._fd: int | None = None
+        # Pre-allocated write buffers keyed by data length (avoids alloc per frame)
+        self._write_bufs: dict[int, tuple] = {}
+
+    def open(self) -> bool:
+        """Open the SCSI generic device file descriptor."""
+        if self._fd is not None:
+            return True
         try:
-            os.close(fd)
-        except OSError:
-            pass
+            self._fd = os.open(self._path, os.O_RDWR | os.O_NONBLOCK)
+            return True
+        except OSError as e:
+            log.error("Failed to open %s: %s", self._path, e)
+            return False
 
+    def close(self) -> None:
+        """Close the device file descriptor."""
+        if self._fd is not None:
+            try:
+                os.close(self._fd)
+            except OSError:
+                pass
+            self._fd = None
+            self._write_bufs.clear()
 
-def _get_write_bufs(cdb_len: int, data_len: int) -> tuple:
-    """Get or create pre-allocated ctypes buffers for a given data size."""
-    bufs = _write_bufs.get(data_len)
-    if bufs is not None:
-        return bufs
-    cdb_buf = (ctypes.c_ubyte * cdb_len)()
-    data_buf = (ctypes.c_ubyte * data_len)()
-    sense_buf = (ctypes.c_ubyte * 32)()
-    hdr = _SgIoHdr()
-    ioctl_buf = ctypes.create_string_buffer(_SG_HDR_SIZE)
-    # Pre-fill immutable header fields
-    hdr.interface_id = ord('S')
-    hdr.dxfer_direction = _SG_DXFER_TO_DEV
-    hdr.cmd_len = cdb_len
-    hdr.mx_sb_len = 32
-    hdr.dxfer_len = data_len
-    hdr.dxferp = ctypes.addressof(data_buf)
-    hdr.cmdp = ctypes.addressof(cdb_buf)
-    hdr.sbp = ctypes.addressof(sense_buf)
-    hdr.timeout = 10000
-    bufs = (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)
-    _write_bufs[data_len] = bufs
-    return bufs
+    def send_cdb(self, cdb: bytes, data: bytes) -> bool:
+        """Send a SCSI CDB with write data via SG_IO ioctl.
 
+        Returns True if the ioctl succeeded (status == 0).
+        Raises OSError if SG_IO is unavailable (caller falls back to sg_raw).
+        """
+        import fcntl  # Unix-only
 
-def sg_io_write(dev: str, cdb: bytes, data: bytes) -> bool:
-    """SCSI write via SG_IO ioctl. No subprocess, no temp file."""
-    import fcntl  # Unix-only
+        if self._fd is None:
+            raise OSError("Device not open")
 
-    fd = _get_device_fd(dev)
+        cdb_len = len(cdb)
+        data_len = len(data)
+        bufs = self._write_bufs.get(data_len)
+        if bufs is None:
+            cdb_buf = (ctypes.c_ubyte * cdb_len)()
+            data_buf = (ctypes.c_ubyte * data_len)()
+            sense_buf = (ctypes.c_ubyte * 32)()
+            hdr = _SgIoHdr()
+            ioctl_buf = ctypes.create_string_buffer(_SG_HDR_SIZE)
+            hdr.interface_id = ord('S')
+            hdr.dxfer_direction = _SG_DXFER_TO_DEV
+            hdr.cmd_len = cdb_len
+            hdr.mx_sb_len = 32
+            hdr.dxfer_len = data_len
+            hdr.dxferp = ctypes.addressof(data_buf)
+            hdr.cmdp = ctypes.addressof(cdb_buf)
+            hdr.sbp = ctypes.addressof(sense_buf)
+            hdr.timeout = 10000
+            bufs = (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)
+            self._write_bufs[data_len] = bufs
 
-    cdb_buf, data_buf, _sense, hdr, ioctl_buf = _get_write_bufs(len(cdb), len(data))
-    # Copy payload into pre-allocated buffers
-    ctypes.memmove(cdb_buf, cdb, len(cdb))
-    ctypes.memmove(data_buf, data, len(data))
+        cdb_buf, data_buf, _sense, hdr, ioctl_buf = bufs
+        ctypes.memmove(cdb_buf, cdb, cdb_len)
+        ctypes.memmove(data_buf, data, data_len)
+        ctypes.memmove(ioctl_buf, ctypes.addressof(hdr), _SG_HDR_SIZE)
+        fcntl.ioctl(self._fd, _SG_IO, ioctl_buf)
+        ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
+        return hdr.status == 0
 
-    ctypes.memmove(ioctl_buf, ctypes.addressof(hdr), _SG_HDR_SIZE)
-    fcntl.ioctl(fd, _SG_IO, ioctl_buf)
-    ctypes.memmove(ctypes.addressof(hdr), ioctl_buf, _SG_HDR_SIZE)
+    def read_cdb(self, cdb: bytes, length: int) -> bytes:
+        """Send a SCSI CDB and read back data via SG_IO ioctl.
 
-    return hdr.status == 0
+        Returns the response bytes (may be shorter than length on partial read).
+        Raises OSError if SG_IO is unavailable (caller falls back to sg_raw).
+        """
+        import fcntl  # Unix-only
 
+        if self._fd is None:
+            raise OSError("Device not open")
 
-def sg_io_read(dev: str, cdb: bytes, length: int) -> bytes:
-    """SCSI read via SG_IO ioctl. No subprocess."""
-    import fcntl  # Unix-only
+        cdb_buf = (ctypes.c_ubyte * len(cdb)).from_buffer_copy(cdb)
+        data_buf = (ctypes.c_ubyte * length)()
+        sense_buf = (ctypes.c_ubyte * 32)()
 
-    fd = _get_device_fd(dev)
+        hdr = _SgIoHdr()
+        hdr.interface_id = ord('S')
+        hdr.dxfer_direction = _SG_DXFER_FROM_DEV
+        hdr.cmd_len = len(cdb)
+        hdr.mx_sb_len = 32
+        hdr.dxfer_len = length
+        hdr.dxferp = ctypes.addressof(data_buf)
+        hdr.cmdp = ctypes.addressof(cdb_buf)
+        hdr.sbp = ctypes.addressof(sense_buf)
+        hdr.timeout = 10000
 
-    cdb_buf = (ctypes.c_ubyte * len(cdb)).from_buffer_copy(cdb)
-    data_buf = (ctypes.c_ubyte * length)()
-    sense_buf = (ctypes.c_ubyte * 32)()
+        buf = ctypes.create_string_buffer(ctypes.sizeof(hdr))
+        ctypes.memmove(buf, ctypes.addressof(hdr), ctypes.sizeof(hdr))
+        fcntl.ioctl(self._fd, _SG_IO, buf)
+        ctypes.memmove(ctypes.addressof(hdr), buf, ctypes.sizeof(hdr))
 
-    hdr = _SgIoHdr()
-    hdr.interface_id = ord('S')
-    hdr.dxfer_direction = _SG_DXFER_FROM_DEV
-    hdr.cmd_len = len(cdb)
-    hdr.mx_sb_len = 32
-    hdr.dxfer_len = length
-    hdr.dxferp = ctypes.addressof(data_buf)
-    hdr.cmdp = ctypes.addressof(cdb_buf)
-    hdr.sbp = ctypes.addressof(sense_buf)
-    hdr.timeout = 10000
+        if hdr.status != 0:
+            return b''
+        actual = length - hdr.resid
+        return bytes(data_buf[:actual])
 
-    buf = ctypes.create_string_buffer(ctypes.sizeof(hdr))
-    ctypes.memmove(buf, ctypes.addressof(hdr), ctypes.sizeof(hdr))
-    fcntl.ioctl(fd, _SG_IO, buf)
-    ctypes.memmove(ctypes.addressof(hdr), buf, ctypes.sizeof(hdr))
+    def __enter__(self) -> LinuxScsiTransport:
+        self.open()
+        return self
 
-    if hdr.status != 0:
-        return b''
-    actual = length - hdr.resid
-    return bytes(data_buf[:actual])
+    def __exit__(self, *exc: object) -> None:
+        self.close()
