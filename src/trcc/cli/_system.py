@@ -14,8 +14,10 @@ def _require_linux(command: str) -> int | None:
     """Return error code if not on Linux, None if OK to proceed."""
     if not LINUX:
         print(f"'{command}' is for Linux only.")
-        if sys.platform == 'win32':
-            print("On Windows, use: trcc setup-winusb")
+        from trcc.core.builder import ControllerBuilder
+        hint = ControllerBuilder.build_setup().linux_command_hint()
+        if hint:
+            print(hint)
         return 1
     return None
 
@@ -296,12 +298,12 @@ def uninstall(*, yes: bool = False):
     return 0
 
 
-def report():
+def report(detect_fn=None):
     """Generate a full diagnostic report for bug reports."""
     from trcc.adapters.infra.debug_report import DebugReport
     from trcc.adapters.infra.doctor import run_doctor
 
-    rpt = DebugReport()
+    rpt = DebugReport(detect_fn=detect_fn)
     rpt.collect()
     print(rpt)
     run_doctor()

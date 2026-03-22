@@ -354,11 +354,9 @@ class TestSendFrame(unittest.TestCase):
 
 # -- find_lcd_devices --
 
-class TestFindLCDDevices(unittest.TestCase):
+class TestFindLCDDevices:
 
-    @patch('trcc.adapters.device.lcd.LCDDriver')
-    @patch('trcc.adapters.device.detector.detect_devices')
-    def test_returns_device_dicts(self, mock_detect, mock_driver_cls):
+    def test_returns_device_dicts(self, fake_detect):
         dev = MagicMock()
         dev.scsi_device = '/dev/sg0'
         dev.vendor_name = 'Thermalright'
@@ -369,31 +367,24 @@ class TestFindLCDDevices(unittest.TestCase):
         dev.pid = 0x70DB
         dev.protocol = 'scsi'
         dev.device_type = 1
-        mock_detect.return_value = [dev]
+        fake_detect.return_value = [dev]
 
-        mock_driver = MagicMock()
-        mock_driver.implementation.resolution = (320, 320)
-        mock_driver_cls.return_value = mock_driver
+        devices = find_lcd_devices(detect_fn=fake_detect)
+        assert len(devices) == 1
+        assert devices[0]['name'] == 'Thermalright LCD'
+        assert devices[0]['path'] == '/dev/sg0'
+        assert devices[0]['resolution'] == (0, 0)
+        assert devices[0]['device_index'] == 0
 
-        devices = find_lcd_devices()
-        self.assertEqual(len(devices), 1)
-        self.assertEqual(devices[0]['name'], 'Thermalright LCD')
-        self.assertEqual(devices[0]['path'], '/dev/sg0')
-        self.assertEqual(devices[0]['resolution'], (0, 0))
-        self.assertEqual(devices[0]['device_index'], 0)
-
-    @patch('trcc.adapters.device.detector.detect_devices')
-    def test_skips_devices_without_scsi(self, mock_detect):
+    def test_skips_devices_without_scsi(self, fake_detect):
         dev = MagicMock()
         dev.scsi_device = None
         dev.protocol = 'scsi'
         dev.device_type = 1
-        mock_detect.return_value = [dev]
-        self.assertEqual(find_lcd_devices(), [])
+        fake_detect.return_value = [dev]
+        assert find_lcd_devices(detect_fn=fake_detect) == []
 
-    @patch('trcc.adapters.device.lcd.LCDDriver', side_effect=Exception('driver fail'))
-    @patch('trcc.adapters.device.detector.detect_devices')
-    def test_driver_error_uses_unresolved_resolution(self, mock_detect, _):
+    def test_driver_error_uses_unresolved_resolution(self, fake_detect):
         dev = MagicMock()
         dev.scsi_device = '/dev/sg0'
         dev.vendor_name = 'Test'
@@ -404,10 +395,10 @@ class TestFindLCDDevices(unittest.TestCase):
         dev.pid = 2
         dev.protocol = 'scsi'
         dev.device_type = 1
-        mock_detect.return_value = [dev]
+        fake_detect.return_value = [dev]
 
-        devices = find_lcd_devices()
-        self.assertEqual(devices[0]['resolution'], (0, 0))
+        devices = find_lcd_devices(detect_fn=fake_detect)
+        assert devices[0]['resolution'] == (0, 0)
 
 
 # -- send_image_to_device --

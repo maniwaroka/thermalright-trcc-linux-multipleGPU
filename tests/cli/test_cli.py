@@ -427,14 +427,14 @@ class TestMaskClear(unittest.TestCase):
 class TestHidDebug(unittest.TestCase):
     """Tests for hid_debug() command."""
 
-    @patch('trcc.adapters.device.detector.detect_devices', return_value=[])
-    def test_no_hid_devices(self, _):
-        result = hid_debug()
+    def test_no_hid_devices(self):
+        result = hid_debug(detect_fn=lambda: [])
         self.assertEqual(result, 0)
 
     def test_exception_returns_1(self):
-        with patch('trcc.adapters.device.detector.detect_devices', side_effect=Exception("fail")):
-            result = hid_debug()
+        def _raise():
+            raise Exception("fail")
+        result = hid_debug(detect_fn=_raise)
         self.assertEqual(result, 1)
 
     def test_hid_device_handshake_none(self):
@@ -448,9 +448,8 @@ class TestHidDebug(unittest.TestCase):
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = None
         mock_protocol.last_error = None
-        with patch('trcc.adapters.device.detector.detect_devices', return_value=[dev]), \
-             patch('trcc.adapters.device.factory.LedProtocol', return_value=mock_protocol):
-            result = hid_debug()
+        with patch('trcc.adapters.device.factory.LedProtocol', return_value=mock_protocol):
+            result = hid_debug(detect_fn=lambda: [dev])
         self.assertEqual(result, 0)
         mock_protocol.close.assert_called_once()
 
@@ -470,9 +469,8 @@ class TestHidDebug(unittest.TestCase):
         )
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = info
-        with patch('trcc.adapters.device.detector.detect_devices', return_value=[dev]), \
-             patch('trcc.adapters.device.factory.HidProtocol', return_value=mock_protocol):
-            result = hid_debug()
+        with patch('trcc.adapters.device.factory.HidProtocol', return_value=mock_protocol):
+            result = hid_debug(detect_fn=lambda: [dev])
         self.assertEqual(result, 0)
 
     def test_led_device_handshake_success(self):
@@ -491,9 +489,8 @@ class TestHidDebug(unittest.TestCase):
         )
         mock_protocol = MagicMock()
         mock_protocol.handshake.return_value = info
-        with patch('trcc.adapters.device.detector.detect_devices', return_value=[dev]), \
-             patch('trcc.adapters.device.factory.LedProtocol', return_value=mock_protocol):
-            result = hid_debug()
+        with patch('trcc.adapters.device.factory.LedProtocol', return_value=mock_protocol):
+            result = hid_debug(detect_fn=lambda: [dev])
         self.assertEqual(result, 0)
 
     def test_hid_device_import_error(self):
@@ -504,10 +501,9 @@ class TestHidDebug(unittest.TestCase):
             product_name="LED Controller", usb_path="1-2",
             implementation="hid_led", protocol="hid", device_type=1,
         )
-        with patch('trcc.adapters.device.detector.detect_devices', return_value=[dev]), \
-             patch('trcc.adapters.device.factory.LedProtocol',
+        with patch('trcc.adapters.device.factory.LedProtocol',
                    side_effect=ImportError("No module named 'usb'")):
-            result = hid_debug()
+            result = hid_debug(detect_fn=lambda: [dev])
         self.assertEqual(result, 0)
 
     def test_dispatch_hid_debug(self):

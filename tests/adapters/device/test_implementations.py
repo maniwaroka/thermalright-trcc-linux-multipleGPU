@@ -2,7 +2,6 @@
 
 import struct
 import unittest
-from unittest.mock import patch
 
 from trcc.core.encoding import rgb_to_bytes
 from trcc.core.models import IMPL_NAMES, LCDDeviceConfig
@@ -143,78 +142,6 @@ class TestConcreteDevices(unittest.TestCase):
             self.assertEqual(LCDDeviceConfig.from_key(key).pixel_format, 'RGB565')
 
 
-class TestDetectResolution(unittest.TestCase):
-    """Resolution auto-detection via LCDDriver (SCSI poll byte[0] → fbl_to_resolution).
-
-    LCDDriver._detect_resolution() was moved from DeviceService in the DI refactoring.
-    """
-
-    def _detect(self, poll_response):
-        """Create LCDDriver with mocked SCSI read, return its implementation."""
-        from trcc.adapters.device.lcd import LCDDriver
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
-            driver = LCDDriver(device_path='/dev/sg0')
-        return driver.implementation
-
-    def test_detect_success_480x480(self):
-        """Poll response byte[0]=72 → FBL 72 → 480x480."""
-        poll_response = bytes([72]) + b'\x00' * 0xE0FF
-        impl = self._detect(poll_response)
-        self.assertEqual(impl.width, 480)
-        self.assertEqual(impl.height, 480)
-        self.assertEqual(impl.fbl, 72)
-        self.assertTrue(impl.resolution_detected)
-
-    def test_detect_success_320x320(self):
-        """Poll response byte[0]=100 → FBL 100 → 320x320."""
-        poll_response = bytes([100]) + b'\x00' * 0xE0FF
-        impl = self._detect(poll_response)
-        self.assertEqual(impl.width, 320)
-        self.assertEqual(impl.height, 320)
-        self.assertEqual(impl.fbl, 100)
-
-    def test_detect_success_240x240(self):
-        """Poll response byte[0]=36 → FBL 36 → 240x240."""
-        poll_response = bytes([36]) + b'\x00' * 0xE0FF
-        impl = self._detect(poll_response)
-        self.assertEqual(impl.width, 240)
-        self.assertEqual(impl.height, 240)
-
-    def test_detect_empty_response(self):
-        """Empty poll response → resolution stays at default."""
-        impl = self._detect(b'')
-        # Default resolution, no resolution_detected flag
-        self.assertFalse(getattr(impl, 'resolution_detected', False))
-
-    def test_detect_scsi_error(self):
-        """SCSI read exception → resolution stays at default."""
-        from trcc.adapters.device.lcd import LCDDriver
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', side_effect=OSError("sg_raw fail")):
-            driver = LCDDriver(device_path='/dev/sg0')
-        self.assertFalse(getattr(driver.implementation, 'resolution_detected', False))
-
-    def test_fbl_defaults_to_none(self):
-        cfg = LCDDeviceConfig()
-        self.assertIsNone(cfg.fbl)
-
-
-class TestDetectResolutionEdge(unittest.TestCase):
-
-    def test_detect_verbose_success(self):
-        """Resolution detection works for FBL 72 → 480x480."""
-        from trcc.adapters.device.lcd import LCDDriver
-        poll_response = bytes([72]) + b'\x00' * 0xE0FF
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', return_value=poll_response):
-            driver = LCDDriver(device_path='/dev/sg0')
-        self.assertEqual(driver.implementation.width, 480)
-        self.assertEqual(driver.implementation.height, 480)
-
-    def test_detect_verbose_failure(self):
-        """SCSI failure → resolution stays at default."""
-        from trcc.adapters.device.lcd import LCDDriver
-        with patch('trcc.adapters.device.scsi.ScsiDevice._scsi_read', side_effect=OSError("fail")):
-            driver = LCDDriver(device_path='/dev/sg0')
-        self.assertEqual(driver.implementation.width, 320)  # default unchanged
 
 
 if __name__ == '__main__':

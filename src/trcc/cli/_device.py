@@ -8,13 +8,13 @@ from trcc.cli import _cli_handler
 
 def _make_device_service():
     """Create a DeviceService with adapter dependencies wired."""
-    from trcc.adapters.device.detector import DeviceDetector
     from trcc.adapters.device.factory import DeviceProtocolFactory
     from trcc.adapters.device.led import probe_led_model
+    from trcc.core.builder import ControllerBuilder
     from trcc.services import DeviceService
 
     return DeviceService(
-        detect_fn=DeviceDetector.detect,
+        detect_fn=ControllerBuilder.build_detect_fn(),
         probe_led_fn=probe_led_model,
         get_protocol=DeviceProtocolFactory.get_protocol,
         get_protocol_info=DeviceProtocolFactory.get_protocol_info,
@@ -50,16 +50,6 @@ def _ensure_extracted(driver):
     except Exception:
         pass  # Non-fatal — themes are optional for CLI commands
 
-
-def _get_driver(device=None):
-    """Create an LCDDriver, resolving selected device and extracting archives."""
-    from trcc.adapters.device.lcd import LCDDriver
-    from trcc.conf import Settings
-    if device is None:
-        device = Settings.get_selected_device()
-    driver = LCDDriver(device_path=device)
-    _ensure_extracted(driver)
-    return driver
 
 
 def _probe(dev):
@@ -154,14 +144,16 @@ def _format(dev, probe=False):
 
 
 @_cli_handler
-def detect(show_all=False):
+def detect(show_all=False, detect_fn=None, platform_setup=None):
     """Detect LCD device."""
-    from trcc.adapters.device.detector import detect_devices
     from trcc.conf import Settings
     from trcc.core.builder import ControllerBuilder
 
-    devices = detect_devices()
-    platform_setup = ControllerBuilder.build_setup()
+    if detect_fn is None:
+        detect_fn = ControllerBuilder.build_detect_fn()
+    if platform_setup is None:
+        platform_setup = ControllerBuilder.build_setup()
+    devices = detect_fn()
 
     if not devices:
         print("No compatible TRCC LCD device detected.")
@@ -193,12 +185,14 @@ def detect(show_all=False):
 
 
 @_cli_handler
-def select(number):
+def select(number, detect_fn=None):
     """Select a device by number."""
-    from trcc.adapters.device.detector import detect_devices
     from trcc.conf import Settings
+    from trcc.core.builder import ControllerBuilder
 
-    devices = detect_devices()
+    if detect_fn is None:
+        detect_fn = ControllerBuilder.build_detect_fn()
+    devices = detect_fn()
     if not devices:
         print("No devices found.")
         return 1

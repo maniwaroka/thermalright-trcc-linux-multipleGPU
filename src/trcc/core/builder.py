@@ -112,32 +112,48 @@ class ControllerBuilder:
 
         return _build
 
+    @staticmethod
+    def build_detect_fn():
+        """Return the platform-appropriate device detect callable.
+
+        Single source of truth for platform detector routing — used by
+        build_lcd(), build_led(), and any caller that needs detection without
+        constructing a full LCDDevice (CLI commands, diagnostics, debug report).
+        """
+        from .platform import BSD, MACOS, WINDOWS
+
+        if WINDOWS:
+            from ..adapters.device.windows.detector import WindowsDeviceDetector
+            return WindowsDeviceDetector.detect
+        if MACOS:
+            from ..adapters.device.macos.detector import MacOSDeviceDetector
+            return MacOSDeviceDetector.detect
+        if BSD:
+            from ..adapters.device.bsd.detector import BSDDeviceDetector
+            return BSDDeviceDetector.detect
+        from ..adapters.device.detector import DeviceDetector
+        return DeviceDetector.detect
+
     def build_lcd(self) -> LCDDevice:
         """Build and return an LCDDevice.
 
         Requires: renderer (defaults to QtRenderer if not set).
         Optional: data_dir (triggers initialize).
         """
-        from .platform import BSD, MACOS, WINDOWS
+        from .platform import WINDOWS
 
-        if WINDOWS:
-            from ..adapters.device.windows.detector import WindowsDeviceDetector
-            detect_fn = WindowsDeviceDetector.detect
-        elif MACOS:
-            from ..adapters.device.macos.detector import MacOSDeviceDetector
-            detect_fn = MacOSDeviceDetector.detect
-        elif BSD:
-            from ..adapters.device.bsd.detector import BSDDeviceDetector
-            detect_fn = BSDDeviceDetector.detect
-        else:
-            from ..adapters.device.detector import DeviceDetector
-            detect_fn = DeviceDetector.detect
+        detect_fn = ControllerBuilder.build_detect_fn()
 
         from ..adapters.device.factory import DeviceProtocolFactory
         from ..adapters.device.led import probe_led_model
         from ..services import DeviceService
         from ..services.image import ImageService
         from .lcd_device import LCDDevice
+
+        if WINDOWS:
+            from ..adapters.device.windows.scsi_protocol import WindowsScsiProtocol
+            DeviceProtocolFactory.configure_scsi(
+                lambda di: WindowsScsiProtocol(di.path, vid=di.vid, pid=di.pid))
 
         # Renderer must be injected via with_renderer()
         renderer = self._renderer
@@ -216,20 +232,7 @@ class ControllerBuilder:
 
     def build_led(self) -> LEDDevice:
         """Build and return a LEDDevice with injected dependencies."""
-        from .platform import BSD, MACOS, WINDOWS
-
-        if WINDOWS:
-            from ..adapters.device.windows.detector import WindowsDeviceDetector
-            detect_fn = WindowsDeviceDetector.detect
-        elif MACOS:
-            from ..adapters.device.macos.detector import MacOSDeviceDetector
-            detect_fn = MacOSDeviceDetector.detect
-        elif BSD:
-            from ..adapters.device.bsd.detector import BSDDeviceDetector
-            detect_fn = BSDDeviceDetector.detect
-        else:
-            from ..adapters.device.detector import DeviceDetector
-            detect_fn = DeviceDetector.detect
+        detect_fn = ControllerBuilder.build_detect_fn()
 
         from ..adapters.device.factory import DeviceProtocolFactory
         from ..adapters.device.led import probe_led_model

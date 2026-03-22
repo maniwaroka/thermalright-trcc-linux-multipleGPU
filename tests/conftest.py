@@ -235,6 +235,26 @@ def png_factory(tmp_path):
 
 
 # =========================================================================
+# Tier 2b: DI fixtures — injectable ports for pure hexagonal tests
+# =========================================================================
+
+@pytest.fixture
+def fake_detect():
+    """No-hardware detect callable. Inject into any function that accepts detect_fn.
+
+    Set fake_detect.return_value = [devices] to control the device list.
+    Tests never reach into internal routing — pure DI.
+
+    Example::
+
+        def test_no_devices(fake_detect):
+            result = detect(detect_fn=fake_detect)
+            assert result == 1
+    """
+    return MagicMock(return_value=[])
+
+
+# =========================================================================
 # Tier 3: Qt fixture
 # =========================================================================
 

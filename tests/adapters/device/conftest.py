@@ -28,3 +28,5 @@ def make_mock_transport() -> MagicMock:
     t = MagicMock(spec=UsbTransport)
     t.is_open = True
     return t
+
+

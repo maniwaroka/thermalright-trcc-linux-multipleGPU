@@ -93,6 +93,20 @@ class WindowsSetup(PlatformSetup):
     def supports_winusb(self) -> bool:
         return True
 
+    def configure_stdout(self) -> None:
+        """Force UTF-8 on Windows console stdout/stderr."""
+        import io
+        import sys
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+    def linux_command_hint(self) -> str | None:
+        return "On Windows, use: trcc setup-winusb"
+
     def minimize_on_close(self) -> bool:
         return True
 

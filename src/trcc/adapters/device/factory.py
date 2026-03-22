@@ -19,7 +19,6 @@ Usage::
 """
 
 import logging
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
@@ -32,10 +31,6 @@ from trcc.core.models import (
 )
 
 log = logging.getLogger(__name__)
-
-
-def _is_windows() -> bool:
-    return sys.platform == 'win32'
 
 
 # USB errno constants.
@@ -337,160 +332,6 @@ class ScsiProtocol(DeviceProtocol):
 
 
 # =========================================================================
-# WindowsScsiProtocol — Windows DeviceIoControl implementation
-# =========================================================================
-
-class WindowsScsiProtocol(DeviceProtocol):
-    """LCD communication via Windows SCSI passthrough (DeviceIoControl).
-
-    Uses WindowsScsiTransport instead of Linux sg_raw/SG_IO.
-    The device_path is a PhysicalDrive path (e.g. \\\\.\\PhysicalDrive1).
-    Keeps the transport handle open for the lifetime of the protocol.
-    """
-
-    def __init__(self, device_path: str, vid: int = 0, pid: int = 0):
-        super().__init__()
-        self._path = device_path
-        self._vid = vid
-        self._pid = pid
-        self._transport: Any = None
-
-    def _get_transport(self):
-        """Get or create persistent WindowsScsiTransport handle."""
-        if self._transport is None or self._transport._handle is None:
-            from .windows.scsi import WindowsScsiTransport
-            self._transport = WindowsScsiTransport(self._path)
-            if not self._transport.open():
-                log.error("Failed to open Windows SCSI device %s", self._path)
-                self._transport = None
-                return None
-        return self._transport
-
-    def _do_handshake(self) -> Optional[HandshakeResult]:
-        """Poll + init Windows SCSI device — same sequence as Linux.
-
-        1. Poll (cmd=0xF5) → read 0xE100 bytes → FBL = response[0]
-        2. Boot state check (bytes[4:8] == 0xA1A2A3A4 → wait, re-poll)
-        3. Init (cmd=0x1F5) → write 0xE100 zeros
-        """
-        import time  # noqa: I001
-
-        from .scsi import (
-            ScsiDevice,
-            _BOOT_MAX_RETRIES,
-            _BOOT_SIGNATURE,
-            _BOOT_WAIT_SECONDS,
-            _POST_INIT_DELAY,
-        )
-
-        transport = self._get_transport()
-        if transport is None:
-            return None
-
-        try:
-            # Step 1: Poll with boot state check
-            poll_header = ScsiDevice._build_header(0xF5, 0xE100)
-            response = b''
-            for attempt in range(_BOOT_MAX_RETRIES):
-                response = transport.read_cdb(poll_header[:16], 0xE100)
-                if len(response) >= 8 and response[4:8] == _BOOT_SIGNATURE:
-                    log.info(
-                        "Windows SCSI %s still booting (attempt %d/%d)",
-                        self._path, attempt + 1, _BOOT_MAX_RETRIES,
-                    )
-                    time.sleep(_BOOT_WAIT_SECONDS)
-                else:
-                    break
-
-            if response:
-                fbl = response[0]
-                log.info(
-                    "Windows SCSI poll OK: FBL=%d (VID=%04X PID=%04X)",
-                    fbl, self._vid, self._pid,
-                )
-            else:
-                from trcc.adapters.device.detector import KNOWN_DEVICES
-                entry = KNOWN_DEVICES[(self._vid, self._pid)]
-                fbl = entry.fbl
-                log.warning(
-                    "Windows SCSI poll returned empty on %s (VID=%04X PID=%04X)"
-                    " — using registry FBL %d",
-                    self._path, self._vid, self._pid, fbl,
-                )
-
-            # Step 2: Init write — wakes device for frame reception
-            init_header = ScsiDevice._build_header(0x1F5, 0xE100)
-            transport.send_cdb(init_header[:16], b'\x00' * 0xE100)
-            time.sleep(_POST_INIT_DELAY)
-
-            # Build HandshakeResult
-            from trcc.core.models import fbl_to_resolution
-            width, height = fbl_to_resolution(fbl)
-
-            return HandshakeResult(
-                model_id=fbl,
-                resolution=(width, height),
-                pm_byte=fbl,
-                sub_byte=0,
-                raw_response=response[:64],
-            )
-        except Exception:
-            log.exception("Windows SCSI handshake failed on %s", self._path)
-            return None
-
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
-        from .scsi import ScsiDevice
-
-        transport = self._get_transport()
-        if transport is None:
-            return False
-
-        try:
-            chunks = ScsiDevice._get_frame_chunks(width, height)
-            total_size = sum(size for _, size in chunks)
-            if len(image_data) < total_size:
-                image_data += b'\x00' * (total_size - len(image_data))
-
-            offset = 0
-            for cmd, size in chunks:
-                header = ScsiDevice._build_header(cmd, size)
-                ok = transport.send_cdb(header[:16], image_data[offset:offset + size])
-                if not ok:
-                    return False
-                offset += size
-            return True
-        except Exception:
-            log.exception("Windows SCSI send_image failed")
-            return False
-
-    def close(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._transport = None
-
-    def get_info(self) -> 'ProtocolInfo':
-        return ProtocolInfo(
-            protocol="scsi",
-            device_type=1,
-            protocol_display="SCSI (Windows DeviceIoControl)",
-            device_type_display="SCSI RGB565",
-            active_backend="DeviceIoControl",
-            backends={"DeviceIoControl": True, "sg_raw": False},
-        )
-
-    @property
-    def protocol_name(self) -> str:
-        return "scsi"
-
-    @property
-    def is_available(self) -> bool:
-        return True
-
-    def __repr__(self) -> str:
-        return f"WindowsScsiProtocol(path={self._path!r})"
-
-
-# =========================================================================
 # HidProtocol — HID/USB bulk implementation
 # =========================================================================
 
@@ -781,17 +622,26 @@ class DeviceProtocolFactory:
 
     # Registry map: (protocol, implementation) → factory function.
     # Looked up by exact match first, then (protocol, '') as fallback.
-    # SCSI routes to WindowsScsiProtocol on Windows (DeviceIoControl)
-    # vs ScsiProtocol on Linux/macOS/BSD (sg_raw/SG_IO).
+    # The SCSI entry defaults to ScsiProtocol (Linux/macOS/BSD).
+    # ControllerBuilder calls configure_scsi() to inject the platform-specific
+    # implementation (e.g. WindowsScsiProtocol) at composition time.
     _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {
-        ('scsi', ''):       lambda di: (WindowsScsiProtocol(di.path, vid=di.vid, pid=di.pid)
-                                        if _is_windows() else ScsiProtocol(di.path)),
+        ('scsi', ''):       lambda di: ScsiProtocol(di.path),
         ('bulk', ''):       lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
         ('ly', ''):         lambda di: LyProtocol(vid=di.vid, pid=di.pid),
         ('hid', 'hid_led'): lambda di: LedProtocol(vid=di.vid, pid=di.pid),
         ('hid', ''):        lambda di: HidProtocol(vid=di.vid, pid=di.pid,
                                 device_type=getattr(di, 'device_type', 2)),
     }
+
+    @classmethod
+    def configure_scsi(cls, factory_fn: Callable[..., DeviceProtocol]) -> None:
+        """Inject the platform-specific SCSI factory at composition time.
+
+        Called by ControllerBuilder before any protocol is created.
+        Same pattern as ImageService.set_renderer() — configured once at startup.
+        """
+        cls._PROTOCOL_REGISTRY[('scsi', '')] = factory_fn
 
     @classmethod
     def _device_key(cls, device_info) -> str:
@@ -1039,3 +889,9 @@ class ProtocolInfo:
             return True
         return bool(traits.fallback_backend
                     and self.backends.get(traits.fallback_backend, False))
+
+
+# Re-export: WindowsScsiProtocol moved to adapters/device/windows/scsi_protocol.py.
+# Kept here so existing imports (e.g. tests) continue to work.
+from trcc.adapters.device.windows.scsi_protocol import WindowsScsiProtocol as WindowsScsiProtocol  # noqa: E402,F401,I001
+

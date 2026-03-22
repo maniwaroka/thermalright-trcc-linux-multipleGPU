@@ -275,17 +275,14 @@ class TestDependenciesExtra:
 class TestDevicesExtra:
     """_devices extra coverage."""
 
-    @patch("trcc.adapters.device.detector.detect_devices",
-           side_effect=RuntimeError("usb error"))
-    def test_detect_raises(self, _):
+    def test_detect_raises(self):
         """Exception from detect() is caught gracefully."""
-        rpt = DebugReport()
+        rpt = DebugReport(detect_fn=lambda: (_ for _ in ()).throw(RuntimeError("usb error")))
         rpt._devices()
         _, body = _section(rpt)
         assert "detect failed" in body
 
-    @patch("trcc.adapters.device.detector.detect_devices")
-    def test_scsi_device_shows_scsi_path(self, mock_detect):
+    def test_scsi_device_shows_scsi_path(self):
         """SCSI device uses scsi_device path in output."""
         dev = MagicMock()
         dev.vid = 0x0402
@@ -294,15 +291,13 @@ class TestDevicesExtra:
         dev.protocol = "scsi"
         dev.scsi_device = "/dev/sg0"
         dev.usb_path = None
-        mock_detect.return_value = [dev]
-        rpt = DebugReport()
+        rpt = DebugReport(detect_fn=lambda: [dev])
         rpt._devices()
         _, body = _section(rpt)
         assert "/dev/sg0" in body
         assert "SCSI" in body
 
-    @patch("trcc.adapters.device.detector.detect_devices")
-    def test_hid_device_shows_usb_path(self, mock_detect):
+    def test_hid_device_shows_usb_path(self):
         """HID device uses usb_path when scsi_device is None."""
         dev = MagicMock()
         dev.vid = 0x0416
@@ -311,8 +306,7 @@ class TestDevicesExtra:
         dev.protocol = "hid"
         dev.scsi_device = None
         dev.usb_path = "3-1.2"
-        mock_detect.return_value = [dev]
-        rpt = DebugReport()
+        rpt = DebugReport(detect_fn=lambda: [dev])
         rpt._devices()
         _, body = _section(rpt)
         assert "3-1.2" in body

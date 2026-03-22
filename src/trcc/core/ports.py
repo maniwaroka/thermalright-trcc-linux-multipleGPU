@@ -463,6 +463,21 @@ class PlatformSetup(ABC):
         """
         return False
 
+    def configure_stdout(self) -> None:
+        """Reconfigure stdout/stderr encoding for the CLI entry point.
+
+        Windows: forces UTF-8 so Unicode symbols (─, ℃, etc.) render correctly.
+        All other platforms: no-op.
+        """
+
+    def linux_command_hint(self) -> str | None:
+        """Return a platform-specific hint when a Linux-only command is run.
+
+        Windows: suggests the equivalent Windows command.
+        All other platforms: None.
+        """
+        return None
+
     @abstractmethod
     def minimize_on_close(self) -> bool:
         """Return True if the window should minimize to taskbar on close.

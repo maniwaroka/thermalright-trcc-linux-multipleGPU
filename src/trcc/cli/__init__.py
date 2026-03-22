@@ -1152,16 +1152,8 @@ def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
 
 def main():
     """Main CLI entry point (pyproject.toml console_scripts)."""
-    # Windows consoles default to cp1252 which can't encode Unicode (─, ℃, etc.)
-    import sys
-    if sys.platform == 'win32':
-        import io
-        if hasattr(sys.stdout, 'buffer'):
-            sys.stdout = io.TextIOWrapper(
-                sys.stdout.buffer, encoding='utf-8', errors='replace')
-        if hasattr(sys.stderr, 'buffer'):
-            sys.stderr = io.TextIOWrapper(
-                sys.stderr.buffer, encoding='utf-8', errors='replace')
+    from trcc.core.builder import ControllerBuilder
+    ControllerBuilder.build_setup().configure_stdout()
     try:
         result = app(standalone_mode=False)
         return result if isinstance(result, int) else 0
@@ -1193,7 +1185,6 @@ select_device = _device.select
 _probe_device = _device._probe
 _format_device = _device._format
 _ensure_extracted = _device._ensure_extracted
-_get_driver = _device._get_driver
 _get_service = _device._get_service
 discover_resolution = _device.discover_resolution
 send_image = _display.send_image

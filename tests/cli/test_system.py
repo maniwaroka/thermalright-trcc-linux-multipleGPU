@@ -1979,11 +1979,8 @@ class TestReportDiagnosticOutput:
                 "trcc.adapters.infra.debug_report.subprocess.run",
                 return_value=_completed(0, stdout=""),
             ),
-            # Block device detection
-            "detect": patch(
-                "trcc.adapters.device.detector.detect_devices",
-                return_value=[],
-            ),
+            # detect_fn injected directly into report() — no patch needed here
+
             # Block config loading
             "conf": patch(
                 "trcc.conf.load_config",
@@ -2007,13 +2004,11 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=1):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         assert "NOT INSTALLED" in out
@@ -2032,13 +2027,11 @@ class TestReportDiagnosticOutput:
                    str(rules_file)), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         assert "0416" in out
@@ -2051,13 +2044,11 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=["tty0", "null", "zero"]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         assert "no /dev/sg*" in out
@@ -2068,8 +2059,6 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=["sg0", "sg1"]), \
@@ -2078,7 +2067,7 @@ class TestReportDiagnosticOutput:
                    return_value=False), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
             mock_stat.return_value.st_mode = 0o060660  # crw-rw---- (660)
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         assert "NO ACCESS" in out
@@ -2090,13 +2079,11 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         assert "(none)" in out
@@ -2107,13 +2094,11 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         assert "no devices to handshake" in out
@@ -2142,15 +2127,13 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[mock_dev]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.device.factory.HidProtocol",
                    return_value=mock_protocol), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [mock_dev])
 
         out = capsys.readouterr().out
         assert "Permission denied" in out
@@ -2164,8 +2147,6 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
@@ -2188,7 +2169,7 @@ class TestReportDiagnosticOutput:
                    return_value=MagicMock(applicable=False)), \
              patch("trcc.adapters.infra.doctor.check_polkit",
                    return_value=MagicMock(ok=True, message="ok")):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         # Both the report section AND doctor should flag udev
@@ -2213,13 +2194,11 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    side_effect=_fake_subprocess), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         # Thermalright VIDs shown, non-Thermalright filtered out
@@ -2233,13 +2212,11 @@ class TestReportDiagnosticOutput:
                    str(tmp_path / "nonexistent")), \
              patch("trcc.adapters.infra.debug_report.subprocess.run",
                    return_value=_completed(0, stdout="")), \
-             patch("trcc.adapters.device.detector.detect_devices",
-                   return_value=[]), \
              patch("trcc.conf.load_config", return_value={}), \
              patch("trcc.adapters.infra.debug_report.os.listdir",
                    return_value=[]), \
              patch("trcc.adapters.infra.doctor.run_doctor", return_value=0):
-            report()
+            report(detect_fn=lambda: [])
 
         out = capsys.readouterr().out
         lines = out.strip().splitlines()

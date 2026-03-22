@@ -40,11 +40,12 @@ class _Section:
 class DebugReport:
     """Collects and formats system diagnostics for GitHub issues."""
 
-    def __init__(self) -> None:
+    def __init__(self, detect_fn=None) -> None:
         from trcc.core.builder import ControllerBuilder
         self._sections: list[_Section] = []
         self._detected_devices: list = []  # Cached DetectedDevice list
         self._config = ControllerBuilder.build_setup().get_report_config()
+        self._detect_fn = detect_fn or ControllerBuilder.build_detect_fn()
 
     # ------------------------------------------------------------------
     # Public API
@@ -203,9 +204,7 @@ class DebugReport:
     def _devices(self) -> None:
         sec = self._add("Detected devices")
         try:
-            from trcc.adapters.device.detector import detect_devices
-
-            devices = detect_devices()
+            devices = self._detect_fn()
             self._detected_devices = devices
             if not devices:
                 sec.lines.append("  (none)")

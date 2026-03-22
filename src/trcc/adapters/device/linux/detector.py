@@ -27,19 +27,25 @@ def _load_saved_identity(
         return None, None
 
 
-def find_lcd_devices() -> List[Dict]:
+def find_lcd_devices(detect_fn=None) -> List[Dict]:
     """Detect connected LCD devices (SCSI and HID).
+
+    Args:
+        detect_fn: Callable returning raw DetectedDevice list. Defaults to
+            DeviceDetector.detect. Injected by tests and composition roots.
 
     Returns:
         List of dicts with keys: name, path, resolution, vendor, product,
         model, button_image, protocol, device_type, vid, pid
     """
-    try:
-        from trcc.adapters.device.detector import detect_devices
-    except ImportError:
-        return []
+    if detect_fn is None:
+        try:
+            from trcc.adapters.device.detector import DeviceDetector
+        except ImportError:
+            return []
+        detect_fn = DeviceDetector.detect
 
-    raw = detect_devices()
+    raw = detect_fn()
     devices = []
 
     for dev in raw:

@@ -10,7 +10,9 @@ from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import QMenu, QWidget
 
 from ..core.models import (
+    CATEGORY_NAMES,
     HARDWARE_METRICS,
+    SUB_METRICS,
     OverlayElementConfig,
     OverlayMode,
     format_metric,
@@ -22,8 +24,6 @@ from .constants import Colors, Sizes
 # Overlay element constants (matching Tkinter UCXiTongXianShiSub)
 # ============================================================================
 
-CATEGORY_NAMES = {0: 'CPU', 1: 'GPU', 2: 'MEM', 3: 'HDD', 4: 'NET', 5: 'FAN'}
-
 CATEGORY_COLORS = {
     0: '#32C5FF',   # CPU - cyan
     1: '#44D7B6',   # GPU - teal
@@ -31,15 +31,6 @@ CATEGORY_COLORS = {
     3: '#F7B501',   # HDD - amber
     4: '#FA6401',   # NET - orange
     5: '#E02020',   # FAN - red
-}
-
-SUB_METRICS = {
-    0: {1: 'Temp', 2: 'Usage', 3: 'Freq', 4: 'Power'},
-    1: {1: 'Temp', 2: 'Usage', 3: 'Clock', 4: 'Power'},
-    2: {1: 'Used%', 2: 'Clock', 3: 'Used', 4: 'Free'},
-    3: {1: 'Read', 2: 'Write', 3: 'Activity', 4: 'Temp'},
-    4: {1: 'Down', 2: 'Up', 3: 'Total', 4: 'Ping'},
-    5: {1: 'RPM', 2: 'PWM%', 3: 'Temp', 4: 'Speed'},
 }
 
 TIME_FORMATS = {0: 'HH:mm', 1: 'hh:mm'}

@@ -574,10 +574,9 @@ class TestDeviceDetectorProtocol:
 class TestFindLcdDevicesHid:
     """Verify find_lcd_devices() returns HID devices with protocol info."""
 
-    @patch("trcc.adapters.device.detector.detect_devices")
-    def test_hid_device_included_without_scsi_path(self, mock_detect):
+    def test_hid_device_included_without_scsi_path(self, fake_detect):
         from trcc.adapters.device.detector import DetectedDevice
-        mock_detect.return_value = [
+        fake_detect.return_value = [
             DetectedDevice(
                 vid=0x0416, pid=0x5302,
                 vendor_name="ALi Corp", product_name="LCD (HID H)",
@@ -586,16 +585,15 @@ class TestFindLcdDevicesHid:
             )
         ]
         from trcc.adapters.device.scsi import find_lcd_devices
-        devices = find_lcd_devices()
+        devices = find_lcd_devices(detect_fn=fake_detect)
         assert len(devices) == 1
         assert devices[0]['protocol'] == 'hid'
         assert devices[0]['device_type'] == 2
         assert devices[0]['path'] == 'hid:0416:5302'
 
-    @patch("trcc.adapters.device.detector.detect_devices")
-    def test_scsi_device_needs_scsi_path(self, mock_detect):
+    def test_scsi_device_needs_scsi_path(self, fake_detect):
         from trcc.adapters.device.detector import DetectedDevice
-        mock_detect.return_value = [
+        fake_detect.return_value = [
             DetectedDevice(
                 vid=0x87CD, pid=0x70DB,
                 vendor_name="Thermalright", product_name="LCD",
@@ -604,13 +602,12 @@ class TestFindLcdDevicesHid:
             )
         ]
         from trcc.adapters.device.scsi import find_lcd_devices
-        devices = find_lcd_devices()
+        devices = find_lcd_devices(detect_fn=fake_detect)
         assert len(devices) == 0  # SCSI device without path is excluded
 
-    @patch("trcc.adapters.device.detector.detect_devices")
-    def test_mixed_scsi_and_hid(self, mock_detect):
+    def test_mixed_scsi_and_hid(self, fake_detect):
         from trcc.adapters.device.detector import DetectedDevice
-        mock_detect.return_value = [
+        fake_detect.return_value = [
             DetectedDevice(
                 vid=0x87CD, pid=0x70DB,
                 vendor_name="Thermalright", product_name="LCD",
@@ -624,13 +621,9 @@ class TestFindLcdDevicesHid:
             ),
         ]
         from trcc.adapters.device.scsi import find_lcd_devices
-
-        # Patch LCDDriver to avoid real SCSI access
-        with patch("trcc.adapters.device.lcd.LCDDriver", side_effect=Exception("no hw")):
-            devices = find_lcd_devices()
+        devices = find_lcd_devices(detect_fn=fake_detect)
 
         assert len(devices) == 2
-
         scsi_dev = next(d for d in devices if d['protocol'] == 'scsi')
         hid_dev = next(d for d in devices if d['protocol'] == 'hid')
 
@@ -638,10 +631,9 @@ class TestFindLcdDevicesHid:
         assert hid_dev['path'] == 'hid:0418:5303'
         assert hid_dev['device_type'] == 3
 
-    @patch("trcc.adapters.device.detector.detect_devices")
-    def test_device_index_assigned_across_protocols(self, mock_detect):
+    def test_device_index_assigned_across_protocols(self, fake_detect):
         from trcc.adapters.device.detector import DetectedDevice
-        mock_detect.return_value = [
+        fake_detect.return_value = [
             DetectedDevice(
                 vid=0x87CD, pid=0x70DB,
                 vendor_name="Thermalright", product_name="LCD",
@@ -655,9 +647,7 @@ class TestFindLcdDevicesHid:
             ),
         ]
         from trcc.adapters.device.scsi import find_lcd_devices
-
-        with patch("trcc.adapters.device.lcd.LCDDriver", side_effect=Exception("no hw")):
-            devices = find_lcd_devices()
+        devices = find_lcd_devices(detect_fn=fake_detect)
 
         indices = [d['device_index'] for d in devices]
         assert sorted(indices) == [0, 1]

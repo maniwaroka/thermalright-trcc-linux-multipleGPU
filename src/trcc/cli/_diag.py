@@ -157,7 +157,7 @@ def _hid_debug_led(dev) -> None:
     protocol.close()
 
 
-def hid_debug(*, test_frame: bool = False):
+def hid_debug(*, test_frame: bool = False, detect_fn=None):
     """HID handshake diagnostic — prints hex dump and resolved device info.
 
     Users can share this output in bug reports to help debug HID device issues.
@@ -165,14 +165,18 @@ def hid_debug(*, test_frame: bool = False):
 
     Args:
         test_frame: If True, send a solid red test frame after handshake.
+        detect_fn: Callable returning DetectedDevice list. Defaults to the
+            platform-appropriate detector from ControllerBuilder.
     """
     try:
-        from trcc.adapters.device.detector import detect_devices
+        if detect_fn is None:
+            from trcc.core.builder import ControllerBuilder
+            detect_fn = ControllerBuilder.build_detect_fn()
 
         print("HID Debug — Handshake Diagnostic")
         print("=" * 60)
 
-        devices = detect_devices()
+        devices = detect_fn()
         hid_devices = [d for d in devices if d.protocol == 'hid']
 
         if not hid_devices:

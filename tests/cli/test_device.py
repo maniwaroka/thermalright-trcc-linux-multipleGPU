@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 from trcc.cli._device import (
     _ensure_extracted,
     _format,
-    _get_driver,
     _get_service,
     _probe,
     detect,
@@ -342,51 +341,6 @@ class TestEnsureExtracted:
         with patch("trcc.adapters.infra.data_repository.DataManager") as mock_dm:
             mock_dm.ensure_all.side_effect = OSError("disk full")
             _ensure_extracted(driver)  # must not raise
-
-
-# =============================================================================
-# TestGetDriver
-# =============================================================================
-
-class TestGetDriver:
-    """_get_driver() — create LCDDriver."""
-
-    def test_with_explicit_device_path(self):
-        """Passes device_path directly to LCDDriver."""
-        mock_driver = MagicMock()
-        mock_driver.implementation = None
-
-        with patch("trcc.adapters.device.lcd.LCDDriver", return_value=mock_driver) as mock_cls, \
-             patch("trcc.cli._device._ensure_extracted"):
-            result = _get_driver(device="/dev/sg1")
-
-        mock_cls.assert_called_once_with(device_path="/dev/sg1")
-        assert result is mock_driver
-
-    def test_without_device_falls_back_to_saved(self):
-        """When device is None, uses Settings.get_selected_device()."""
-        mock_driver = MagicMock()
-        mock_driver.implementation = None
-
-        with patch("trcc.adapters.device.lcd.LCDDriver", return_value=mock_driver) as mock_cls, \
-             patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"), \
-             patch("trcc.cli._device._ensure_extracted"):
-            result = _get_driver()
-
-        mock_cls.assert_called_once_with(device_path="/dev/sg0")
-        assert result is mock_driver
-
-    def test_ensure_extracted_called(self):
-        """_ensure_extracted is always called after driver creation."""
-        mock_driver = MagicMock()
-        mock_driver.implementation = None
-
-        with patch("trcc.adapters.device.lcd.LCDDriver", return_value=mock_driver), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
-             patch("trcc.cli._device._ensure_extracted") as mock_extract:
-            _get_driver()
-
-        mock_extract.assert_called_once_with(mock_driver)
 
 
 # =============================================================================
@@ -748,29 +702,27 @@ class TestDetect:
             vid=vid, pid=pid, protocol=protocol,
         )
 
+    def _ok_setup(self) -> MagicMock:
+        """Platform setup mock with no permission warnings."""
+        mock_setup = MagicMock()
+        mock_setup.check_device_permissions.return_value = []
+        mock_setup.no_devices_hint.return_value = None
+        return mock_setup
+
     def test_no_devices_returns_1(self):
         """No devices detected -> prints message, returns 1."""
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = []
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
-            result = detect(show_all=False)
-
+        mock_setup = self._ok_setup()
+        result = detect(show_all=False, detect_fn=lambda: [], platform_setup=mock_setup)
         assert result == 1
 
     def test_single_device_returns_0(self):
         """One device detected -> prints 'Active:', returns 0."""
         dev = self._scsi_dev()
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            result = detect(show_all=False)
+            result = detect(show_all=False, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         assert result == 0
 
@@ -778,15 +730,11 @@ class TestDetect:
         """show_all=True enumerates all devices with index."""
         dev1 = self._scsi_dev("/dev/sg0", "Device A")
         dev2 = self._scsi_dev("/dev/sg1", "Device B")
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev1, dev2]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            result = detect(show_all=True)
+            result = detect(show_all=True, detect_fn=lambda: [dev1, dev2], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "[1]" in captured.out
@@ -796,15 +744,11 @@ class TestDetect:
     def test_show_all_marks_selected_device(self, capsys):
         """show_all=True marks the saved selected device with '*'."""
         dev = self._scsi_dev("/dev/sg0")
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=True)
+            detect(show_all=True, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "* [1]" in captured.out
@@ -812,15 +756,11 @@ class TestDetect:
     def test_show_all_single_device_no_switch_hint(self, capsys):
         """show_all with one device does not print 'use trcc select' hint."""
         dev = self._scsi_dev()
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=True)
+            detect(show_all=True, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "trcc select" not in captured.out
@@ -829,15 +769,11 @@ class TestDetect:
         """show_all with multiple devices prints 'use trcc select' hint."""
         dev1 = self._scsi_dev("/dev/sg0")
         dev2 = self._scsi_dev("/dev/sg1")
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev1, dev2]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=True)
+            detect(show_all=True, detect_fn=lambda: [dev1, dev2], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "trcc select" in captured.out
@@ -846,15 +782,11 @@ class TestDetect:
         """When a saved device matches, it is shown as Active."""
         dev0 = self._scsi_dev("/dev/sg0", "Device A")
         dev1 = self._scsi_dev("/dev/sg1", "Device B")
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev0, dev1]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg1"), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg1"), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=False)
+            detect(show_all=False, detect_fn=lambda: [dev0, dev1], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "Device B" in captured.out
@@ -862,15 +794,15 @@ class TestDetect:
     def test_udev_warning_printed_when_rules_missing(self, capsys):
         """Device needing udev rule update prints a warning."""
         dev = self._scsi_dev(protocol="scsi")
+        mock_setup = MagicMock()
+        mock_setup.check_device_permissions.return_value = [
+            "\nudev rules are missing. Run: trcc setup-udev\nA reboot may be required."
+        ]
+        mock_setup.no_devices_hint.return_value = None
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = False  # needs update
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=False)
+            detect(show_all=False, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "udev rules" in captured.out
@@ -879,15 +811,15 @@ class TestDetect:
     def test_udev_warning_includes_reboot_for_scsi(self, capsys):
         """SCSI protocol (requires_reboot=True) adds reboot notice to udev warning."""
         dev = self._scsi_dev(protocol="scsi")
+        mock_setup = MagicMock()
+        mock_setup.check_device_permissions.return_value = [
+            "\nudev rules are missing. Run: trcc setup-udev\nA reboot may be required."
+        ]
+        mock_setup.no_devices_hint.return_value = None
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = False
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=False)
+            detect(show_all=False, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "reboot" in captured.out
@@ -896,31 +828,27 @@ class TestDetect:
         """HID protocol (requires_reboot=False) does NOT add reboot notice."""
         dev = self._scsi_dev(protocol="hid", vid=0x0416, pid=0x5302)
         dev.scsi_device = None
+        mock_setup = MagicMock()
+        mock_setup.check_device_permissions.return_value = [
+            "\nudev rules are missing. Run: trcc setup-udev"
+        ]
+        mock_setup.no_devices_hint.return_value = None
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = False
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=False)
+            detect(show_all=False, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "reboot" not in captured.out
 
     def test_no_udev_warning_when_rules_ok(self, capsys):
-        """No udev warning when check_udev_rules returns True."""
+        """No udev warning when check_device_permissions returns no warnings."""
         dev = self._scsi_dev()
+        mock_setup = self._ok_setup()
 
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-        mock_det.check_udev_rules.return_value = True
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.get_selected_device", return_value=None), \
+        with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
              patch("trcc.cli._device._probe", return_value={}):
-            detect(show_all=False)
+            detect(show_all=False, detect_fn=lambda: [dev], platform_setup=mock_setup)
 
         captured = capsys.readouterr()
         assert "udev rules" not in captured.out
@@ -941,45 +869,27 @@ class TestSelect:
 
     def test_no_devices_returns_1(self):
         """No devices -> prints message, returns 1."""
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = []
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
-            result = select(1)
-
+        result = select(1, detect_fn=lambda: [])
         assert result == 1
 
     def test_number_zero_is_invalid(self):
         """Number 0 is below minimum (1), returns 1."""
         dev = self._scsi_dev()
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
-            result = select(0)
-
+        result = select(0, detect_fn=lambda: [dev])
         assert result == 1
 
     def test_number_too_high_is_invalid(self):
         """Number exceeding device count returns 1."""
         dev = self._scsi_dev()
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
-
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}):
-            result = select(5)
-
+        result = select(5, detect_fn=lambda: [dev])
         assert result == 1
 
     def test_valid_number_selects_device(self):
         """Valid device number saves and returns 0."""
         dev = self._scsi_dev("/dev/sg1", "Frost Commander")
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.save_selected_device") as mock_save:
-            result = select(1)
+        with patch("trcc.conf.Settings.save_selected_device") as mock_save:
+            result = select(1, detect_fn=lambda: [dev])
 
         assert result == 0
         mock_save.assert_called_once_with("/dev/sg1")
@@ -987,12 +897,9 @@ class TestSelect:
     def test_valid_selection_prints_device_info(self, capsys):
         """Valid selection prints device scsi_device and product_name."""
         dev = self._scsi_dev("/dev/sg0", "Frost Commander 360")
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.save_selected_device"):
-            select(1)
+        with patch("trcc.conf.Settings.save_selected_device"):
+            select(1, detect_fn=lambda: [dev])
 
         captured = capsys.readouterr()
         assert "/dev/sg0" in captured.out
@@ -1002,12 +909,9 @@ class TestSelect:
         """Number 2 selects the second device in the list."""
         dev1 = self._scsi_dev("/dev/sg0", "Device A")
         dev2 = self._scsi_dev("/dev/sg1", "Device B")
-        mock_det = MagicMock()
-        mock_det.detect_devices.return_value = [dev1, dev2]
 
-        with patch.dict("sys.modules", {"trcc.adapters.device.detector": mock_det}), \
-             patch("trcc.conf.Settings.save_selected_device") as mock_save:
-            result = select(2)
+        with patch("trcc.conf.Settings.save_selected_device") as mock_save:
+            result = select(2, detect_fn=lambda: [dev1, dev2])
 
         assert result == 0
         mock_save.assert_called_once_with("/dev/sg1")

@@ -1923,6 +1923,27 @@ CATEGORY_COLORS: dict[int, str] = {
     6: '#E02020',     # Fan: Red
 }
 
+# Overlay element hardware category ID → display name (0=CPU, 1=GPU, …)
+CATEGORY_NAMES: dict[int, str] = {
+    0: 'CPU',
+    1: 'GPU',
+    2: 'MEM',
+    3: 'HDD',
+    4: 'NET',
+    5: 'FAN',
+}
+
+# Overlay element hardware sub-metric labels per category
+# {category_id: {sub_count: label}}
+SUB_METRICS: dict[int, dict[int, str]] = {
+    0: {1: 'Temp', 2: 'Usage', 3: 'Freq',     4: 'Power'},
+    1: {1: 'Temp', 2: 'Usage', 3: 'Clock',    4: 'Power'},
+    2: {1: 'Used%', 2: 'Clock', 3: 'Used',    4: 'Free'},
+    3: {1: 'Read', 2: 'Write', 3: 'Activity', 4: 'Temp'},
+    4: {1: 'Down', 2: 'Up',    3: 'Total',    4: 'Ping'},
+    5: {1: 'RPM',  2: 'PWM%',  3: 'Temp',     4: 'Speed'},
+}
+
 
 # =============================================================================
 # Sensor Dashboard Panel Configuration — pure domain dataclasses
