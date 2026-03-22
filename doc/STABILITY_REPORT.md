@@ -13,7 +13,8 @@ TRCC Linux is designed for long-running sessions — the GUI typically runs for 
 | LED tick loop | 3 | Pass |
 | USB handle cleanup | 3 | Pass |
 | Garbage collectability | 3 | Pass |
-| **Total** | **22** | **All pass** |
+| Config load/save cycles | 3 | Pass |
+| **Total** | **25** | **All pass** |
 
 ## What We Test
 
@@ -66,6 +67,14 @@ USB transport handles (pyusb) occupy kernel resources. We verify:
 - Transport remains closeable even after handshake exceptions
 - `LEDService` cleanup releases its protocol reference
 
+### Config Load/Save Cycles
+
+`conf.Settings` is loaded and saved on every config change. We verify:
+
+- 50 consecutive load/save cycles stay under 2MB memory growth
+- Config dicts are reclaimable after each load
+- Migration code (legacy key translation) leaves no leaked references
+
 ### Garbage Collectability
 
 Python's garbage collector handles circular references, but uncollectable cycles (`__del__` + cycles) cause permanent leaks. We verify:
@@ -100,7 +109,7 @@ A test failure means memory grew beyond what a single cached copy would explain 
 
 ## Results Summary
 
-All 22 tests pass. No active memory leaks detected in any service layer. The cleanup paths (`close()`, `clear()`, `set_background()`, `set_mask()`) all correctly release previous references, allowing Python's garbage collector to reclaim memory.
+All 25 tests pass. No active memory leaks detected in any service layer. The cleanup paths (`close()`, `clear()`, `set_background()`, `set_mask()`) all correctly release previous references, allowing Python's garbage collector to reclaim memory.
 
 ### What This Means for Users
 

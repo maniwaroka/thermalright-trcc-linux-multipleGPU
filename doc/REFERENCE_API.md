@@ -57,7 +57,7 @@ Health check. Always accessible, no auth required.
 
 **Response:**
 ```json
-{"status": "ok", "version": "9.0.3"}
+{"status": "ok", "version": "9.1.1"}
 ```
 
 ---
@@ -68,7 +68,7 @@ Pair a remote client (e.g. TRCC Remote app). Returns connection info and device 
 
 **Response:**
 ```json
-{"paired": true, "version": "9.0.3"}
+{"paired": true, "version": "9.1.1"}
 ```
 
 ---
@@ -235,6 +235,56 @@ Get current display state.
   "resolution": [320, 320],
   "device_path": "/dev/sg2"
 }
+```
+
+### `POST /display/upload`
+
+Upload an image or video file to the server for use with `POST /display/create-theme`.
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | file | yes | Image (`.png`, `.jpg`, `.gif`) or video (`.mp4`, `.webm`, `.avi`, `.mkv`, `.zt`) |
+
+**Response:**
+```json
+{"path": "/home/user/.trcc/uploads/abc123.png", "filename": "abc123.png", "size": 204800}
+```
+
+Returns the server-side path to pass as `background` or `mask` in a subsequent `POST /display/create-theme` call.
+
+---
+
+### `POST /display/create-theme`
+
+Send a custom theme to the LCD device from uploaded files. Accepts a background image or video, optional mask PNG, and optional overlay configuration. Auto-detects animated backgrounds (video, animated GIF).
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `background` | file | yes | Background image or video |
+| `mask` | file | no | Mask PNG overlay |
+| `overlay` | file | no | JSON overlay config (`{"elements": [...]}`) — takes precedence over `metric` |
+| `metric` | string (repeatable) | no | Metric spec: `key:x,y[:color[:size[:font[:style]]]]` |
+| `loop` | bool | no | Loop video (default: `true`) |
+| `font_size` | int | no | Default font size (default: `14`) |
+| `color` | string | no | Default color hex (default: `"ffffff"`) |
+| `font` | string | no | Default font name (default: `"Microsoft YaHei"`) |
+| `font_style` | string | no | Default font style (default: `"regular"`) |
+| `temp_unit` | int | no | Temperature unit: 0=Celsius, 1=Fahrenheit (default: `0`) |
+| `time_format` | int | no | Time format: 0=24h, 1=12h (default: `0`) |
+| `date_format` | int | no | Date format index (default: `0`) |
+
+**Response (static):**
+```json
+{"success": true, "animated": false, "resolution": "320x320"}
+```
+
+**Response (animated):**
+```json
+{"success": true, "animated": true, "loop": true, "resolution": "320x320"}
 ```
 
 ---
@@ -640,7 +690,7 @@ Generate diagnostic report (same as `trcc report` CLI command).
 
 **Response:**
 ```json
-{"report": "TRCC Linux v9.0.3\n..."}
+{"report": "TRCC Linux v9.1.1\n..."}
 ```
 
 ### `GET /system/perf`
