@@ -44,7 +44,10 @@ log = logging.getLogger(__name__)
 
 # ── Platform setup + Settings (composition root) ──────────────────────
 
+from trcc.adapters.infra.logging_setup import StandardLoggingConfigurator  # noqa: E402
 from trcc.conf import init_settings  # noqa: E402
+
+StandardLoggingConfigurator().configure(verbosity=0)
 
 _setup = ControllerBuilder.build_setup()
 init_settings(_setup)

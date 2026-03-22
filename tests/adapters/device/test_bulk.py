@@ -17,6 +17,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 from trcc.adapters.device.bulk import (
@@ -188,58 +190,20 @@ class TestBulkDeviceOpen(unittest.TestCase):
         self.assertIn("setup-selinux", str(ctx.exception))
 
     @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
-    def test_open_claim_ebusy_retries_after_reset(self):
-        """claim_interface EBUSY (no SELinux) → reset + retry succeeds."""
+    def test_open_claim_ebusy_raises_without_reset(self):
+        """claim_interface EBUSY → RuntimeError, no device reset.
+
+        Resetting the device causes a firmware restart (logo flash on bulk
+        devices).  EBUSY means another process holds the interface — the
+        correct response is to fail cleanly, not force-reset the hardware.
+        """
         import usb.core
         import usb.util
 
         usb.core.USBError = _FakeUSBError
 
         mock_dev = MagicMock()
-        mock_dev2 = MagicMock()  # device after reset + re-find
-        usb.core.find.side_effect = [mock_dev, mock_dev2]
-        mock_cfg = MagicMock()
-        mock_dev.get_active_configuration.return_value = mock_cfg
-        mock_dev2.get_active_configuration.return_value = mock_cfg
-        mock_dev.is_kernel_driver_active.return_value = False
-        mock_dev2.is_kernel_driver_active.return_value = False
-        mock_intf = MagicMock()
-        mock_intf.bInterfaceClass = 255
-        mock_intf.bInterfaceNumber = 0
-        mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
-
-        # First claim fails with EBUSY, second succeeds
-        usb.util.claim_interface.side_effect = [
-            _FakeUSBError("Resource busy", errno=16), None
-        ]
-
-        ep_out = MagicMock()
-        ep_out.bEndpointAddress = 0x01
-        ep_in = MagicMock()
-        ep_in.bEndpointAddress = 0x81
-        usb.util.find_descriptor.side_effect = [ep_out, ep_in]
-
-        bd = BulkDevice(0x87AD, 0x70DB)
-        bd._open()
-
-        # Verify reset was called on first device
-        mock_dev.reset.assert_called_once()
-        # Device was re-found after reset
-        self.assertEqual(usb.core.find.call_count, 2)
-        # Endpoints found on re-found device
-        self.assertEqual(bd._ep_out, ep_out)
-        self.assertEqual(bd._ep_in, ep_in)
-
-    @patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
-    def test_open_claim_ebusy_reset_device_not_found(self):
-        """claim_interface EBUSY → reset → device gone → RuntimeError."""
-        import usb.core
-        import usb.util
-
-        usb.core.USBError = _FakeUSBError
-
-        mock_dev = MagicMock()
-        usb.core.find.side_effect = [mock_dev, None]  # gone after reset
+        usb.core.find.return_value = mock_dev
         mock_cfg = MagicMock()
         mock_dev.get_active_configuration.return_value = mock_cfg
         mock_dev.is_kernel_driver_active.return_value = False
@@ -253,7 +217,10 @@ class TestBulkDeviceOpen(unittest.TestCase):
         bd = BulkDevice(0x87AD, 0x70DB)
         with self.assertRaises(RuntimeError) as ctx:
             bd._open()
-        self.assertIn("not found after reset", str(ctx.exception))
+
+        # No reset — that would cause a logo flash (issue #82)
+        mock_dev.reset.assert_not_called()
+        self.assertIn("in use by another process", str(ctx.exception))
 
 
 class TestBulkDeviceHandshake(unittest.TestCase):
@@ -739,6 +706,88 @@ class TestBulkDeviceDetection(unittest.TestCase):
         self.assertEqual(d['vid'], 0x87AD)
         self.assertEqual(d['pid'], 0x70DB)
         self.assertEqual(d['device_type'], 4)
+
+
+# ---------------------------------------------------------------------------
+# Diagnose-driven tests — use device profile fixtures from conftest.py
+# Run normally with defaults; diagnose tool injects real VID/PID/PM from report
+# ---------------------------------------------------------------------------
+
+def _make_opened_device(vid: int, pid: int, pm: int = 100, sub: int = 0) -> BulkDevice:
+    bd = BulkDevice(vid, pid)
+    bd._dev = MagicMock()
+    bd._ep_out = MagicMock()
+    bd._ep_in = MagicMock()
+    bd.pm = pm
+    bd.sub_type = sub
+    return bd
+
+
+def test_bulk_handshake_profile(device_vid, device_pid, device_pm, device_sub):
+    """Handshake succeeds for the device profile from trcc report."""
+    bd = _make_opened_device(device_vid, device_pid)
+    bd._ep_in.read.return_value = _make_handshake_response(pm=device_pm, sub=device_sub)
+
+    result = bd.handshake()
+
+    assert result is not None
+    assert bd.pm == device_pm
+    assert bd.sub_type == device_sub
+    assert bd.width > 0
+    assert bd.height > 0
+
+
+def test_bulk_send_frame_profile(device_vid, device_pid, device_pm, device_sub):
+    """Frame send succeeds for the device profile from trcc report."""
+    import pytest as _pytest
+
+    from trcc.adapters.device.bulk import _BULK_RGB565_PMS, _bulk_resolution
+    w, h = _bulk_resolution(device_pm, device_sub)
+    if w == 0 or h == 0:
+        _pytest.skip(f"No resolution for PM={device_pm} SUB={device_sub}")
+
+    bd = _make_opened_device(device_vid, device_pid, pm=device_pm, sub=device_sub)
+    bd.width = w
+    bd.height = h
+    bd.use_jpeg = device_pm not in _BULK_RGB565_PMS
+
+    result = bd.send_frame(b'\x00' * 1000)
+    assert result is True
+
+
+@patch.dict("sys.modules", {"usb": MagicMock(), "usb.core": MagicMock(), "usb.util": MagicMock()})
+def test_bulk_open_ebusy_no_reset(device_vid, device_pid):
+    """EBUSY on claim_interface raises RuntimeError — no device reset, no logo flash.
+
+    Issue #82: old code called dev.reset() on EBUSY causing firmware restart
+    and boot logo flash on bulk devices. Fix: raise immediately instead.
+    """
+    import usb.core
+    import usb.util
+
+    class _FakeUSBErr(Exception):
+        def __init__(self, msg: str = "", errno: int | None = None):
+            super().__init__(msg)
+            self.errno = errno
+
+    usb.core.USBError = _FakeUSBErr
+    mock_dev = MagicMock()
+    usb.core.find.return_value = mock_dev
+    mock_cfg = MagicMock()
+    mock_dev.get_active_configuration.return_value = mock_cfg
+    mock_dev.is_kernel_driver_active.return_value = False
+    mock_intf = MagicMock()
+    mock_intf.bInterfaceClass = 255
+    mock_intf.bInterfaceNumber = 0
+    mock_cfg.__iter__ = MagicMock(return_value=iter([mock_intf]))
+    usb.util.claim_interface.side_effect = _FakeUSBErr("busy", errno=16)
+
+    bd = BulkDevice(device_vid, device_pid)
+    with pytest.raises(RuntimeError) as exc_info:
+        bd._open()
+
+    mock_dev.reset.assert_not_called()  # No reset → no logo flash
+    assert "in use by another process" in str(exc_info.value)
 
 
 if __name__ == '__main__':

@@ -30,3 +30,44 @@ def make_mock_transport() -> MagicMock:
     return t
 
 
+# ---------------------------------------------------------------------------
+# Device profile fixtures — driven by env vars for tools/diagnose.py
+#
+# TRCC_DIAGNOSE_VID       Vendor ID hex (default: 87AD)
+# TRCC_DIAGNOSE_PID       Product ID hex (default: 70DB)
+# TRCC_DIAGNOSE_PM        PM byte from handshake (default: 100)
+# TRCC_DIAGNOSE_SUB       SUB byte from handshake (default: 0)
+# TRCC_DIAGNOSE_PROTOCOL  Protocol name (default: bulk)
+#
+# Defaults match the canonical 87AD:70DB bulk device so the normal test
+# suite is unaffected when env vars are absent.
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+
+
+@pytest.fixture
+def device_vid() -> int:
+    return int(os.getenv("TRCC_DIAGNOSE_VID", "87AD"), 16)
+
+
+@pytest.fixture
+def device_pid() -> int:
+    return int(os.getenv("TRCC_DIAGNOSE_PID", "70DB"), 16)
+
+
+@pytest.fixture
+def device_pm() -> int:
+    return int(os.getenv("TRCC_DIAGNOSE_PM", "100"))
+
+
+@pytest.fixture
+def device_sub() -> int:
+    return int(os.getenv("TRCC_DIAGNOSE_SUB", "0"))
+
+
+@pytest.fixture
+def device_protocol() -> str:
+    return os.getenv("TRCC_DIAGNOSE_PROTOCOL", "bulk")
+
+

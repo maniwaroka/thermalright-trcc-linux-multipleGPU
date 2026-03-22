@@ -20,11 +20,14 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _ERR_NOT_FOUND = "USB device {vid:04x}:{pid:04x} not found"
-_ERR_NOT_FOUND_RESET = "USB device {vid:04x}:{pid:04x} not found after reset"
 _ERR_SELINUX = (
     "USB interface busy — SELinux is blocking USB device access. "
     "Run 'sudo trcc setup-selinux' to install the policy module, "
     "then unplug and replug the device."
+)
+_ERR_EBUSY = (
+    "USB device {vid:04x}:{pid:04x} interface is in use by another process. "
+    "Close any other TRCC instances and try again."
 )
 
 
@@ -79,7 +82,7 @@ def _reset_and_refind(dev: Any, vid: int, pid: int) -> Any:
     time.sleep(0.5)
     new_dev = usb.core.find(idVendor=vid, idProduct=pid)
     if new_dev is None:
-        raise RuntimeError(_ERR_NOT_FOUND_RESET.format(vid=vid, pid=pid))
+        raise RuntimeError(_ERR_NOT_FOUND.format(vid=vid, pid=pid))
     _detach_kernel_drivers(new_dev)
     return new_dev
 
@@ -131,7 +134,7 @@ def open_usb_device(vid: int, pid: int) -> tuple[Any, Any]:
     # 3. Find vendor-specific interface
     intf = _find_vendor_interface(cfg)
 
-    # 4. Claim interface (with EBUSY retry)
+    # 4. Claim interface
     try:
         usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
     except usb.core.USBError as e:
@@ -139,11 +142,7 @@ def open_usb_device(vid: int, pid: int) -> tuple[Any, Any]:
             raise
         if selinux_blocked:
             raise RuntimeError(_ERR_SELINUX) from e
-        log.warning("claim_interface() EBUSY — resetting device and retrying")
-        dev = _reset_and_refind(dev, vid, pid)
-        cfg = dev.get_active_configuration()  # type: ignore[union-attr]
-        intf = _find_vendor_interface(cfg)
-        usb.util.claim_interface(dev, intf.bInterfaceNumber)  # type: ignore[union-attr]
+        raise RuntimeError(_ERR_EBUSY.format(vid=vid, pid=pid)) from e
 
     return dev, intf
 

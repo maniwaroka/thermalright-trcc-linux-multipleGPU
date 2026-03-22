@@ -145,20 +145,9 @@ def _version_callback(value: bool) -> None:
 
 
 def _ensure_file_logging() -> None:
-    """Set up ~/.trcc/trcc.log if not already done (e.g. when run via entrypoint)."""
-    root = logging.getLogger()
-    if any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
-        return  # Already set up by __main__.py
-    log_dir = Path.home() / '.trcc'
-    log_dir.mkdir(parents=True, exist_ok=True)
-    fh = logging.handlers.RotatingFileHandler(
-        log_dir / 'trcc.log', maxBytes=1_000_000, backupCount=3)
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'))
-    root.setLevel(logging.DEBUG)
-    root.addHandler(fh)
+    """Set up logging via TrccLoggingConfigurator (WARNING console, DEBUG file)."""
+    from trcc.adapters.infra.logging_setup import StandardLoggingConfigurator
+    StandardLoggingConfigurator().configure(verbosity=0)
 
 
 @app.callback(invoke_without_command=True)
@@ -196,36 +185,8 @@ def gui(verbose=0, decorated=False, start_hidden=False):
         decorated: Use decorated window with titlebar.
         start_hidden: Start minimized to system tray (used by --last-one autostart).
     """
-    # Root logger at DEBUG — handlers filter independently
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-    root.handlers.clear()  # remove early basicConfig handler from __main__.py
-
-    # Console handler — verbosity-controlled
-    _fmt = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-    _datefmt = '%H:%M:%S'
-    console = logging.StreamHandler()
-    if verbose >= 2:
-        console.setLevel(logging.DEBUG)
-        console.setFormatter(logging.Formatter(_fmt, datefmt=_datefmt))
-    elif verbose == 1:
-        console.setLevel(logging.INFO)
-        console.setFormatter(logging.Formatter(_fmt, datefmt=_datefmt))
-    else:
-        console.setLevel(logging.WARNING)
-        console.setFormatter(logging.Formatter(_fmt, datefmt=_datefmt))
-    root.addHandler(console)
-
-    # File handler — always DEBUG, rotated (1MB × 3 backups)
-    log_dir = Path.home() / '.trcc'
-    log_dir.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_dir / 'trcc.log', maxBytes=1_000_000, backupCount=3)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'))
-    root.addHandler(file_handler)
+    from trcc.adapters.infra.logging_setup import StandardLoggingConfigurator
+    StandardLoggingConfigurator().configure(verbosity=verbose)
 
 
     try:
@@ -1112,7 +1073,6 @@ def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
     """Auto-generate a self-signed TLS cert in ~/.trcc/tls/ if missing."""
     import shutil
     import subprocess
-    from pathlib import Path
 
     from trcc.conf import CONFIG_DIR
 

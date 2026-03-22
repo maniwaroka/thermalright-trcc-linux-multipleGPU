@@ -625,9 +625,7 @@ class TRCCApp(QMainWindow):
             self._mediator.stop()
             self._screencast.stop()
         else:
-            log.info("System resuming — invalidating USB handles")
-            from ..adapters.device.factory import DeviceProtocolFactory
-            DeviceProtocolFactory.close_all()
+            log.info("System resuming — restarting timers (USB handles preserved)")
             self._device_timer.start(5000)
             self._mediator.ensure_running()
             self._on_device_poll()
