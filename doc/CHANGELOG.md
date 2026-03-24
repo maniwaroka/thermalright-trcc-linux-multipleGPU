@@ -1,5 +1,20 @@
 # Changelog
 
+## v9.1.3
+
+### Fixes
+- **Bulk device screen flashes Thermalright logo randomly** (issue #82): `claim_interface()` EBUSY now raises `RuntimeError` instead of calling `dev.reset()`. The reset triggered a firmware restart and boot logo flash; preserving the existing claim skips it entirely
+- **`trcc setup` pip commands fail on Ubuntu 24.04 (PEP 668)**: Setup wizard now uses `sys.executable -m pip install` instead of bare `pip install` — works inside pipx venvs and PEP 668 externally-managed environments (issue #84)
+- **Polkit policy not found after pip/pipx install**: Path resolution corrected from 3 parent levels to 4 (was landing in `trcc/adapters/`, now correctly lands in `trcc/`) (issue #84)
+- **`trcc doctor` hidapi install hint missing**: Now shows the correct system package name per distro (`python-hid` on Arch, `python3-hid` on Fedora, `python3-hidapi` on Debian/Ubuntu) with pip fallback (issue #84)
+
+### Docs
+- **Install guide and DEB descriptions clarified**: Standard DEB requires `python3-pyside6` in apt — only available on Debian 13+. Legacy DEB (venv + pip) works on Ubuntu 24.04 and Debian 12 (issue #83)
+
+### Internal
+- **`TrccLoggingConfigurator` ABC** (`adapters/infra/logging_setup.py`): Unified log format (includes `funcName`) wired into all 3 composition roots — CLI, GUI, API
+- **`tools/diagnose.py`**: Parses `trcc report`, extracts device profile, runs matching protocol tests without real hardware
+
 ## v9.1.2
 
 ### Internal

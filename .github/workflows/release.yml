@@ -224,6 +224,9 @@ jobs:
           Description: Thermalright LCD/LED Control Center for Linux
            Controls LCD displays and LED segment displays on Thermalright CPU coolers
            and AIO liquid coolers. GUI, CLI, and REST API interfaces.
+           Requires python3-pyside6 in apt — suitable for Debian 13+ and distros
+           that package PySide6 as a system package. For Ubuntu 24.04 use the
+           legacy .deb instead.
           CTRL
 
           cat > "$PKG/DEBIAN/postinst" << POST
@@ -280,10 +283,11 @@ jobs:
           Recommends: python3-dbus, python3-gi
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
-          Description: Thermalright LCD/LED Control Center for Linux (legacy)
+          Description: Thermalright LCD/LED Control Center for Linux
            Controls LCD displays and LED segment displays on Thermalright CPU coolers
-           and AIO liquid coolers. Python dependencies are installed via pip into
-           /opt/trcc-linux. For Ubuntu 24.04+ use the standard .deb instead.
+           and AIO liquid coolers. Python dependencies are installed into an isolated
+           virtualenv at /opt/trcc-linux — no system Python conflicts. Suitable for
+           Ubuntu 24.04, Ubuntu 22.04, Debian 12, and similar distros.
           CTRL
 
           cat > "$PKG/DEBIAN/postinst" << POST

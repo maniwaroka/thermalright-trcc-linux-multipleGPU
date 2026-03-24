@@ -42,6 +42,10 @@ Description: Thermalright LCD/LED Control Center for Linux
  Controls LCD displays and LED segment displays on Thermalright CPU coolers
  and AIO liquid coolers.
  .
+ Requires python3-pyside6 in apt — suitable for Debian 13+ and distros
+ that package PySide6 as a system package. For Ubuntu 24.04 use the
+ legacy .deb package instead.
+ .
  Features:
   - GUI (PySide6) with full Windows TRCC feature parity
   - CLI (Typer) with 50+ commands

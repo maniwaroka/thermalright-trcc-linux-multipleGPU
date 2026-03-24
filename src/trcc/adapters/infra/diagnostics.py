@@ -176,6 +176,12 @@ _INSTALL_MAP: dict[str, dict[str, str]] = {
         'pacman': 'semodule-utils', 'zypper': 'policycoreutils',
         'rpm-ostree': 'policycoreutils',
     },
+    'hidapi': {
+        'apt': 'python3-hidapi',
+        'dnf': 'python3-hid',
+        'pacman': 'python-hid',
+        'zypper': 'python3-hidapi',
+    },
 }
 
 _INSTALL_CMD: dict[str, str] = {
@@ -550,9 +556,11 @@ def check_system_deps(
         ))
 
     hid_ver = get_module_version('hid')
+    hid_hint = _install_hint('hidapi', pm)
     results.append(DepResult(
         name='hidapi', ok=hid_ver is not None, required=False,
-        version=hid_ver or '', install_cmd='pip install hidapi',
+        version=hid_ver or '',
+        install_cmd=hid_hint if not hid_hint.startswith('install ') else 'pip install hidapi',
     ))
 
     if doctor_config.check_libusb:

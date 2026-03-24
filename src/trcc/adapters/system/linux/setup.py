@@ -347,7 +347,7 @@ def setup_polkit() -> int:
     if not is_root():
         return sudo_reexec("setup-polkit")
 
-    pkg_root = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    pkg_root = Path(__file__).parent.parent.parent.parent
     policy_src = pkg_root / "assets" / "com.github.lexonight1.trcc.policy"
 
     if not policy_src.exists():
@@ -591,21 +591,28 @@ class LinuxSetup(PlatformSetup):
                 print(f"    [--]  {dep.name} — not installed{note}")
                 missing_optional.append(dep.install_cmd)
 
+        import shlex
+        import sys as _sys
+
+        def _run_install(cmd: str) -> bool:
+            """Run install command, substituting sys.executable for bare 'pip'."""
+            if cmd.startswith('pip install '):
+                pkg = cmd[len('pip install '):]
+                actual = [_sys.executable, '-m', 'pip', 'install', pkg]
+            else:
+                actual = shlex.split(cmd)
+            print(f"    -> {cmd}")
+            return subprocess.run(actual).returncode == 0
+
         for cmd in missing_required:
             if _confirm(f"Install? -> {cmd}", auto_yes):
-                print(f"    -> {cmd}")
-                import shlex
-                result = subprocess.run(shlex.split(cmd))
-                if result.returncode == 0:
+                if _run_install(cmd):
                     actions.append(f"Installed: {cmd}")
                 else:
-                    print(f"    [!!] Command failed (exit {result.returncode})")
+                    print("    [!!] Command failed")
         for cmd in missing_optional:
             if _confirm(f"Install? -> {cmd}", auto_yes):
-                print(f"    -> {cmd}")
-                import shlex
-                result = subprocess.run(shlex.split(cmd))
-                if result.returncode == 0:
+                if _run_install(cmd):
                     actions.append(f"Installed: {cmd}")
         print()
 

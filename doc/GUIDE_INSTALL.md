@@ -15,8 +15,8 @@ A step-by-step guide for every major Linux distro. Each section is self-containe
 | Distribution | Package | PyPI / pip |
 |-------------|---------|------------|
 | Fedora / Nobara | [Native RPM](#fedora--nobara) | [pip](#fedora--nobara-pip) |
-| Ubuntu 24.04+ / Debian 13+ / Mint 22+ / Pop!_OS / Zorin | [Native DEB](#ubuntu--debian--mint--pop_os--zorin) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
-| Ubuntu 22.04 / Mint 21.x / Debian 12 (older) | [Legacy DEB](#ubuntu-2204--mint-21x--debian-12-legacy-deb) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
+| Debian 13+ / Mint 22+ / Pop!_OS / Zorin | [Native DEB](#ubuntu--debian--mint--pop_os--zorin) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
+| Ubuntu 24.04 / Ubuntu 22.04 / Mint 21.x / Debian 12 (older) | [Legacy DEB](#ubuntu-2204--mint-21x--debian-12-legacy-deb) | [pip](#ubuntu--debian--mint--pop_os--zorin-pip) |
 | Arch / CachyOS / Manjaro / EndeavourOS / Garuda | [Native pkg](#arch--cachyos--manjaro--endeavouros--garuda) | [pip](#arch--cachyos--manjaro--endeavouros--garuda-pip) |
 | openSUSE | [Native RPM](#opensuse) | [pip](#opensuse-pip) |
 | NixOS | [Flake](#nixos) | — |
