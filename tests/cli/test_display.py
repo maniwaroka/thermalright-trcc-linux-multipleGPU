@@ -682,7 +682,11 @@ class TestCLIImageCommands:
 
     def test_send_image_cli_missing_file(self, _mock_builder, mock_connect, capsys):
         from trcc.cli._display import send_image
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
 
+        TrccApp.get().build_lcd_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.fail("File not found: /nonexistent/file.png"))
         rc = send_image(_mock_builder, "/nonexistent/file.png")
         assert rc == 1
         assert "Error" in capsys.readouterr().out
@@ -754,7 +758,11 @@ class TestCLISettingCommands:
 
     def test_set_brightness_cli_invalid_prints_help(self, _mock_builder, mock_connect, capsys):
         from trcc.cli._display import set_brightness
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
 
+        TrccApp.get().build_lcd_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.fail("Brightness: 1-3 (level) or 0-100 (percent)"))
         rc = set_brightness(_mock_builder, -1)
         assert rc == 1
         out = capsys.readouterr().out
@@ -802,7 +810,11 @@ class TestCLISettingCommands:
 
     def test_set_rotation_cli_invalid_45(self, _mock_builder, mock_connect, capsys):
         from trcc.cli._display import set_rotation
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
 
+        TrccApp.get().build_lcd_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.fail("Rotation must be 0, 90, 180, or 270"))
         rc = set_rotation(_mock_builder, 45)
         assert rc == 1
         assert "Error" in capsys.readouterr().out
@@ -817,7 +829,11 @@ class TestCLISettingCommands:
 
     def test_set_split_mode_cli_invalid(self, _mock_builder, mock_connect, capsys):
         from trcc.cli._display import set_split_mode
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
 
+        TrccApp.get().build_lcd_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.fail("Split mode must be 0, 1, 2, or 3"))
         rc = set_split_mode(_mock_builder, 5)
         assert rc == 1
 

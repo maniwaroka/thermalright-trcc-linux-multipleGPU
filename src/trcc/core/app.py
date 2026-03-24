@@ -14,11 +14,12 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ..services.system import SystemService
     from .builder import ControllerBuilder
+    from .command_bus import CommandBus
     from .lcd_device import LCDDevice
     from .led_device import LEDDevice
     from .models import DetectedDevice
@@ -223,6 +224,138 @@ class TrccApp:
     def set_renderer(self, renderer: Any) -> None:
         """Inject the renderer (QtRenderer) before building LCD devices."""
         self._builder.with_renderer(renderer)
+
+    # ── CommandBus factories ─────────────────────────────────────────────────
+
+    def build_lcd_bus(self, lcd: LCDDevice) -> CommandBus:
+        """Return a CommandBus wired to lcd — logging + timing middleware.
+
+        Suitable for CLI and API (commands arrive one at a time, no rate limit).
+        """
+        from .command_bus import (
+            Command,
+            CommandBus,
+            CommandResult,
+            LoggingMiddleware,
+            TimingMiddleware,
+        )
+        from .commands.lcd import (
+            EnableOverlayCommand,
+            LoadThemeByNameCommand,
+            SendColorCommand,
+            SendImageCommand,
+            SetBrightnessCommand,
+            SetRotationCommand,
+            SetSplitModeCommand,
+            UpdateMetricsLCDCommand,
+        )
+
+        def _set_brightness(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(lcd.set_brightness(cast(SetBrightnessCommand, cmd).level))
+
+        def _set_rotation(cmd: Command) -> CommandResult:
+            c = cast(SetRotationCommand, cmd)
+            return CommandResult.from_dict(lcd.set_rotation(c.degrees))
+
+        def _send_color(cmd: Command) -> CommandResult:
+            c = cast(SendColorCommand, cmd)
+            return CommandResult.from_dict(lcd.send_color(c.r, c.g, c.b))
+
+        def _send_image(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(lcd.send_image(cast(SendImageCommand, cmd).image_path))
+
+        def _load_theme(cmd: Command) -> CommandResult:
+            c = cast(LoadThemeByNameCommand, cmd)
+            return CommandResult.from_dict(lcd.load_theme_by_name(c.name, c.width, c.height))
+
+        def _set_split_mode(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(lcd.set_split_mode(cast(SetSplitModeCommand, cmd).mode))
+
+        def _enable_overlay(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(lcd.enable_overlay(cast(EnableOverlayCommand, cmd).on))
+
+        def _update_metrics(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(lcd.update_metrics(cast(UpdateMetricsLCDCommand, cmd).metrics))
+
+        return (CommandBus()
+                .add_middleware(LoggingMiddleware())
+                .add_middleware(TimingMiddleware(threshold_ms=200.0))
+                .register(SetBrightnessCommand, _set_brightness)
+                .register(SetRotationCommand, _set_rotation)
+                .register(SendColorCommand, _send_color)
+                .register(SendImageCommand, _send_image)
+                .register(LoadThemeByNameCommand, _load_theme)
+                .register(SetSplitModeCommand, _set_split_mode)
+                .register(EnableOverlayCommand, _enable_overlay)
+                .register(UpdateMetricsLCDCommand, _update_metrics))
+
+    def build_lcd_gui_bus(self, lcd: LCDDevice) -> CommandBus:
+        """Return a CommandBus wired for GUI — adds RateLimitMiddleware.
+
+        GUI slider events fire continuously; rate limiting prevents USB saturation.
+        The rate limit middleware is appended after logging/timing so skipped
+        commands are still counted in timing but do not reach the handler.
+        """
+        from .command_bus import RateLimitMiddleware
+        return self.build_lcd_bus(lcd).add_middleware(RateLimitMiddleware(min_interval_ms=50.0))
+
+    def build_led_bus(self, led: LEDDevice) -> CommandBus:
+        """Return a CommandBus wired to led — logging + timing middleware."""
+        from .command_bus import (
+            Command,
+            CommandBus,
+            CommandResult,
+            LoggingMiddleware,
+            TimingMiddleware,
+        )
+        from .commands.led import (
+            SetLEDBrightnessCommand,
+            SetLEDColorCommand,
+            SetLEDModeCommand,
+            SetLEDSensorSourceCommand,
+            SetZoneColorCommand,
+            ToggleLEDCommand,
+            UpdateMetricsLEDCommand,
+        )
+
+        def _set_color(cmd: Command) -> CommandResult:
+            c = cast(SetLEDColorCommand, cmd)
+            return CommandResult.from_dict(led.set_color(c.r, c.g, c.b))
+
+        def _set_mode(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(led.set_mode(cast(SetLEDModeCommand, cmd).mode))
+
+        def _set_brightness(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(led.set_brightness(cast(SetLEDBrightnessCommand, cmd).level))
+
+        def _toggle(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(led.toggle_global(cast(ToggleLEDCommand, cmd).on))
+
+        def _set_zone_color(cmd: Command) -> CommandResult:
+            c = cast(SetZoneColorCommand, cmd)
+            return CommandResult.from_dict(led.set_zone_color(c.zone, c.r, c.g, c.b))
+
+        def _set_sensor_source(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(led.set_sensor_source(cast(SetLEDSensorSourceCommand, cmd).source))
+
+        def _update_metrics(cmd: Command) -> CommandResult:
+            return CommandResult.from_dict(led.update_metrics(cast(UpdateMetricsLEDCommand, cmd).metrics))
+
+        return (CommandBus()
+                .add_middleware(LoggingMiddleware())
+                .add_middleware(TimingMiddleware(threshold_ms=200.0))
+                .register(SetLEDColorCommand, _set_color)
+                .register(SetLEDModeCommand, _set_mode)
+                .register(SetLEDBrightnessCommand, _set_brightness)
+                .register(ToggleLEDCommand, _toggle)
+                .register(SetZoneColorCommand, _set_zone_color)
+                .register(SetLEDSensorSourceCommand, _set_sensor_source)
+                .register(UpdateMetricsLEDCommand, _update_metrics))
+
+    def build_led_gui_bus(self, led: LEDDevice) -> CommandBus:
+        """Return a CommandBus wired for GUI LED — adds RateLimitMiddleware."""
+        from .command_bus import RateLimitMiddleware
+        return self.build_led_bus(led).add_middleware(RateLimitMiddleware(min_interval_ms=50.0))
 
     # ── Observer registration ────────────────────────────────────────────────
 

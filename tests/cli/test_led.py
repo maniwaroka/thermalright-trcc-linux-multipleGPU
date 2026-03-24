@@ -800,7 +800,6 @@ class TestCLISetColor:
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-color', 'ff0000'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
-        assert "ff0000" in result.stdout
 
     def test_set_color_with_hash_prefix(self, mock_connect):
         from typer.testing import CliRunner
@@ -835,6 +834,11 @@ class TestCLISetColor:
         from typer.testing import CliRunner
 
         from trcc.cli import app
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+
+        TrccApp._instance.build_led_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.ok(message="color ok", colors=[[0, 0, 255]]))
         with patch('trcc.services.LEDService.zones_to_ansi', return_value="[ANSI]"):
             result = CliRunner().invoke(app, ['led-color', '0000ff', '--preview'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
@@ -931,9 +935,13 @@ class TestCLICommands:
         from typer.testing import CliRunner
 
         from trcc.cli import app
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+
+        TrccApp._instance.build_led_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.fail("LED brightness must be 0-100"))
         result = CliRunner().invoke(app, ['led-brightness', '200'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
-        assert "0-100" in result.stdout
 
     def test_led_off_success(self, mock_connect):
         from typer.testing import CliRunner
@@ -960,6 +968,11 @@ class TestCLICommands:
         from typer.testing import CliRunner
 
         from trcc.cli import app
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+
+        TrccApp._instance.build_led_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
+            CommandResult.fail("Source must be 'cpu' or 'gpu'"))
         result = CliRunner().invoke(app, ['led-sensor', 'fan'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 

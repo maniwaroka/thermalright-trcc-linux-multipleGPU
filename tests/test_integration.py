@@ -55,6 +55,7 @@ class TestCLISendPipeline(unittest.TestCase):
     def test_cli_send_image(self, mock_build_detect_fn, mock_get_protocol):
         """trcc send image.png end-to-end via DeviceService."""
         from trcc.cli import send_image
+        from trcc.core.app import TrccApp
         from trcc.core.models import HandshakeResult
 
         mock_build_detect_fn.return_value = lambda: [_make_device()]
@@ -65,6 +66,10 @@ class TestCLISendPipeline(unittest.TestCase):
         mock_get_protocol.return_value = mock_protocol
 
         builder = self._real_builder()
+        # Use a real TrccApp so build_lcd_bus() returns a real bus that
+        # routes commands through to the actual LCDDevice methods.
+        real_app = TrccApp(builder)
+        TrccApp._instance = real_app  # type: ignore[assignment]
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             _make_png(f.name)
             try:
@@ -88,6 +93,7 @@ class TestCLISendPipeline(unittest.TestCase):
     def test_cli_send_color(self, mock_build_detect_fn, mock_get_protocol):
         """trcc color ff0000 end-to-end via DeviceService."""
         from trcc.cli import send_color
+        from trcc.core.app import TrccApp
         from trcc.core.models import HandshakeResult
 
         mock_build_detect_fn.return_value = lambda: [_make_device()]
@@ -98,6 +104,8 @@ class TestCLISendPipeline(unittest.TestCase):
         mock_get_protocol.return_value = mock_protocol
 
         builder = self._real_builder()
+        real_app = TrccApp(builder)
+        TrccApp._instance = real_app  # type: ignore[assignment]
         result = send_color(builder, "ff0000", device="/dev/sg0")
         self.assertEqual(result, 0)
         mock_protocol.send_image.assert_called_once()

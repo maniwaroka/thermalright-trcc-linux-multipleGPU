@@ -116,8 +116,16 @@ def _mock_builder(mock_platform):
     mock_builder.with_renderer.return_value = mock_builder
     mock_builder.with_data_dir.return_value = mock_builder
 
+    from trcc.core.command_bus import CommandResult
     mock_app = MagicMock(spec=TrccApp)
     mock_app.builder = mock_builder
+
+    # Default bus dispatch result — success so CLI commands don't print "Error".
+    # Tests that need a failure result should override
+    # mock_app.build_lcd_bus.return_value.dispatch.return_value explicitly.
+    _ok = CommandResult.ok(message="ok")
+    mock_app.build_lcd_bus.return_value.dispatch.return_value = _ok
+    mock_app.build_led_bus.return_value.dispatch.return_value = _ok
 
     # Set the singleton so TrccApp.get() returns mock_app without needing init().
     # Composition roots call TrccApp.get() in CLI commands — this prevents RuntimeError.

@@ -71,15 +71,18 @@ def _get_led_service():
 @_cli_handler
 def set_color(builder, hex_color, *, preview=False):
     """Set LED static color."""
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.led import SetLEDColorCommand
     rgb = _parse_hex(hex_color)
     if not rgb:
         print("Error: Invalid hex color. Use format: ff0000")
         return 1
-
     led, rc = _connect_or_fail(builder)
     if rc:
         return rc
-    return _print_result(led.set_color(*rgb), preview=preview)
+    r, g, b = rgb
+    result = TrccApp.get().build_led_bus(led).dispatch(SetLEDColorCommand(r=r, g=g, b=b))
+    return _print_result(result.payload, preview=preview)
 
 
 @_cli_handler
@@ -132,7 +135,13 @@ def set_mode(builder, mode_name, *, preview=False):
 @_cli_handler
 def set_led_brightness(builder, level, *, preview=False):
     """Set LED brightness (0-100)."""
-    return _led_command(builder, "set_brightness", level, preview=preview)
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.led import SetLEDBrightnessCommand
+    led, rc = _connect_or_fail(builder)
+    if rc:
+        return rc
+    result = TrccApp.get().build_led_bus(led).dispatch(SetLEDBrightnessCommand(level=level))
+    return _print_result(result.payload, preview=preview)
 
 
 @_cli_handler
@@ -144,21 +153,30 @@ def led_off(builder):
 @_cli_handler
 def set_sensor_source(builder, source):
     """Set CPU/GPU sensor source for temp/load linked LED modes."""
-    return _led_command(builder, "set_sensor_source", source)
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.led import SetLEDSensorSourceCommand
+    led, rc = _connect_or_fail(builder)
+    if rc:
+        return rc
+    result = TrccApp.get().build_led_bus(led).dispatch(SetLEDSensorSourceCommand(source=source))
+    return _print_result(result.payload)
 
 
 @_cli_handler
 def set_zone_color(builder, zone: int, hex_color: str, *, preview: bool = False):
     """Set color for a specific LED zone."""
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.led import SetZoneColorCommand
     rgb = _parse_hex(hex_color)
     if not rgb:
         print("Error: Invalid hex color. Use format: ff0000")
         return 1
-
     led, rc = _connect_or_fail(builder)
     if rc:
         return rc
-    return _print_result(led.set_zone_color(zone, *rgb), preview=preview)
+    r, g, b = rgb
+    result = TrccApp.get().build_led_bus(led).dispatch(SetZoneColorCommand(zone=zone, r=r, g=g, b=b))
+    return _print_result(result.payload, preview=preview)
 
 
 @_cli_handler

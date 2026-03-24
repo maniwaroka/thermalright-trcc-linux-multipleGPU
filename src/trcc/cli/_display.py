@@ -299,56 +299,73 @@ def _display_command(builder, method: str, *args, device: str | None = None,
 @_cli_handler
 def send_image(builder, image_path, device=None, preview=False):
     """Send image to LCD."""
-    return _display_command(builder, "send_image", image_path, device=device,
-                            preview=preview)
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import SendImageCommand
+    lcd, rc = _connect_or_fail(builder, device)
+    if rc:
+        return rc
+    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SendImageCommand(image_path=image_path))
+    return _print_result(result.payload, preview=preview)
 
 
 @_cli_handler
 def send_color(builder, hex_color, device=None, preview=False):
     """Send solid color to LCD."""
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import SendColorCommand
     rgb = _parse_hex(hex_color)
     if not rgb:
         print("Error: Invalid hex color. Use format: ff0000")
         return 1
-    return _display_command(builder, "send_color", *rgb, device=device, preview=preview)
+    lcd, rc = _connect_or_fail(builder, device)
+    if rc:
+        return rc
+    r, g, b = rgb
+    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SendColorCommand(r=r, g=g, b=b))
+    return _print_result(result.payload, preview=preview)
 
 
 @_cli_handler
 def set_brightness(builder, level, *, device=None):
     """Set display brightness level (1=25%, 2=50%, 3=100%)."""
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import SetBrightnessCommand
     lcd, rc = _connect_or_fail(builder, device)
     if rc:
         return rc
-    assert lcd.settings is not None
-    result = lcd.settings.set_brightness(level)
-    if not result["success"]:
-        print(f"Error: {result['error']}")
+    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SetBrightnessCommand(level=level))
+    if not result.success:
+        print(f"Error: {result.payload.get('error', 'Unknown error')}")
         print("  1 = 25%  (dim)")
         print("  2 = 50%  (medium)")
         print("  3 = 100% (full)")
         return 1
-    print(result["message"])
+    print(result.payload["message"])
     return 0
 
 
 @_cli_handler
 def set_rotation(builder, degrees, *, device=None):
     """Set display rotation (0, 90, 180, 270)."""
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import SetRotationCommand
     lcd, rc = _connect_or_fail(builder, device)
     if rc:
         return rc
-    assert lcd.settings is not None
-    return _print_result(lcd.settings.set_rotation(degrees))
+    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SetRotationCommand(degrees=degrees))
+    return _print_result(result.payload)
 
 
 @_cli_handler
 def set_split_mode(builder, mode, *, device=None, preview=False):
     """Set split mode (Dynamic Island) for widescreen displays."""
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import SetSplitModeCommand
     lcd, rc = _connect_or_fail(builder, device)
     if rc:
         return rc
-    assert lcd.settings is not None
-    return _print_result(lcd.settings.set_split_mode(mode), preview=preview)
+    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SetSplitModeCommand(mode=mode))
+    return _print_result(result.payload, preview=preview)
 
 
 @_cli_handler
