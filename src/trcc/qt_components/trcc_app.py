@@ -85,10 +85,12 @@ class LEDHandler:
         on_temp_unit_changed: Any,
         bus: CommandBus | None = None,
     ):
+        if bus is None:
+            raise ValueError("LEDHandler requires a CommandBus — inject via build_led_gui_bus()")
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
         self._led = led
-        self._bus = bus
+        self._bus: CommandBus = bus
         self._active = False
         self._style_id = 0
         self._save_counter = 0
@@ -198,10 +200,7 @@ class LEDHandler:
     def _on_mode_changed(self, mode: Any) -> None:
         if not self._led:
             return
-        if self._bus:
-            self._bus.dispatch(SetLEDModeCommand(mode=mode))
-        else:
-            self._led.update_mode(mode)
+        self._bus.dispatch(SetLEDModeCommand(mode=mode))
         if self._led.state.zones:
             self._led.update_zone_mode(self._panel.selected_zone, mode)
         self._save_counter = self._SAVE_INTERVAL
@@ -209,20 +208,14 @@ class LEDHandler:
     def _on_color_changed(self, r: int, g: int, b: int) -> None:
         if not self._led:
             return
-        if self._bus:
-            self._bus.dispatch(SetLEDColorCommand(r=r, g=g, b=b))
-        else:
-            self._led.update_color(r, g, b)
+        self._bus.dispatch(SetLEDColorCommand(r=r, g=g, b=b))
         if self._led.state.zones:
             self._led.update_zone_color(self._panel.selected_zone, r, g, b)
 
     def _on_brightness_changed(self, val: int) -> None:
         if not self._led:
             return
-        if self._bus:
-            self._bus.dispatch(SetLEDBrightnessCommand(level=val))
-        else:
-            self._led.update_brightness(val)
+        self._bus.dispatch(SetLEDBrightnessCommand(level=val))
         if self._led.state.zones:
             self._led.update_zone_brightness(self._panel.selected_zone, val)
 

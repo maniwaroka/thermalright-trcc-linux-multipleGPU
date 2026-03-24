@@ -61,8 +61,10 @@ class LCDHandler:
         is_visible_fn: Any = None,
         bus: CommandBus | None = None,
     ) -> None:
+        if bus is None:
+            raise ValueError("LCDHandler requires a CommandBus — inject via build_lcd_gui_bus()")
         self._lcd = lcd
-        self._bus = bus
+        self._bus: CommandBus = bus
         self._w = widgets  # preview, theme_setting, theme_local, etc.
         self._data_dir = data_dir
         self._is_visible = is_visible_fn or (lambda: True)
@@ -134,12 +136,12 @@ class LCDHandler:
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
         log.info("Restoring brightness: level=%d", self._brightness_level)
-        self._lcd.settings.set_brightness(self._brightness_level)
+        self._lcd.set_brightness(self._brightness_level)
 
     def _restore_rotation(self, cfg: dict) -> None:
         rotation_index = cfg.get('rotation', 0) // 90
         rotation = rotation_index * 90
-        self._lcd.settings.set_rotation(rotation)
+        self._lcd.set_rotation(rotation)
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
@@ -151,9 +153,9 @@ class LCDHandler:
         if self._ldd_is_split:
             if not self._split_mode:
                 self._split_mode = 2
-            self._lcd.settings.set_split_mode(self._split_mode)
+            self._lcd.set_split_mode(self._split_mode)
         else:
-            self._lcd.settings.set_split_mode(0)
+            self._lcd.set_split_mode(0)
 
     def _restore_theme(self, cfg: dict) -> None:
         saved = cfg.get('theme_path')
@@ -574,10 +576,7 @@ class LCDHandler:
 
     def set_brightness(self, level: int) -> None:
         self._brightness_level = level
-        if self._bus:
-            result = self._bus.dispatch(SetBrightnessCommand(level=level)).payload
-        else:
-            result = self._lcd.set_brightness(level)
+        result = self._bus.dispatch(SetBrightnessCommand(level=level)).payload
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
@@ -585,10 +584,7 @@ class LCDHandler:
                 self._lcd.frame.send(image)
 
     def set_rotation(self, degrees: int) -> None:
-        if self._bus:
-            result = self._bus.dispatch(SetRotationCommand(degrees=degrees)).payload
-        else:
-            result = self._lcd.set_rotation(degrees)
+        result = self._bus.dispatch(SetRotationCommand(degrees=degrees)).payload
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
@@ -600,10 +596,7 @@ class LCDHandler:
 
     def set_split_mode(self, mode: int) -> None:
         self._split_mode = mode
-        if self._bus:
-            result = self._bus.dispatch(SetSplitModeCommand(mode=mode)).payload
-        else:
-            result = self._lcd.set_split_mode(mode)
+        result = self._bus.dispatch(SetSplitModeCommand(mode=mode)).payload
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)

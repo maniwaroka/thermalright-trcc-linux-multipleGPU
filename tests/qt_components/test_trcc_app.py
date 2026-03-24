@@ -719,7 +719,7 @@ class TestLEDHandler:
         # led=None keeps _connect_signals() a no-op; swap _panel after.
         real_parent = QWidget()
         on_temp = MagicMock()
-        h = LEDHandler(None, real_parent, on_temp)
+        h = LEDHandler(None, real_parent, on_temp, bus=MagicMock())
         h._qt_parent = real_parent  # prevent GC
         h._panel = mock_panel
         h._temp_unit_cb = on_temp
@@ -943,10 +943,11 @@ class TestLEDHandler:
     def test_on_mode_changed_no_led(self, handler):
         handler._on_mode_changed(0)  # Should not raise
 
-    def test_on_mode_changed_calls_update_mode(self, handler):
-        mock_led = self._wire_led(handler)
+    def test_on_mode_changed_dispatches_command(self, handler):
+        from trcc.core.commands.led import SetLEDModeCommand
+        self._wire_led(handler)
         handler._on_mode_changed(2)
-        mock_led.update_mode.assert_called_once_with(2)
+        handler._bus.dispatch.assert_called_once_with(SetLEDModeCommand(mode=2))
 
     def test_on_mode_changed_no_tick_or_send(self, handler):
         """Mode change is state-only — no immediate tick/send."""
@@ -973,10 +974,11 @@ class TestLEDHandler:
     def test_on_color_changed_no_led(self, handler):
         handler._on_color_changed(255, 0, 0)  # Should not raise
 
-    def test_on_color_changed_calls_update_color(self, handler):
-        mock_led = self._wire_led(handler)
+    def test_on_color_changed_dispatches_command(self, handler):
+        from trcc.core.commands.led import SetLEDColorCommand
+        self._wire_led(handler)
         handler._on_color_changed(0, 128, 255)
-        mock_led.update_color.assert_called_once_with(0, 128, 255)
+        handler._bus.dispatch.assert_called_once_with(SetLEDColorCommand(r=0, g=128, b=255))
 
     def test_on_color_changed_no_tick_or_send(self, handler):
         """Color change is state-only — no immediate tick/send (C# pattern)."""
@@ -985,11 +987,12 @@ class TestLEDHandler:
         mock_led.tick.assert_not_called()
 
     def test_on_color_changed_forwards_to_zone(self, handler):
+        from trcc.core.commands.led import SetLEDColorCommand
         zones = [LEDZoneState(), LEDZoneState()]
         mock_led = self._wire_led(handler, zones=zones)
         handler._panel.selected_zone = 1
         handler._on_color_changed(10, 20, 30)
-        mock_led.update_color.assert_called_once_with(10, 20, 30)
+        handler._bus.dispatch.assert_called_once_with(SetLEDColorCommand(r=10, g=20, b=30))
         mock_led.update_zone_color.assert_called_once_with(1, 10, 20, 30)
 
     def test_on_color_changed_no_zone_forward_without_zones(self, handler):
@@ -1002,10 +1005,11 @@ class TestLEDHandler:
     def test_on_brightness_changed_no_led(self, handler):
         handler._on_brightness_changed(50)  # Should not raise
 
-    def test_on_brightness_changed_calls_update(self, handler):
-        mock_led = self._wire_led(handler)
+    def test_on_brightness_changed_dispatches_command(self, handler):
+        from trcc.core.commands.led import SetLEDBrightnessCommand
+        self._wire_led(handler)
         handler._on_brightness_changed(80)
-        mock_led.update_brightness.assert_called_once_with(80)
+        handler._bus.dispatch.assert_called_once_with(SetLEDBrightnessCommand(level=80))
 
     def test_on_brightness_changed_forwards_to_zone(self, handler):
         zones = [LEDZoneState(), LEDZoneState()]

@@ -82,13 +82,40 @@ def _make_lcd() -> MagicMock:
     return lcd
 
 
+def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
+    """Mock CommandBus whose dispatch returns a result wrapping the device call."""
+    from trcc.core.command_bus import CommandResult
+
+    bus = MagicMock()
+    _lcd = lcd or _make_lcd()
+
+    def _dispatch(cmd: object) -> CommandResult:
+        from trcc.core.commands.lcd import (
+            SetBrightnessCommand,
+            SetRotationCommand,
+            SetSplitModeCommand,
+        )
+        if isinstance(cmd, SetBrightnessCommand):
+            return CommandResult.from_dict(_lcd.set_brightness(cmd.level))
+        if isinstance(cmd, SetRotationCommand):
+            return CommandResult.from_dict(_lcd.set_rotation(cmd.degrees))
+        if isinstance(cmd, SetSplitModeCommand):
+            return CommandResult.from_dict(_lcd.set_split_mode(cmd.mode))
+        return CommandResult.ok(message="ok")
+
+    bus.dispatch.side_effect = _dispatch
+    return bus
+
+
 def _make_handler(**overrides) -> LCDHandler:
     """Create LCDHandler with all mocks."""
+    lcd = overrides.pop('lcd', _make_lcd())
     kw = {
-        'lcd': _make_lcd(),
+        'lcd': lcd,
         'widgets': _make_widgets(),
         'make_timer': _make_timer_fn(),
         'data_dir': Path('/tmp/trcc-test'),
+        'bus': _make_bus(lcd),
     }
     kw.update(overrides)
     return LCDHandler(**kw)
@@ -175,7 +202,7 @@ class TestApplyDeviceConfig:
         h = _make_handler()
         h.apply_device_config(self._device(), 320, 320)
         assert h.brightness_level == 1
-        h._lcd.settings.set_brightness.assert_called_with(1)
+        h._lcd.set_brightness.assert_called_with(1)
 
     @patch('trcc.qt_components.lcd_handler.Settings')
     def test_restores_rotation(self, mock_settings):
@@ -183,7 +210,7 @@ class TestApplyDeviceConfig:
         mock_settings.get_device_config.return_value = {'rotation': 90}
         h = _make_handler()
         h.apply_device_config(self._device(), 320, 320)
-        h._lcd.settings.set_rotation.assert_called_with(90)
+        h._lcd.set_rotation.assert_called_with(90)
         h._w['rotation_combo'].setCurrentIndex.assert_called_with(1)
 
     @patch('trcc.qt_components.lcd_handler.Settings')
