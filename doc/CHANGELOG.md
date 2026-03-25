@@ -1,5 +1,14 @@
 # Changelog
 
+## v9.1.6
+
+### Internal
+- **Single render pipeline**: `LCDDevice.tick()` is now the sole render point — returns the rendered image which `TrccApp` routes to the preview via `AppEvent.FRAME_RENDERED`. Eliminates the race between background tick and GUI overlay tick that caused preview to show zero metrics after restart
+- **`BaseHandler` ABC**: `LCDHandler` and `LEDHandler` share a common `BaseHandler` interface (`view_name`, `device_info`, `cleanup`, `stop_timers`). `TRCCApp._lcd_handlers`/`_led_handlers` collapsed into a single `_handlers: dict[str, BaseHandler]`
+- **`LEDHandler` extracted**: moved from inline class in `trcc_app.py` to its own `qt_components/led_handler.py`
+- **`PlatformAdapter` contract tests**: all four platform factories (`LinuxPlatform`, `WindowsPlatform`, `MacOSPlatform`, `BSDPlatform`) now have contract tests that run on Linux — covering the previously 0% `platform.py` files
+- **Windows SCSI test fix**: `_wintypes_mock` autouse fixture keeps `ctypes.wintypes` alive for runtime calls; fixes 3 test failures on Python 3.14
+
 ## v9.1.5
 
 ### Fixes
