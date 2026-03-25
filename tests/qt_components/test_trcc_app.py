@@ -1393,19 +1393,20 @@ class TestDevicePollLEDAutoSelect:
     def test_auto_select_led_calls_show(self, qapp):
         """When _activate_device selects an LED path, handler.show() is called
         if the handler is not yet active."""
+        from trcc.qt_components.led_handler import LEDHandler
         from trcc.qt_components.trcc_app import TRCCApp
 
         mock_info = MagicMock()
         mock_info.path = 'led_path'
 
-        mock_handler = MagicMock()
+        mock_handler = MagicMock(spec=LEDHandler)
         mock_handler.active = False
-        mock_handler.led_port.device_info = mock_info
+        mock_handler.device_info = mock_info
+        mock_handler.view_name = 'led'
 
         with patch.object(TRCCApp, '__init__', lambda self, *a, **kw: None):
             app = TRCCApp.__new__(TRCCApp)
-            app._lcd_handlers = {}
-            app._led_handlers = {'led_path': mock_handler}
+            app._handlers = {'led_path': mock_handler}
             app._active_path = ''
             app._show_view = MagicMock()
 

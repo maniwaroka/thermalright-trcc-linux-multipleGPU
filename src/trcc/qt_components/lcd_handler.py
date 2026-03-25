@@ -29,6 +29,7 @@ from ..core.models import (
     DeviceInfo,
     ThemeInfo,
 )
+from .base import BaseHandler
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class _DataReadyNotifier(QObject):
     ready = Signal()
 
 
-class LCDHandler:
+class LCDHandler(BaseHandler):
     """Handler for a single LCD device — like C# FormCZTV.
 
     Each LCD device gets its own handler with its own LCDDevice.
@@ -92,6 +93,18 @@ class LCDHandler:
         self._rebuild_debounce_timer: QTimer = make_timer(
             self._on_rebuild_debounce, single_shot=True)
         self._pending_metrics: Any = None
+
+    # ── BaseHandler interface ────────────────────────────────────────
+
+    @property
+    def view_name(self) -> str:
+        return 'form'
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        return self._lcd.device_info
+
+    # ── Public API ───────────────────────────────────────────────────
 
     @property
     def display(self) -> LCDDevice:
@@ -169,7 +182,7 @@ class LCDHandler:
                         path, preview if preview.exists() else None)
                     self._select_theme(theme)
                 else:
-                    self._select_theme_from_path(path)
+                    self._select_theme_from_path(path, overlay_config=False)
                 self._restore_mask(cfg)
                 return
             log.warning("Saved theme path not found: %s", saved)
@@ -183,14 +196,18 @@ class LCDHandler:
             for item in sorted(theme_base.path.iterdir()):
                 if item.is_dir() and (item / '00.png').exists():
                     log.info("Fallback theme: %s (persist=%s)", item, persist)
-                    self._select_theme_from_path(item, persist=persist)
+                    self._select_theme_from_path(item, persist=persist, overlay_config=False)
                     break
 
     def _restore_mask(self, cfg: dict) -> None:
-        """Restore mask overlay from saved config (applied on top of theme).
+        """Restore mask image from saved config (applied on top of theme).
 
         Skips if the theme already loaded this mask via its config.json
         reference — avoids invalidating the pre-built video cache.
+
+        Note: overlay config from the mask dir is NOT loaded here.
+        _restore_overlay (called next in apply_device_config) owns the
+        final overlay state and renders once everything is set.
         """
         mask_path = cfg.get('mask_path')
         if not mask_path:
@@ -208,11 +225,7 @@ class LCDHandler:
             log.debug("Mask %s already loaded by theme reference, skipping", mask_dir)
             return
         log.info("Restoring saved mask: %s", mask_dir)
-        result = self._lcd.load_mask_standalone(str(mask_dir))
-        image = result.get('image')
-        if image:
-            self._w['preview'].set_image(image)
-        self._load_theme_overlay_config(mask_dir)
+        self._lcd.load_mask_standalone(str(mask_dir))
 
     def _restore_carousel(self, cfg: dict) -> None:
         carousel = cfg.get('carousel')
@@ -235,6 +248,12 @@ class LCDHandler:
             local._apply_decorations()
 
     def _restore_overlay(self, cfg: dict) -> None:
+        """Restore overlay config and perform the single authoritative render.
+
+        This is the last step of apply_device_config. All prior restore steps
+        (theme, mask) deliberately skip rendering so this method can emit one
+        coherent frame with the correct overlay state to both preview and LCD.
+        """
         overlay = cfg.get('overlay')
         if overlay and isinstance(overlay, dict):
             enabled = overlay.get('enabled', False)
@@ -246,6 +265,8 @@ class LCDHandler:
                 self._lcd.overlay.set_config(config)
             self._w['theme_setting'].set_overlay_enabled(enabled)
             self._lcd.overlay.enable(enabled)
+            if enabled:
+                self._render_and_send()
         else:
             log.debug("No saved overlay config — keeping theme defaults")
 
@@ -275,8 +296,17 @@ class LCDHandler:
         """Public entry for theme selection by path (local theme clicks)."""
         self._select_theme_from_path(path, persist=persist)
 
-    def _select_theme_from_path(self, path: Path, persist: bool = True) -> None:
-        """Load a local/mask theme by directory path."""
+    def _select_theme_from_path(self, path: Path, persist: bool = True,
+                                overlay_config: bool = True) -> None:
+        """Load a local/mask theme by directory path.
+
+        Args:
+            path: Theme directory.
+            persist: Save theme_path to config (False during carousel fallback).
+            overlay_config: Load overlay config from theme dir. Pass False
+                during apply_device_config restore — _restore_overlay owns
+                the final overlay state and renders once everything is set.
+        """
         if not path.exists():
             return
         self._slideshow_timer.stop()
@@ -292,7 +322,8 @@ class LCDHandler:
 
         theme = ThemeInfo.from_directory(path)
         self._select_theme(theme)
-        self._load_theme_overlay_config(path)
+        if overlay_config:
+            self._load_theme_overlay_config(path)
 
         if persist and self._device_key:
             log.info("Saving theme_path: %s (key=%s)", path, self._device_key)
@@ -521,28 +552,30 @@ class LCDHandler:
                 'config': element_data,
             })
 
+    def update_preview(self, image: Any) -> None:
+        """Display a frame that was already rendered and sent to the device.
+
+        Called by TRCCApp._on_frame_main_thread (main thread) after the
+        background tick loop renders an overlay frame and sends it to the LCD.
+        Single source of truth — no re-render here.
+        """
+        self._w['preview'].set_image(image)
+
     def on_overlay_tick(self, metrics: Any) -> None:
-        """Metrics subscriber: render overlay when values change."""
-        if not self._lcd.overlay.enabled:
+        """Metrics tick: handle video cache rebuild debounce only.
+
+        Rendering + LCD send is owned by LCDDevice.tick() in the background
+        loop. TRCCApp mirrors the rendered frame to preview via FRAME_RENDERED.
+        This method only handles the video-playing debounce case, which
+        requires a GUI timer and cannot live in the core tick().
+        """
+        if not self._lcd.overlay.enabled or not self._lcd.video.playing:
             return
 
-        self._lcd.overlay.update_metrics(metrics)
-
-        if self._lcd.video.playing:
-            if self._lcd.overlay.has_changed(metrics):
-                log.debug("overlay_tick: video playing, metrics changed — debouncing cache rebuild")
-                self._pending_metrics = metrics
-                self._rebuild_debounce_timer.start(300)
-            else:
-                log.debug("overlay_tick: video playing, no change — skip")
-            return
-
-        if not self._lcd.overlay.has_changed(metrics):
-            log.debug("overlay_tick: static theme, no change — skip send")
-            return
-
-        log.debug("overlay_tick: static theme, metrics changed — render+send")
-        self._render_and_send()
+        if self._lcd.overlay.has_changed(metrics):
+            log.debug("overlay_tick: video playing, metrics changed — debouncing cache rebuild")
+            self._pending_metrics = metrics
+            self._rebuild_debounce_timer.start(300)
 
     def _on_rebuild_debounce(self) -> None:
         """Fire after metrics settle — rebuild video cache once."""
@@ -679,8 +712,7 @@ class LCDHandler:
         if not image or not self._lcd.auto_send:
             log.debug("_render_and_send: skipped (no image or auto_send off)")
             return
-        if self._is_visible():
-            self._w['preview'].set_image(image)
+        self._w['preview'].set_image(image)
         if not self._lcd.connected:
             log.debug("_render_and_send: skipped (not connected)")
             return

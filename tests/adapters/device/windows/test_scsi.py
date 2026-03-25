@@ -56,24 +56,40 @@ class TestScsiStructures:
 class TestWindowsScsiTransport:
     """Test transport logic with mocked Windows API."""
 
-    def _make_transport(self):
-        """Create transport, mocking ctypes.wintypes import."""
+    @pytest.fixture(autouse=True)
+    def _wintypes_mock(self):
+        """Inject ctypes.wintypes for the whole test — kept alive for runtime calls."""
+        import importlib
+        import sys
+
         wintypes = MagicMock()
         wintypes.USHORT = ctypes.c_ushort
         wintypes.ULONG = ctypes.c_ulong
         wintypes.DWORD = ctypes.c_ulong
 
-        import sys
+        # Python 3.14: reload() no longer auto-sets parent attribute from sys.modules.
+        # Set both so module-level `import ctypes.wintypes` and runtime `ctypes.wintypes.X`
+        # both work.
         sys.modules['ctypes.wintypes'] = wintypes
+        ctypes.wintypes = wintypes  # type: ignore[attr-defined]
 
+        sys.modules.pop(MODULE, None)
+        importlib.import_module(MODULE)
+
+        yield
+
+        sys.modules.pop('ctypes.wintypes', None)
+        sys.modules.pop(MODULE, None)
         try:
-            # Re-import to pick up mocked wintypes
-            import importlib
-            mod = importlib.import_module(MODULE)
-            importlib.reload(mod)
-            return mod.WindowsScsiTransport('\\\\.\\PhysicalDrive2')
-        finally:
-            sys.modules.pop('ctypes.wintypes', None)
+            del ctypes.wintypes  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
+
+    def _make_transport(self):
+        """Create transport (wintypes already mocked by fixture)."""
+        import importlib
+        mod = importlib.import_module(MODULE)
+        return mod.WindowsScsiTransport('\\\\.\\PhysicalDrive2')
 
     def test_init_stores_path(self):
         transport = self._make_transport()

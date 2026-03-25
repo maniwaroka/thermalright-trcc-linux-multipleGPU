@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 class AppEvent(Enum):
     DEVICES_CHANGED   = auto()  # device list rescanned
     DEVICE_CONNECTED  = auto()  # single device came online
+    FRAME_RENDERED    = auto()  # overlay frame rendered — data is {'path': str, 'image': Any}
     DEVICE_LOST       = auto()  # single device went offline
     METRICS_UPDATED   = auto()  # metrics polled — data is SystemMetrics
 
@@ -345,10 +346,13 @@ class TrccApp:
             while not self._metrics_stop.is_set():
                 try:
                     metrics = self._system_svc.all_metrics  # type: ignore[union-attr]
-                    for device in list(self._devices.values()):
+                    for path, device in list(self._devices.items()):
                         try:
                             device.update_metrics(metrics)
-                            device.tick()
+                            image = device.tick()
+                            if image is not None:
+                                self._notify(AppEvent.FRAME_RENDERED,
+                                             {'path': path, 'image': image})
                         except Exception:
                             log.exception("Device update error: %s", device)
                     self._notify(AppEvent.METRICS_UPDATED, metrics)
@@ -388,8 +392,15 @@ class TrccApp:
         return self._builder.build_hardware_fns()
 
     def set_renderer(self, renderer: Any) -> None:
-        """Inject the renderer (QtRenderer) before building LCD devices."""
+        """Inject the renderer into the builder and ImageService.
+
+        Called by InitPlatformCommand handler. Must wire ImageService immediately
+        so that services (ThemeLoader, DisplayService) can use it before build_lcd()
+        is called — e.g. CLI theme-load goes through DeviceService, not LCDDevice.
+        """
+        from ..services.image import ImageService
         self._builder.with_renderer(renderer)
+        ImageService.set_renderer(renderer)
 
     # ── CommandBus factories ─────────────────────────────────────────────────
 

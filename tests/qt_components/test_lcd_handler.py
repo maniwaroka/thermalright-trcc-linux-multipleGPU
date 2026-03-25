@@ -481,26 +481,32 @@ class TestOverlay:
         assert saved[0] == 'dev0'
         assert saved[1] == 'overlay'
 
-    def test_overlay_tick_no_change_noop(self):
+    def test_overlay_tick_noop_when_not_video_playing(self):
+        """on_overlay_tick does nothing for static themes — tick() owns rendering."""
         h = _make_handler()
         h._lcd.overlay.enabled = True
-        h._lcd.overlay.has_changed.return_value = False
         h._lcd.video.playing = False
         metrics = MagicMock()
         h.on_overlay_tick(metrics)
-        h._lcd.overlay.update_metrics.assert_called_with(metrics)
-        # No render since nothing changed
+        # update_metrics is called by the background loop, not on_overlay_tick
+        h._lcd.overlay.update_metrics.assert_not_called()
         h._lcd.overlay.render.assert_not_called()
 
-    def test_overlay_tick_with_change_renders(self):
+    def test_overlay_tick_noop_when_overlay_disabled(self):
+        """on_overlay_tick does nothing when overlay is off."""
         h = _make_handler()
-        h._lcd.overlay.enabled = True
-        h._lcd.overlay.has_changed.return_value = True
-        h._lcd.video.playing = False
-        h._lcd.overlay.render.return_value = {'image': MagicMock()}
+        h._lcd.overlay.enabled = False
+        h._lcd.video.playing = True
         metrics = MagicMock()
         h.on_overlay_tick(metrics)
-        h._lcd.overlay.render.assert_called_once()
+        h._rebuild_debounce_timer.start.assert_not_called()
+
+    def test_update_preview_sets_preview_image(self):
+        """update_preview mirrors a frame rendered by tick() to the preview widget."""
+        h = _make_handler()
+        image = MagicMock()
+        h.update_preview(image)
+        h._w['preview'].set_image.assert_called_once_with(image)
 
     def test_overlay_tick_during_video_debounces_cache_rebuild(self):
         h = _make_handler()

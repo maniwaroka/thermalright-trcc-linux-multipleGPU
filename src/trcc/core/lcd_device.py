@@ -665,21 +665,28 @@ class LCDDevice(Device):
         self._display_svc.media.seek(percent)
         return {"success": True, "message": f"Seek: {percent:.0%}"}
 
-    def tick(self) -> None:
-        """Core metrics loop hook: send overlay frame if metrics changed.
+    def tick(self) -> Any:
+        """Core metrics loop hook: render + send overlay frame if metrics changed.
 
         Called by TrccApp metrics loop from a background thread.
         Video playback is driven exclusively by the GUI animation timer
         (video_tick()) — this method does NOT advance video frames.
+
+        Returns:
+            Rendered image if a new frame was produced, None otherwise.
+            Callers (TrccApp) emit FRAME_RENDERED so GUI adapters can update
+            their preview without re-rendering.
         """
         if not self._display_svc or self._display_svc.is_video_playing():
-            return
+            return None
         if self._display_svc.overlay.enabled and self._display_svc.overlay.would_change(
             self._display_svc.overlay.metrics
         ):
             image = self._display_svc.render_overlay()
             if image:
                 self.send(image)
+                return image
+        return None
 
     def video_tick(self) -> dict | None:
         """Animation timer hook: advance one video frame, return frame data.
