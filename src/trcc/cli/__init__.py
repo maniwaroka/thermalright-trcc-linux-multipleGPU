@@ -34,31 +34,22 @@ _qt_app: "QApplication | None" = None  # kept alive to prevent PySide6 teardown 
 _system_svc = None  # lazy SystemService singleton for CLI commands that need metrics
 
 
-def _ensure_renderer() -> None:
-    """Initialize ImageService renderer for CLI (once).
+def _make_cli_renderer():
+    """Create a QtRenderer for CLI use (offscreen, no display needed).
 
-    QtRenderer requires a QApplication/QCoreApplication to exist
-    (for QFontDatabase, QImage, etc.). Create one if needed.
-
-    QT_QPA_PLATFORM is always forced to 'offscreen' — CLI never opens windows
-    and must not negotiate a display platform even when DISPLAY is set.
-
-    The QApplication instance is stored in _qt_app so the Python wrapper
-    is never garbage-collected — without this, PySide6 destroys Qt on exit
-    in a bad order and segfaults (reproducible with PySide6 ≥ 6.10).
+    Called once by InitPlatformCommand via renderer_factory. Stores the
+    QApplication in _qt_app so PySide6 teardown doesn't segfault on exit.
     """
     global _qt_app
-    from trcc.services.image import ImageService
-    if ImageService._renderer is None:
-        import os
-        os.environ['QT_QPA_PLATFORM'] = 'offscreen'
-        from PySide6.QtWidgets import QApplication
-        if QApplication.instance() is None:
-            log.debug("Creating QApplication for CLI renderer (offscreen)")
-            _qt_app = QApplication([])
-        from trcc.adapters.render.qt import QtRenderer
-        ImageService.set_renderer(QtRenderer())
-        log.debug("CLI renderer initialised: QtRenderer")
+    import os
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+    from PySide6.QtWidgets import QApplication
+    if QApplication.instance() is None:
+        log.debug("Creating QApplication for CLI renderer (offscreen)")
+        _qt_app = QApplication([])
+    from trcc.adapters.render.qt import QtRenderer
+    log.debug("CLI renderer initialised: QtRenderer (offscreen)")
+    return QtRenderer()
 
 
 def _ensure_system(builder) -> None:
@@ -896,7 +887,6 @@ def _cmd_perf(
     )] = False,
 ) -> int:
     """Run CPU + memory performance benchmarks."""
-    _ensure_renderer()
 
     if device:
         from trcc.adapters.device.detector import DeviceDetector
@@ -1133,12 +1123,18 @@ def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
 def main():
     """Main CLI entry point — composition root.
 
-    Initialization order: logging → OS detection → settings.
-    Everything else (device scan, system service) is lazy — triggered by commands.
+    Initialization via commands:
+      1. InitPlatformCommand  — logging, OS, settings, renderer
+      2. DiscoverDevicesCommand — triggered per command that needs a device
     """
     from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import InitPlatformCommand
 
-    trcc_app = TrccApp.init(verbosity=_verbose)
+    trcc_app = TrccApp.init()
+    trcc_app.os_bus.dispatch(InitPlatformCommand(
+        verbosity=_verbose,
+        renderer_factory=_make_cli_renderer,
+    ))
 
     try:
         result = app(standalone_mode=False, obj=trcc_app)

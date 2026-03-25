@@ -658,8 +658,7 @@ class TestSaveTheme:
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
              patch(_PATCH_SETTINGS_CLS, sc), \
              patch("trcc.core.models.ThemeDir", return_value=td), \
-             patch(_PATCH_THEME_SVC, theme_svc), \
-             patch("trcc.cli._ensure_renderer"):
+             patch(_PATCH_THEME_SVC, theme_svc):
             save_theme("MyTheme", video=str(video_file))
 
         call_kwargs = theme_svc.save.call_args[1]

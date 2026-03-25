@@ -70,22 +70,19 @@ class ControllerBuilder:
         from ..adapters.system.linux.platform import LinuxPlatform
         return cls(LinuxPlatform())
 
-    @classmethod
-    def bootstrap(cls, verbosity: int = 0) -> 'ControllerBuilder':
-        """Standard app initialization: logging → OS detection → settings.
+    def bootstrap(self, verbosity: int = 0) -> None:
+        """Bootstrap the platform: logging → OS setup → settings.
 
-        Every composition root (CLI, GUI, API) calls this first.
-        Returns the builder for further configuration.
+        Called by the InitPlatformCommand handler in TrccApp — never directly
+        by composition roots. Commands are boss.
         """
         from ..adapters.infra.logging_setup import StandardLoggingConfigurator
         from ..conf import init_settings
 
         StandardLoggingConfigurator().configure(verbosity=verbosity)
-        builder = cls.for_current_os()
-        setup = builder.build_setup()
+        setup = self.build_setup()
         setup.configure_stdout()
         init_settings(setup)
-        return builder
 
     # ── Fluent setters ─────────────────────────────────────────────
 
@@ -194,8 +191,9 @@ class ControllerBuilder:
         build_fn = self._make_build_services_fn()
         renderer = self._renderer
         if renderer is None:
-            from ..adapters.render.qt import QtRenderer
-            renderer = QtRenderer()
+            raise RuntimeError(
+                "ControllerBuilder: renderer not set. "
+                "Dispatch InitPlatformCommand with renderer_factory before building devices.")
         ImageService.set_renderer(renderer)
         return LCDDevice(
             device_svc=device_svc,

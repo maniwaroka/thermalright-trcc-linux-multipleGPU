@@ -157,12 +157,8 @@ def save_theme(name, *, device=None, video=None, background=None,
         if suffix in ('.mp4', '.gif', '.zt', '.webm', '.avi', '.mkv'):
             video_path = p
             # Load first frame as background thumbnail
-            from trcc.cli import _ensure_renderer
-            _ensure_renderer()
             bg = ImageService.open_and_resize(p, w, h)
         else:
-            from trcc.cli import _ensure_renderer
-            _ensure_renderer()
             bg = ImageService.open_and_resize(p, w, h)
 
     if not bg:
@@ -175,8 +171,6 @@ def save_theme(name, *, device=None, video=None, background=None,
             from trcc.core.models import ThemeDir as TDir
             td = TDir(theme_path)
             if td.bg.exists():
-                from trcc.cli import _ensure_renderer
-                _ensure_renderer()
                 bg = ImageService.open_and_resize(td.bg, w, h)
 
     if not bg:
@@ -206,9 +200,7 @@ def save_theme(name, *, device=None, video=None, background=None,
     mask_img = None
     mask_source = None
     if mask:
-        from trcc.cli import _ensure_renderer
         from trcc.services.overlay import OverlayService
-        _ensure_renderer()
         r = ImageService._r()
         mask_img = OverlayService.load_mask_from_path(Path(mask), r, w, h)
         mask_source = Path(mask)

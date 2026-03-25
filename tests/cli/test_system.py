@@ -2270,8 +2270,7 @@ class TestPerfCommand:
         mock_report = PerfReport()
         mock_report.record_cpu("test_bench", 0.001, 0.01)
 
-        with patch("trcc.services.perf.run_benchmarks", return_value=mock_report), \
-             patch("trcc.cli._ensure_renderer"):
+        with patch("trcc.services.perf.run_benchmarks", return_value=mock_report):
             from trcc.cli import _cmd_perf
             rc = _cmd_perf(device=False)
 
@@ -2284,8 +2283,7 @@ class TestPerfCommand:
         from trcc.core.perf import PerfReport
 
         with patch("trcc.services.perf.run_device_benchmarks",
-                    return_value=PerfReport()), \
-             patch("trcc.cli._ensure_renderer"):
+                    return_value=PerfReport()):
             from trcc.cli import _cmd_perf
             rc = _cmd_perf(device=True)
 
@@ -2302,8 +2300,7 @@ class TestPerfCommand:
         report.record_device("LCD send frame", 0.02, 0.1)
 
         with patch("trcc.services.perf.run_device_benchmarks",
-                    return_value=report), \
-             patch("trcc.cli._ensure_renderer"):
+                    return_value=report):
             from trcc.cli import _cmd_perf
             rc = _cmd_perf(device=True)
 
@@ -2320,8 +2317,7 @@ class TestPerfCommand:
         report.record_device("slow_handshake", 5.0, 2.0)
 
         with patch("trcc.services.perf.run_device_benchmarks",
-                    return_value=report), \
-             patch("trcc.cli._ensure_renderer"):
+                    return_value=report):
             from trcc.cli import _cmd_perf
             rc = _cmd_perf(device=True)
 

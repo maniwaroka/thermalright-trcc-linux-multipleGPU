@@ -16,20 +16,15 @@ from trcc.core.models import parse_hex_color as _parse_hex
 def _connect_or_fail(device: str | None = None) -> int:
     """Connect LCD via os_bus. Returns exit code (0 = success).
 
-    DI chain: TrccApp.init() → set_ipc_handlers()
+    DI chain: os_bus.dispatch(InitPlatformCommand) → renderer wired
               → os_bus.dispatch(DiscoverDevicesCommand) → scan()
               → _wire_bus() → lcd_bus ready.
-    Renderer is initialized on first call (QtRenderer, offscreen for CLI).
     """
-    from trcc.cli import _ensure_renderer
     from trcc.core.app import TrccApp
     from trcc.core.commands.initialize import DiscoverDevicesCommand
     from trcc.core.instance import find_active
     from trcc.ipc import create_lcd_proxy
-    from trcc.services.image import ImageService
-    _ensure_renderer()
     app = TrccApp.get()
-    app.set_renderer(ImageService._r())
     app.set_ipc_handlers(find_active, create_lcd_proxy)
     result = app.os_bus.dispatch(DiscoverDevicesCommand(path=device))
     if not result.success or not app.has_lcd:
@@ -63,10 +58,8 @@ def test(device=None, loop=False, preview=False):
     try:
         import time
 
-        from trcc.cli import _ensure_renderer
         from trcc.services import ImageService
 
-        _ensure_renderer()
         svc = _device._get_service(device)
         if not svc.selected:
             print("No device found.")
@@ -213,10 +206,8 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
 
     from PySide6.QtGui import QImage
 
-    from trcc.cli import _ensure_renderer
     from trcc.services import ImageService
 
-    _ensure_renderer()
     svc = _device._get_service(device)
     if not svc.selected:
         print("No device found.")

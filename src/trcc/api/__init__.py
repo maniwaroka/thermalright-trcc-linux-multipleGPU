@@ -36,21 +36,21 @@ from trcc.adapters.infra.dc_config import DcConfig
 from trcc.adapters.infra.dc_parser import load_config_json
 from trcc.adapters.render.qt import QtRenderer
 from trcc.services import DeviceService, MediaService, OverlayService
-from trcc.services.image import ImageService
 from trcc.services.system import set_instance
 
 log = logging.getLogger(__name__)
 
-# ── Initialization (composition root) ─────────────────────────────────
+# ── Initialization via commands (composition root) ────────────────────
+# 1. InitPlatformCommand  — logging, OS, settings, renderer
+# 2. DiscoverDevicesCommand — triggered per endpoint that needs a device
 
 from trcc.core.app import TrccApp  # noqa: E402
+from trcc.core.commands.initialize import InitPlatformCommand  # noqa: E402
 
 _trcc_app = TrccApp.init()
-
-# ── Renderer (composition root) ───────────────────────────────────────
-
-_renderer = QtRenderer()
-ImageService.set_renderer(_renderer)
+_trcc_app.os_bus.dispatch(InitPlatformCommand(
+    renderer_factory=QtRenderer,
+))
 
 # ── App ────────────────────────────────────────────────────────────────
 
@@ -174,8 +174,9 @@ def start_overlay_loop(
 
     stop_overlay_loop()
 
+    from trcc.services.image import ImageService
     overlay = OverlayService(
-        width, height, renderer=_renderer,
+        width, height, renderer=ImageService._r(),
         load_config_json_fn=load_config_json,
         dc_config_cls=DcConfig,
     )

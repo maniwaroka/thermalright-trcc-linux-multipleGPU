@@ -6,18 +6,27 @@ underlying OS.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from ..command_bus import OSCommand
 
 
 @dataclass(frozen=True)
 class InitPlatformCommand(OSCommand):
-    """Bootstrap the platform: logging, OS detection, settings.
+    """Bootstrap the platform: logging, OS detection, settings, renderer.
 
     Dispatched once at startup by every composition root (CLI, API, GUI).
+    After dispatch: logging configured, settings ready, renderer wired.
+
+    renderer_factory: callable that returns a Renderer — called once inside
+    the handler. CLI passes an offscreen QtRenderer factory; GUI passes a
+    full QtRenderer factory; API does the same. Core never imports Qt.
     """
     verbosity: int = 0
+    renderer_factory: Callable[[], Any] | None = field(
+        default=None, hash=False, compare=False,
+    )
 
 
 @dataclass(frozen=True)

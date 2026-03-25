@@ -401,8 +401,6 @@ async def create_theme(
         return {"success": True, "animated": True, "loop": loop, "resolution": f"{w}x{h}"}
 
     # Static image
-    from trcc.cli import _ensure_renderer
-    _ensure_renderer()
     img = ImageService.open_and_resize(bg_path, w, h)
     if img is None:
         raise HTTPException(status_code=400, detail="Failed to open background image")
@@ -416,9 +414,10 @@ async def create_theme(
     if overlay_config:
         from trcc.adapters.infra.dc_config import DcConfig
         from trcc.adapters.infra.dc_parser import load_config_json
+        from trcc.services.image import ImageService
         from trcc.services.overlay import OverlayService
         overlay_svc = OverlayService(
-            w, h, renderer=api._renderer,
+            w, h, renderer=ImageService._r(),
             load_config_json_fn=load_config_json,
             dc_config_cls=DcConfig,
         )

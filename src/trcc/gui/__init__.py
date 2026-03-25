@@ -24,12 +24,16 @@ def launch(verbosity: int = 0, decorated: bool = False,
     """
     from trcc.core.app import TrccApp
 
-    # ── Bootstrap core ────────────────────────────────────────────────────
-    app = TrccApp.init(verbosity)
-
-    # ── Renderer (LCD needs Qt surface) ──────────────────────────────────
+    # ── Bootstrap via commands ────────────────────────────────────────────
+    # 1. InitPlatformCommand  — logging, OS, settings, renderer
+    # 2. DiscoverDevicesCommand — dispatched after Qt + IPC are ready (below)
+    from trcc.core.commands.initialize import InitPlatformCommand
+    app = TrccApp.init()
     from trcc.adapters.render.qt import QtRenderer
-    app.set_renderer(QtRenderer())
+    app.os_bus.dispatch(InitPlatformCommand(
+        verbosity=verbosity,
+        renderer_factory=QtRenderer,
+    ))
 
     # ── Platform deps ─────────────────────────────────────────────────────
     setup    = app.build_setup()

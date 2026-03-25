@@ -588,9 +588,7 @@ class TestCLIHelpers:
         mock_app = TrccApp.get()
         mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="1 device(s) found")  # type: ignore[union-attr]
         mock_app.has_lcd = True  # type: ignore[union-attr]
-        with patch("trcc.cli._ensure_renderer"), \
-             patch("trcc.services.image.ImageService._r", return_value=MagicMock()):
-            rc = _connect_or_fail()
+        rc = _connect_or_fail()
 
         assert rc == 0
 
@@ -602,9 +600,7 @@ class TestCLIHelpers:
         mock_app = TrccApp.get()
         mock_app.os_bus.dispatch.return_value = CommandResult.fail("No LCD device found.")  # type: ignore[union-attr]
         mock_app.has_lcd = False  # type: ignore[union-attr]
-        with patch("trcc.cli._ensure_renderer"), \
-             patch("trcc.services.image.ImageService._r", return_value=MagicMock()):
-            rc = _connect_or_fail()
+        rc = _connect_or_fail()
 
         assert rc == 1
         assert "trcc report" in capsys.readouterr().out
@@ -618,9 +614,7 @@ class TestCLIHelpers:
         mock_app = TrccApp.get()
         mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="ok")  # type: ignore[union-attr]
         mock_app.has_lcd = True  # type: ignore[union-attr]
-        with patch("trcc.cli._ensure_renderer"), \
-             patch("trcc.services.image.ImageService._r", return_value=MagicMock()):
-            _connect_or_fail("/dev/sg2")
+        _connect_or_fail("/dev/sg2")
 
         mock_app.os_bus.dispatch.assert_called_once_with(DiscoverDevicesCommand(path="/dev/sg2"))  # type: ignore[union-attr]
 

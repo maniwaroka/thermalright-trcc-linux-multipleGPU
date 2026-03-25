@@ -1,5 +1,13 @@
 # Changelog
 
+## v9.1.5
+
+### Fixes
+- **`trcc theme-load` crashes on headless systems** (issue #78): Renderer was not initialized before `lcd_from_service()` on CLI — `theme-load`, `theme-save`, and `screencast` would throw `RuntimeError: ImageService.set_renderer() must be called before use`. Fixed by wiring the renderer at startup via `InitPlatformCommand` so it is always ready before any command runs
+
+### Internal
+- **Pure hexagonal composition root**: `InitPlatformCommand` now does real work — logging, OS setup, settings, renderer injection. `TrccApp.init()` is a minimal container. `ControllerBuilder.bootstrap()` is an instance method called by the command handler. `_ensure_renderer()` and all 10 scattered call sites eliminated. Each composition root (CLI, API, GUI) passes a `renderer_factory` when dispatching `InitPlatformCommand` — core never imports Qt
+
 ## v9.1.4
 
 ### Internal

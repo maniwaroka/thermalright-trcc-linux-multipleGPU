@@ -92,15 +92,17 @@ class TrccApp:
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
     @classmethod
-    def init(cls, verbosity: int = 0) -> TrccApp:
-        """Bootstrap the singleton: logging → OS adapter → settings.
+    def init(cls) -> TrccApp:
+        """Create the singleton and wire the OS command bus.
 
-        Safe to call multiple times — returns the existing instance after
-        first call. Every composition root (CLI, GUI, API) calls this first.
+        Intentionally minimal — no platform bootstrapping here. Composition
+        roots dispatch InitPlatformCommand immediately after to do real init:
+            logging → OS setup → settings → renderer.
+        Then DiscoverDevicesCommand to find hardware.
         """
         if cls._instance is None:
             from .builder import ControllerBuilder
-            builder = ControllerBuilder.bootstrap(verbosity)
+            builder = ControllerBuilder.for_current_os()
             cls._instance = cls(builder)
             cls._instance._os_bus = cls._instance.build_os_bus()
             log.debug("TrccApp initialized")
@@ -259,7 +261,11 @@ class TrccApp:
         from .commands.initialize import DiscoverDevicesCommand, InitPlatformCommand
 
         def _init_platform(cmd: Command) -> CommandResult:
-            # Platform already bootstrapped in init() — nothing to do.
+            verbosity = getattr(cmd, 'verbosity', 0)
+            renderer_factory = getattr(cmd, 'renderer_factory', None)
+            self._builder.bootstrap(verbosity)
+            if renderer_factory is not None:
+                self.set_renderer(renderer_factory())
             return CommandResult.ok(message="platform ready")
 
         def _discover(cmd: Command) -> CommandResult:
