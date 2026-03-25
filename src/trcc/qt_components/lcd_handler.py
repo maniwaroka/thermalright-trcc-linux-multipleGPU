@@ -733,7 +733,11 @@ class LCDHandler(BaseHandler):
     # ── Helpers ─────────────────────────────────────────────────────
 
     def _update_theme_directories(self) -> None:
-        """Reload theme browser directories for current resolution."""
+        """Reload theme browser directories for current resolution.
+
+        Also auto-loads the first local theme if nothing is currently showing
+        (first install: data just finished extracting).
+        """
         w, h = _conf.settings.width, _conf.settings.height
         td = _conf.settings.theme_dir
         if td and td.exists():
@@ -744,6 +748,15 @@ class LCDHandler(BaseHandler):
         if _conf.settings.masks_dir:
             self._w['theme_mask'].set_mask_directory(_conf.settings.masks_dir)
         self._w['theme_mask'].set_resolution(f'{w}x{h}')
+
+        # First install: themes just extracted — load first one onto LCD + preview
+        # overlay_config=True so the theme's default config1.dc (mask + metrics) applies
+        if self._lcd.current_image is None and td and td.exists():
+            for item in sorted(td.path.iterdir()):
+                if item.is_dir() and (item / '00.png').exists():
+                    log.info("Data ready: auto-loading first theme: %s", item)
+                    self._select_theme_from_path(item, persist=True, overlay_config=True)
+                    break
 
     def _resolve_cloud_dirs(self, rotation: int) -> None:
         """Re-resolve cloud dirs for portrait rotation (C# GetWebBackgroundImageDirectory)."""

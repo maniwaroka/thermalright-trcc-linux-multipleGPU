@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.2.1
+
+### Fixes
+- **First install shows blank preview**: after theme archives finish extracting, the first local theme (theme1) now auto-loads onto both the LCD and preview — including mask and metrics overlay from the theme's default config. Previously the preview stayed green until the user manually clicked a theme
+
 ## v9.2.0
 
 ### Enhancements
