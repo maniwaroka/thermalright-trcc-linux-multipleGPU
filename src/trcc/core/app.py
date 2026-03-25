@@ -89,6 +89,9 @@ class TrccApp:
         # IPC handlers — injected by composition roots (CLI/API/GUI entry points)
         self._find_active_fn: FindActiveFn | None = None
         self._proxy_factory_fn: ProxyFactoryFn | None = None
+        # Data extraction callable — injected via init() from builder (DIP)
+        from .ports import EnsureDataFn
+        self._ensure_data_fn: EnsureDataFn | None = None
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -105,6 +108,7 @@ class TrccApp:
             from .builder import ControllerBuilder
             builder = ControllerBuilder.for_current_os()
             cls._instance = cls(builder)
+            cls._instance._ensure_data_fn = builder.build_ensure_data_fn()
             cls._instance._os_bus = cls._instance.build_os_bus()
             log.debug("TrccApp initialized")
         return cls._instance
@@ -190,6 +194,12 @@ class TrccApp:
             self._lcd_device = device
             self._lcd_bus = self.build_lcd_bus(device)
             log.debug("lcd_bus ready for %s", getattr(device, 'device_path', '?'))
+            # Device reports its resolution — ensure theme data is present for it.
+            # Runs in background (EnsureDataCommand spawns a thread) — non-blocking.
+            from .commands.lcd import EnsureDataCommand
+            w, h = device.device_info.resolution
+            if w and h:
+                self._lcd_bus.dispatch(EnsureDataCommand(width=w, height=h))
         elif device.is_led and isinstance(device, _LED):
             self._led_device = device
             self._led_bus = self.build_led_bus(device)
@@ -245,12 +255,9 @@ class TrccApp:
     def build_os_bus(self) -> CommandBus:
         """Return a CommandBus wired to OS/platform handlers.
 
-        Handles: InitPlatformCommand, DiscoverDevicesCommand.
-
-        DiscoverDevicesCommand is the single OS command — it calls scan()
-        which detects hardware, classifies by VID:PID/protocol, connects each
-        device, and wires lcd_bus or led_bus.  After dispatch, check has_lcd /
-        has_led.  Optional path field restricts connection to one device path.
+        All three UI adapters (CLI, API, GUI) dispatch OS commands here.
+        The handler delegates to the platform-specific adapter — callers
+        are completely blind to the underlying OS.
         """
         from .command_bus import (
             Command,
@@ -259,7 +266,18 @@ class TrccApp:
             LoggingMiddleware,
             TimingMiddleware,
         )
-        from .commands.initialize import DiscoverDevicesCommand, InitPlatformCommand
+        from .commands.initialize import (
+            DiscoverDevicesCommand,
+            DownloadThemesCommand,
+            InitPlatformCommand,
+            InstallDesktopCommand,
+            SetLanguageCommand,
+            SetupPlatformCommand,
+            SetupPolkitCommand,
+            SetupSelinuxCommand,
+            SetupUdevCommand,
+            SetupWinUsbCommand,
+        )
 
         def _init_platform(cmd: Command) -> CommandResult:
             verbosity = getattr(cmd, 'verbosity', 0)
@@ -279,11 +297,63 @@ class TrccApp:
                 devices=[getattr(d, 'device_path', str(d)) for d in devices],
             )
 
+        def _set_language(cmd: Command) -> CommandResult:
+            from .i18n import LANGUAGE_NAMES
+            code = getattr(cmd, 'code', 'en')
+            if code not in LANGUAGE_NAMES:
+                return CommandResult.fail(f"Unknown language code: {code}")
+            from trcc.conf import settings
+            settings.lang = code
+            return CommandResult.ok(message=f"Language set to {code}")
+
+        def _setup_platform(cmd: Command) -> CommandResult:
+            auto_yes = getattr(cmd, 'auto_yes', False)
+            rc = self._builder.build_setup().run(auto_yes=auto_yes)
+            return CommandResult.ok() if rc == 0 else CommandResult.fail("Setup failed")
+
+        def _setup_udev(cmd: Command) -> CommandResult:
+            rc = self._builder.build_setup().setup_udev(dry_run=getattr(cmd, 'dry_run', False))
+            return CommandResult.ok() if rc == 0 else CommandResult.fail("udev setup failed")
+
+        def _setup_selinux(_cmd: Command) -> CommandResult:
+            rc = self._builder.build_setup().setup_selinux()
+            return CommandResult.ok() if rc == 0 else CommandResult.fail("SELinux setup failed")
+
+        def _setup_polkit(_cmd: Command) -> CommandResult:
+            rc = self._builder.build_setup().setup_polkit()
+            return CommandResult.ok() if rc == 0 else CommandResult.fail("polkit setup failed")
+
+        def _install_desktop(_cmd: Command) -> CommandResult:
+            rc = self._builder.build_setup().install_desktop()
+            return CommandResult.ok() if rc == 0 else CommandResult.fail("Desktop install failed")
+
+        def _setup_winusb(_cmd: Command) -> CommandResult:
+            rc = self._builder.build_setup().setup_winusb()
+            return CommandResult.ok() if rc == 0 else CommandResult.fail("WinUSB setup failed")
+
+        def _download_themes(cmd: Command) -> CommandResult:
+            from trcc.adapters.infra.theme_downloader import download_pack, list_available
+            pack = getattr(cmd, 'pack', '')
+            force = getattr(cmd, 'force', False)
+            if not pack:
+                list_available()
+                return CommandResult.ok(message="Listed available theme packs")
+            rc = download_pack(pack, force=force)
+            return CommandResult.ok() if rc == 0 else CommandResult.fail(f"Download failed: {pack}")
+
         return (CommandBus()
                 .add_middleware(LoggingMiddleware())
                 .add_middleware(TimingMiddleware(threshold_ms=5000.0))
                 .register(InitPlatformCommand, _init_platform)
-                .register(DiscoverDevicesCommand, _discover))
+                .register(DiscoverDevicesCommand, _discover)
+                .register(SetLanguageCommand, _set_language)
+                .register(SetupPlatformCommand, _setup_platform)
+                .register(SetupUdevCommand, _setup_udev)
+                .register(SetupSelinuxCommand, _setup_selinux)
+                .register(SetupPolkitCommand, _setup_polkit)
+                .register(InstallDesktopCommand, _install_desktop)
+                .register(SetupWinUsbCommand, _setup_winusb)
+                .register(DownloadThemesCommand, _download_themes))
 
     # ── DI: device construction ──────────────────────────────────────────────
 
@@ -418,6 +488,7 @@ class TrccApp:
         )
         from .commands.lcd import (
             EnableOverlayCommand,
+            EnsureDataCommand,
             ExportThemeCommand,
             ImportThemeCommand,
             LoadMaskCommand,
@@ -483,9 +554,27 @@ class TrccApp:
         def _reset_display(cmd: Command) -> CommandResult:
             return CommandResult.from_dict(lcd.reset())
 
+        def _ensure_data(cmd: Command) -> CommandResult:
+            import threading
+            c = cast(EnsureDataCommand, cmd)
+            import trcc.conf as _conf
+            ensure_fn = self._ensure_data_fn
+
+            def _bg() -> None:
+                if ensure_fn is not None:
+                    ensure_fn(c.width, c.height)
+                _conf.settings._resolve_paths()
+                lcd.notify_data_ready()
+
+            threading.Thread(target=_bg, daemon=True, name="data-extract").start()
+            return CommandResult.ok(message=f"Data download started for {c.width}x{c.height}")
+
         def _set_resolution(cmd: Command) -> CommandResult:
             c = cast(SetResolutionCommand, cmd)
-            return CommandResult.from_dict(lcd.set_resolution(c.width, c.height))
+            result = lcd.set_resolution(c.width, c.height)
+            if c.width and c.height:
+                _ensure_data(EnsureDataCommand(width=c.width, height=c.height))
+            return CommandResult.from_dict(result)
 
         def _play_video_loop(cmd: Command) -> CommandResult:
             c = cast(PlayVideoLoopCommand, cmd)
@@ -521,7 +610,8 @@ class TrccApp:
                 .register(PlayVideoLoopCommand, _play_video_loop)
                 .register(SetSplitModeCommand, _set_split_mode)
                 .register(EnableOverlayCommand, _enable_overlay)
-                .register(UpdateMetricsLCDCommand, _update_metrics))
+                .register(UpdateMetricsLCDCommand, _update_metrics)
+                .register(EnsureDataCommand, _ensure_data))
 
     def build_lcd_gui_bus(self, lcd: LCDDevice) -> CommandBus:
         """Return a CommandBus wired for GUI — adds RateLimitMiddleware.

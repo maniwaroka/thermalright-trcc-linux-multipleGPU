@@ -89,6 +89,7 @@ class Renderer(ABC):
 
     @abstractmethod
     def get_font(self, size: int, bold: bool = False,
+                 italic: bool = False,
                  font_name: str | None = None) -> Any:
         """Resolve and cache a font at given size."""
 
@@ -489,6 +490,45 @@ class PlatformSetup(ABC):
         Windows: True.  All other platforms: False.
         """
         return False
+
+    # ── Platform-specific setup operations ───────────────────────────────────
+    # Default implementations return 1 (unsupported / no-op).
+    # Each platform override calls its own native implementation.
+
+    def setup_udev(self, dry_run: bool = False) -> int:
+        """Install udev rules for device access. Linux only.
+
+        Returns 0 on success, 1 on failure or unsupported platform.
+        """
+        return 1
+
+    def setup_selinux(self) -> int:
+        """Install SELinux policy module. Linux only.
+
+        Returns 0 on success, 1 on failure or unsupported platform.
+        """
+        return 1
+
+    def setup_polkit(self) -> int:
+        """Install polkit policy for passwordless sensor access. Linux only.
+
+        Returns 0 on success, 1 on failure or unsupported platform.
+        """
+        return 1
+
+    def install_desktop(self) -> int:
+        """Install .desktop menu entry and icon. Linux only.
+
+        Returns 0 on success, 1 on failure or unsupported platform.
+        """
+        return 1
+
+    def setup_winusb(self) -> int:
+        """Guide WinUSB driver installation. Windows only.
+
+        Returns 0 on success, 1 on failure or unsupported platform.
+        """
+        return 1
 
     def configure_stdout(self) -> None:
         """Reconfigure stdout/stderr encoding for the CLI entry point.

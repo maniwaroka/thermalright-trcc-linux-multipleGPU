@@ -39,14 +39,12 @@ class DisplayService:
                  devices: DeviceService,
                  overlay: OverlayService,
                  media: MediaService,
-                 ensure_data_fn: Any = None,
                  theme_svc: Any = None,
                  cpu_percent_fn: Callable[[], float] | None = None) -> None:
         # Sub-services (injected)
         self.devices = devices
         self.overlay = overlay
         self.media = media
-        self._ensure_data_fn = ensure_data_fn
         self._cpu_percent_fn = cpu_percent_fn
 
         # Theme loader (injected with same sub-services)
@@ -106,24 +104,12 @@ class DisplayService:
             self._setup_dirs(self.lcd_width, self.lcd_height)
 
     def _setup_dirs(self, width: int, height: int) -> None:
-        """Extract, locate, and set theme/web/mask directories.
+        """Locate and set theme/web/mask directories from current disk state.
 
-        Data download/extraction runs in a background thread to avoid
-        blocking the Qt main thread (#70). Directories are updated
-        immediately from whatever is already on disk. When extraction
-        finishes, on_data_ready callback notifies the GUI to refresh.
+        Data download is handled by EnsureDataCommand (dispatched by
+        SetResolutionCommand on the LCD bus). This method only reads
+        what is already on disk — no downloading, no background threads.
         """
-        if self._ensure_data_fn is not None:
-            import threading
-            fn = self._ensure_data_fn
-
-            def _bg():
-                fn(width, height)
-                _conf.settings._resolve_paths()
-                if self.on_data_ready is not None:
-                    self.on_data_ready()
-
-            threading.Thread(target=_bg, daemon=True, name="data-extract").start()
         _conf.settings._resolve_paths()
 
         td = _conf.settings.theme_dir

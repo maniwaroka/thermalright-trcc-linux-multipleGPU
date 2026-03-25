@@ -33,13 +33,14 @@ def set_language(code: str) -> dict:
     """Set the application language by ISO 639-1 code."""
     from fastapi import HTTPException
 
-    from trcc.conf import settings
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import SetLanguageCommand
     from trcc.core.i18n import LANGUAGE_NAMES
 
-    if code not in LANGUAGE_NAMES:
+    result = TrccApp.get().os_bus.dispatch(SetLanguageCommand(code=code))
+    if not result.success:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown language code '{code}'. Use GET /i18n/languages for valid codes.",
         )
-    settings.lang = code
-    return {"code": code, "name": LANGUAGE_NAMES[code]}
+    return {"code": code, "name": LANGUAGE_NAMES.get(code, code)}

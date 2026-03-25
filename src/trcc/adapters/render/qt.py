@@ -122,18 +122,26 @@ class QtRenderer(Renderer):
         painter.end()
 
     def get_font(self, size: int, bold: bool = False,
+                 italic: bool = False,
                  font_name: str | None = None) -> Any:
-        key = (size, bold, font_name)
+        key = (size, bold, italic, font_name)
         if key in self._font_cache:
             return self._font_cache[key]
 
-        font = self._resolve_font(size, bold, font_name)
+        font = self._resolve_font(size, bold, italic, font_name)
         self._font_cache[key] = font
         return font
 
     def _resolve_font(self, size: int, bold: bool,
+                      italic: bool,
                       font_name: str | None) -> QFont:
         """Resolve font name → QFont with the same fallback chain as FontResolver."""
+        def _apply(f: QFont) -> QFont:
+            f.setPixelSize(size)
+            f.setBold(bold)
+            f.setItalic(italic)
+            return f
+
         # User-specified font name
         if font_name and font_name != 'Microsoft YaHei':
             path = self._resolve_font_path(font_name, bold)
@@ -142,10 +150,7 @@ class QtRenderer(Renderer):
                 if font_id >= 0:
                     families = QFontDatabase.applicationFontFamilies(font_id)
                     if families:
-                        f = QFont(families[0])
-                        f.setPixelSize(size)
-                        f.setBold(bold)
-                        return f
+                        return _apply(QFont(families[0]))
 
         # Search bundled + system fonts
         bold_suffix = '-Bold' if bold else ''
@@ -165,19 +170,12 @@ class QtRenderer(Renderer):
                 if os.path.exists(path):
                     font_id = QFontDatabase.addApplicationFont(path)
                     if font_id >= 0:
-                        families = QFontDatabase.applicationFontFamilies(
-                            font_id)
+                        families = QFontDatabase.applicationFontFamilies(font_id)
                         if families:
-                            f = QFont(families[0])
-                            f.setPixelSize(size)
-                            f.setBold(bold)
-                            return f
+                            return _apply(QFont(families[0]))
 
         # Fallback: Qt default sans-serif
-        f = QFont('Sans')
-        f.setPixelSize(size)
-        f.setBold(bold)
-        return f
+        return _apply(QFont('Sans'))
 
     def _resolve_font_path(self, font_name: str,
                            bold: bool) -> str | None:

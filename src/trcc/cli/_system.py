@@ -33,8 +33,10 @@ def setup_udev(dry_run: bool = False) -> int:
     err = _require_linux("setup-udev")
     if err is not None:
         return err
-    from trcc.adapters.system.linux.setup import setup_udev as _fn
-    return _fn(dry_run=dry_run)
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import SetupUdevCommand
+    result = TrccApp.get().os_bus.dispatch(SetupUdevCommand(dry_run=dry_run))
+    return 0 if result.success else 1
 
 
 def setup_selinux() -> int:
@@ -42,8 +44,10 @@ def setup_selinux() -> int:
     err = _require_linux("setup-selinux")
     if err is not None:
         return err
-    from trcc.adapters.system.linux.setup import setup_selinux as _fn
-    return _fn()
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import SetupSelinuxCommand
+    result = TrccApp.get().os_bus.dispatch(SetupSelinuxCommand())
+    return 0 if result.success else 1
 
 
 def setup_polkit() -> int:
@@ -51,8 +55,10 @@ def setup_polkit() -> int:
     err = _require_linux("setup-polkit")
     if err is not None:
         return err
-    from trcc.adapters.system.linux.setup import setup_polkit as _fn
-    return _fn()
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import SetupPolkitCommand
+    result = TrccApp.get().os_bus.dispatch(SetupPolkitCommand())
+    return 0 if result.success else 1
 
 
 def install_desktop() -> int:
@@ -60,8 +66,10 @@ def install_desktop() -> int:
     err = _require_linux("install-desktop")
     if err is not None:
         return err
-    from trcc.adapters.system.linux.setup import install_desktop as _fn
-    return _fn()
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import InstallDesktopCommand
+    result = TrccApp.get().os_bus.dispatch(InstallDesktopCommand())
+    return 0 if result.success else 1
 
 
 def _sudo_run(cmd):
@@ -133,7 +141,7 @@ def show_info(builder=None, *, preview: bool = False, metric: str | None = None)
 # (see import block above). CLI entry points in __init__.py call them directly.
 
 
-def setup_winusb():
+def setup_winusb() -> int:
     """Guide WinUSB driver installation for Thermalright USB devices (Windows only).
 
     SCSI devices (Frozen Warframe, Elite Vision, etc.) use the default
@@ -146,35 +154,10 @@ def setup_winusb():
         print("This command is for Windows only.")
         print("On Linux, use: trcc setup-udev")
         return 1
-
-    # Detect which devices are connected and need WinUSB
-    from trcc.core.models import BULK_DEVICES, HID_LCD_DEVICES, LED_DEVICES, LY_DEVICES
-    winusb_vids = set()
-    for registry in (BULK_DEVICES, HID_LCD_DEVICES, LED_DEVICES, LY_DEVICES):
-        for vid, pid in registry:
-            winusb_vids.add((vid, pid))
-
-    print("\n  TRCC WinUSB Driver Setup\n")
-    print("  SCSI devices (Frozen Warframe, Elite Vision, CZTV, etc.)")
-    print("  use the default USB Mass Storage driver — no setup needed.\n")
-    print("  HID, Bulk, and LY devices need the WinUSB driver.")
-    print("  Install it using Zadig (free, open-source):\n")
-    print("  1. Download Zadig: https://zadig.akeo.ie/")
-    print("  2. Run Zadig → Options → List All Devices")
-    print("  3. Select your Thermalright device from the dropdown")
-    print("  4. Set target driver to WinUSB")
-    print("  5. Click 'Replace Driver' (or 'Install Driver')")
-    print("  6. Replug the USB device\n")
-    print("  Devices that need WinUSB:")
-    for vid, pid in sorted(winusb_vids):
-        # Look up friendly name
-        for registry in (BULK_DEVICES, HID_LCD_DEVICES, LED_DEVICES, LY_DEVICES):
-            if (vid, pid) in registry:
-                entry = registry[(vid, pid)]
-                print(f"    {vid:04X}:{pid:04X}  {entry.product}")
-                break
-    print()
-    return 0
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import SetupWinUsbCommand
+    result = TrccApp.get().os_bus.dispatch(SetupWinUsbCommand())
+    return 0 if result.success else 1
 
 
 # _detect_install_method moved to core/platform.py as detect_install_method()
@@ -313,14 +296,8 @@ def report(detect_fn=None):
 def download_themes(pack=None, show_list=False, force=False, show_info=False):
     """Download theme packs (like spacy download)."""
     try:
-        from trcc.adapters.infra.theme_downloader import download_pack, list_available
-        from trcc.adapters.infra.theme_downloader import show_info as pack_info
-
-        if show_list or pack is None:
-            list_available()
-            return 0
-
-        if show_info:
+        if show_info and pack:
+            from trcc.adapters.infra.theme_downloader import show_info as pack_info
             pack_info(pack)
             return 0
 
@@ -328,7 +305,12 @@ def download_themes(pack=None, show_list=False, force=False, show_info=False):
             from trcc.conf import Settings
             Settings.clear_installed_resolutions()
 
-        return download_pack(pack, force=force)
+        from trcc.core.app import TrccApp
+        from trcc.core.commands.initialize import DownloadThemesCommand
+        dispatch_pack = "" if show_list else (pack or "")
+        result = TrccApp.get().os_bus.dispatch(
+            DownloadThemesCommand(pack=dispatch_pack, force=force))
+        return 0 if result.success else 1
 
     except Exception as e:
         print(f"Error: {e}")
@@ -352,5 +334,7 @@ def _confirm(prompt: str, auto_yes: bool) -> bool:
 
 def run_setup(auto_yes: bool = False) -> int:
     """Interactive setup wizard — dispatches to platform-specific adapter."""
-    from trcc.core.builder import ControllerBuilder
-    return ControllerBuilder.for_current_os().build_setup().run(auto_yes=auto_yes)
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.initialize import SetupPlatformCommand
+    result = TrccApp.get().os_bus.dispatch(SetupPlatformCommand(auto_yes=auto_yes))
+    return 0 if result.success else 1

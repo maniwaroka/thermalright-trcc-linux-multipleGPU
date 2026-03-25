@@ -338,3 +338,119 @@ class TestCloudThemeStateWiring:
             display_svc.save_theme('CloudSave', tmp_path)
 
         assert mock_save.call_args.kwargs.get('mask_source_dir') == mask_dir
+
+
+# ── ThemePersistence.export_config / import_config ───────────────────────────
+
+
+class TestThemePersistenceExportImport:
+    """Contracts for export_config and import_config."""
+
+    def test_export_no_theme_path_returns_false(self, tmp_path: Path) -> None:
+        """export_config with no current theme path returns (False, 'No theme loaded')."""
+        p = ThemePersistence()
+        ok, msg = p.export_config(tmp_path / 'out.json', None, 320, 320)
+        assert ok is False
+        assert 'No theme loaded' in msg
+
+    def test_export_tr_no_theme_svc_returns_false(self, tmp_path: Path) -> None:
+        """export_config for .tr file without theme_svc returns (False, 'Export not available...')."""
+        p = ThemePersistence(theme_svc=None)
+        ok, msg = p.export_config(
+            tmp_path / 'out.tr', tmp_path / 'theme', 320, 320)
+        assert ok is False
+        assert 'Export not available' in msg
+
+    def test_export_tr_delegates_to_theme_svc(self, tmp_path: Path) -> None:
+        """export_config for .tr file with theme_svc calls theme_svc.export_tr."""
+        theme_svc = MagicMock()
+        theme_svc.export_tr.return_value = (True, 'Exported')
+        p = ThemePersistence(theme_svc=theme_svc)
+        current = tmp_path / 'theme'
+        export_path = tmp_path / 'out.tr'
+        ok, msg = p.export_config(export_path, current, 320, 320)
+        theme_svc.export_tr.assert_called_once_with(current, export_path)
+        assert ok is True
+
+    def test_export_json_writes_file(self, tmp_path: Path) -> None:
+        """export_config for JSON path writes config file and returns (True, ...)."""
+        import json
+        p = ThemePersistence()
+        current = tmp_path / 'theme'
+        export_path = tmp_path / 'out.json'
+        ok, msg = p.export_config(export_path, current, 320, 320)
+        assert ok is True
+        assert export_path.exists()
+        data = json.loads(export_path.read_text())
+        assert data['theme_path'] == str(current)
+        assert data['resolution'] == '320x320'
+
+    def test_export_json_write_failure_returns_false(self, tmp_path: Path) -> None:
+        """export_config for JSON returns (False, ...) when write fails."""
+        p = ThemePersistence()
+        # Use a path whose parent doesn't exist — write will fail
+        bad_path = tmp_path / 'nonexistent' / 'out.json'
+        ok, msg = p.export_config(bad_path, tmp_path / 'theme', 320, 320)
+        assert ok is False
+        assert 'Export failed' in msg
+
+    def test_import_tr_no_theme_svc_returns_false(self, tmp_path: Path) -> None:
+        """import_config for .tr file without theme_svc returns (False, 'Import not available...')."""
+        p = ThemePersistence(theme_svc=None)
+        ok, msg = p.import_config(tmp_path / 'in.tr', tmp_path, (320, 320))
+        assert ok is False
+        assert 'Import not available' in msg
+
+    def test_import_tr_delegates_to_theme_svc(self, tmp_path: Path) -> None:
+        """import_config for .tr file with theme_svc calls theme_svc.import_tr."""
+        theme_svc = MagicMock()
+        theme_svc.import_tr.return_value = (True, MagicMock())
+        p = ThemePersistence(theme_svc=theme_svc)
+        import_path = tmp_path / 'in.tr'
+        ok, _ = p.import_config(import_path, tmp_path, (320, 320))
+        theme_svc.import_tr.assert_called_once_with(import_path, tmp_path, (320, 320))
+        assert ok is True
+
+    def test_import_json_valid_path_returns_theme_info(
+        self, tmp_path: Path, renderer: Any,
+    ) -> None:
+        """import_config for JSON with a valid theme_path returns (True, ThemeInfo)."""
+        import json
+
+        from trcc.core.models import ThemeInfo
+        # Create a real theme directory so ThemeInfo.from_directory works
+        theme_dir = tmp_path / 'MyTheme'
+        theme_dir.mkdir()
+        bg = renderer.create_surface(320, 320, (0, 0, 255))
+        bg.save(str(theme_dir / '00.png'))
+
+        config_file = tmp_path / 'in.json'
+        config_file.write_text(json.dumps({'theme_path': str(theme_dir)}))
+
+        p = ThemePersistence()
+        ok, result = p.import_config(config_file, tmp_path, (320, 320))
+        assert ok is True
+        assert isinstance(result, ThemeInfo)
+
+    def test_import_json_missing_theme_path_returns_false(
+        self, tmp_path: Path,
+    ) -> None:
+        """import_config for JSON when theme_path does not exist returns (False, 'Theme path...')."""
+        import json
+        config_file = tmp_path / 'in.json'
+        config_file.write_text(json.dumps({
+            'theme_path': str(tmp_path / 'nonexistent'),
+        }))
+        p = ThemePersistence()
+        ok, msg = p.import_config(config_file, tmp_path, (320, 320))
+        assert ok is False
+        assert 'Theme path' in msg
+
+    def test_import_json_corrupt_returns_false(self, tmp_path: Path) -> None:
+        """import_config for corrupt JSON returns (False, 'Import failed...')."""
+        bad_file = tmp_path / 'bad.json'
+        bad_file.write_text('NOT JSON {{{{')
+        p = ThemePersistence()
+        ok, msg = p.import_config(bad_file, tmp_path, (320, 320))
+        assert ok is False
+        assert 'Import failed' in msg

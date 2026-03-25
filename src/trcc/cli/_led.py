@@ -44,15 +44,14 @@ def _print_result(result: dict, *, preview: bool = False) -> int:
     return 0
 
 
-def _led_command(builder, method: str, *args, preview: bool = False, **kwargs) -> int:
-    """Generic: connect LED, call device method, print result."""
+def _led_dispatch(cmd_cls, preview: bool = False, **fields) -> int:
+    """Connect LED, dispatch a command through the bus, print result."""
     rc = _connect_or_fail()
     if rc:
         return rc
     from trcc.core.app import TrccApp
-    led = TrccApp.get().led_device
-    assert led is not None
-    return _print_result(getattr(led, method)(*args, **kwargs), preview=preview)
+    result = TrccApp.get().led_bus.dispatch(cmd_cls(**fields))
+    return _print_result(result.payload, preview=preview)
 
 
 # =========================================================================
@@ -96,10 +95,8 @@ def set_mode(builder, mode_name, *, preview=False):
     if rc:
         return rc
     from trcc.core.app import TrccApp
-    led = TrccApp.get().led_device
-    assert led is not None
-
-    result = led.set_mode(mode_name)
+    from trcc.core.commands.led import SetLEDModeCommand
+    result = TrccApp.get().led_bus.dispatch(SetLEDModeCommand(mode=mode_name)).payload
     if not result["success"]:
         print(f"Error: {result['error']}")
         if result.get("available"):
@@ -108,19 +105,23 @@ def set_mode(builder, mode_name, *, preview=False):
 
     if result["animated"]:
         from trcc.cli import _ensure_system
+        from trcc.core.commands.led import UpdateMetricsLEDCommand
         from trcc.services import LEDService
         from trcc.services.system import get_all_metrics
 
         _ensure_system(builder)
+        led_bus = TrccApp.get().led_bus
+        led_device = TrccApp.get().led_device
+        assert led_device is not None
         print(f"LED mode: {mode_name} (running, Ctrl+C to stop)")
         _metric_ticks = 0
         try:
             while True:
                 # Refresh sensor metrics every 20 ticks (~1 s)
                 if _metric_ticks % 20 == 0:
-                    led.update_metrics(get_all_metrics())
+                    led_bus.dispatch(UpdateMetricsLEDCommand(metrics=get_all_metrics()))
                 _metric_ticks += 1
-                tick = led.tick_with_result()
+                tick = led_device.tick_with_result()
                 if preview and tick.get("colors"):
                     print(LEDService.zones_to_ansi(tick["colors"]),
                           end='\r', flush=True)
@@ -152,7 +153,8 @@ def set_led_brightness(builder, level, *, preview=False):
 @_cli_handler
 def led_off(builder):
     """Turn LEDs off."""
-    return _led_command(builder, "off")
+    from trcc.core.commands.led import ToggleLEDCommand
+    return _led_dispatch(ToggleLEDCommand, on=False)
 
 
 @_cli_handler
@@ -187,43 +189,50 @@ def set_zone_color(builder, zone: int, hex_color: str, *, preview: bool = False)
 @_cli_handler
 def set_zone_mode(builder, zone: int, mode_name: str, *, preview: bool = False):
     """Set effect mode for a specific LED zone."""
-    return _led_command(builder, "set_zone_mode", zone, mode_name, preview=preview)
+    from trcc.core.commands.led import SetZoneModeCommand
+    return _led_dispatch(SetZoneModeCommand, preview=preview, zone=zone, mode=mode_name)
 
 
 @_cli_handler
 def set_zone_brightness(builder, zone: int, level: int, *, preview: bool = False):
     """Set brightness for a specific LED zone (0-100)."""
-    return _led_command(builder, "set_zone_brightness", zone, level, preview=preview)
+    from trcc.core.commands.led import SetZoneBrightnessCommand
+    return _led_dispatch(SetZoneBrightnessCommand, preview=preview, zone=zone, level=level)
 
 
 @_cli_handler
 def toggle_zone(builder, zone: int, on: bool):
     """Toggle a specific LED zone on/off."""
-    return _led_command(builder, "toggle_zone", zone, on)
+    from trcc.core.commands.led import ToggleZoneCommand
+    return _led_dispatch(ToggleZoneCommand, zone=zone, on=on)
 
 
 @_cli_handler
 def set_zone_sync(builder, enabled: bool, *, interval: int | None = None):
     """Enable/disable zone sync (circulate or select-all depending on style)."""
-    return _led_command(builder, "set_zone_sync", enabled, interval=interval)
+    from trcc.core.commands.led import SetZoneSyncCommand
+    return _led_dispatch(SetZoneSyncCommand, enabled=enabled, interval=interval)
 
 
 @_cli_handler
 def toggle_segment(builder, index: int, on: bool):
     """Toggle a specific LED segment on/off."""
-    return _led_command(builder, "toggle_segment", index, on)
+    from trcc.core.commands.led import ToggleSegmentCommand
+    return _led_dispatch(ToggleSegmentCommand, index=index, on=on)
 
 
 @_cli_handler
 def set_clock_format(builder, is_24h: bool):
     """Set LED segment display clock format (12h/24h)."""
-    return _led_command(builder, "set_clock_format", is_24h)
+    from trcc.core.commands.led import SetClockFormatCommand
+    return _led_dispatch(SetClockFormatCommand, is_24h=is_24h)
 
 
 @_cli_handler
 def set_temp_unit(builder, unit: str):
     """Set LED segment display temperature unit (C/F)."""
-    return _led_command(builder, "set_temp_unit", unit)
+    from trcc.core.commands.led import SetTempUnitLEDCommand
+    return _led_dispatch(SetTempUnitLEDCommand, unit=unit)
 
 
 # =========================================================================

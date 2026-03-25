@@ -142,31 +142,37 @@ class LEDEffectEngine:
         return [(anim_r, anim_g, anim_b)] * seg_count
 
     def _tick_colorful_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
-        """QCJB_Timer: 6-phase color gradient cycle, period=168 ticks."""
+        """QCJB_Timer: 6-phase color gradient cycle with per-segment offset, period=168 ticks.
+
+        Each segment gets a different position in the 168-tick cycle, spread
+        evenly — same approach as _tick_rainbow_for across the 768-entry table.
+        """
         timer = self._state.rgb_timer
         period = 168
         phase_len = 28
+        seg_offset = period // max(seg_count, 1)
 
-        phase = timer // phase_len
-        offset = timer % phase_len
-        t = int(255 * offset / (phase_len - 1)) if phase_len > 1 else 0
-
-        if phase == 0:
-            r, g, b = 255, t, 0
-        elif phase == 1:
-            r, g, b = 255 - t, 255, 0
-        elif phase == 2:
-            r, g, b = 0, 255, t
-        elif phase == 3:
-            r, g, b = 0, 255 - t, 255
-        elif phase == 4:
-            r, g, b = t, 0, 255
-        else:
-            r, g, b = 255, 0, 255 - t
+        colors: List[Tuple[int, int, int]] = []
+        for i in range(seg_count):
+            t_i = (timer + i * seg_offset) % period
+            phase = t_i // phase_len
+            off = t_i % phase_len
+            t = int(255 * off / (phase_len - 1)) if phase_len > 1 else 0
+            if phase == 0:
+                colors.append((255, t, 0))
+            elif phase == 1:
+                colors.append((255 - t, 255, 0))
+            elif phase == 2:
+                colors.append((0, 255, t))
+            elif phase == 3:
+                colors.append((0, 255 - t, 255))
+            elif phase == 4:
+                colors.append((t, 0, 255))
+            else:
+                colors.append((255, 0, 255 - t))
 
         self._state.rgb_timer = (timer + 1) % period
-
-        return [(r, g, b)] * seg_count
+        return colors
 
     def _tick_rainbow_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
         """CHMS_Timer: 768-entry RGB table with per-segment offset."""

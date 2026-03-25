@@ -121,9 +121,14 @@ def select_device(device_id: int) -> dict:
                 return {"selected": dev.name, "resolution": dev.resolution}
             w_res, h_res = dev.resolution or (320, 320)
 
-            # Download/extract theme data for this resolution (no-op if cached)
-            from trcc.adapters.infra.data_repository import DataManager
-            DataManager.ensure_all(w_res, h_res)
+            # Download/extract theme data for this resolution via command bus
+            # (lcd_bus may not be wired yet in edge-case fallback paths — skip gracefully)
+            from trcc.core.app import TrccApp
+            from trcc.core.commands.lcd import EnsureDataCommand
+            try:
+                TrccApp.get().lcd_bus.dispatch(EnsureDataCommand(width=w_res, height=h_res))
+            except RuntimeError:
+                pass
 
             api.set_current_image(ImageService.solid_color(0, 0, 0, w_res, h_res))
 

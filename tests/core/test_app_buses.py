@@ -76,16 +76,13 @@ class TestBuildLcdBus:
         assert isinstance(app.build_lcd_bus(_mock_lcd()), CommandBus)
 
     def test_has_logging_middleware(self, app):
-        bus = app.build_lcd_bus(_mock_lcd())
-        assert any(isinstance(m, LoggingMiddleware) for m in bus._middleware)
+        assert app.build_lcd_bus(_mock_lcd()).has_middleware(LoggingMiddleware)
 
     def test_has_timing_middleware(self, app):
-        bus = app.build_lcd_bus(_mock_lcd())
-        assert any(isinstance(m, TimingMiddleware) for m in bus._middleware)
+        assert app.build_lcd_bus(_mock_lcd()).has_middleware(TimingMiddleware)
 
     def test_no_rate_limit_middleware(self, app):
-        bus = app.build_lcd_bus(_mock_lcd())
-        assert not any(isinstance(m, RateLimitMiddleware) for m in bus._middleware)
+        assert not app.build_lcd_bus(_mock_lcd()).has_middleware(RateLimitMiddleware)
 
     def test_dispatches_set_brightness(self, app):
         lcd = _mock_lcd()
@@ -133,13 +130,12 @@ class TestBuildLcdBus:
 
 class TestBuildLcdGuiBus:
     def test_has_rate_limit_middleware(self, app):
-        bus = app.build_lcd_gui_bus(_mock_lcd())
-        assert any(isinstance(m, RateLimitMiddleware) for m in bus._middleware)
+        assert app.build_lcd_gui_bus(_mock_lcd()).has_middleware(RateLimitMiddleware)
 
     def test_also_has_logging_and_timing(self, app):
         bus = app.build_lcd_gui_bus(_mock_lcd())
-        assert any(isinstance(m, LoggingMiddleware) for m in bus._middleware)
-        assert any(isinstance(m, TimingMiddleware) for m in bus._middleware)
+        assert bus.has_middleware(LoggingMiddleware)
+        assert bus.has_middleware(TimingMiddleware)
 
     def test_dispatches_set_brightness(self, app):
         lcd = _mock_lcd()
@@ -154,8 +150,7 @@ class TestBuildLedBus:
         assert isinstance(app.build_led_bus(_mock_led()), CommandBus)
 
     def test_no_rate_limit_middleware(self, app):
-        bus = app.build_led_bus(_mock_led())
-        assert not any(isinstance(m, RateLimitMiddleware) for m in bus._middleware)
+        assert not app.build_led_bus(_mock_led()).has_middleware(RateLimitMiddleware)
 
     def test_dispatches_set_led_color(self, app):
         led = _mock_led()
@@ -198,8 +193,7 @@ class TestBuildLedBus:
 
 class TestBuildLedGuiBus:
     def test_has_rate_limit_middleware(self, app):
-        bus = app.build_led_gui_bus(_mock_led())
-        assert any(isinstance(m, RateLimitMiddleware) for m in bus._middleware)
+        assert app.build_led_gui_bus(_mock_led()).has_middleware(RateLimitMiddleware)
 
     def test_dispatches_update_color(self, app):
         """GUI bus calls update_color (state-only) not set_color (immediate send)."""

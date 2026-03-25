@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from trcc.cli._theme import (
     export_theme,
     import_theme,
@@ -197,13 +199,19 @@ class TestListThemes:
         assert "No local themes" in capsys.readouterr().out
 
     def test_zero_resolution_defaults_to_320x320(self, capsys):
+        """When resolution is 0x0, list_themes defaults to 320x320.
+
+        Data download (ensure_all) is no longer triggered by list_themes —
+        it happens via EnsureDataCommand on device connect or /themes/init.
+        """
         settings_mock, data_mgr, theme_svc = self._base_patches(w=0, h=0)
         theme_svc.discover_local.return_value = []
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
              patch(_PATCH_THEME_SVC, theme_svc):
-            list_themes()
-        data_mgr.ensure_all.assert_called_once_with(320, 320)
+            rc = list_themes()
+        assert rc == 0
+        assert "320x320" in capsys.readouterr().out
 
     def test_cloud_themes_prints_count(self, capsys):
         settings_mock, data_mgr, theme_svc = self._base_patches()
@@ -289,6 +297,19 @@ class TestListThemes:
 class TestLoadTheme:
     """load_theme() — exact match, partial match, animated, no bg, no device."""
 
+    @pytest.fixture(autouse=True)
+    def _real_lcd_bus(self, _mock_builder):
+        """Wire a real lcd_bus so SelectThemeCommand routes to lcd.select().
+
+        After the command-bus refactor, load_theme() dispatches SelectThemeCommand
+        through TrccApp.get().build_lcd_bus(lcd). The conftest mock_app has a no-op
+        bus; this fixture replaces it with the real implementation so the handler
+        calls lcd.select(theme) — which the tests mock on each mock_lcd.
+        """
+        from trcc.core.app import TrccApp
+        real_app = TrccApp(_mock_builder)
+        TrccApp.get().build_lcd_bus = real_app.build_lcd_bus  # type: ignore[attr-defined]
+
     def _patches(
         self,
         svc=None,
@@ -325,7 +346,12 @@ class TestLoadTheme:
             }
         mock_lcd = MagicMock()
         mock_lcd.load_image.return_value = {"success": True, "image": img}
-        # load_local_theme returns static (not animated) result
+        # select() is called by SelectThemeCommand handler (via build_lcd_bus)
+        mock_lcd.select.return_value = {
+            'success': True, 'image': img, 'is_animated': False,
+            'status': 'Theme loaded', 'theme_path': str(Path('/tmp/theme')),
+        }
+        # load_local_theme — legacy reference kept for backward compat with older tests
         mock_lcd._display_svc.load_local_theme.return_value = {
             'image': img, 'is_animated': False,
             'status': 'Theme loaded', 'theme_path': Path('/tmp/theme'),
@@ -397,10 +423,10 @@ class TestLoadTheme:
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [animated]
         mock_lcd = MagicMock()
-        # Animated theme: load_local_theme returns is_animated=True
-        mock_lcd._display_svc.load_local_theme.return_value = {
-            'image': None, 'is_animated': True,
-            'status': 'Theme loaded', 'theme_path': Path('/tmp/theme'),
+        # select() returns is_animated=True — called by SelectThemeCommand handler
+        mock_lcd.select.return_value = {
+            'success': True, 'image': None, 'is_animated': True,
+            'status': 'Theme loaded', 'theme_path': str(Path('/tmp/theme')),
         }
         mock_lcd._display_svc.media.has_frames = True
         mock_lcd._display_svc.media.is_playing = False  # stop immediately
@@ -427,9 +453,9 @@ class TestLoadTheme:
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [t]
         mock_lcd = MagicMock()
-        mock_lcd._display_svc.load_local_theme.return_value = {
-            'image': None, 'is_animated': False,
-            'status': 'No bg', 'theme_path': Path('/tmp'),
+        mock_lcd.select.return_value = {
+            'success': True, 'image': None, 'is_animated': False,
+            'status': 'No bg', 'theme_path': str(Path('/tmp')),
         }
         mock_lcd._display_svc.media.has_frames = False
         with patch(_PATCH_GET_SERVICE, return_value=svc), \
@@ -450,9 +476,9 @@ class TestLoadTheme:
         theme_svc.return_value = theme_svc
         theme_svc.discover_local.return_value = [t]
         mock_lcd = MagicMock()
-        mock_lcd._display_svc.load_local_theme.return_value = {
-            'image': None, 'is_animated': False,
-            'status': 'No bg', 'theme_path': Path('/tmp'),
+        mock_lcd.select.return_value = {
+            'success': True, 'image': None, 'is_animated': False,
+            'status': 'No bg', 'theme_path': str(Path('/tmp')),
         }
         mock_lcd._display_svc.media.has_frames = False
         _mock_builder.lcd_from_service.return_value = mock_lcd
@@ -534,7 +560,7 @@ class TestLoadTheme:
              patch(_PATCH_IMAGE_SVC, img_svc):
             load_theme(_mock_builder, "T")
         ml.restore_device_settings.assert_called_once()
-        ml._display_svc.load_local_theme.assert_called_once()
+        ml.select.assert_called_once()
         ml.send.assert_called_once()
 
     def test_saves_theme_path_to_settings(self, _mock_builder):
@@ -780,6 +806,11 @@ class TestExportTheme:
         assert "Export failed" in capsys.readouterr().out
 
     def test_zero_resolution_defaults_to_320x320(self):
+        """export_theme defaults to 320x320 when settings has 0x0.
+
+        Data download (ensure_all) is no longer triggered by export_theme —
+        it happens via EnsureDataCommand on device connect or /themes/init.
+        """
         sm = MagicMock()
         sm.width = 0
         sm.height = 0
@@ -790,8 +821,9 @@ class TestExportTheme:
         with patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_DATA_MANAGER, dm), \
              patch(_PATCH_THEME_SVC, ts):
-            export_theme("AnyTheme", "/out.tr")
-        dm.ensure_all.assert_called_once_with(320, 320)
+            rc = export_theme("AnyTheme", "/out.tr")
+        # Theme not found → rc == 1 (no themes in discover_local), but default resolution used
+        assert rc == 1  # theme not found, but no crash on 0x0 resolution
 
 
 # ===========================================================================

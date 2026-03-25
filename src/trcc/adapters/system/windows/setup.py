@@ -93,6 +93,36 @@ class WindowsSetup(PlatformSetup):
     def supports_winusb(self) -> bool:
         return True
 
+    def setup_winusb(self) -> int:
+        """Print Zadig-based WinUSB driver installation guide."""
+        from trcc.core.models import BULK_DEVICES, HID_LCD_DEVICES, LED_DEVICES, LY_DEVICES
+
+        winusb_vids: set[tuple[int, int]] = set()
+        for registry in (BULK_DEVICES, HID_LCD_DEVICES, LED_DEVICES, LY_DEVICES):
+            for vid, pid in registry:
+                winusb_vids.add((vid, pid))
+
+        print("\n  TRCC WinUSB Driver Setup\n")
+        print("  SCSI devices (Frozen Warframe, Elite Vision, CZTV, etc.)")
+        print("  use the default USB Mass Storage driver — no setup needed.\n")
+        print("  HID, Bulk, and LY devices need the WinUSB driver.")
+        print("  Install it using Zadig (free, open-source):\n")
+        print("  1. Download Zadig: https://zadig.akeo.ie/")
+        print("  2. Run Zadig → Options → List All Devices")
+        print("  3. Select your Thermalright device from the dropdown")
+        print("  4. Set target driver to WinUSB")
+        print("  5. Click 'Replace Driver' (or 'Install Driver')")
+        print("  6. Replug the USB device\n")
+        print("  Devices that need WinUSB:")
+        for vid, pid in sorted(winusb_vids):
+            for registry in (BULK_DEVICES, HID_LCD_DEVICES, LED_DEVICES, LY_DEVICES):
+                if (vid, pid) in registry:
+                    entry = registry[(vid, pid)]
+                    print(f"    {vid:04X}:{pid:04X}  {entry.product}")
+                    break
+        print()
+        return 0
+
     def configure_stdout(self) -> None:
         """Force UTF-8 on Windows console stdout/stderr."""
         import io

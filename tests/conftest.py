@@ -234,7 +234,12 @@ def tmp_config(tmp_path, monkeypatch):
 
     Autouse: no test should ever read from or write to the real ~/.trcc/config.json.
     Initializes Settings with a platform path resolver pointing to tmp_path.
+    Also redirects the log file and strips any real file handlers from the root
+    logger so test-generated log messages never bleed into ~/.trcc/trcc.log.
     """
+    import logging
+    from pathlib import Path
+
     config_dir = str(tmp_path / "trcc")
     config_path = str(tmp_path / "trcc" / "config.json")
     handshake_path = str(tmp_path / "trcc" / "last_handshake.json")
@@ -242,6 +247,21 @@ def tmp_config(tmp_path, monkeypatch):
     monkeypatch.setattr("trcc.conf.CONFIG_DIR", config_dir)
     monkeypatch.setattr("trcc.conf.CONFIG_PATH", config_path)
     monkeypatch.setattr("trcc.conf._HANDSHAKE_CACHE_PATH", handshake_path)
+
+    # Redirect log file so StandardLoggingConfigurator never writes to the real
+    # ~/.trcc/trcc.log during tests.
+    test_log = Path(config_dir) / "trcc.log"
+    monkeypatch.setattr(
+        "trcc.adapters.infra.diagnostics._DEFAULT_LOG_FILE", test_log,
+    )
+    # Strip any real file handlers the root logger may have accumulated from a
+    # previous configure() call (e.g. from a prior test that bootstrapped the app).
+    root = logging.getLogger()
+    real_log = Path.home() / ".trcc" / "trcc.log"
+    for h in list(root.handlers):
+        if isinstance(h, logging.FileHandler) and Path(h.baseFilename) == real_log:
+            root.removeHandler(h)
+            h.close()
 
     # Initialize Settings with a test path resolver (DI)
     # Uses tmp_path so tests never touch real ~/.trcc/
@@ -295,6 +315,41 @@ def png_factory(tmp_path):
 # =========================================================================
 # Tier 2b: DI fixtures — injectable ports for pure hexagonal tests
 # =========================================================================
+
+@pytest.fixture
+def failed_lcd_bus():
+    """Mock CommandBus that always returns CommandResult.fail.
+
+    Use to test failure paths in LCD command handlers without needing a real device.
+
+    Example::
+
+        def test_brightness_failure(failed_lcd_bus):
+            TrccApp.get().lcd_bus = failed_lcd_bus
+            rc = set_brightness(level=1)
+            assert rc == 1
+    """
+    from unittest.mock import MagicMock
+
+    from trcc.core.command_bus import CommandBus, CommandResult
+    bus = MagicMock(spec=CommandBus)
+    bus.dispatch.return_value = CommandResult.fail("simulated failure")
+    return bus
+
+
+@pytest.fixture
+def failed_led_bus():
+    """Mock CommandBus that always returns CommandResult.fail.
+
+    Use to test failure paths in LED command handlers without needing a real device.
+    """
+    from unittest.mock import MagicMock
+
+    from trcc.core.command_bus import CommandBus, CommandResult
+    bus = MagicMock(spec=CommandBus)
+    bus.dispatch.return_value = CommandResult.fail("simulated failure")
+    return bus
+
 
 @pytest.fixture
 def fake_detect():

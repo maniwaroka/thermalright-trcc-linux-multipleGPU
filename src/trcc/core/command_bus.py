@@ -186,6 +186,10 @@ class CommandBus:
         self._handlers[command_type] = handler
         return self
 
+    def has_middleware(self, cls: type) -> bool:
+        """Return True if a middleware of the given type is registered."""
+        return any(isinstance(m, cls) for m in self._middleware)
+
     def dispatch(self, command: Command) -> CommandResult:
         """Run command through the full middleware chain then the handler.
 

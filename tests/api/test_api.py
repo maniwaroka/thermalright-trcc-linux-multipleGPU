@@ -673,17 +673,31 @@ class TestI18nEndpoints(unittest.TestCase):
         self.assertEqual(data["code"], "en")
         self.assertEqual(data["name"], "English")
 
-    @patch('trcc.conf.settings')
-    def test_set_language(self, mock_settings):
-        resp = self.client.put("/i18n/language/de")
+    def test_set_language(self):
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+        from trcc.core.commands.initialize import SetLanguageCommand
+
+        mock_app = MagicMock()
+        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="Language set to de")
+        with patch.object(TrccApp, 'get', return_value=mock_app):
+            resp = self.client.put("/i18n/language/de")
+
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["code"], "de")
         self.assertEqual(data["name"], "Deutsch")
-        self.assertEqual(mock_settings.lang, "de")
+        mock_app.os_bus.dispatch.assert_called_once_with(SetLanguageCommand(code="de"))
 
     def test_set_language_invalid(self):
-        resp = self.client.put("/i18n/language/zzz")
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+
+        mock_app = MagicMock()
+        mock_app.os_bus.dispatch.return_value = CommandResult.fail("Unknown language code: zzz")
+        with patch.object(TrccApp, 'get', return_value=mock_app):
+            resp = self.client.put("/i18n/language/zzz")
+
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Unknown language code", resp.json()["detail"])
 
@@ -1172,28 +1186,28 @@ class TestStandaloneThemeInit(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         mock_ensure.assert_not_called()
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_themes')
     @patch('trcc.api.themes.ThemeService.discover_local', return_value=[])
     @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution',
            return_value=MagicMock(__str__=lambda s: '/tmp/themes', path='/tmp/themes'))
-    def test_list_themes_calls_ensure_themes(self, _td, _discover, mock_ensure):
-        """GET /themes triggers DataManager.ensure_themes() for the resolution."""
-        self.client.get("/themes?resolution=320x320")
-        mock_ensure.assert_called_once_with(320, 320)
+    def test_list_themes_no_auto_download(self, _td, _discover):
+        """GET /themes reads disk state only — data download happens via /themes/init or device select."""
+        resp = self.client.get("/themes?resolution=320x320")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_web')
     @patch('trcc.adapters.infra.data_repository.DataManager.get_web_dir', return_value='/nonexistent')
-    def test_list_web_themes_calls_ensure_web(self, _dir, mock_ensure):
-        """GET /themes/web triggers DataManager.ensure_web() for the resolution."""
-        self.client.get("/themes/web?resolution=480x480")
-        mock_ensure.assert_called_once_with(480, 480)
+    def test_list_web_themes_no_auto_download(self, _dir):
+        """GET /themes/web reads disk state only — no DataManager.ensure_web() side-effect."""
+        resp = self.client.get("/themes/web?resolution=480x480")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
 
-    @patch('trcc.adapters.infra.data_repository.DataManager.ensure_web_masks')
     @patch('trcc.adapters.infra.data_repository.DataManager.get_web_masks_dir', return_value='/nonexistent')
-    def test_list_masks_calls_ensure_web_masks(self, _dir, mock_ensure):
-        """GET /themes/masks triggers DataManager.ensure_web_masks() for the resolution."""
-        self.client.get("/themes/masks?resolution=320x320")
-        mock_ensure.assert_called_once_with(320, 320)
+    def test_list_masks_no_auto_download(self, _dir):
+        """GET /themes/masks reads disk state only — no DataManager.ensure_web_masks() side-effect."""
+        resp = self.client.get("/themes/masks?resolution=320x320")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
 
     # test_select_device_standalone_calls_ensure_all lives below as a standalone
     # pytest function — requires lcd_only_app fixture injection.
@@ -2846,16 +2860,17 @@ def test_select_device_calls_discover_resolution(no_device_app):
 
 
 def test_select_device_standalone_calls_ensure_all(lcd_only_app):
-    """Standalone select calls DataManager.ensure_all() for the device resolution.
+    """Standalone select dispatches EnsureDataCommand through the lcd_bus.
 
     Chain: os_bus.dispatch(DiscoverDevicesCommand)
-           → scan() → _wire_bus() → has_lcd=True, has_led=False
-           → DataManager.ensure_all(320, 320) recorded by fixture spy
+           → _fake_dispatch() wires lcd_device + lcd_bus
+           → api/devices.py dispatches EnsureDataCommand(320, 320) on lcd_bus
     """
     from starlette.testclient import TestClient as SyncClient
 
     from trcc.api import _device_svc
     from trcc.api import app as fastapi_app
+    from trcc.core.commands.lcd import EnsureDataCommand
 
     app, _mock_lcd = lcd_only_app
     dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
@@ -2865,7 +2880,7 @@ def test_select_device_standalone_calls_ensure_all(lcd_only_app):
     resp = SyncClient(app=fastapi_app, base_url="http://test").post("/devices/0/select")
 
     assert resp.status_code == 200
-    assert (320, 320) in app.ensure_all_calls
+    app._lcd_bus.dispatch.assert_called_with(EnsureDataCommand(width=320, height=320))
 
 
 def test_select_led_device_failed_connect_clears_dispatcher(no_device_app):

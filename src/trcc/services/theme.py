@@ -42,7 +42,6 @@ class ThemeService:
     }
 
     def __init__(self,
-                 ensure_data_fn: Any = None,
                  export_theme_fn: Any = None,
                  import_theme_fn: Any = None,
                  load_config_json_fn: Any = None,
@@ -55,7 +54,6 @@ class ThemeService:
         self._web_dir: Path | None = None
         self._masks_dir: Path | None = None
         # Injected adapter callables (hexagonal purity)
-        self._ensure_data_fn = ensure_data_fn
         self._export_theme_fn = export_theme_fn
         self._import_theme_fn = import_theme_fn
         self._load_config_json_fn = load_config_json_fn
@@ -104,11 +102,6 @@ class ThemeService:
         return self._masks_dir
 
     # ── Directory setup ──────────────────────────────────────────────
-
-    def setup_dirs(self, width: int, height: int) -> None:
-        """Extract all .7z archives for a resolution if needed."""
-        if self._ensure_data_fn is not None:
-            self._ensure_data_fn(width, height)
 
     # ── Discovery ────────────────────────────────────────────────────
 

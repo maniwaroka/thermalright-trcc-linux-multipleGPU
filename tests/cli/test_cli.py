@@ -766,19 +766,29 @@ class TestI18nCommands(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("ja", output)
 
-    @patch('trcc.conf.settings')
-    def test_set_language_valid(self, mock_settings):
+    def test_set_language_valid(self):
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+        from trcc.core.commands.initialize import SetLanguageCommand
+
+        mock_app = MagicMock()
+        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="Language set to de")
         buf = io.StringIO()
-        with redirect_stdout(buf):
+        with patch.object(TrccApp, 'get', return_value=mock_app), redirect_stdout(buf):
             from trcc.cli._i18n import set_language
             result = set_language('de')
         self.assertEqual(result, 0)
-        self.assertEqual(mock_settings.lang, 'de')
         self.assertIn("Deutsch", buf.getvalue())
+        mock_app.os_bus.dispatch.assert_called_once_with(SetLanguageCommand(code='de'))
 
     def test_set_language_invalid(self):
+        from trcc.core.app import TrccApp
+        from trcc.core.command_bus import CommandResult
+
+        mock_app = MagicMock()
+        mock_app.os_bus.dispatch.return_value = CommandResult.fail("Unknown language code: zzz")
         buf = io.StringIO()
-        with redirect_stdout(buf):
+        with patch.object(TrccApp, 'get', return_value=mock_app), redirect_stdout(buf):
             from trcc.cli._i18n import set_language
             result = set_language('zzz')
         self.assertEqual(result, 1)

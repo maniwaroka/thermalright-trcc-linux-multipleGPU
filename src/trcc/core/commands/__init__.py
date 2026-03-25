@@ -8,9 +8,21 @@ Three layers — import from the appropriate module:
 Or import everything from here:
     from trcc.core.commands import DiscoverDevicesCommand, SendImageCommand
 """
-from .initialize import DiscoverDevicesCommand, InitPlatformCommand
+from .initialize import (
+    DiscoverDevicesCommand,
+    DownloadThemesCommand,
+    InitPlatformCommand,
+    InstallDesktopCommand,
+    SetLanguageCommand,
+    SetupPlatformCommand,
+    SetupPolkitCommand,
+    SetupSelinuxCommand,
+    SetupUdevCommand,
+    SetupWinUsbCommand,
+)
 from .lcd import (
     EnableOverlayCommand,
+    EnsureDataCommand,
     ExportThemeCommand,
     ImportThemeCommand,
     LoadMaskCommand,
@@ -50,8 +62,17 @@ __all__ = [
     # OS / initialize
     "InitPlatformCommand",
     "DiscoverDevicesCommand",
+    "SetLanguageCommand",
+    "SetupPlatformCommand",
+    "SetupUdevCommand",
+    "SetupSelinuxCommand",
+    "SetupPolkitCommand",
+    "InstallDesktopCommand",
+    "SetupWinUsbCommand",
+    "DownloadThemesCommand",
     # LCD
     "EnableOverlayCommand",
+    "EnsureDataCommand",
     "ExportThemeCommand",
     "ImportThemeCommand",
     "LoadMaskCommand",

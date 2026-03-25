@@ -747,16 +747,18 @@ class TestCLIHelpers:
             _print_result(result, preview=True)
         mock_ansi.assert_not_called()
 
-    def test_led_command_no_device(self, mock_connect_fail):
-        from trcc.cli._led import _led_command
+    def test_led_dispatch_no_device(self, mock_connect_fail):
+        from trcc.cli._led import _led_dispatch
+        from trcc.core.commands.led import ToggleLEDCommand
 
-        rc = _led_command(MagicMock(), "off")
+        rc = _led_dispatch(ToggleLEDCommand, on=False)
         assert rc == 1
 
-    def test_led_command_success(self, mock_connect):
-        from trcc.cli._led import _led_command
+    def test_led_dispatch_success(self, mock_connect):
+        from trcc.cli._led import _led_dispatch
+        from trcc.core.commands.led import ToggleLEDCommand
 
-        rc = _led_command(MagicMock(), "off")
+        rc = _led_dispatch(ToggleLEDCommand, on=False)
         assert rc == 0
 
     def test_get_led_service_no_device(self, _mock_builder):

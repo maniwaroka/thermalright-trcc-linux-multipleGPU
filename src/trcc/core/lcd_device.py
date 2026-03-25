@@ -62,6 +62,15 @@ class LCDDevice(Device):
         self.overlay: LCDDevice = self  # type: ignore[assignment]
         self.settings: LCDDevice = self  # type: ignore[assignment]
 
+    def notify_data_ready(self) -> None:
+        """Notify the display service that data extraction completed.
+
+        Called by TrccApp after the background data-extraction thread finishes.
+        Tell-Don't-Ask: caller signals the event; LCDDevice decides what to do.
+        """
+        if self._display_svc is not None and self._display_svc.on_data_ready is not None:
+            self._display_svc.on_data_ready()
+
     def _build_services(self, device_svc: Any) -> None:
         """Wire up all services from a DeviceService via injected factory."""
         if self._build_services_fn is None:

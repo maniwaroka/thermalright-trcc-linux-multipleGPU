@@ -39,3 +39,60 @@ class DiscoverDevicesCommand(OSCommand):
     Optional path: restrict to a specific device path (e.g. '/dev/sg2').
     """
     path: str | None = None
+
+
+@dataclass(frozen=True)
+class SetLanguageCommand(OSCommand):
+    """Set the application language by ISO 639-1 code.
+
+    App-wide — all UI adapters (CLI, API, GUI) dispatch this to change language.
+    Handler validates the code and persists via settings.
+    """
+    code: str = "en"
+
+
+@dataclass(frozen=True)
+class SetupPlatformCommand(OSCommand):
+    """Run the interactive platform setup wizard.
+
+    Delegates to the platform-specific PlatformSetup adapter.
+    Works on all OSes — each adapter handles its own setup steps.
+    """
+    auto_yes: bool = False
+
+
+@dataclass(frozen=True)
+class SetupUdevCommand(OSCommand):
+    """Install udev rules for LCD device access (Linux only)."""
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class SetupSelinuxCommand(OSCommand):
+    """Install SELinux policy module for USB device access (Linux only)."""
+
+
+@dataclass(frozen=True)
+class SetupPolkitCommand(OSCommand):
+    """Install polkit policy for passwordless dmidecode/smartctl (Linux only)."""
+
+
+@dataclass(frozen=True)
+class InstallDesktopCommand(OSCommand):
+    """Install .desktop menu entry and icon (Linux only)."""
+
+
+@dataclass(frozen=True)
+class SetupWinUsbCommand(OSCommand):
+    """Guide WinUSB driver installation for Thermalright USB devices (Windows only)."""
+
+
+@dataclass(frozen=True)
+class DownloadThemesCommand(OSCommand):
+    """Download theme packs from GitHub.
+
+    pack: named pack (e.g. '320x320') or empty string to list available packs.
+    force: re-download even if already cached.
+    """
+    pack: str = ""
+    force: bool = False

@@ -164,11 +164,14 @@ class TestState:
 
 class TestSetupDirs:
 
-    def test_delegates_to_data_manager(self) -> None:
-        mock_ensure = MagicMock()
-        svc = ThemeService(ensure_data_fn=mock_ensure)
-        svc.setup_dirs(320, 320)
-        mock_ensure.assert_called_once_with(320, 320)
+    def test_setup_dirs_removed(self) -> None:
+        """ThemeService no longer owns data download (setup_dirs / ensure_data_fn removed).
+
+        Data download is now handled by EnsureDataCommand dispatched through the
+        CommandBus on device connect or via POST /themes/init.
+        """
+        svc = ThemeService()
+        assert not hasattr(svc, 'setup_dirs'), "setup_dirs was removed in the command-bus refactor"
 
 
 # ── _copy_flat_files ──────────────────────────────────────────────────────────

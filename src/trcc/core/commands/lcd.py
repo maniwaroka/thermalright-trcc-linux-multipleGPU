@@ -127,3 +127,15 @@ class SetResolutionCommand(LCDCommand):
     """Set the active display resolution."""
     width: int = 320
     height: int = 320
+
+
+@dataclass(frozen=True)
+class EnsureDataCommand(LCDCommand):
+    """Download and extract theme/web/mask archives for a resolution.
+
+    Fired automatically by SetResolutionCommand once the device resolution
+    is known. Safe to dispatch multiple times — no-op if already cached.
+    All three adapters (CLI, API, GUI) get data via this single path.
+    """
+    width: int = 320
+    height: int = 320

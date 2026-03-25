@@ -559,9 +559,11 @@ class OverlayService:
             else:
                 continue
 
-            bold = font_cfg.get('style') == 'bold' if isinstance(font_cfg, dict) else False
+            style = font_cfg.get('style') if isinstance(font_cfg, dict) else None
+            bold = style == 'bold'
+            italic = style == 'italic'
             font_name = font_cfg.get('name') if isinstance(font_cfg, dict) else None
-            font = r.get_font(font_size, bold=bold, font_name=font_name)
+            font = r.get_font(font_size, bold=bold, italic=italic, font_name=font_name)
             r.draw_text(surface, x, y, text, color, font, anchor='mm')
             drew_any = True
 

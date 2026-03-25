@@ -525,6 +525,18 @@ class LinuxSetup(PlatformSetup):
             "/etc/polkit-1/rules.d/50-trcc.rules",
         ]
 
+    def setup_udev(self, dry_run: bool = False) -> int:
+        return setup_udev(dry_run=dry_run)
+
+    def setup_selinux(self) -> int:
+        return setup_selinux()
+
+    def setup_polkit(self) -> int:
+        return setup_polkit()
+
+    def install_desktop(self) -> int:
+        return install_desktop()
+
     def acquire_instance_lock(self) -> object | None:
         return _posix_acquire_instance_lock(self.config_dir())
 

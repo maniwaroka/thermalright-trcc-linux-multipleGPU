@@ -210,6 +210,14 @@ class ControllerBuilder:
         """Return the platform-specific setup wizard."""
         return self._platform.create_setup()
 
+    def build_ensure_data_fn(self):
+        """Return DataManager.ensure_all — the data extraction callable.
+
+        Isolated here so core/app.py never imports infra adapters directly.
+        """
+        from ..adapters.infra.data_repository import DataManager
+        return DataManager.ensure_all
+
     def build_autostart(self) -> AutostartManager:
         """Return the platform-specific autostart manager."""
         return self._platform.create_autostart_manager()
@@ -249,7 +257,6 @@ class ControllerBuilder:
 
     def _make_build_services_fn(self):
         """Create a factory that wires LCD services from a DeviceService."""
-        from ..adapters.infra.data_repository import DataManager
         from ..adapters.infra.dc_config import DcConfig
         from ..adapters.infra.dc_parser import load_config_json
         from ..adapters.infra.dc_writer import export_theme, import_theme
@@ -269,7 +276,6 @@ class ControllerBuilder:
                 zt_decoder_cls=ThemeZtDecoder,
             )
             theme_svc = ThemeService(
-                ensure_data_fn=DataManager.ensure_all,
                 export_theme_fn=export_theme,
                 import_theme_fn=import_theme,
                 load_config_json_fn=load_config_json,
@@ -285,7 +291,6 @@ class ControllerBuilder:
                 _cpu_percent = None  # type: ignore[assignment]
             display_svc = DisplayService(
                 device_svc, overlay_svc, media_svc,
-                ensure_data_fn=DataManager.ensure_all,
                 theme_svc=theme_svc,
                 cpu_percent_fn=_cpu_percent,
             )

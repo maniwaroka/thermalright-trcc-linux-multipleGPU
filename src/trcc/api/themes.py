@@ -51,10 +51,12 @@ def init_theme_data(resolution: str = "320x320") -> dict:
 
     Safe to call repeatedly — no-op if data is already cached.
     Designed for remote apps to call on startup before listing themes.
+    Works regardless of whether a device is connected.
     """
+    from trcc.adapters.infra.data_repository import DataManager
+
     w, h = _parse_resolution(resolution)
 
-    from trcc.adapters.infra.data_repository import DataManager
     DataManager.ensure_all(w, h)
 
     # Remount static dirs now that data exists on disk
@@ -71,8 +73,7 @@ def list_themes(resolution: str = "320x320") -> list[ThemeResponse]:
 
     from pathlib import Path
 
-    from trcc.adapters.infra.data_repository import DataManager, ThemeDir
-    DataManager.ensure_themes(w, h)
+    from trcc.adapters.infra.data_repository import ThemeDir
     td = ThemeDir.for_resolution(w, h)
     theme_dir = Path(str(td))
     themes = ThemeService.discover_local(theme_dir, (w, h))
@@ -94,7 +95,6 @@ def list_web_themes(resolution: str = "320x320") -> list[WebThemeResponse]:
     w, h = _parse_resolution(resolution)
 
     from trcc.adapters.infra.data_repository import DataManager
-    DataManager.ensure_web(w, h)
     web_dir = DataManager.get_web_dir(w, h)
 
     results: list[WebThemeResponse] = []
@@ -185,7 +185,6 @@ def list_masks(resolution: str = "320x320") -> list[MaskResponse]:
     w, h = _parse_resolution(resolution)
 
     from trcc.adapters.infra.data_repository import DataManager
-    DataManager.ensure_web_masks(w, h)
     masks_dir = DataManager.get_web_masks_dir(w, h)
 
     results: list[MaskResponse] = []
@@ -305,8 +304,7 @@ def export_theme(theme_name: str, resolution: str = "320x320") -> Response:
 
     w, h = _parse_resolution(resolution)
 
-    from trcc.adapters.infra.data_repository import DataManager, ThemeDir
-    DataManager.ensure_themes(w, h)
+    from trcc.adapters.infra.data_repository import ThemeDir
     td = ThemeDir.for_resolution(w, h)
     theme_dir = Path(str(td))
 

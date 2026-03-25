@@ -7,7 +7,6 @@ from trcc.cli import _cli_handler, _device
 @_cli_handler
 def list_themes(cloud=False, category=None):
     """List available themes for the current device resolution."""
-    from trcc.adapters.infra.data_repository import DataManager
     from trcc.conf import settings
     from trcc.services import ThemeService
 
@@ -15,7 +14,6 @@ def list_themes(cloud=False, category=None):
     if not w or not h:
         w, h = 320, 320
 
-    DataManager.ensure_all(w, h)
     settings._resolve_paths()
 
     if cloud:
@@ -46,8 +44,8 @@ def list_themes(cloud=False, category=None):
 @_cli_handler
 def load_theme(builder, name, *, device=None, preview=False):
     """Load a theme by name and send to LCD."""
-    from trcc.adapters.infra.data_repository import DataManager
     from trcc.conf import Settings, settings
+    from trcc.core.commands.lcd import SelectThemeCommand
     from trcc.services import ImageService, ThemeService
 
     svc = _device._get_service(device)
@@ -58,7 +56,6 @@ def load_theme(builder, name, *, device=None, preview=False):
     dev = svc.selected
     w, h = dev.resolution
 
-    DataManager.ensure_all(w, h)
     settings._resolve_paths()
 
     td = settings.theme_dir
@@ -77,11 +74,14 @@ def load_theme(builder, name, *, device=None, preview=False):
         return 1
 
     # Build LCD with full service stack (DisplayService, OverlayService, etc.)
+    from trcc.core.app import TrccApp
     lcd = builder.lcd_from_service(svc)
     lcd.restore_device_settings()
 
-    # Use DisplayService.load_local_theme() — same path as GUI
-    result = lcd._display_svc.load_local_theme(match)
+    # Dispatch SelectThemeCommand through the bus — same path as GUI/API
+    lcd_bus = TrccApp.get().build_lcd_bus(lcd)
+    cmd_result = lcd_bus.dispatch(SelectThemeCommand(theme=match))
+    result = cmd_result.payload
 
     # Save as last-used theme
     key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
@@ -226,7 +226,6 @@ def export_theme(theme_name, output_path):
     """Export a theme as .tr file."""
     from pathlib import Path
 
-    from trcc.adapters.infra.data_repository import DataManager
     from trcc.conf import settings
     from trcc.services import ThemeService
 
@@ -234,7 +233,6 @@ def export_theme(theme_name, output_path):
     if not w or not h:
         w, h = 320, 320
 
-    DataManager.ensure_all(w, h)
     settings._resolve_paths()
 
     td = settings.theme_dir

@@ -4,7 +4,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from trcc.cli._device import (
-    _ensure_extracted,
     _format,
     _get_service,
     _probe,
@@ -297,50 +296,6 @@ class TestDiscoverResolution:
 
 
 # =============================================================================
-# TestEnsureExtracted
-# =============================================================================
-
-class TestEnsureExtracted:
-    """_ensure_extracted() — extract archives for resolution."""
-
-    def test_extracts_archives_when_implementation_exists(self):
-        """When driver.implementation is set, DataManager.ensure_all is called."""
-        impl = MagicMock()
-        impl.resolution = (320, 320)
-
-        driver = MagicMock()
-        driver.implementation = impl
-
-        mock_dm = MagicMock()
-
-        with patch("trcc.adapters.infra.data_repository.DataManager", mock_dm):
-            _ensure_extracted(driver)
-
-        mock_dm.ensure_all.assert_called_once_with(320, 320)
-
-    def test_skips_when_no_implementation(self):
-        """When driver.implementation is falsy, DataManager is not called."""
-        driver = MagicMock()
-        driver.implementation = None
-
-        mock_dm = MagicMock()
-
-        with patch("trcc.adapters.infra.data_repository.DataManager", mock_dm):
-            _ensure_extracted(driver)
-
-        mock_dm.ensure_all.assert_not_called()
-
-    def test_exception_is_swallowed(self):
-        """Exceptions during archive extraction are silently suppressed."""
-        impl = MagicMock()
-        impl.resolution = (320, 320)
-
-        driver = MagicMock()
-        driver.implementation = impl
-
-        with patch("trcc.adapters.infra.data_repository.DataManager") as mock_dm:
-            mock_dm.ensure_all.side_effect = OSError("disk full")
-            _ensure_extracted(driver)  # must not raise
 
 
 # =============================================================================

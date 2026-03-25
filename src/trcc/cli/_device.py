@@ -40,15 +40,6 @@ def discover_resolution(dev) -> None:
     svc._discover_resolution(dev)
 
 
-def _ensure_extracted(driver):
-    """Extract theme/mask archives for the driver's detected resolution (one-time)."""
-    try:
-        if driver.implementation:
-            w, h = driver.implementation.resolution
-            from trcc.adapters.infra.data_repository import DataManager
-            DataManager.ensure_all(w, h)
-    except Exception:
-        pass  # Non-fatal — themes are optional for CLI commands
 
 
 
