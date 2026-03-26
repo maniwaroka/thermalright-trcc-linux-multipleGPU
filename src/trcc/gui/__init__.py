@@ -22,14 +22,11 @@ def launch(verbosity: int = 0, decorated: bool = False,
 
     Returns the Qt exit code.
     """
-    # ── Bootstrap — platform init + parallel device scan ─────────────────
-    from trcc.adapters.render.qt import QtRenderer
     from trcc.core.app import AppEvent, TrccApp
     app = TrccApp.init()
-    app.bootstrap(renderer_factory=QtRenderer)
 
-    # ── Platform deps ─────────────────────────────────────────────────────
-    setup    = app.build_setup()
+    # ── Platform deps (before Qt — configure_dpi must precede QApplication) ──
+    setup     = app.build_setup()
     autostart = app.build_autostart()
     mem_fn, disk_fn = app.build_hardware_fns()
 
@@ -38,13 +35,6 @@ def launch(verbosity: int = 0, decorated: bool = False,
     if lock is None:
         setup.raise_existing_instance()
         return 0
-
-    # ── System service (OS-specific sensors) ──────────────────────────────
-    system_svc = app.build_system()
-    app.set_system(system_svc)
-
-    from trcc.services.system import set_instance
-    set_instance(system_svc)
 
     # ── Qt bootstrap ──────────────────────────────────────────────────────
     from trcc.qt_components.assets import _PKG_ASSETS_DIR, set_assets_dir
@@ -69,6 +59,19 @@ def launch(verbosity: int = 0, decorated: bool = False,
     if not font.exactMatch():
         font = QFont("Sans Serif", 10)
     qapp.setFont(font)
+
+    # ── Bootstrap — platform init + device scan, with splash progress ────
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.qt_components.splash import run_bootstrap_with_splash
+    if not run_bootstrap_with_splash(app, QtRenderer):
+        return 1
+
+    # ── System service (OS-specific sensors) ──────────────────────────────
+    system_svc = app.build_system()
+    app.set_system(system_svc)
+
+    from trcc.services.system import set_instance
+    set_instance(system_svc)
 
     # ── GUI adapter — receives everything injected, knows nothing of TrccApp ─
     from trcc.qt_components.trcc_app import TRCCApp

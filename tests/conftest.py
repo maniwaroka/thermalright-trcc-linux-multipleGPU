@@ -134,6 +134,7 @@ def _mock_builder(mock_platform):
     from trcc.core.command_bus import CommandResult
     mock_app = MagicMock(spec=TrccApp)
     mock_app.builder = mock_builder
+    mock_app._ensure_data_fn = None
 
     # Default bus dispatch result — success so CLI commands don't print "Error".
     # Tests that need a failure result should override explicitly.

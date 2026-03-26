@@ -20,14 +20,14 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 log = logging.getLogger(__name__)
 
 
 # ── Result ─────────────────────────────────────────────────────────────────
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CommandResult:
     """Wraps the dict all device methods already return.
 
@@ -36,6 +36,9 @@ class CommandResult:
     """
     success: bool
     payload: dict[str, Any]
+
+    def __bool__(self) -> bool:
+        return self.success
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> CommandResult:
@@ -52,7 +55,7 @@ class CommandResult:
 
 # ── Command base hierarchy ──────────────────────────────────────────────────
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Command:
     """Base for all commands.
 
@@ -61,24 +64,24 @@ class Command:
     """
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class OSCommand(Command):
     """Marker base for OS/platform commands — platform init, device discovery, connect."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class LCDCommand(Command):
     """Marker base for all LCD commands (ISP — adapters import only this family)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class LEDCommand(Command):
     """Marker base for all LED commands (ISP — adapters import only this family)."""
 
 
 # ── Middleware ABC ──────────────────────────────────────────────────────────
 
-HandlerFn = Callable[[Command], CommandResult]
+HandlerFn: TypeAlias = Callable[[Command], CommandResult]
 
 
 class Middleware(ABC):
@@ -181,6 +184,14 @@ class CommandBus:
         self._middleware.append(middleware)
         return self
 
+    def __or__(self, middleware: Middleware) -> CommandBus:
+        """Append middleware via | operator: bus | RateLimitMiddleware(50.0)."""
+        return self.add_middleware(middleware)
+
+    def __ior__(self, middleware: Middleware) -> CommandBus:
+        """Append middleware via |= operator: bus |= RateLimitMiddleware(50.0)."""
+        return self.add_middleware(middleware)
+
     def register(self, command_type: type[Command], handler: HandlerFn) -> CommandBus:
         """Register a handler callable for a command type. Returns self."""
         self._handlers[command_type] = handler
@@ -189,6 +200,10 @@ class CommandBus:
     def has_middleware(self, cls: type) -> bool:
         """Return True if a middleware of the given type is registered."""
         return any(isinstance(m, cls) for m in self._middleware)
+
+    def __contains__(self, cls: type) -> bool:
+        """Support `TimingMiddleware in bus` syntax."""
+        return self.has_middleware(cls)
 
     def dispatch(self, command: Command) -> CommandResult:
         """Run command through the full middleware chain then the handler.

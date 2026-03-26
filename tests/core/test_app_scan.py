@@ -132,57 +132,32 @@ class TestScanSingleLcd:
         app.scan()
         lcd_dev.connect.assert_called_once_with(detected)
 
-    def test_ensure_data_dispatched_when_resolution_known(self, lcd_app):
-        """_wire_bus must fire EnsureDataCommand when resolution != (0, 0)."""
+    def test_ensure_data_called_by_bootstrap(self, lcd_app):
+        """bootstrap() must call ensure_data_fn for each connected LCD resolution."""
         app, _ = lcd_app
-        dispatched = []
-        original_dispatch = app.build_lcd_bus
+        called_with = []
+        app._ensure_data_fn = lambda w, h, progress_fn=None: called_with.append((w, h))
 
-        def capturing_build(device):
-            bus = original_dispatch(device)
-            original_bus_dispatch = bus.dispatch
+        with patch.object(app._os_bus, 'dispatch'):
+            app.bootstrap()
 
-            def _cap(cmd):
-                dispatched.append(cmd)
-                return original_bus_dispatch(cmd)
-            bus.dispatch = _cap
-            return bus
+        assert (320, 320) in called_with
 
-        app.build_lcd_bus = capturing_build
-        app.scan()
-
-        from trcc.core.commands.lcd import EnsureDataCommand
-        ensure_cmds = [c for c in dispatched if isinstance(c, EnsureDataCommand)]
-        assert len(ensure_cmds) == 1
-        assert ensure_cmds[0].width == 320
-        assert ensure_cmds[0].height == 320
-
-    def test_no_ensure_data_when_resolution_zero(self, app):
-        """_wire_bus must NOT fire EnsureDataCommand when resolution is (0, 0)."""
+    def test_ensure_data_skipped_when_resolution_zero(self, app):
+        """_ensure_data_blocking must not call ensure_fn when resolution is (0, 0)."""
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1", resolution=(0, 0))
         app._builder.build_detect_fn.return_value = lambda: [detected]
         app._builder.build_device.return_value = lcd_dev
         app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
 
-        dispatched = []
-        orig = app.build_lcd_bus
+        called_with = []
+        app._ensure_data_fn = lambda w, h, progress_fn=None: called_with.append((w, h))
 
-        def capturing_build(device):
-            bus = orig(device)
-            orig_d = bus.dispatch
+        with patch.object(app._os_bus, 'dispatch'):
+            app.bootstrap()
 
-            def _cap(cmd):
-                dispatched.append(cmd)
-                return orig_d(cmd)
-            bus.dispatch = _cap
-            return bus
-
-        app.build_lcd_bus = capturing_build
-        app.scan()
-
-        from trcc.core.commands.lcd import EnsureDataCommand
-        assert not any(isinstance(c, EnsureDataCommand) for c in dispatched)
+        assert called_with == []
 
 
 # ── scan() — single LED device ───────────────────────────────────────────────
@@ -340,6 +315,71 @@ class TestBootstrap:
 
         cmd = mock_dispatch.call_args[0][0]
         assert cmd.renderer_factory is None
+
+    def test_bootstrap_calls_ensure_data_blocking(self, app):
+        """bootstrap() must call _ensure_data_blocking after scan()."""
+        with patch.object(app._os_bus, 'dispatch'), \
+             patch.object(app, '_ensure_data_blocking') as mock_ensure:
+            app.bootstrap()
+        mock_ensure.assert_called_once_with()
+
+
+# ── _ensure_data_blocking() ───────────────────────────────────────────────────
+
+class TestEnsureDataBlocking:
+    @pytest.fixture()
+    def lcd_app_with_ensure(self, app):
+        detected = _detected("2-1")
+        lcd_dev = _mock_lcd_device("2-1", resolution=(320, 320))
+        app._builder.build_detect_fn.return_value = lambda: [detected]
+        app._builder.build_device.return_value = lcd_dev
+        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+        app.scan()
+        return app, lcd_dev
+
+    def test_calls_ensure_fn_with_resolution(self, lcd_app_with_ensure):
+        app, _ = lcd_app_with_ensure
+        called = []
+        app._ensure_data_fn = lambda w, h, progress_fn=None: called.append((w, h))
+        app._ensure_data_blocking()
+        assert (320, 320) in called
+
+    def test_no_ensure_fn_is_noop(self, lcd_app_with_ensure):
+        app, _ = lcd_app_with_ensure
+        app._ensure_data_fn = None
+        app._ensure_data_blocking()  # must not raise
+
+    def test_deduplicates_same_resolution(self, app):
+        """Two LCD devices at the same resolution → ensure_fn called once."""
+        detected_list = [_detected("2-1"), _detected("2-2")]
+        devices = [_mock_lcd_device("2-1"), _mock_lcd_device("2-2")]
+        app._builder.build_detect_fn.return_value = lambda: detected_list
+        app._builder.build_device.side_effect = devices
+        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+        app.scan()
+
+        called = []
+        app._ensure_data_fn = lambda w, h, progress_fn=None: called.append((w, h))
+        app._ensure_data_blocking()
+        assert called.count((320, 320)) == 1
+
+    def test_ensure_fn_receives_progress_callback(self, lcd_app_with_ensure):
+        """ensure_fn must receive a progress_fn kwarg that fires BOOTSTRAP_PROGRESS."""
+        from trcc.core.app import AppEvent, AppObserver
+        app, _ = lcd_app_with_ensure
+        events: list[str] = []
+
+        class _Obs(AppObserver):
+            def on_app_event(self, event: AppEvent, data: object) -> None:
+                if event == AppEvent.BOOTSTRAP_PROGRESS:
+                    events.append(str(data))
+
+        app.register(_Obs())
+        app._ensure_data_fn = lambda w, h, progress_fn=None: (
+            progress_fn(f"Downloading {w}x{h}...") if progress_fn else None
+        )
+        app._ensure_data_blocking()
+        assert any("320" in m for m in events)
 
 
 # ── device_connected() / device_lost() ───────────────────────────────────────

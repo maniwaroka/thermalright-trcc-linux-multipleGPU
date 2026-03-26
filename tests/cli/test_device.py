@@ -565,6 +565,19 @@ class TestFormat:
         assert "0416:5408" in line
         assert "(LY)" in line
 
+    def test_led_device_uses_vid_pid_path(self):
+        """LED controller: path is formatted as vid:pid (issue #90)."""
+        dev = _make_detected_device(
+            scsi_device=None,
+            product_name="LED Controller",
+            vid=0x0416, pid=0x8001,
+            protocol="led",
+        )
+        line = _format(dev, probe=False)
+        assert "0416:8001" in line
+        assert "No device path found" not in line
+        assert "(LED)" in line
+
     def test_unknown_protocol_no_scsi_path_shows_fallback(self):
         """Unknown protocol without scsi_device: shows fallback path text."""
         dev = _make_detected_device(

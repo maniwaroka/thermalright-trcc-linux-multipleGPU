@@ -12,7 +12,7 @@ from typing import Any, Callable
 from ..command_bus import OSCommand
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class InitPlatformCommand(OSCommand):
     """Bootstrap the platform: logging, OS detection, settings, renderer.
 
@@ -22,6 +22,9 @@ class InitPlatformCommand(OSCommand):
     renderer_factory: callable that returns a Renderer — called once inside
     the handler. CLI passes an offscreen QtRenderer factory; GUI passes a
     full QtRenderer factory; API does the same. Core never imports Qt.
+
+    Progress during data download/extraction is reported via
+    AppEvent.BOOTSTRAP_PROGRESS — register an AppObserver before bootstrap.
     """
     verbosity: int = 0
     renderer_factory: Callable[[], Any] | None = field(
@@ -29,7 +32,7 @@ class InitPlatformCommand(OSCommand):
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DiscoverDevicesCommand(OSCommand):
     """Scan for all connected TRCC devices, classify, connect, and wire buses.
 
@@ -41,7 +44,7 @@ class DiscoverDevicesCommand(OSCommand):
     path: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SetLanguageCommand(OSCommand):
     """Set the application language by ISO 639-1 code.
 
@@ -51,7 +54,7 @@ class SetLanguageCommand(OSCommand):
     code: str = "en"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SetupPlatformCommand(OSCommand):
     """Run the interactive platform setup wizard.
 
@@ -61,33 +64,33 @@ class SetupPlatformCommand(OSCommand):
     auto_yes: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SetupUdevCommand(OSCommand):
     """Install udev rules for LCD device access (Linux only)."""
     dry_run: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SetupSelinuxCommand(OSCommand):
     """Install SELinux policy module for USB device access (Linux only)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SetupPolkitCommand(OSCommand):
     """Install polkit policy for passwordless dmidecode/smartctl (Linux only)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class InstallDesktopCommand(OSCommand):
     """Install .desktop menu entry and icon (Linux only)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SetupWinUsbCommand(OSCommand):
     """Guide WinUSB driver installation for Thermalright USB devices (Windows only)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DownloadThemesCommand(OSCommand):
     """Download theme packs from GitHub.
 

@@ -425,13 +425,13 @@ class TestHandshakesRouting:
             rpt._handshakes()
             mock_hid.assert_called_once()
 
-    def test_hid_led_device_routes_to_led_handler(self):
+    def test_led_device_routes_to_led_handler(self):
         dev = MagicMock()
-        dev.protocol = "hid"
+        dev.protocol = "led"
         dev.implementation = "hid_led"
         dev.vid = 0x0416
         dev.pid = 0x8001
-        dev.device_type = 2
+        dev.device_type = 1
 
         rpt = DebugReport()
         rpt._detected_devices = [dev]

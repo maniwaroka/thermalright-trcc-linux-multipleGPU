@@ -1129,7 +1129,7 @@ def main():
       1. InitPlatformCommand  — logging, OS, settings, renderer
       2. DiscoverDevicesCommand — triggered per command that needs a device
     """
-    from trcc.core.app import TrccApp
+    from trcc.core.app import AppEvent, AppObserver, TrccApp
     from trcc.core.commands.initialize import InitPlatformCommand
 
     trcc_app = TrccApp.init()
@@ -1140,6 +1140,18 @@ def main():
     # creating an offscreen one first makes the windowed creation fail.
     _positional = [a for a in sys.argv[1:] if not a.startswith('-')]
     _renderer_factory = None if _positional[:1] == ['gui'] else _make_cli_renderer
+
+    # CLI (non-GUI) shows download/extraction progress via AppEvent.BOOTSTRAP_PROGRESS.
+    class _CliProgressObserver(AppObserver):
+        def on_app_event(self, event: AppEvent, data: object) -> None:
+            if event == AppEvent.BOOTSTRAP_PROGRESS:
+                print(data, flush=True)
+
+    _is_gui = _positional[:1] == ['gui']
+    _progress_obs: Optional[AppObserver] = None
+    if not _is_gui:
+        _progress_obs = _CliProgressObserver()
+        trcc_app.register(_progress_obs)
 
     trcc_app.os_bus.dispatch(InitPlatformCommand(
         verbosity=_verbose,

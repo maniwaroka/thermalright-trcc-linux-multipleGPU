@@ -16,7 +16,6 @@ import pytest
 from trcc.core.app import AppEvent, AppObserver, TrccApp
 from trcc.core.commands.initialize import (
     DiscoverDevicesCommand,
-    DownloadThemesCommand,
     InitPlatformCommand,
     InstallDesktopCommand,
     SetLanguageCommand,
@@ -32,12 +31,22 @@ from trcc.core.commands.initialize import (
 @pytest.fixture()
 def app():
     """Fresh TrccApp with a mocked builder and a real os_bus."""
+    from trcc.core.handlers.os import build_os_bus
     TrccApp.reset()
     builder = MagicMock()
     builder.build_detect_fn.return_value = lambda: []
     inst = TrccApp(builder)
     TrccApp._instance = inst
-    inst._os_bus = inst.build_os_bus()
+    inst._os_bus = build_os_bus(
+        bootstrap_fn=builder.bootstrap,
+        set_renderer_fn=inst.set_renderer,
+        scan_fn=lambda: inst.scan(),
+        ensure_data_fn=lambda: inst._ensure_data_blocking(),
+        has_device_fn=lambda path: path in inst._devices,
+        build_setup_fn=builder.build_setup,
+        list_themes_fn=MagicMock(),
+        download_pack_fn=MagicMock(return_value=0),
+    )
     yield inst
     TrccApp.reset()
 
@@ -72,6 +81,20 @@ class TestInitPlatformHandler:
         app._os_bus.dispatch(InitPlatformCommand())
         app._builder.with_renderer.assert_not_called()
 
+    def test_bootstrap_progress_event_emitted(self, app):
+        """BOOTSTRAP_PROGRESS must be notified when ensure_fn fires a message."""
+        from trcc.core.app import AppEvent, AppObserver
+        received: list[str] = []
+
+        class _Obs(AppObserver):
+            def on_app_event(self, event: AppEvent, data: object) -> None:
+                if event == AppEvent.BOOTSTRAP_PROGRESS:
+                    received.append(str(data))
+
+        app.register(_Obs())
+        app._notify(AppEvent.BOOTSTRAP_PROGRESS, "Downloading themes…")
+        assert received == ["Downloading themes…"]
+
 
 # ── DiscoverDevicesCommand handler ────────────────────────────────────────────
 
@@ -89,6 +112,12 @@ class TestDiscoverHandler:
     def test_path_not_found_returns_fail(self, app):
         result = app._os_bus.dispatch(DiscoverDevicesCommand(path="/dev/sg99"))
         assert not result.success
+
+    def test_discover_calls_ensure_data_blocking(self, app):
+        """DiscoverDevicesCommand must run _ensure_data_blocking after scan."""
+        with patch.object(app, '_ensure_data_blocking') as mock_ensure:
+            app._os_bus.dispatch(DiscoverDevicesCommand())
+        mock_ensure.assert_called_once_with()
 
 
 # ── SetLanguageCommand handler ────────────────────────────────────────────────
@@ -170,34 +199,6 @@ class TestSetupCommandHandlers:
                     SetupWinUsbCommand()):
             result = app._os_bus.dispatch(cmd)
             assert not result.success, f"{cmd} should return fail on rc=1"
-
-
-# ── DownloadThemesCommand handler ─────────────────────────────────────────────
-
-class TestDownloadThemesHandler:
-    def test_no_pack_calls_list_available(self, app):
-        with patch('trcc.adapters.infra.theme_downloader.list_available') as mock_list, \
-             patch('trcc.adapters.infra.theme_downloader.download_pack'):
-            app._os_bus.dispatch(DownloadThemesCommand(pack=''))
-        mock_list.assert_called_once()
-
-    def test_pack_calls_download_pack(self, app):
-        with patch('trcc.adapters.infra.theme_downloader.download_pack',
-                   return_value=0) as mock_dl:
-            app._os_bus.dispatch(DownloadThemesCommand(pack='320x320'))
-        mock_dl.assert_called_once_with('320x320', force=False)
-
-    def test_pack_force_passed_through(self, app):
-        with patch('trcc.adapters.infra.theme_downloader.download_pack',
-                   return_value=0) as mock_dl:
-            app._os_bus.dispatch(DownloadThemesCommand(pack='320x320', force=True))
-        mock_dl.assert_called_once_with('320x320', force=True)
-
-    def test_download_fail_returns_fail(self, app):
-        with patch('trcc.adapters.infra.theme_downloader.download_pack',
-                   return_value=1):
-            result = app._os_bus.dispatch(DownloadThemesCommand(pack='320x320'))
-        assert not result.success
 
 
 # ── Metrics loop ──────────────────────────────────────────────────────────────

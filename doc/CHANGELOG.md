@@ -1,5 +1,18 @@
 # Changelog
 
+## v9.2.4
+
+### Fixes
+- **`trcc detect` shows "No device path found" for LED controllers** (issue #90): LED protocol devices now display `vid:pid` path like HID/bulk devices
+- **`trcc test` crashes on LED controllers** (issue #90): LED devices have no LCD panel — command now exits cleanly with a message directing users to `trcc led`
+- **`trcc report` missing LED handshake data** (issue #90): LED devices (`protocol="led"`) were skipped in the Handshakes section — now included alongside SCSI/HID/Bulk/LY
+
+### Internal
+- **TrccApp god class extracted**: all inline handler closures moved to `core/handlers/` package — `LCDCommandHandler`, `LEDCommandHandler`, `LEDGuiCommandHandler`, `OSCommandHandler`. Each is a pure callable with injected dependencies; `TrccApp.build_*_bus` reduced to one-liner delegates
+- **Hexagonal violation fixed**: `OSCommandHandler` no longer imports adapter modules inline — `list_themes_fn` and `download_pack_fn` are injected at construction time via `app.py` (composition root)
+- **Python 3.10 compatibility**: `HandlerFn: TypeAlias = ...` replaces `type HandlerFn = ...` (3.12-only syntax); `@override` removed (3.12-only import); `match` statements require `target-version = "py310"` in ruff config
+- **Duplicate test class removed**: `TestDownloadThemesHandler` existed in both `test_os_handler.py` and `test_app_lifecycle.py`; lifecycle test class deleted, handler test is the single source
+
 ## v9.2.3
 
 ### Internal

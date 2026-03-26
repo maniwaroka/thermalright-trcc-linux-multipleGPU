@@ -105,7 +105,7 @@ def _format(dev, probe=False):
     proto = dev.protocol.upper()
     if dev.scsi_device:
         path = dev.scsi_device
-    elif dev.protocol in ("hid", "bulk", "ly"):
+    elif dev.protocol in ("hid", "bulk", "ly", "led"):
         path = f"{dev.vid:04x}:{dev.pid:04x}"
     else:
         path = "No device path found"

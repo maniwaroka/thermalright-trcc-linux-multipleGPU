@@ -1469,8 +1469,9 @@ class DebugReport:
             hid_devs  = [d for d in self._detected_devices if d.protocol == "hid"]
             bulk_devs = [d for d in self._detected_devices if d.protocol == "bulk"]
             ly_devs   = [d for d in self._detected_devices if d.protocol == "ly"]
+            led_devs  = [d for d in self._detected_devices if d.protocol == "led"]
 
-            if not any([scsi_devs, hid_devs, bulk_devs, ly_devs]):
+            if not any([scsi_devs, hid_devs, bulk_devs, ly_devs, led_devs]):
                 sec.lines.append("  (no devices to handshake)")
                 return
 
@@ -1482,14 +1483,17 @@ class DebugReport:
                     sec.lines.append(f"    FAILED: {e}")
 
             for dev in hid_devs:
-                is_led = dev.implementation == "hid_led"
-                kind = "LED" if is_led else f"HID-LCD (Type {dev.device_type})"
+                kind = f"HID-LCD (Type {dev.device_type})"
                 sec.lines.append(f"\n  {dev.vid:04x}:{dev.pid:04x} — {kind}")
                 try:
-                    if is_led:
-                        self._handshake_led(dev, sec)
-                    else:
-                        self._handshake_hid_lcd(dev, sec)
+                    self._handshake_hid_lcd(dev, sec)
+                except Exception as e:
+                    sec.lines.append(f"    FAILED: {e}")
+
+            for dev in led_devs:
+                sec.lines.append(f"\n  {dev.vid:04x}:{dev.pid:04x} — LED")
+                try:
+                    self._handshake_led(dev, sec)
                 except Exception as e:
                     sec.lines.append(f"    FAILED: {e}")
 

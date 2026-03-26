@@ -77,10 +77,17 @@ def configure_app() -> None:
     """
     global _system_svc  # noqa: PLW0603
     from trcc.adapters.render.qt import QtRenderer
-    from trcc.core.app import TrccApp
+    from trcc.core.app import AppEvent, AppObserver, TrccApp
     from trcc.services.system import set_instance
 
     trcc_app = TrccApp.init()
+
+    class _ApiProgressObserver(AppObserver):
+        def on_app_event(self, event: AppEvent, data: object) -> None:
+            if event == AppEvent.BOOTSTRAP_PROGRESS:
+                print(data, flush=True)
+
+    trcc_app.register(_ApiProgressObserver())
     trcc_app.bootstrap(renderer_factory=QtRenderer)
     _system_svc = trcc_app.build_system()
     set_instance(_system_svc)

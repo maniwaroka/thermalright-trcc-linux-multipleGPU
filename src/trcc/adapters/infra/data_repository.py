@@ -398,14 +398,33 @@ class DataManager:
         )
 
     @staticmethod
-    def ensure_all(width: int, height: int) -> None:
-        """Download + extract all archives for a resolution (skips if already done)."""
+    def ensure_all(
+        width: int,
+        height: int,
+        progress_fn: Optional[callable] = None,  # type: ignore[type-arg]
+    ) -> None:
+        """Download + extract all archives for a resolution (skips if already done).
+
+        progress_fn: optional callable(str) — called with a status message at
+        each step so CLI adapters can print progress.  GUI/API pass None.
+        """
         if DataManager.is_resolution_installed(width, height):
             return
+
+        def _report(msg: str) -> None:
+            if progress_fn is not None:
+                progress_fn(msg)
+            else:
+                log.info(msg)
+
+        _report(f"Downloading themes for {width}x{height}...")
         DataManager.ensure_themes(width, height)
+        _report(f"Downloading web previews for {width}x{height}...")
         DataManager.ensure_web(width, height)
+        _report(f"Downloading mask themes for {width}x{height}...")
         DataManager.ensure_web_masks(width, height)
         DataManager.mark_resolution_installed(width, height)
+        _report(f"Data ready for {width}x{height}.")
 
     # ------------------------------------------------------------------
     # Resolution installation tracking

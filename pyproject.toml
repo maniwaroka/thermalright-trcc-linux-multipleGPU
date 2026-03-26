@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trcc-linux"
-version = "9.2.3"
+version = "9.2.4"
 description = "Linux implementation of Thermalright LCD Control Center"
 readme = "README.md"
 license = "GPL-3.0-or-later"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "TRCC Linux Contributors" }
 ]
@@ -134,7 +134,7 @@ filterwarnings = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -157,7 +157,7 @@ exclude_lines = [
 ]
 
 [tool.pyright]
-pythonVersion = "3.9"
+pythonVersion = "3.10"
 pythonPlatform = "Linux"
 include = ["src"]
 typeCheckingMode = "basic"

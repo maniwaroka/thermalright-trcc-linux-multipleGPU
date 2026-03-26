@@ -212,3 +212,57 @@ class TestBuildLedGuiBus:
         led = _mock_led()
         app.build_led_gui_bus(led).dispatch(SetLEDModeCommand(mode=LEDMode.BREATHING))
         led.update_mode.assert_called_once_with(LEDMode.BREATHING)
+
+
+# ── Metrics validation (symmetric LCD + LED) ──────────────────────────────────
+
+class TestMetricsValidation:
+    def test_lcd_none_metrics_returns_fail(self, app):
+        lcd = _mock_lcd()
+        result = app.build_lcd_bus(lcd).dispatch(UpdateMetricsLCDCommand(metrics=None))
+        assert not result
+        lcd.update_metrics.assert_not_called()
+
+    def test_lcd_valid_metrics_succeeds(self, app):
+        lcd = _mock_lcd()
+        metrics = MagicMock()
+        result = app.build_lcd_bus(lcd).dispatch(UpdateMetricsLCDCommand(metrics=metrics))
+        assert result
+        lcd.update_metrics.assert_called_once_with(metrics)
+
+    def test_led_none_metrics_returns_fail(self, app):
+        led = _mock_led()
+        result = app.build_led_bus(led).dispatch(UpdateMetricsLEDCommand(metrics=None))
+        assert not result
+        led.update_metrics.assert_not_called()
+
+    def test_led_valid_metrics_succeeds(self, app):
+        led = _mock_led()
+        metrics = MagicMock()
+        result = app.build_led_bus(led).dispatch(UpdateMetricsLEDCommand(metrics=metrics))
+        assert result
+        led.update_metrics.assert_called_once_with(metrics)
+
+
+# ── Command __post_init__ validation ─────────────────────────────────────────
+
+class TestCommandValidation:
+    def test_brightness_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="brightness"):
+            SetBrightnessCommand(level=101)
+
+    def test_brightness_negative_raises(self):
+        with pytest.raises(ValueError):
+            SetBrightnessCommand(level=-1)
+
+    def test_brightness_valid_range(self):
+        SetBrightnessCommand(level=0)
+        SetBrightnessCommand(level=100)
+
+    def test_led_brightness_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="brightness"):
+            SetLEDBrightnessCommand(level=101)
+
+    def test_led_brightness_valid(self):
+        SetLEDBrightnessCommand(level=0)
+        SetLEDBrightnessCommand(level=100)

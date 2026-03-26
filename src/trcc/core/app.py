@@ -14,7 +14,7 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..services.system import SystemService
@@ -39,11 +39,12 @@ log = logging.getLogger(__name__)
 # ── Observer contract ────────────────────────────────────────────────────────
 
 class AppEvent(Enum):
-    DEVICES_CHANGED   = auto()  # device list rescanned
-    DEVICE_CONNECTED  = auto()  # single device came online
-    FRAME_RENDERED    = auto()  # overlay frame rendered — data is {'path': str, 'image': Any}
-    DEVICE_LOST       = auto()  # single device went offline
-    METRICS_UPDATED   = auto()  # metrics polled — data is SystemMetrics
+    DEVICES_CHANGED     = auto()  # device list rescanned
+    DEVICE_CONNECTED    = auto()  # single device came online
+    FRAME_RENDERED      = auto()  # overlay frame rendered — data is {'path': str, 'image': Any}
+    DEVICE_LOST         = auto()  # single device went offline
+    METRICS_UPDATED     = auto()  # metrics polled — data is SystemMetrics
+    BOOTSTRAP_PROGRESS  = auto()  # download/extract progress — data is str message
 
 
 class AppObserver(ABC):
@@ -170,23 +171,63 @@ class TrccApp:
         self._notify(AppEvent.DEVICES_CHANGED, list(self._devices.values()))
         return list(self._devices.values())
 
-    def bootstrap(self, renderer_factory: Any = None) -> list[Device]:
-        """Init platform + connect all devices in parallel.
+    def bootstrap(
+        self,
+        renderer_factory: Any = None,
+    ) -> list[Device]:
+        """Init platform + connect all devices + ensure theme data.
 
         Single call that every composition root (GUI, API, CLI serve) makes
-        before starting its UI. After this returns:
+        before starting its UI.  Blocks until data is ready so the UI always
+        starts with themes present — no empty-list-then-populate flash.
+
+        After this returns:
           - Platform initialized (logging, OS, settings, renderer)
           - All devices connected and their buses ready
-          - EnsureDataCommand running in background per resolution
+          - Theme data extracted/downloaded for each connected resolution
+
+        Progress is reported via AppEvent.BOOTSTRAP_PROGRESS notifications.
+        Register an AppObserver before calling bootstrap() to receive them.
 
         Returns the list of connected devices (same as scan()).
         """
         from .commands.initialize import InitPlatformCommand
-        self.os_bus.dispatch(InitPlatformCommand(renderer_factory=renderer_factory))
-        return self.scan()
+        self.os_bus.dispatch(InitPlatformCommand(
+            renderer_factory=renderer_factory,
+        ))
+        devices = self.scan()
+        self._ensure_data_blocking()
+        return devices
+
+    def _ensure_data_blocking(self) -> None:
+        """Run ensure_all() synchronously for each connected LCD resolution.
+
+        Called at the end of bootstrap() so the UI starts with data present.
+        Hotplug and SetResolutionCommand still use the background EnsureDataCommand.
+        Progress is reported via AppEvent.BOOTSTRAP_PROGRESS notifications.
+        """
+        from .lcd_device import LCDDevice as _LCD
+        ensure_fn = self._ensure_data_fn
+        if ensure_fn is None:
+            return
+        seen: set[tuple[int, int]] = set()
+        for device in self._devices.values():
+            if not (device.is_lcd and isinstance(device, _LCD)):
+                continue
+            w, h = device.device_info.resolution
+            if w and h and (w, h) not in seen:
+                seen.add((w, h))
+                ensure_fn(w, h, progress_fn=lambda msg: self._notify(AppEvent.BOOTSTRAP_PROGRESS, msg))
+                import trcc.conf as _conf
+                _conf.settings._resolve_paths()
+                device.notify_data_ready()
 
     def device_connected(self, detected: DetectedDevice) -> None:
-        """Build, connect, and register a newly discovered device, notify observers."""
+        """Build, connect, and register a newly discovered device, notify observers.
+
+        For hotplug (UI already running) we dispatch EnsureDataCommand so data
+        is fetched in the background — no blocking here since the UI is live.
+        """
         device = self._builder.build_device(detected)
         try:
             device.connect(detected)
@@ -195,6 +236,13 @@ class TrccApp:
             return
         self._devices[detected.path] = device
         self._wire_bus(device)
+        # Hotplug: ensure data in background (UI already running, can't block).
+        from .lcd_device import LCDDevice as _LCD
+        if device.is_lcd and isinstance(device, _LCD) and self._lcd_bus is not None:
+            from .commands.lcd import EnsureDataCommand
+            w, h = device.device_info.resolution
+            if w and h:
+                self._lcd_bus.dispatch(EnsureDataCommand(width=w, height=h))
         self._notify(AppEvent.DEVICE_CONNECTED, device)
 
     def device_lost(self, path: str) -> None:
@@ -225,12 +273,9 @@ class TrccApp:
             self._lcd_device = device
             self._lcd_bus = self.build_lcd_bus(device)
             log.debug("lcd_bus ready for %s", getattr(device, 'device_path', '?'))
-            # Device reports its resolution — ensure theme data is present for it.
-            # Runs in background (EnsureDataCommand spawns a thread) — non-blocking.
-            from .commands.lcd import EnsureDataCommand
-            w, h = device.device_info.resolution
-            if w and h:
-                self._lcd_bus.dispatch(EnsureDataCommand(width=w, height=h))
+            # Data extraction is handled by bootstrap() → _ensure_data_blocking()
+            # so the UI starts fully populated.  Hotplug (device_connected) and
+            # SetResolutionCommand still dispatch EnsureDataCommand via lcd_bus.
         elif device.is_led and isinstance(device, _LED):
             self._led_device = device
             self._led_bus = self.build_led_bus(device)
@@ -284,107 +329,20 @@ class TrccApp:
         return self._os_bus
 
     def build_os_bus(self) -> CommandBus:
-        """Return a CommandBus wired to OS/platform handlers.
+        """Return a CommandBus wired to OS/platform handlers."""
+        from trcc.adapters.infra.theme_downloader import download_pack, list_available
 
-        All three UI adapters (CLI, API, GUI) dispatch OS commands here.
-        The handler delegates to the platform-specific adapter — callers
-        are completely blind to the underlying OS.
-        """
-        from .command_bus import (
-            Command,
-            CommandBus,
-            CommandResult,
-            LoggingMiddleware,
-            TimingMiddleware,
+        from .handlers.os import build_os_bus as _build
+        return _build(
+            bootstrap_fn=self._builder.bootstrap,
+            set_renderer_fn=self.set_renderer,
+            scan_fn=lambda: self.scan(),
+            ensure_data_fn=lambda: self._ensure_data_blocking(),
+            has_device_fn=lambda path: path in self._devices,
+            build_setup_fn=self._builder.build_setup,
+            list_themes_fn=list_available,
+            download_pack_fn=download_pack,
         )
-        from .commands.initialize import (
-            DiscoverDevicesCommand,
-            DownloadThemesCommand,
-            InitPlatformCommand,
-            InstallDesktopCommand,
-            SetLanguageCommand,
-            SetupPlatformCommand,
-            SetupPolkitCommand,
-            SetupSelinuxCommand,
-            SetupUdevCommand,
-            SetupWinUsbCommand,
-        )
-
-        def _init_platform(cmd: Command) -> CommandResult:
-            verbosity = getattr(cmd, 'verbosity', 0)
-            renderer_factory = getattr(cmd, 'renderer_factory', None)
-            self._builder.bootstrap(verbosity)
-            if renderer_factory is not None:
-                self.set_renderer(renderer_factory())
-            return CommandResult.ok(message="platform ready")
-
-        def _discover(cmd: Command) -> CommandResult:
-            path = getattr(cmd, 'path', None)
-            devices = self.scan()
-            if path and path not in self._devices:
-                return CommandResult.fail(f"Device not found: {path}")
-            return CommandResult.ok(
-                message=f"{len(devices)} device(s) found",
-                devices=[getattr(d, 'device_path', str(d)) for d in devices],
-            )
-
-        def _set_language(cmd: Command) -> CommandResult:
-            from .i18n import LANGUAGE_NAMES
-            code = getattr(cmd, 'code', 'en')
-            if code not in LANGUAGE_NAMES:
-                return CommandResult.fail(f"Unknown language code: {code}")
-            from trcc.conf import settings
-            settings.lang = code
-            return CommandResult.ok(message=f"Language set to {code}")
-
-        def _setup_platform(cmd: Command) -> CommandResult:
-            auto_yes = getattr(cmd, 'auto_yes', False)
-            rc = self._builder.build_setup().run(auto_yes=auto_yes)
-            return CommandResult.ok() if rc == 0 else CommandResult.fail("Setup failed")
-
-        def _setup_udev(cmd: Command) -> CommandResult:
-            rc = self._builder.build_setup().setup_udev(dry_run=getattr(cmd, 'dry_run', False))
-            return CommandResult.ok() if rc == 0 else CommandResult.fail("udev setup failed")
-
-        def _setup_selinux(_cmd: Command) -> CommandResult:
-            rc = self._builder.build_setup().setup_selinux()
-            return CommandResult.ok() if rc == 0 else CommandResult.fail("SELinux setup failed")
-
-        def _setup_polkit(_cmd: Command) -> CommandResult:
-            rc = self._builder.build_setup().setup_polkit()
-            return CommandResult.ok() if rc == 0 else CommandResult.fail("polkit setup failed")
-
-        def _install_desktop(_cmd: Command) -> CommandResult:
-            rc = self._builder.build_setup().install_desktop()
-            return CommandResult.ok() if rc == 0 else CommandResult.fail("Desktop install failed")
-
-        def _setup_winusb(_cmd: Command) -> CommandResult:
-            rc = self._builder.build_setup().setup_winusb()
-            return CommandResult.ok() if rc == 0 else CommandResult.fail("WinUSB setup failed")
-
-        def _download_themes(cmd: Command) -> CommandResult:
-            from trcc.adapters.infra.theme_downloader import download_pack, list_available
-            pack = getattr(cmd, 'pack', '')
-            force = getattr(cmd, 'force', False)
-            if not pack:
-                list_available()
-                return CommandResult.ok(message="Listed available theme packs")
-            rc = download_pack(pack, force=force)
-            return CommandResult.ok() if rc == 0 else CommandResult.fail(f"Download failed: {pack}")
-
-        return (CommandBus()
-                .add_middleware(LoggingMiddleware())
-                .add_middleware(TimingMiddleware(threshold_ms=5000.0))
-                .register(InitPlatformCommand, _init_platform)
-                .register(DiscoverDevicesCommand, _discover)
-                .register(SetLanguageCommand, _set_language)
-                .register(SetupPlatformCommand, _setup_platform)
-                .register(SetupUdevCommand, _setup_udev)
-                .register(SetupSelinuxCommand, _setup_selinux)
-                .register(SetupPolkitCommand, _setup_polkit)
-                .register(InstallDesktopCommand, _install_desktop)
-                .register(SetupWinUsbCommand, _setup_winusb)
-                .register(DownloadThemesCommand, _download_themes))
 
     # ── DI: device construction ──────────────────────────────────────────────
 
@@ -506,289 +464,24 @@ class TrccApp:
     # ── CommandBus factories ─────────────────────────────────────────────────
 
     def build_lcd_bus(self, lcd: LCDDevice) -> CommandBus:
-        """Return a CommandBus wired to lcd — logging + timing middleware.
-
-        Suitable for CLI and API (commands arrive one at a time, no rate limit).
-        """
-        from .command_bus import (
-            Command,
-            CommandBus,
-            CommandResult,
-            LoggingMiddleware,
-            TimingMiddleware,
-        )
-        from .commands.lcd import (
-            EnableOverlayCommand,
-            EnsureDataCommand,
-            ExportThemeCommand,
-            ImportThemeCommand,
-            LoadMaskCommand,
-            LoadThemeByNameCommand,
-            PlayVideoLoopCommand,
-            RenderOverlayFromDCCommand,
-            ResetDisplayCommand,
-            SaveThemeCommand,
-            SelectThemeCommand,
-            SendColorCommand,
-            SendImageCommand,
-            SetBrightnessCommand,
-            SetOverlayConfigCommand,
-            SetResolutionCommand,
-            SetRotationCommand,
-            SetSplitModeCommand,
-            UpdateMetricsLCDCommand,
-        )
-
-        def _set_brightness(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.set_brightness(cast(SetBrightnessCommand, cmd).level))
-
-        def _set_rotation(cmd: Command) -> CommandResult:
-            c = cast(SetRotationCommand, cmd)
-            return CommandResult.from_dict(lcd.set_rotation(c.degrees))
-
-        def _send_color(cmd: Command) -> CommandResult:
-            c = cast(SendColorCommand, cmd)
-            return CommandResult.from_dict(lcd.send_color(c.r, c.g, c.b))
-
-        def _send_image(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.send_image(cast(SendImageCommand, cmd).image_path))
-
-        def _load_theme(cmd: Command) -> CommandResult:
-            c = cast(LoadThemeByNameCommand, cmd)
-            return CommandResult.from_dict(lcd.load_theme_by_name(c.name, c.width, c.height))
-
-        def _select_theme(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.select(cast(SelectThemeCommand, cmd).theme))
-
-        def _save_theme(cmd: Command) -> CommandResult:
-            c = cast(SaveThemeCommand, cmd)
-            return CommandResult.from_dict(lcd.save(c.name, c.data_dir))
-
-        def _export_theme(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.export_config(cast(ExportThemeCommand, cmd).path))
-
-        def _import_theme(cmd: Command) -> CommandResult:
-            c = cast(ImportThemeCommand, cmd)
-            return CommandResult.from_dict(lcd.import_config(c.path, c.data_dir))
-
-        def _load_mask(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.load_mask_standalone(cast(LoadMaskCommand, cmd).mask_path))
-
-        def _render_overlay(cmd: Command) -> CommandResult:
-            c = cast(RenderOverlayFromDCCommand, cmd)
-            return CommandResult.from_dict(
-                lcd.render_overlay_from_dc(c.dc_path, send=c.send, output=c.output or None))
-
-        def _set_overlay_config(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.set_config(cast(SetOverlayConfigCommand, cmd).config))
-
-        def _reset_display(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.reset())
-
-        def _ensure_data(cmd: Command) -> CommandResult:
-            import threading
-            c = cast(EnsureDataCommand, cmd)
-            import trcc.conf as _conf
-            ensure_fn = self._ensure_data_fn
-
-            def _bg() -> None:
-                if ensure_fn is not None:
-                    ensure_fn(c.width, c.height)
-                _conf.settings._resolve_paths()
-                lcd.notify_data_ready()
-
-            threading.Thread(target=_bg, daemon=True, name="data-extract").start()
-            return CommandResult.ok(message=f"Data download started for {c.width}x{c.height}")
-
-        def _set_resolution(cmd: Command) -> CommandResult:
-            c = cast(SetResolutionCommand, cmd)
-            result = lcd.set_resolution(c.width, c.height)
-            if c.width and c.height:
-                _ensure_data(EnsureDataCommand(width=c.width, height=c.height))
-            return CommandResult.from_dict(result)
-
-        def _play_video_loop(cmd: Command) -> CommandResult:
-            c = cast(PlayVideoLoopCommand, cmd)
-            return CommandResult.from_dict(
-                lcd.play_video_loop(c.video_path, loop=c.loop, duration=c.duration))
-
-        def _set_split_mode(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.set_split_mode(cast(SetSplitModeCommand, cmd).mode))
-
-        def _enable_overlay(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.enable_overlay(cast(EnableOverlayCommand, cmd).on))
-
-        def _update_metrics(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(lcd.update_metrics(cast(UpdateMetricsLCDCommand, cmd).metrics))
-
-        return (CommandBus()
-                .add_middleware(LoggingMiddleware())
-                .add_middleware(TimingMiddleware(threshold_ms=200.0))
-                .register(SetBrightnessCommand, _set_brightness)
-                .register(SetRotationCommand, _set_rotation)
-                .register(SendColorCommand, _send_color)
-                .register(SendImageCommand, _send_image)
-                .register(LoadThemeByNameCommand, _load_theme)
-                .register(SelectThemeCommand, _select_theme)
-                .register(SaveThemeCommand, _save_theme)
-                .register(ExportThemeCommand, _export_theme)
-                .register(ImportThemeCommand, _import_theme)
-                .register(LoadMaskCommand, _load_mask)
-                .register(RenderOverlayFromDCCommand, _render_overlay)
-                .register(SetOverlayConfigCommand, _set_overlay_config)
-                .register(ResetDisplayCommand, _reset_display)
-                .register(SetResolutionCommand, _set_resolution)
-                .register(PlayVideoLoopCommand, _play_video_loop)
-                .register(SetSplitModeCommand, _set_split_mode)
-                .register(EnableOverlayCommand, _enable_overlay)
-                .register(UpdateMetricsLCDCommand, _update_metrics)
-                .register(EnsureDataCommand, _ensure_data))
+        """Return a CommandBus wired to lcd — logging + timing middleware."""
+        from .handlers.lcd import build_lcd_bus as _build
+        return _build(lcd, self._ensure_data_fn)
 
     def build_lcd_gui_bus(self, lcd: LCDDevice) -> CommandBus:
-        """Return a CommandBus wired for GUI — adds RateLimitMiddleware.
-
-        GUI slider events fire continuously; rate limiting prevents USB saturation.
-        The rate limit middleware is appended after logging/timing so skipped
-        commands are still counted in timing but do not reach the handler.
-        """
-        from .command_bus import RateLimitMiddleware
-        return self.build_lcd_bus(lcd).add_middleware(RateLimitMiddleware(min_interval_ms=50.0))
+        """Return a CommandBus wired for GUI — adds RateLimitMiddleware."""
+        from .handlers.lcd import build_lcd_gui_bus as _build
+        return _build(lcd, self._ensure_data_fn)
 
     def build_led_bus(self, led: LEDDevice) -> CommandBus:
         """Return a CommandBus wired to led — logging + timing middleware."""
-        from .command_bus import (
-            Command,
-            CommandBus,
-            CommandResult,
-            LoggingMiddleware,
-            TimingMiddleware,
-        )
-        from .commands.led import (
-            SetClockFormatCommand,
-            SetLEDBrightnessCommand,
-            SetLEDColorCommand,
-            SetLEDModeCommand,
-            SetLEDSensorSourceCommand,
-            SetTempUnitLEDCommand,
-            SetZoneBrightnessCommand,
-            SetZoneColorCommand,
-            SetZoneModeCommand,
-            SetZoneSyncCommand,
-            ToggleLEDCommand,
-            ToggleSegmentCommand,
-            ToggleZoneCommand,
-            UpdateMetricsLEDCommand,
-        )
-
-        def _set_color(cmd: Command) -> CommandResult:
-            c = cast(SetLEDColorCommand, cmd)
-            return CommandResult.from_dict(led.set_color(c.r, c.g, c.b))
-
-        def _set_mode(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.set_mode(cast(SetLEDModeCommand, cmd).mode))
-
-        def _set_brightness(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.set_brightness(cast(SetLEDBrightnessCommand, cmd).level))
-
-        def _toggle(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.toggle_global(cast(ToggleLEDCommand, cmd).on))
-
-        def _set_zone_color(cmd: Command) -> CommandResult:
-            c = cast(SetZoneColorCommand, cmd)
-            return CommandResult.from_dict(led.set_zone_color(c.zone, c.r, c.g, c.b))
-
-        def _set_zone_mode(cmd: Command) -> CommandResult:
-            c = cast(SetZoneModeCommand, cmd)
-            return CommandResult.from_dict(led.set_zone_mode(c.zone, c.mode))
-
-        def _set_zone_brightness(cmd: Command) -> CommandResult:
-            c = cast(SetZoneBrightnessCommand, cmd)
-            return CommandResult.from_dict(led.set_zone_brightness(c.zone, c.level))
-
-        def _toggle_zone(cmd: Command) -> CommandResult:
-            c = cast(ToggleZoneCommand, cmd)
-            return CommandResult.from_dict(led.toggle_zone(c.zone, c.on))
-
-        def _set_zone_sync(cmd: Command) -> CommandResult:
-            c = cast(SetZoneSyncCommand, cmd)
-            return CommandResult.from_dict(led.set_zone_sync(c.enabled, c.interval))
-
-        def _toggle_segment(cmd: Command) -> CommandResult:
-            c = cast(ToggleSegmentCommand, cmd)
-            return CommandResult.from_dict(led.toggle_segment(c.index, c.on))
-
-        def _set_clock_format(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.set_clock_format(cast(SetClockFormatCommand, cmd).is_24h))
-
-        def _set_temp_unit(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.set_temp_unit(cast(SetTempUnitLEDCommand, cmd).unit))
-
-        def _set_sensor_source(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.set_sensor_source(cast(SetLEDSensorSourceCommand, cmd).source))
-
-        def _update_metrics(cmd: Command) -> CommandResult:
-            return CommandResult.from_dict(led.update_metrics(cast(UpdateMetricsLEDCommand, cmd).metrics))
-
-        return (CommandBus()
-                .add_middleware(LoggingMiddleware())
-                .add_middleware(TimingMiddleware(threshold_ms=200.0))
-                .register(SetLEDColorCommand, _set_color)
-                .register(SetLEDModeCommand, _set_mode)
-                .register(SetLEDBrightnessCommand, _set_brightness)
-                .register(ToggleLEDCommand, _toggle)
-                .register(SetZoneColorCommand, _set_zone_color)
-                .register(SetZoneModeCommand, _set_zone_mode)
-                .register(SetZoneBrightnessCommand, _set_zone_brightness)
-                .register(ToggleZoneCommand, _toggle_zone)
-                .register(SetZoneSyncCommand, _set_zone_sync)
-                .register(ToggleSegmentCommand, _toggle_segment)
-                .register(SetClockFormatCommand, _set_clock_format)
-                .register(SetTempUnitLEDCommand, _set_temp_unit)
-                .register(SetLEDSensorSourceCommand, _set_sensor_source)
-                .register(UpdateMetricsLEDCommand, _update_metrics))
+        from .handlers.led import build_led_bus as _build
+        return _build(led)
 
     def build_led_gui_bus(self, led: LEDDevice) -> CommandBus:
-        """Return a CommandBus wired for GUI LED sliders.
-
-        GUI signal handlers update device state only — the 150ms animation tick
-        handles sending.  Handlers here call update_* (state-only) instead of
-        set_* (immediate send), matching the tick-based LED architecture.
-        RateLimitMiddleware prevents USB saturation when sliders move rapidly.
-        """
-        from .command_bus import (
-            Command,
-            CommandBus,
-            CommandResult,
-            LoggingMiddleware,
-            RateLimitMiddleware,
-            TimingMiddleware,
-        )
-        from .commands.led import (
-            SetLEDBrightnessCommand,
-            SetLEDColorCommand,
-            SetLEDModeCommand,
-        )
-
-        def _update_color(cmd: Command) -> CommandResult:
-            c = cast(SetLEDColorCommand, cmd)
-            led.update_color(c.r, c.g, c.b)
-            return CommandResult.ok(message="color updated")
-
-        def _update_brightness(cmd: Command) -> CommandResult:
-            led.update_brightness(cast(SetLEDBrightnessCommand, cmd).level)
-            return CommandResult.ok(message="brightness updated")
-
-        def _update_mode(cmd: Command) -> CommandResult:
-            led.update_mode(cast(SetLEDModeCommand, cmd).mode)
-            return CommandResult.ok(message="mode updated")
-
-        return (CommandBus()
-                .add_middleware(LoggingMiddleware())
-                .add_middleware(TimingMiddleware(threshold_ms=200.0))
-                .add_middleware(RateLimitMiddleware(min_interval_ms=50.0))
-                .register(SetLEDColorCommand, _update_color)
-                .register(SetLEDBrightnessCommand, _update_brightness)
-                .register(SetLEDModeCommand, _update_mode))
+        """Return a CommandBus wired for GUI LED sliders — state-only update_* calls."""
+        from .handlers.led import build_led_gui_bus as _build
+        return _build(led)
 
     # ── Observer registration ────────────────────────────────────────────────
 

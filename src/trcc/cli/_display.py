@@ -66,6 +66,9 @@ def test(device=None, loop=False, preview=False):
             return 1
 
         dev = svc.selected
+        if dev.protocol == "led":
+            print(f"{dev.path} is an LED controller with a segment display — use 'trcc led' commands.")
+            return 0
         w, h = dev.resolution
 
         colors = [
@@ -334,9 +337,12 @@ def set_brightness(builder, level, *, device=None):
     rc = _connect_or_fail(device)
     if rc:
         return rc
-    result = TrccApp.get().lcd_bus.dispatch(SetBrightnessCommand(level=level))
-    if not result.success:
-        print(f"Error: {result.payload.get('error', 'Unknown error')}")
+    try:
+        result = TrccApp.get().lcd_bus.dispatch(SetBrightnessCommand(level=level))
+    except ValueError:
+        result = None
+    if not result or not result.success:
+        print(f"Error: {getattr(result, 'payload', {}).get('error', 'invalid brightness level')}")
         print("  1 = 25%  (dim)")
         print("  2 = 50%  (medium)")
         print("  3 = 100% (full)")

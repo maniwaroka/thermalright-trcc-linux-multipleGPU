@@ -247,8 +247,8 @@ GetProtocolFn = Callable[[Any], DeviceProtocol]
 GetProtocolInfoFn = Callable[[Any], Any]
 
 # Type alias for data archive extraction callable.
-# Concrete: DataManager.ensure_all
-EnsureDataFn = Callable[[int, int], None]
+# Concrete: DataManager.ensure_all(width, height, progress_fn=None)
+EnsureDataFn = Callable[..., None]
 
 # Type alias for DC config file parser factory.
 # Concrete: DcConfig (class itself, called as DcConfig(path))

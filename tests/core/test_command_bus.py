@@ -58,6 +58,24 @@ class TestCommandResult:
         assert r.success is False
         assert r.payload["error"] == "bad input"
 
+    def test_bool_true_on_success(self):
+        assert CommandResult.ok()
+
+    def test_bool_false_on_fail(self):
+        assert not CommandResult.fail("oops")
+
+    def test_bool_usable_in_if(self):
+        result = CommandResult.ok()
+        triggered = False
+        if result:
+            triggered = True
+        assert triggered
+
+    def test_no_dict_overhead(self):
+        """slots=True — instances must not have __dict__."""
+        r = CommandResult.ok()
+        assert not hasattr(r, '__dict__')
+
 
 # ── Command dataclasses ──────────────────────────────────────────────────────
 
@@ -126,6 +144,26 @@ class TestCommandBusDispatch:
         bus = CommandBus()
         returned = bus.add_middleware(LoggingMiddleware())
         assert returned is bus
+
+    def test_or_operator_adds_middleware(self):
+        bus = CommandBus()
+        returned = bus | LoggingMiddleware()
+        assert returned is bus
+        assert LoggingMiddleware in bus
+
+    def test_ior_operator_adds_middleware(self):
+        bus = CommandBus()
+        bus |= TimingMiddleware()
+        assert TimingMiddleware in bus
+
+    def test_contains_true_when_present(self):
+        bus = CommandBus()
+        bus.add_middleware(LoggingMiddleware())
+        assert LoggingMiddleware in bus
+
+    def test_contains_false_when_absent(self):
+        bus = CommandBus()
+        assert RateLimitMiddleware not in bus
 
     def test_register_overwrites_previous_handler(self):
         bus = CommandBus()
