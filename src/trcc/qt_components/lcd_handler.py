@@ -22,7 +22,7 @@ from trcc.conf import Settings
 
 from ..core.command_bus import CommandBus
 from ..core.commands.lcd import (
-    InitializeDeviceCommand,
+    RestoreLastThemeCommand,
     SetBrightnessCommand,
     SetRotationCommand,
     SetSplitModeCommand,
@@ -130,20 +130,13 @@ class LCDHandler(BaseHandler):
         Settings.save_device_setting(self._device_key, 'w', w)
         Settings.save_device_setting(self._device_key, 'h', h)
 
-        # Capture old resolution before initialization updates it
-        cur_w, cur_h = self._lcd.lcd_size
-
-        # Always initialize on connect — unconditional, carries real w×h from handshake.
-        # Sets media target size, overlay resolution, theme dirs, and triggers data
-        # download regardless of whether the resolution changed since last session.
-        self._bus.dispatch(InitializeDeviceCommand(width=w, height=h))
-
-        # Update widgets if resolution changed
-        if (w, h) != (cur_w, cur_h):
-            self._w['preview'].set_resolution(w, h)
-            self._w['image_cut'].set_resolution(w, h)
-            self._w['video_cut'].set_resolution(w, h)
-            self._w['theme_setting'].set_resolution(w, h)
+        # InitializeDeviceCommand was already dispatched by TrccApp._wire_bus()
+        # when the device connected — shared path for CLI, GUI, and API.
+        # Here we only update GUI widgets to reflect the device resolution.
+        self._w['preview'].set_resolution(w, h)
+        self._w['image_cut'].set_resolution(w, h)
+        self._w['video_cut'].set_resolution(w, h)
+        self._w['theme_setting'].set_resolution(w, h)
 
         # Always refresh — first run downloads themes after widget init
         self._update_theme_directories()
@@ -152,14 +145,27 @@ class LCDHandler(BaseHandler):
         if self._lcd._display_svc:
             self._lcd._display_svc.on_data_ready = self._data_notifier.ready.emit
 
-        # Restore per-device settings
+        # Restore per-device hardware settings via commands (shared path with CLI/API)
         cfg = Settings.get_device_config(self._device_key)
         self._restore_brightness(cfg)
         self._restore_rotation(cfg)
         self._restore_split_mode(cfg, w, h)
-        self._restore_theme(cfg)
         self._restore_carousel(cfg)
-        self._restore_overlay(cfg)
+
+        # Restore theme+mask+overlay via shared command — same command CLI/API dispatch
+        result = self._bus.dispatch(RestoreLastThemeCommand())
+        if result.success:
+            payload = result.payload
+            image = payload.get("image")
+            if image:
+                self._w['preview'].set_image(image, fast=payload.get("is_animated", False))
+            overlay_config = payload.get("overlay_config")
+            overlay_enabled = payload.get("overlay_enabled", False)
+            if overlay_config:
+                self._w['theme_setting'].load_from_overlay_config(overlay_config)
+            self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
+            if overlay_enabled:
+                self._render_and_send()
 
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
@@ -185,63 +191,6 @@ class LCDHandler(BaseHandler):
         else:
             self._lcd.set_split_mode(0)
 
-    def _restore_theme(self, cfg: dict) -> None:
-        saved = cfg.get('theme_path')
-        if saved:
-            path = Path(saved)
-            if path.exists():
-                log.info("Restoring saved theme: %s", path)
-                if path.suffix in ('.mp4', '.avi', '.mkv', '.webm'):
-                    preview = path.parent / f"{path.stem}.png"
-                    theme = ThemeInfo.from_video(
-                        path, preview if preview.exists() else None)
-                    self._select_theme(theme)
-                else:
-                    self._select_theme_from_path(path, overlay_config=False)
-                self._restore_mask(cfg)
-                return
-            log.warning("Saved theme path not found: %s", saved)
-
-        # Auto-load first local theme as fallback.
-        # Persist only when no theme was previously saved — avoids
-        # overwriting a saved path that just went missing (v6.1.3).
-        theme_base = _conf.settings.theme_dir
-        if theme_base and theme_base.exists():
-            persist = not saved  # no prior save → persist fallback
-            for item in sorted(theme_base.path.iterdir()):
-                if item.is_dir() and (item / '00.png').exists():
-                    log.info("Fallback theme: %s (persist=%s)", item, persist)
-                    self._select_theme_from_path(item, persist=persist, overlay_config=False)
-                    break
-
-    def _restore_mask(self, cfg: dict) -> None:
-        """Restore mask image from saved config (applied on top of theme).
-
-        Skips if the theme already loaded this mask via its config.json
-        reference — avoids invalidating the pre-built video cache.
-
-        Note: overlay config from the mask dir is NOT loaded here.
-        _restore_overlay (called next in apply_device_config) owns the
-        final overlay state and renders once everything is set.
-        """
-        mask_path = cfg.get('mask_path')
-        if not mask_path:
-            return
-        mask_dir = Path(mask_path)
-        if not mask_dir.exists():
-            log.warning("Saved mask path not found: %s", mask_path)
-            return
-        # Reference-based themes embed mask path in config.json — the theme
-        # loader already loaded it and built the video cache with it.
-        # Re-loading here would invalidate that cache (display_svc._cache=None)
-        # causing mask-less frames until the fallback renderer catches up.
-        svc = self._lcd._display_svc
-        if svc and svc._mask_source_dir == mask_dir:
-            log.debug("Mask %s already loaded by theme reference, skipping", mask_dir)
-            return
-        log.info("Restoring saved mask: %s", mask_dir)
-        self._lcd.load_mask_standalone(str(mask_dir))
-
     def _restore_carousel(self, cfg: dict) -> None:
         carousel = cfg.get('carousel')
         local = self._w['theme_local']
@@ -261,29 +210,6 @@ class LCDHandler(BaseHandler):
             local._lunbo_array = []
             local._slideshow = False
             local._apply_decorations()
-
-    def _restore_overlay(self, cfg: dict) -> None:
-        """Restore overlay config and perform the single authoritative render.
-
-        This is the last step of apply_device_config. All prior restore steps
-        (theme, mask) deliberately skip rendering so this method can emit one
-        coherent frame with the correct overlay state to both preview and LCD.
-        """
-        overlay = cfg.get('overlay')
-        if overlay and isinstance(overlay, dict):
-            enabled = overlay.get('enabled', False)
-            config = overlay.get('config', {})
-            if config:
-                w, h = self._lcd.lcd_size
-                self._lcd.overlay.service.set_config_resolution(w, h)
-                self._w['theme_setting'].load_from_overlay_config(config)
-                self._lcd.overlay.set_config(config)
-            self._w['theme_setting'].set_overlay_enabled(enabled)
-            self._lcd.overlay.enable(enabled)
-            if enabled:
-                self._render_and_send()
-        else:
-            log.debug("No saved overlay config — keeping theme defaults")
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
 

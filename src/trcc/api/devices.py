@@ -119,7 +119,7 @@ def select_device(device_id: int) -> dict:
             lcd = api._display_dispatcher
             if lcd is None:
                 return {"selected": dev.name, "resolution": dev.resolution}
-            w_res, h_res = dev.resolution or (320, 320)
+            w_res, h_res = dev.resolution or (0, 0)
 
             # Download/extract theme data for this resolution via command bus
             # (lcd_bus may not be wired yet in edge-case fallback paths — skip gracefully)

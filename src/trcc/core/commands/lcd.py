@@ -165,3 +165,14 @@ class InitializeDeviceCommand(LCDCommand):
     """
     width: int
     height: int
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreLastThemeCommand(LCDCommand):
+    """Restore the last-used theme, mask, and overlay from per-device config.
+
+    All three adapters (CLI, GUI, API) dispatch this single command on device
+    connect to restore the previous session state. The handler reads config,
+    loads the theme, applies mask and overlay, and returns the result dict so
+    each adapter can update its own presentation layer.
+    """

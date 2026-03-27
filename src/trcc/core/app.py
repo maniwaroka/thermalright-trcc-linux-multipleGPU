@@ -274,10 +274,9 @@ class TrccApp:
             self._lcd_bus = self.build_lcd_bus(device)
             log.debug("lcd_bus ready for %s", getattr(device, 'device_path', '?'))
             # Initialize display pipeline with the resolution from the USB handshake.
-            # This sets settings.resolution, media target size, and overlay resolution
-            # so all subsequent commands (CLI send, API encode) work correctly.
-            # The GUI re-dispatches InitializeDeviceCommand in apply_device_config —
-            # safe because set_resolution has a no-op guard for same-value calls.
+            # Single dispatch point shared by CLI, GUI, and API — all paths go through
+            # _wire_bus. Sets settings.resolution, media target size, overlay resolution,
+            # and triggers theme data download for the device resolution.
             info = device.device_info
             res = getattr(info, 'resolution', (0, 0))
             if res and res != (0, 0):

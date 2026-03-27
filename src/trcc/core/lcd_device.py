@@ -523,34 +523,86 @@ class LCDDevice(Device):
         return {"success": True, "resolution": (width, height),
                 "message": f"Resolution: {width}x{height}"}
 
-    def load_last_theme(self) -> dict:
-        """Load the last-used theme from per-device config.
+    def restore_last_theme(self) -> dict:
+        """Restore theme, mask, and overlay from per-device config.
 
-        Reads theme_path, resolves to image file, loads through
-        DisplayService pipeline (brightness + rotation applied automatically).
+        Complete session restore — reads config, loads theme, applies mask
+        and overlay. Returns result dict with image, overlay_config,
+        overlay_enabled, and is_animated so each adapter can update its
+        own presentation layer.
         """
+        from pathlib import Path as _Path
+
         from ..conf import Settings
+        from .models import ThemeInfo
+
         dev = self._device_svc.selected if self._device_svc else None
         if not dev:
             return {"success": False, "error": "No device selected"}
         key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
         cfg = Settings.get_device_config(key)
+
+        # ── Theme ──────────────────────────────────────────────────────────
         theme_path = cfg.get("theme_path")
         if not theme_path:
             return {"success": False, "error": "No saved theme"}
 
-        image_path = None
-        if os.path.isdir(theme_path):
-            candidate = os.path.join(theme_path, "00.png")
-            if os.path.exists(candidate):
-                image_path = candidate
-        elif os.path.isfile(theme_path):
-            image_path = theme_path
-
-        if not image_path:
+        path = _Path(theme_path)
+        if not path.exists():
             return {"success": False, "error": f"Theme not found: {theme_path}"}
 
-        return self.load_image(image_path)
+        video_exts = {'.mp4', '.avi', '.mkv', '.webm'}
+        if path.is_dir():
+            w, h = self.lcd_size
+            theme = ThemeInfo.from_directory(path, (w, h))
+        elif path.suffix.lower() in video_exts:
+            preview = path.parent / f"{path.stem}.png"
+            theme = ThemeInfo.from_video(path, preview if preview.exists() else None)
+        else:
+            result = self.load_image(str(path))
+            return {**result, "overlay_config": None,
+                    "overlay_enabled": False, "is_animated": False}
+
+        result = self.select(theme)
+        if not result.get("success"):
+            return {**result, "overlay_config": None,
+                    "overlay_enabled": False, "is_animated": False}
+
+        # ── Mask ───────────────────────────────────────────────────────────
+        mask_path = cfg.get("mask_path")
+        if mask_path:
+            mask_dir = _Path(mask_path)
+            if mask_dir.exists():
+                svc = self._display_svc
+                already_loaded = (svc and svc._mask_source_dir == mask_dir)
+                if not already_loaded:
+                    self.load_mask_standalone(mask_path)
+
+        # ── Overlay ────────────────────────────────────────────────────────
+        overlay_cfg = cfg.get("overlay", {})
+        overlay_enabled = False
+        overlay_config = None
+        if overlay_cfg:
+            overlay_enabled = overlay_cfg.get("enabled", False)
+            overlay_config = overlay_cfg.get("config") or None
+            if overlay_config:
+                w, h = self.lcd_size
+                self._display_svc.overlay.set_config_resolution(w, h)
+                self.set_config(overlay_config)
+            self.enable(overlay_enabled)
+
+        return {
+            "success": True,
+            "image": result.get("image"),
+            "is_animated": result.get("is_animated", False),
+            "overlay_config": overlay_config,
+            "overlay_enabled": overlay_enabled,
+            "message": f"Restored theme: {path.name}",
+        }
+
+    def load_last_theme(self) -> dict:
+        """Thin backward-compat wrapper — delegates to restore_last_theme()."""
+        return self.restore_last_theme()
 
     # ── Theme ops (loading, saving, import/export) ─────────────
 

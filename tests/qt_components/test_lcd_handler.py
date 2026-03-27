@@ -2,9 +2,9 @@
 
 Covers:
 - Construction, properties, widget dict wiring
-- apply_device_config: brightness, rotation, split mode restoration
+- apply_device_config: brightness, rotation, split mode restoration + RestoreLastThemeCommand dispatch
 - Theme selection: path-based, cloud, animated, persist flag
-- Mask application: apply_mask, persist mask_path
+- Mask application: apply_mask, persist mask_path (mask restore logic tested in test_lcd_device.py)
 - Video: play_pause, stop, seek, tick routing
 - Overlay: on_overlay_changed, on_overlay_tick, flash_element
 - Display settings: set_brightness, set_rotation, set_split_mode
@@ -104,6 +104,9 @@ def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
             return CommandResult.from_dict(_lcd.set_split_mode(cmd.mode))
         if isinstance(cmd, SetResolutionCommand):
             return CommandResult.from_dict(_lcd.set_resolution(cmd.width, cmd.height))
+        from trcc.core.commands.lcd import RestoreLastThemeCommand
+        if isinstance(cmd, RestoreLastThemeCommand):
+            return CommandResult.from_dict(_lcd.restore_last_theme())
         return CommandResult.ok(message="ok")
 
     bus.dispatch.side_effect = _dispatch
@@ -224,22 +227,20 @@ class TestApplyDeviceConfig:
         lcd.lcd_size = (320, 320)
         h = _make_handler(lcd=lcd)
         h.apply_device_config(self._device(), 480, 480)
-        # Always dispatches InitializeDeviceCommand on connect
-        from trcc.core.commands.lcd import InitializeDeviceCommand
-        h._bus.dispatch.assert_any_call(InitializeDeviceCommand(width=480, height=480))
+        # Widgets always updated — InitializeDeviceCommand is owned by _wire_bus, not here
         h._w['preview'].set_resolution.assert_called_with(480, 480)
 
     @patch('trcc.qt_components.lcd_handler.Settings')
-    def test_same_resolution_skips_update(self, mock_settings):
+    def test_widgets_always_updated(self, mock_settings):
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        lcd = _make_lcd()
-        lcd.lcd_size = (320, 320)
-        h = _make_handler(lcd=lcd)
+        h = _make_handler()
         h.apply_device_config(self._device(), 320, 320)
-        from trcc.core.commands.lcd import SetResolutionCommand
-        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
-        assert not any(isinstance(c, SetResolutionCommand) for c in dispatched)
+        # Widget updates are unconditional — InitializeDeviceCommand not dispatched here
+        h._w['preview'].set_resolution.assert_called_with(320, 320)
+        h._w['image_cut'].set_resolution.assert_called_with(320, 320)
+        h._w['video_cut'].set_resolution.assert_called_with(320, 320)
+        h._w['theme_setting'].set_resolution.assert_called_with(320, 320)
 
     @patch('trcc.qt_components.lcd_handler.Settings')
     def test_split_mode_restored_for_split_resolution(self, mock_settings):
@@ -351,61 +352,35 @@ class TestMask:
         h.apply_mask(mask_info)
         h._w['preview'].set_status.assert_called_once()
 
-    def test_restore_mask_skips_when_theme_already_loaded(self, tmp_path):
-        """Mask restore skips if theme reference already loaded the same mask.
+    @patch('trcc.qt_components.lcd_handler.Settings')
+    def test_restore_dispatches_restore_last_theme_command(self, mock_settings):
+        """apply_device_config dispatches RestoreLastThemeCommand — shared path with CLI/API."""
+        from trcc.core.commands.lcd import RestoreLastThemeCommand
+        mock_settings.device_config_key.return_value = 'k'
+        mock_settings.get_device_config.return_value = {}
+        lcd = _make_lcd()
+        lcd.restore_last_theme.return_value = {'success': False, 'error': 'No saved theme'}
+        h = _make_handler(lcd=lcd)
+        h.apply_device_config(
+            MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert any(isinstance(cmd, RestoreLastThemeCommand) for cmd in dispatched)
 
-        Prevents video cache invalidation on startup when a saved custom
-        theme has an embedded mask reference AND per-device config also
-        records the same mask_path.
-        """
-        mask_dir = tmp_path / 'zt320320' / '015c'
-        mask_dir.mkdir(parents=True)
-        (mask_dir / '01.png').touch()
-
-        h = _make_handler()
-        # Simulate theme loader already set mask_source_dir
-        h._lcd._display_svc._mask_source_dir = mask_dir
-        cfg = {'mask_path': str(mask_dir)}
-
-        h._restore_mask(cfg)
-
-        # load_mask_standalone should NOT be called — theme already loaded it
-        h._lcd.load_mask_standalone.assert_not_called()
-
-    def test_restore_mask_loads_when_different_from_theme(self, tmp_path):
-        """Mask restore proceeds when per-device mask differs from theme's."""
-        theme_mask = tmp_path / 'zt320320' / '010'
-        theme_mask.mkdir(parents=True)
-        device_mask = tmp_path / 'zt320320' / '015c'
-        device_mask.mkdir(parents=True)
-        (device_mask / '01.png').touch()
-
-        h = _make_handler()
-        h._lcd._display_svc._mask_source_dir = theme_mask
-        h._lcd.load_mask_standalone.return_value = {
-            'success': True, 'image': MagicMock()}
-        cfg = {'mask_path': str(device_mask)}
-
-        h._restore_mask(cfg)
-
-        # Different mask → should load
-        h._lcd.load_mask_standalone.assert_called_once()
-
-    def test_restore_mask_loads_when_no_theme_mask(self, tmp_path):
-        """Mask restore proceeds when theme didn't load any mask."""
-        mask_dir = tmp_path / 'zt320320' / '015c'
-        mask_dir.mkdir(parents=True)
-        (mask_dir / '01.png').touch()
-
-        h = _make_handler()
-        h._lcd._display_svc._mask_source_dir = None
-        h._lcd.load_mask_standalone.return_value = {
-            'success': True, 'image': MagicMock()}
-        cfg = {'mask_path': str(mask_dir)}
-
-        h._restore_mask(cfg)
-
-        h._lcd.load_mask_standalone.assert_called_once()
+    @patch('trcc.qt_components.lcd_handler.Settings')
+    def test_restore_updates_preview_on_success(self, mock_settings):
+        """apply_device_config updates preview widget when RestoreLastThemeCommand succeeds."""
+        mock_settings.device_config_key.return_value = 'k'
+        mock_settings.get_device_config.return_value = {}
+        lcd = _make_lcd()
+        img = MagicMock()
+        lcd.restore_last_theme.return_value = {
+            'success': True, 'image': img, 'is_animated': False,
+            'overlay_config': None, 'overlay_enabled': False,
+        }
+        h = _make_handler(lcd=lcd)
+        h.apply_device_config(
+            MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
+        h._w['preview'].set_image.assert_called_once_with(img, fast=False)
 
 
 # =========================================================================
