@@ -75,35 +75,32 @@ def load_theme(builder, name, *, device=None, preview=False):
         return 1
 
     # Build LCD with full service stack (DisplayService, OverlayService, etc.)
-    from trcc.core.app import TrccApp
+    from trcc.core.handlers.lcd import build_lcd_bus
     lcd = builder.lcd_from_service(svc)
     lcd.restore_device_settings()
 
     # Dispatch SelectThemeCommand through the bus — same path as GUI/API
-    lcd_bus = TrccApp.get().build_lcd_bus(lcd)
-    cmd_result = lcd_bus.dispatch(SelectThemeCommand(theme=match))
+    cmd_result = build_lcd_bus(lcd).dispatch(SelectThemeCommand(theme=match))
     result = cmd_result.payload
 
     # Save as last-used theme
     key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
     Settings.save_device_setting(key, 'theme_path', str(match.path))
 
-    if result.get('is_animated') and lcd._display_svc.media.has_frames:
+    if result.get('is_animated'):
         print(f"Playing '{match.name}' → {dev.path}")
         print("Press Ctrl+C to stop.")
 
-        # Get metrics supplier if overlay is enabled
         metrics_fn = None
-        if lcd._display_svc.overlay.enabled:
+        if lcd.overlay.enabled:
             from trcc.cli import _ensure_system
             from trcc.services.system import get_all_metrics
             _ensure_system(builder)
             metrics_fn = get_all_metrics
 
-        lcd._display_svc.media._state.loop = True
-        lcd._display_svc.media.play()
-
-        loop_result = lcd._display_svc._run_tick_loop(
+        loop_result = lcd.play_video_loop(
+            str(match.path),
+            loop=True,
             metrics_fn=metrics_fn,
             on_frame=lambda img: svc.send_frame(img, w, h),
             on_progress=lambda p, c, t: print(

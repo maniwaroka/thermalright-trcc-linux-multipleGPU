@@ -237,7 +237,11 @@ def load_theme(body: ThemeLoadRequest) -> dict:
     if body.resolution:
         w, h = _parse_resolution(body.resolution)
 
-    result = api._display_dispatcher.load_theme_by_name(body.name, w, h)
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import LoadThemeByNameCommand
+
+    result = TrccApp.get().lcd_bus.dispatch(
+        LoadThemeByNameCommand(name=body.name, width=w, height=h)).payload
     if not result.get("success"):
         return dispatch_result(result)
 

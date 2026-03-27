@@ -42,21 +42,6 @@ def _get_display():
     return _display_dispatcher
 
 
-def _display_frame_route(method: str, *args, **kwargs) -> dict:
-    """Route to lcd.frame capability, stop video/overlay first."""
-    from trcc.api import stop_overlay_loop, stop_video_playback
-
-    stop_video_playback()
-    stop_overlay_loop()
-    result = getattr(_get_display().frame, method)(*args, **kwargs)
-    return dispatch_result(result)
-
-
-def _display_settings_route(method: str, *args, **kwargs) -> dict:
-    """Route to lcd.settings capability."""
-    result = getattr(_get_display().settings, method)(*args, **kwargs)
-    return dispatch_result(result)
-
 
 @router.post("/color")
 def set_color(body: HexColorRequest) -> dict:
@@ -68,8 +53,8 @@ def set_color(body: HexColorRequest) -> dict:
     stop_video_playback()
     stop_overlay_loop()
     r, g, b = parse_hex_or_400(body.hex)
-    lcd = _get_display()
-    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SendColorCommand(r=r, g=g, b=b))
+    _get_display()
+    result = TrccApp.get().lcd_bus.dispatch(SendColorCommand(r=r, g=g, b=b))
     return dispatch_result(result.payload)
 
 
@@ -79,8 +64,8 @@ def set_brightness(body: BrightnessRequest) -> dict:
     from trcc.core.app import TrccApp
     from trcc.core.commands.lcd import SetBrightnessCommand
 
-    lcd = _get_display()
-    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SetBrightnessCommand(level=body.level))
+    _get_display()
+    result = TrccApp.get().lcd_bus.dispatch(SetBrightnessCommand(level=body.level))
     return dispatch_result(result.payload)
 
 
@@ -90,8 +75,8 @@ def set_rotation(body: RotationRequest) -> dict:
     from trcc.core.app import TrccApp
     from trcc.core.commands.lcd import SetRotationCommand
 
-    lcd = _get_display()
-    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SetRotationCommand(degrees=body.degrees))
+    _get_display()
+    result = TrccApp.get().lcd_bus.dispatch(SetRotationCommand(degrees=body.degrees))
     return dispatch_result(result.payload)
 
 
@@ -101,15 +86,23 @@ def set_split(body: SplitRequest) -> dict:
     from trcc.core.app import TrccApp
     from trcc.core.commands.lcd import SetSplitModeCommand
 
-    lcd = _get_display()
-    result = TrccApp.get().build_lcd_bus(lcd).dispatch(SetSplitModeCommand(mode=body.mode))
+    _get_display()
+    result = TrccApp.get().lcd_bus.dispatch(SetSplitModeCommand(mode=body.mode))
     return dispatch_result(result.payload)
 
 
 @router.post("/reset")
 def reset_display() -> dict:
     """Reset device by sending solid red frame."""
-    return _display_frame_route("reset")
+    from trcc.api import stop_overlay_loop, stop_video_playback
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import ResetDisplayCommand
+
+    stop_video_playback()
+    stop_overlay_loop()
+    _get_display()
+    result = TrccApp.get().lcd_bus.dispatch(ResetDisplayCommand())
+    return dispatch_result(result.payload)
 
 
 @router.post("/mask")
@@ -118,7 +111,7 @@ async def load_mask(image: UploadFile) -> dict:
     import tempfile
     from pathlib import Path
 
-    lcd = _get_display()
+    _get_display()
 
     data = await image.read()
     if len(data) > 10 * 1024 * 1024:
@@ -130,8 +123,10 @@ async def load_mask(image: UploadFile) -> dict:
         tmp_path = tmp.name
 
     try:
-        result = lcd.load_mask_standalone(tmp_path)
-        return dispatch_result(result)
+        from trcc.core.app import TrccApp
+        from trcc.core.commands.lcd import LoadMaskCommand
+        result = TrccApp.get().lcd_bus.dispatch(LoadMaskCommand(mask_path=tmp_path))
+        return dispatch_result(result.payload)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
@@ -153,12 +148,13 @@ async def render_overlay(dc_path: str, send: bool = True) -> dict:
     if not safe_path.startswith(allowed_dir + os.sep) and safe_path != allowed_dir:
         raise HTTPException(status_code=400, detail="Invalid overlay path")
 
-    import trcc.api as api
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import RenderOverlayFromDCCommand
 
-    lcd = _get_display()
-    metrics = api._system_svc.all_metrics if api._system_svc is not None else None
-    result = lcd.render_overlay_from_dc(safe_path, send=send, metrics=metrics)
-    return dispatch_result(result)
+    _get_display()
+    result = TrccApp.get().lcd_bus.dispatch(
+        RenderOverlayFromDCCommand(dc_path=safe_path, send=send))
+    return dispatch_result(result.payload)
 
 
 @router.get("/status")
@@ -252,11 +248,14 @@ def test_display() -> dict:
         (255, 255, 255, "White"),
     ]
 
+    from trcc.core.app import TrccApp
+    from trcc.core.commands.lcd import SendColorCommand
     from trcc.services import ImageService
 
+    bus = TrccApp.get().lcd_bus
     for r, g, b, _name in colors:
         img = ImageService.solid_color(r, g, b, w, h)
-        lcd.frame.send_color(r, g, b)
+        bus.dispatch(SendColorCommand(r=r, g=g, b=b))
         time.sleep(1)
 
     # Update preview with last frame
@@ -406,10 +405,13 @@ async def create_theme(
         raise HTTPException(status_code=400, detail="Failed to open background image")
 
     if mask_path:
-        result = lcd.load_mask_standalone(str(mask_path))
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Mask load failed"))
-        img = result.get("image", img)
+        from trcc.core.app import TrccApp
+        from trcc.core.commands.lcd import LoadMaskCommand
+        mask_result = TrccApp.get().lcd_bus.dispatch(
+            LoadMaskCommand(mask_path=str(mask_path))).payload
+        if not mask_result.get("success"):
+            raise HTTPException(status_code=400, detail=mask_result.get("error", "Mask load failed"))
+        img = mask_result.get("image", img)
 
     if overlay_config:
         from trcc.adapters.infra.dc_config import DcConfig
@@ -427,10 +429,10 @@ async def create_theme(
         api._overlay_svc = overlay_svc
         from trcc.services.system import get_all_metrics
         frame = overlay_svc.render(get_all_metrics())
-        lcd.frame.send_frame(frame)
+        lcd.send(frame)
         api.set_current_image(frame)
     else:
-        lcd.frame.send_frame(img)
+        lcd.send(img)
         api.set_current_image(img)
 
     return {"success": True, "animated": False, "resolution": f"{w}x{h}"}

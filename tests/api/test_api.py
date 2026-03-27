@@ -15,7 +15,7 @@ from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 import trcc.api as api_module
 from trcc.api import _device_svc, app, configure_auth
 from trcc.api.models import dispatch_result, parse_hex_or_400
-from trcc.core.models import DeviceInfo
+from trcc.core.models import FBL_PROFILES, SCSI_DEVICES, DeviceInfo
 
 
 class TestHealthEndpoint(unittest.TestCase):
@@ -84,16 +84,13 @@ class TestDeviceEndpoints(unittest.TestCase):
         self.assertEqual(resp.json(), [])
 
     def test_list_devices_with_device(self):
-        _device_svc._devices = [
-            DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                       protocol="scsi", resolution=(320, 320)),
-        ]
+        _device_svc._devices = [_scsi_dev(name="LCD1")]
         resp = self.client.get("/devices")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["name"], "LCD1")
-        self.assertEqual(data[0]["vid"], 0x0402)
+        self.assertEqual(data[0]["vid"], _SCSI_VID_PID[0])
 
     @patch.object(_device_svc, 'detect')
     def test_detect_devices(self, mock_detect):
@@ -103,8 +100,7 @@ class TestDeviceEndpoints(unittest.TestCase):
         mock_detect.assert_called_once()
 
     def test_select_device(self):
-        dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                         protocol="scsi", resolution=(320, 320))
+        dev = _scsi_dev(name="LCD1")
         _device_svc._devices = [dev]
         resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)
@@ -131,8 +127,7 @@ class TestDeviceEndpoints(unittest.TestCase):
     @patch('trcc.api.stop_video_playback')
     def test_reselect_same_device_preserves_overlay(self, mock_stop_video, mock_stop_overlay):
         """Re-selecting the already-active device does NOT tear down overlay/video."""
-        dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                         protocol="scsi", resolution=(320, 320))
+        dev = _scsi_dev(name="LCD1")
         _device_svc._devices = [dev]
         _device_svc._selected = dev
         api_module._display_dispatcher = MagicMock()
@@ -147,15 +142,12 @@ class TestDeviceEndpoints(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
     def test_get_device(self):
-        _device_svc._devices = [
-            DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                       protocol="scsi", resolution=(480, 480)),
-        ]
+        _device_svc._devices = [_scsi_dev(name="LCD1")]
         resp = self.client.get("/devices/0")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["name"], "LCD1")
-        self.assertEqual(data["resolution"], [480, 480])
+        self.assertEqual(data["resolution"], list(_SCSI_RESOLUTION))
 
     def test_get_device_not_found(self):
         resp = self.client.get("/devices/0")
@@ -168,8 +160,7 @@ class TestSendImage(unittest.TestCase):
     def setUp(self):
         configure_auth(None)
         self.client = TestClient(app)
-        self.dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                              protocol="scsi", resolution=(320, 320))
+        self.dev = _scsi_dev(name="LCD1")
         _device_svc._devices = [self.dev]
         _device_svc._selected = None
 
@@ -323,6 +314,8 @@ class TestDisplayEndpoints(unittest.TestCase):
         api_module._display_dispatcher = self.mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
+        from trcc.core.handlers.lcd import build_lcd_bus
+        TrccApp.get()._lcd_bus = build_lcd_bus(self.mock_lcd)
 
     def tearDown(self):
         from trcc.core.app import TrccApp
@@ -448,6 +441,8 @@ class TestLEDEndpoints(unittest.TestCase):
         api_module._led_dispatcher = self.mock_led
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
+        from trcc.core.handlers.led import build_led_bus
+        TrccApp.get()._led_bus = build_led_bus(self.mock_led)
 
     def tearDown(self):
         from trcc.core.app import TrccApp
@@ -506,11 +501,25 @@ class TestThemeOperations(unittest.TestCase):
     """Theme load/save/import endpoints."""
 
     def setUp(self):
+        from trcc.core.app import TrccApp
+
         configure_auth(None)
         self.client = TestClient(app)
+        TrccApp.reset()
+        TrccApp._instance = TrccApp(MagicMock())
 
     def tearDown(self):
+        from trcc.core.app import TrccApp
+
         api_module._display_dispatcher = None
+        TrccApp.reset()
+
+    def _wire(self, mock_lcd) -> None:
+        from trcc.core.app import TrccApp
+        from trcc.core.handlers.lcd import build_lcd_bus
+
+        api_module._display_dispatcher = mock_lcd
+        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
 
     def test_load_theme_no_device(self):
         api_module._display_dispatcher = None
@@ -525,7 +534,7 @@ class TestThemeOperations(unittest.TestCase):
         mock_lcd.load_theme_by_name.return_value = {
             "success": True, "message": "Theme: CyberPunk",
         }
-        api_module._display_dispatcher = mock_lcd
+        self._wire(mock_lcd)
 
         resp = self.client.post("/themes/load", json={"name": "CyberPunk"})
         self.assertEqual(resp.status_code, 200)
@@ -537,7 +546,7 @@ class TestThemeOperations(unittest.TestCase):
         mock_lcd.connected = True
         mock_lcd.resolution = (320, 320)
         mock_lcd.load_theme_by_name.return_value = {"success": True}
-        api_module._display_dispatcher = mock_lcd
+        self._wire(mock_lcd)
 
         resp = self.client.post(
             "/themes/load", json={"name": "Theme001", "resolution": "480x480"})
@@ -551,7 +560,7 @@ class TestThemeOperations(unittest.TestCase):
         mock_lcd.load_theme_by_name.return_value = {
             "success": False, "error": "Theme 'NonExistent' not found",
         }
-        api_module._display_dispatcher = mock_lcd
+        self._wire(mock_lcd)
 
         resp = self.client.post("/themes/load", json={"name": "NonExistent"})
         self.assertEqual(resp.status_code, 400)
@@ -885,6 +894,9 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
 
     def test_load_animated_theme_starts_video(self):
         """Loading an animated theme routes through dispatcher and returns animated flag."""
+        from trcc.core.app import TrccApp
+        from trcc.core.handlers.lcd import build_lcd_bus
+
         mock_lcd = MagicMock()
         mock_lcd.connected = True
         mock_lcd.resolution = (320, 320)
@@ -893,6 +905,9 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
             "message": "Theme: VideoTheme",
         }
         api_module._display_dispatcher = mock_lcd
+        TrccApp.reset()
+        TrccApp._instance = TrccApp(MagicMock())
+        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
 
         resp = self.client.post("/themes/load", json={"name": "VideoTheme"})
 
@@ -901,6 +916,7 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
         self.assertTrue(data.get("is_animated"))
         mock_lcd.load_theme_by_name.assert_called_once_with("VideoTheme", 0, 0)
         api_module._display_dispatcher = None
+        TrccApp.reset()
 
     def test_display_route_stops_video_on_static_send(self):
         """Sending a static color stops any running video playback."""
@@ -1395,9 +1411,21 @@ def _png_bytes(w: int = 50, h: int = 50) -> bytes:
     return bytes(ba.data())
 
 
+_SCSI_VID_PID = next(iter(SCSI_DEVICES))
+_SCSI_ENTRY = SCSI_DEVICES[_SCSI_VID_PID]
+_SCSI_RESOLUTION = FBL_PROFILES[_SCSI_ENTRY.fbl].resolution
+
+
 def _scsi_dev(**overrides) -> DeviceInfo:
-    defaults = dict(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                    protocol="scsi", resolution=(320, 320))
+    """Build a DeviceInfo for the first registered SCSI device (via models)."""
+    defaults = dict(
+        name=_SCSI_ENTRY.product,
+        path="/dev/sg0",
+        vid=_SCSI_VID_PID[0],
+        pid=_SCSI_VID_PID[1],
+        protocol=_SCSI_ENTRY.protocol,
+        resolution=_SCSI_RESOLUTION,
+    )
     defaults.update(overrides)
     return DeviceInfo(**defaults)
 
@@ -1473,7 +1501,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
 
     def test_list_devices_multiple(self) -> None:
         _device_svc._devices = [
-            _scsi_dev(name="LCD1", resolution=(320, 320)),
+            _scsi_dev(name="LCD1"),
             _scsi_dev(name="LCD2", path="/dev/sg1", pid=0x3923, resolution=(480, 480)),
         ]
         resp = self.client.get("/devices")
@@ -1506,7 +1534,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
         self.assertIsInstance(data, list)
 
     def test_select_lcd_device_sets_display_dispatcher(self) -> None:
-        dev = _scsi_dev(resolution=(320, 320))
+        dev = _scsi_dev()
         _device_svc._devices = [dev]
         with patch("trcc.cli._device.discover_resolution"), \
              patch("trcc.core.lcd_device.LCDDevice") as mock_disp_cls, \
@@ -1521,7 +1549,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
     # standalone pytest function — requires no_device_app fixture injection.
 
     def test_select_response_contains_resolution(self) -> None:
-        dev = _scsi_dev(resolution=(480, 480))
+        dev = _scsi_dev()
         _device_svc._devices = [dev]
         with patch("trcc.cli._device.discover_resolution"), \
              patch("trcc.core.lcd_device.LCDDevice"), \
@@ -1539,7 +1567,7 @@ class TestSendImageEdgeCases(unittest.TestCase):
     def setUp(self) -> None:
         configure_auth(None)
         self.client = TestClient(app)
-        dev = _scsi_dev(resolution=(320, 320))
+        dev = _scsi_dev()
         _device_svc._devices = [dev]
         _device_svc._selected = None
 
@@ -1598,7 +1626,7 @@ class TestDisplayErrorPaths(unittest.TestCase):
         self.client = TestClient(app)
         self.mock_lcd = MagicMock()
         self.mock_lcd.connected = True
-        self.mock_lcd.resolution = (320, 320)
+        self.mock_lcd.resolution = _SCSI_RESOLUTION
         self.mock_lcd.device_path = "/dev/sg0"
         api_module._display_dispatcher = self.mock_lcd
 
@@ -1696,6 +1724,7 @@ class TestLEDErrorPaths(unittest.TestCase):
 
     def setUp(self) -> None:
         from trcc.core.app import TrccApp
+        from trcc.core.handlers.led import build_led_bus
 
         configure_auth(None)
         self.client = TestClient(app)
@@ -1705,6 +1734,7 @@ class TestLEDErrorPaths(unittest.TestCase):
         api_module._led_dispatcher = self.mock_led
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
+        TrccApp.get()._led_bus = build_led_bus(self.mock_led)
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -1780,7 +1810,7 @@ class TestLEDErrorPaths(unittest.TestCase):
         self.mock_led.set_zone_sync.return_value = {"success": True, "message": "ok"}
         resp = self.client.post("/led/sync", json={"enabled": False})
         self.assertEqual(resp.status_code, 200)
-        self.mock_led.set_zone_sync.assert_called_once_with(False, None)
+        self.mock_led.set_zone_sync.assert_called_once_with(False, 0)
 
 
 # ── Theme endpoint edge cases ────────────────────────────────────────────────
@@ -1789,12 +1819,19 @@ class TestThemeEdgeCases(unittest.TestCase):
     """Uncovered theme paths."""
 
     def setUp(self) -> None:
+        from trcc.core.app import TrccApp
+
         configure_auth(None)
         self.client = TestClient(app)
         api_module._display_dispatcher = None
+        TrccApp.reset()
+        TrccApp._instance = TrccApp(MagicMock())
 
     def tearDown(self) -> None:
+        from trcc.core.app import TrccApp
+
         api_module._display_dispatcher = None
+        TrccApp.reset()
 
     def test_list_themes_resolution_boundary_min(self) -> None:
         with patch("trcc.api.themes.ThemeService.discover_local", return_value=[]), \
@@ -1888,6 +1925,9 @@ class TestThemeEdgeCases(unittest.TestCase):
 
     def test_load_theme_success_delegates_to_dispatcher(self) -> None:
         """API layer delegates to lcd.load_theme_by_name — thin adapter."""
+        from trcc.core.app import TrccApp
+        from trcc.core.handlers.lcd import build_lcd_bus
+
         mock_lcd = MagicMock()
         mock_lcd.connected = True
         mock_lcd.resolution = (320, 320)
@@ -1895,6 +1935,7 @@ class TestThemeEdgeCases(unittest.TestCase):
             "success": True, "message": "Theme: Theme001",
         }
         api_module._display_dispatcher = mock_lcd
+        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
 
         resp = self.client.post("/themes/load", json={"name": "Theme001"})
 
@@ -1903,6 +1944,9 @@ class TestThemeEdgeCases(unittest.TestCase):
 
     def test_load_theme_failure_returns_400(self) -> None:
         """Dispatcher failure propagated as 400 via dispatch_result."""
+        from trcc.core.app import TrccApp
+        from trcc.core.handlers.lcd import build_lcd_bus
+
         mock_lcd = MagicMock()
         mock_lcd.connected = True
         mock_lcd.resolution = (320, 320)
@@ -1910,6 +1954,7 @@ class TestThemeEdgeCases(unittest.TestCase):
             "success": False, "error": "No image file in theme",
         }
         api_module._display_dispatcher = mock_lcd
+        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
 
         resp = self.client.post("/themes/load", json={"name": "Broken"})
 
@@ -2170,6 +2215,8 @@ class TestDisplayHappyPaths(unittest.TestCase):
         # Real TrccApp so build_lcd_bus() builds a real CommandBus routing to mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
+        from trcc.core.handlers.lcd import build_lcd_bus
+        TrccApp.get()._lcd_bus = build_lcd_bus(self.mock_lcd)
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -2258,12 +2305,12 @@ class TestDisplayHappyPaths(unittest.TestCase):
     @patch('trcc.api.stop_overlay_loop')
     @patch('trcc.api.stop_video_playback')
     def test_reset_success(self, _sv, _so) -> None:
-        self.mock_lcd.frame.reset.return_value = {
+        self.mock_lcd.reset.return_value = {
             "success": True, "message": "Device reset"}
         resp = self.client.post("/display/reset")
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_lcd.frame.reset.assert_called_once()
+        self.mock_lcd.reset.assert_called_once()
 
     def test_mask_upload_success(self) -> None:
         self.mock_lcd.load_mask_standalone.return_value = {
@@ -2329,6 +2376,8 @@ class TestLEDHappyPaths(unittest.TestCase):
         # Real TrccApp so build_led_bus() builds a real CommandBus routing to mock_led
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
+        from trcc.core.handlers.led import build_led_bus
+        TrccApp.get()._led_bus = build_led_bus(self.mock_led)
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -2354,12 +2403,14 @@ class TestLEDHappyPaths(unittest.TestCase):
         self.mock_led.set_color.assert_called_once_with(0, 255, 0)
 
     def test_set_mode_static(self) -> None:
+        from trcc.core.models import LEDMode
+
         self.mock_led.set_mode.return_value = {
             "success": True, "message": "Mode set to static"}
         resp = self.client.post("/led/mode", json={"mode": "static"})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_led.set_mode.assert_called_once_with("static")
+        self.mock_led.set_mode.assert_called_once_with(LEDMode.STATIC)
 
     def test_set_mode_breathing(self) -> None:
         self.mock_led.set_mode.return_value = {
@@ -2398,12 +2449,12 @@ class TestLEDHappyPaths(unittest.TestCase):
         self.mock_led.set_brightness.assert_called_once_with(50)
 
     def test_off_success(self) -> None:
-        self.mock_led.off.return_value = {
+        self.mock_led.toggle_global.return_value = {
             "success": True, "message": "LEDs turned off"}
         resp = self.client.post("/led/off")
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_led.off.assert_called_once()
+        self.mock_led.toggle_global.assert_called_once_with(False)
 
     def test_set_sensor_cpu(self) -> None:
         self.mock_led.set_sensor_source.return_value = {
@@ -2438,19 +2489,23 @@ class TestLEDHappyPaths(unittest.TestCase):
         self.mock_led.set_zone_color.assert_called_once_with(1, 0, 255, 0)
 
     def test_zone_mode_success(self) -> None:
+        from trcc.core.models import LEDMode
+
         self.mock_led.set_zone_mode.return_value = {
             "success": True, "message": "Zone 0 mode set to breathing"}
         resp = self.client.post("/led/zones/0/mode", json={"mode": "breathing"})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_led.set_zone_mode.assert_called_once_with(0, "breathing")
+        self.mock_led.set_zone_mode.assert_called_once_with(0, LEDMode.BREATHING)
 
     def test_zone_mode_zone_2(self) -> None:
+        from trcc.core.models import LEDMode
+
         self.mock_led.set_zone_mode.return_value = {
             "success": True, "message": "Zone 2 mode set"}
         resp = self.client.post("/led/zones/2/mode", json={"mode": "rainbow"})
         self.assertEqual(resp.status_code, 200)
-        self.mock_led.set_zone_mode.assert_called_once_with(2, "rainbow")
+        self.mock_led.set_zone_mode.assert_called_once_with(2, LEDMode.RAINBOW)
 
     def test_zone_brightness_success(self) -> None:
         self.mock_led.set_zone_brightness.return_value = {
@@ -2488,7 +2543,7 @@ class TestLEDHappyPaths(unittest.TestCase):
         resp = self.client.post("/led/sync", json={"enabled": True})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_led.set_zone_sync.assert_called_once_with(True, None)
+        self.mock_led.set_zone_sync.assert_called_once_with(True, 0)
 
     def test_sync_with_interval(self) -> None:
         self.mock_led.set_zone_sync.return_value = {
@@ -2779,11 +2834,17 @@ class TestDisplayTestEndpoint(unittest.TestCase):
     @patch('trcc.api.stop_overlay_loop')
     @patch('trcc.api.stop_video_playback')
     def test_display_test_success(self, mock_stop_v, mock_stop_o, mock_solid, mock_sleep):
+        from trcc.core.app import TrccApp
+        from trcc.core.handlers.lcd import build_lcd_bus
+
         mock_lcd = MagicMock()
         mock_lcd.connected = True
         mock_lcd.resolution = (320, 320)
-        mock_lcd.frame.send_color.return_value = {"success": True, "message": "ok"}
+        mock_lcd.send_color.return_value = {"success": True, "message": "ok"}
         api_module._display_dispatcher = mock_lcd
+        TrccApp.reset()
+        TrccApp._instance = TrccApp(MagicMock())
+        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
 
         mock_img = MagicMock()
         mock_solid.return_value = mock_img
@@ -2793,11 +2854,12 @@ class TestDisplayTestEndpoint(unittest.TestCase):
         data = resp.json()
         self.assertTrue(data["success"])
         self.assertIn("7 colors", data["message"])
-        # 7 colors = 7 calls
-        self.assertEqual(mock_lcd.frame.send_color.call_count, 7)
+        # 7 colors = 7 calls through the bus → mock_lcd.send_color
+        self.assertEqual(mock_lcd.send_color.call_count, 7)
         self.assertEqual(mock_sleep.call_count, 7)
 
         api_module._display_dispatcher = None
+        TrccApp.reset()
 
 
 # ── LED test endpoint ─────────────────────────────────────────────────
@@ -2855,20 +2917,27 @@ if __name__ == '__main__':
 # =============================================================================
 
 def test_select_device_calls_discover_resolution(no_device_app):
-    """Select triggers resolution discovery for LCD devices with (0,0) resolution.
+    """Select triggers resolution discovery for SCSI devices with unknown (0,0) resolution.
 
-    Chain: os_bus.dispatch(DiscoverDevicesCommand)
-           → scan() finds nothing → has_lcd=False → lcd_from_service() fallback
-           → _discover_resolution() called on device service
+    Scenario: device is detected but handshake hasn't run yet — resolution is (0,0).
+    Expected: _discover_resolution() is called to resolve it before proceeding.
+
+    Device data from SCSI_DEVICES registry (single source of truth).
     """
     from starlette.testclient import TestClient as SyncClient
 
     from trcc.api import _device_svc
     from trcc.api import app as fastapi_app
+    from trcc.core.models import SCSI_DEVICES
 
     _app, _mock_lcd = no_device_app
-    dev = DeviceInfo(name="FW", path="/dev/sg1", vid=0x0402, pid=0x3922,
-                     protocol="scsi", resolution=(0, 0))
+    vid_pid = next(iter(SCSI_DEVICES))
+    entry = SCSI_DEVICES[vid_pid]
+    dev = DeviceInfo(
+        name=entry.product, path="/dev/sg1",
+        vid=vid_pid[0], pid=vid_pid[1],
+        protocol=entry.protocol, resolution=(0, 0),
+    )
     _device_svc._devices = [dev]
 
     with patch.object(_device_svc, "_discover_resolution") as mock_discover:
@@ -2882,42 +2951,60 @@ def test_select_device_standalone_calls_ensure_all(lcd_only_app):
     """Standalone select dispatches EnsureDataCommand through the lcd_bus.
 
     Chain: os_bus.dispatch(DiscoverDevicesCommand)
-           → _fake_dispatch() wires lcd_device + lcd_bus
-           → api/devices.py dispatches EnsureDataCommand(320, 320) on lcd_bus
+           → _fake_dispatch() wires lcd_device + real lcd_bus
+           → api/devices.py dispatches EnsureDataCommand on lcd_bus
+           → RestoreLastThemeCommand dispatched → mock_lcd.restore_last_theme() called
+
+    Device VID/PID and resolution from models (single source of truth).
     """
     from starlette.testclient import TestClient as SyncClient
 
     from trcc.api import _device_svc
     from trcc.api import app as fastapi_app
-    from trcc.core.commands.lcd import EnsureDataCommand
+    from trcc.core.models import FBL_PROFILES, SCSI_DEVICES
 
-    app, _mock_lcd = lcd_only_app
-    dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
-                     protocol="scsi", resolution=(320, 320))
+    app, mock_lcd = lcd_only_app
+    vid_pid = next(iter(SCSI_DEVICES))
+    entry = SCSI_DEVICES[vid_pid]
+    resolution = FBL_PROFILES[entry.fbl].resolution
+    dev = DeviceInfo(
+        name=entry.product, path="/dev/sg0",
+        vid=vid_pid[0], pid=vid_pid[1],
+        protocol=entry.protocol, resolution=resolution,
+    )
     _device_svc._devices = [dev]
 
     resp = SyncClient(app=fastapi_app, base_url="http://test").post("/devices/0/select")
 
     assert resp.status_code == 200
-    app._lcd_bus.dispatch.assert_called_with(EnsureDataCommand(width=320, height=320))
+    assert resp.json()["selected"] == entry.product
+    # RestoreLastThemeCommand dispatched through the real bus → hits mock_lcd
+    mock_lcd.restore_last_theme.assert_called_once()
 
 
 def test_select_led_device_failed_connect_clears_dispatcher(no_device_app):
     """LED connect failure leaves _led_dispatcher as None.
 
-    Chain: os_bus.dispatch(DiscoverDevicesCommand)
-           → scan() finds nothing → has_lcd=False, has_led=False
-           → API never sets _led_dispatcher
+    Scenario: LED device is detected but connection fails (hardware absent in CI).
+    Expected: _led_dispatcher stays None — no stale reference.
+
+    Device VID/PID from LED_DEVICES registry (single source of truth).
     """
     from starlette.testclient import TestClient as SyncClient
 
     import trcc.api as api_module
     from trcc.api import _device_svc
     from trcc.api import app as fastapi_app
+    from trcc.core.models import LED_DEVICES
 
     _app, _mock_lcd = no_device_app
-    dev = DeviceInfo(name="HR10", path="hid:0416:8001", vid=0x0416, pid=0x8001,
-                     protocol="led", implementation="hid_led")
+    vid_pid = next(iter(LED_DEVICES))
+    entry = LED_DEVICES[vid_pid]
+    dev = DeviceInfo(
+        name=entry.product, path=f"hid:{vid_pid[0]:04x}:{vid_pid[1]:04x}",
+        vid=vid_pid[0], pid=vid_pid[1],
+        protocol=entry.protocol, implementation=entry.implementation,
+    )
     _device_svc._devices = [dev]
     api_module._led_dispatcher = None
 

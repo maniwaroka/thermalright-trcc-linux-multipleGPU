@@ -23,12 +23,17 @@ def lcd_only_app(monkeypatch):
               → scan() → _wire_bus() → has_lcd=True, lcd_device wired
                                       → has_led=False (no LED found)
 
+    Uses build_lcd_bus(mock_lcd) so command dispatch actually routes
+    through the real LCDCommandHandler to mock_lcd methods — commands
+    return proper CommandResult objects, not bare MagicMocks.
+
     DataManager.ensure_all is replaced with a spy (records (w, h) calls,
     no network I/O). Access via: app.ensure_all_calls.
     """
     from trcc.adapters.infra.data_repository import DataManager
     from trcc.core.app import TrccApp
     from trcc.core.command_bus import CommandBus, CommandResult
+    from trcc.core.handlers.lcd import build_lcd_bus
 
     ensure_all_calls: list = []
     monkeypatch.setattr(
@@ -40,12 +45,13 @@ def lcd_only_app(monkeypatch):
     app = TrccApp(MagicMock())
 
     mock_lcd = MagicMock()
-    mock_lcd.load_last_theme.return_value = {}
+    # restore_last_theme is called via RestoreLastThemeCommand through the bus
+    mock_lcd.restore_last_theme.return_value = {"success": True, "image": None}
 
-    # Fake os_bus: DiscoverDevicesCommand wires lcd_device + lcd_bus
+    # Fake os_bus: DiscoverDevicesCommand wires lcd_device + real lcd_bus
     def _fake_dispatch(cmd):
         app._lcd_device = mock_lcd
-        app._lcd_bus = MagicMock(spec=CommandBus)
+        app._lcd_bus = build_lcd_bus(mock_lcd)
         return CommandResult.ok(message="1 device(s) found")
 
     fake_os_bus = MagicMock(spec=CommandBus)
@@ -64,6 +70,7 @@ def no_device_app(monkeypatch):
 
     DI chain: os_bus.dispatch(DiscoverDevicesCommand)
               → scan() → no devices → has_lcd=False, has_led=False
+              → _lcd_bus stays None
 
     lcd_from_service() returns a mock so the fallback path doesn't crash.
     DataManager.ensure_all is a no-op (no network calls in tests).
@@ -78,7 +85,6 @@ def no_device_app(monkeypatch):
     app = TrccApp(MagicMock())
 
     mock_lcd = MagicMock()
-    mock_lcd.load_last_theme.return_value = {}
     app.lcd_from_service = lambda svc: mock_lcd  # type: ignore[method-assign]
 
     # Fake os_bus: DiscoverDevicesCommand finds nothing — buses stay None

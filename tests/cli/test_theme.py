@@ -294,16 +294,7 @@ class TestLoadTheme:
 
     @pytest.fixture(autouse=True)
     def _real_lcd_bus(self, _mock_builder):
-        """Wire a real lcd_bus so SelectThemeCommand routes to lcd.select().
-
-        After the command-bus refactor, load_theme() dispatches SelectThemeCommand
-        through TrccApp.get().build_lcd_bus(lcd). The conftest mock_app has a no-op
-        bus; this fixture replaces it with the real implementation so the handler
-        calls lcd.select(theme) — which the tests mock on each mock_lcd.
-        """
-        from trcc.core.app import TrccApp
-        real_app = TrccApp(_mock_builder)
-        TrccApp.get().build_lcd_bus = real_app.build_lcd_bus  # type: ignore[attr-defined]
+        """No-op: load_theme() now uses build_lcd_bus(lcd) locally, not TrccApp.lcd_bus."""
 
     def _patches(
         self,

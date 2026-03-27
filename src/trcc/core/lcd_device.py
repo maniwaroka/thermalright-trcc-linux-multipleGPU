@@ -586,8 +586,6 @@ class LCDDevice(Device):
             overlay_enabled = overlay_cfg.get("enabled", False)
             overlay_config = overlay_cfg.get("config") or None
             if overlay_config:
-                w, h = self.lcd_size
-                self._display_svc.overlay.set_config_resolution(w, h)
                 self.set_config(overlay_config)
             self.enable(overlay_enabled)
 
@@ -849,6 +847,8 @@ class LCDDevice(Device):
                 "message": f"Overlay: {'on' if on else 'off'}"}
 
     def set_config(self, config: dict) -> dict:
+        w, h = self.lcd_size
+        self._display_svc.overlay.service.set_config_resolution(w, h)
         self._display_svc.overlay.set_config(config)
         return {"success": True, "message": f"Overlay config: {len(config)} elements"}
 

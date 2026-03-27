@@ -133,10 +133,14 @@ def select_device(device_id: int) -> dict:
             api.set_current_image(ImageService.solid_color(0, 0, 0, w_res, h_res))
 
             lcd.restore_device_settings()
-            result = lcd.load_last_theme()
-            if result.get("image"):
-                api.set_current_image(result["image"])
-                log.info("Restored last theme for preview")
+            try:
+                from trcc.core.commands.lcd import RestoreLastThemeCommand
+                result = TrccApp.get().lcd_bus.dispatch(RestoreLastThemeCommand()).payload
+                if result.get("image"):
+                    api.set_current_image(result["image"])
+                    log.info("Restored last theme for preview")
+            except RuntimeError:
+                pass
 
     # Mount static file directories for this device's resolution
     w, h = dev.resolution or (0, 0)

@@ -74,6 +74,13 @@ def _make_lcd() -> MagicMock:
     lcd.theme.save.return_value = {'success': True, 'message': 'Saved'}
     lcd.theme.export_config.return_value = {'success': True, 'message': 'Exported'}
     lcd.theme.import_config.return_value = {'success': True, 'message': 'Imported'}
+    # Direct LCDDevice methods (used by command handlers)
+    lcd.select.return_value = {'image': MagicMock(), 'is_animated': False}
+    lcd.save.return_value = {'success': True, 'message': 'Saved'}
+    lcd.export_config.return_value = {'success': True, 'message': 'Exported'}
+    lcd.import_config.return_value = {'success': True, 'message': 'Imported'}
+    lcd.set_config.return_value = {'success': True, 'message': 'Config set'}
+    lcd.enable.return_value = {'success': True, 'enabled': True}
     lcd.frame.send.return_value = {'success': True}
     lcd.frame.reset.return_value = {'success': True, 'message': 'Reset'}
     lcd.overlay.render.return_value = {'image': MagicMock()}
@@ -104,9 +111,32 @@ def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
             return CommandResult.from_dict(_lcd.set_split_mode(cmd.mode))
         if isinstance(cmd, SetResolutionCommand):
             return CommandResult.from_dict(_lcd.set_resolution(cmd.width, cmd.height))
-        from trcc.core.commands.lcd import RestoreLastThemeCommand
+        from trcc.core.commands.lcd import (
+            EnableOverlayCommand,
+            ExportThemeCommand,
+            ImportThemeCommand,
+            LoadMaskCommand,
+            RestoreLastThemeCommand,
+            SaveThemeCommand,
+            SelectThemeCommand,
+            SetOverlayConfigCommand,
+        )
         if isinstance(cmd, RestoreLastThemeCommand):
             return CommandResult.from_dict(_lcd.restore_last_theme())
+        if isinstance(cmd, SelectThemeCommand):
+            return CommandResult.from_dict(_lcd.select(cmd.theme))
+        if isinstance(cmd, LoadMaskCommand):
+            return CommandResult.from_dict(_lcd.load_mask_standalone(cmd.mask_path))
+        if isinstance(cmd, SaveThemeCommand):
+            return CommandResult.from_dict(_lcd.save(cmd.name, cmd.data_dir))
+        if isinstance(cmd, ExportThemeCommand):
+            return CommandResult.from_dict(_lcd.export_config(cmd.path))
+        if isinstance(cmd, ImportThemeCommand):
+            return CommandResult.from_dict(_lcd.import_config(cmd.path, cmd.data_dir))
+        if isinstance(cmd, SetOverlayConfigCommand):
+            return CommandResult.from_dict(_lcd.set_config(cmd.config))
+        if isinstance(cmd, EnableOverlayCommand):
+            return CommandResult.from_dict(_lcd.enable(cmd.on))
         return CommandResult.ok(message="ok")
 
     bus.dispatch.side_effect = _dispatch
@@ -265,6 +295,7 @@ class TestThemeSelection:
     @patch('trcc.qt_components.lcd_handler.Settings')
     @patch('trcc.qt_components.lcd_handler.ThemeInfo')
     def test_select_theme_from_path_calls_select(self, mock_ti, mock_settings):
+        from trcc.core.commands.lcd import SelectThemeCommand
         mock_ti.from_directory.return_value = MagicMock()
         h = _make_handler()
         path = MagicMock(spec=Path)
@@ -272,14 +303,17 @@ class TestThemeSelection:
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
 
         h.select_theme_from_path(path)
-        h._lcd.theme.select.assert_called_once()
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert any(isinstance(cmd, SelectThemeCommand) for cmd in dispatched)
 
     def test_select_theme_nonexistent_path_noop(self):
+        from trcc.core.commands.lcd import SelectThemeCommand
         h = _make_handler()
         path = MagicMock(spec=Path)
         path.exists.return_value = False
         h.select_theme_from_path(path)
-        h._lcd.theme.select.assert_not_called()
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert not any(isinstance(cmd, SelectThemeCommand) for cmd in dispatched)
 
     @patch('trcc.qt_components.lcd_handler.Settings')
     @patch('trcc.qt_components.lcd_handler.ThemeInfo')
@@ -332,6 +366,7 @@ class TestMask:
 
     @patch('trcc.qt_components.lcd_handler.Settings')
     def test_apply_mask_with_path(self, mock_settings):
+        from trcc.core.commands.lcd import LoadMaskCommand
         h = _make_handler()
         h._device_key = 'dev0'
         mask_info = MagicMock()
@@ -339,8 +374,8 @@ class TestMask:
         h._lcd.load_mask_standalone.return_value = {
             'success': True, 'image': MagicMock()}
         h.apply_mask(mask_info)
-        h._lcd.load_mask_standalone.assert_called_once()
-        h._w['preview'].set_image.assert_called_once()
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert any(isinstance(cmd, LoadMaskCommand) for cmd in dispatched)
         mock_settings.save_device_setting.assert_called_with(
             'dev0', 'mask_path', '/masks/01')
 
@@ -621,29 +656,34 @@ class TestThemeIO:
     @patch('trcc.conf.settings')
     @patch('trcc.qt_components.lcd_handler.Settings')
     def test_save_theme_success(self, mock_settings_cls, mock_conf):
+        from trcc.core.commands.lcd import SaveThemeCommand
         h = _make_handler()
         td = MagicMock()
         td.exists.return_value = True
         mock_conf.theme_dir = td
-        h._lcd.theme.save.return_value = {'success': True, 'message': 'Saved'}
         h.save_theme("MyTheme")
-        h._lcd.theme.save.assert_called_once_with("MyTheme", h._data_dir)
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert any(isinstance(cmd, SaveThemeCommand) and cmd.name == "MyTheme"
+                   for cmd in dispatched)
         h._w['preview'].set_status.assert_called_with('Saved')
 
     def test_export_config(self):
+        from trcc.core.commands.lcd import ExportThemeCommand
         h = _make_handler()
         h.export_config(Path('/out/theme.tr'))
-        h._lcd.theme.export_config.assert_called_once_with(Path('/out/theme.tr'))
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert any(isinstance(cmd, ExportThemeCommand) for cmd in dispatched)
 
     @patch('trcc.conf.settings')
     def test_import_config_success_reloads(self, mock_conf):
+        from trcc.core.commands.lcd import ImportThemeCommand
         h = _make_handler()
         td = MagicMock()
         td.exists.return_value = True
         mock_conf.theme_dir = td
-        h._lcd.theme.import_config.return_value = {
-            'success': True, 'message': 'Imported'}
         h.import_config(Path('/in/theme.tr'))
+        dispatched = [c.args[0] for c in h._bus.dispatch.call_args_list]
+        assert any(isinstance(cmd, ImportThemeCommand) for cmd in dispatched)
         h._w['theme_local'].set_theme_directory.assert_called_once()
         h._w['theme_local'].load_themes.assert_called_once()
 

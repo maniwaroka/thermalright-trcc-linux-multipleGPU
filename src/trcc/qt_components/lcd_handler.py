@@ -22,8 +22,15 @@ from trcc.conf import Settings
 
 from ..core.command_bus import CommandBus
 from ..core.commands.lcd import (
+    EnableOverlayCommand,
+    ExportThemeCommand,
+    ImportThemeCommand,
+    LoadMaskCommand,
     RestoreLastThemeCommand,
+    SaveThemeCommand,
+    SelectThemeCommand,
     SetBrightnessCommand,
+    SetOverlayConfigCommand,
     SetRotationCommand,
     SetSplitModeCommand,
 )
@@ -170,12 +177,12 @@ class LCDHandler(BaseHandler):
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
         log.info("Restoring brightness: level=%d", self._brightness_level)
-        self._lcd.set_brightness(self._brightness_level)
+        self._bus.dispatch(SetBrightnessCommand(level=self._brightness_level))
 
     def _restore_rotation(self, cfg: dict) -> None:
         rotation_index = cfg.get('rotation', 0) // 90
         rotation = rotation_index * 90
-        self._lcd.set_rotation(rotation)
+        self._bus.dispatch(SetRotationCommand(degrees=rotation))
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
@@ -187,9 +194,9 @@ class LCDHandler(BaseHandler):
         if self._ldd_is_split:
             if not self._split_mode:
                 self._split_mode = 2
-            self._lcd.set_split_mode(self._split_mode)
+            self._bus.dispatch(SetSplitModeCommand(mode=self._split_mode))
         else:
-            self._lcd.set_split_mode(0)
+            self._bus.dispatch(SetSplitModeCommand(mode=0))
 
     def _restore_carousel(self, cfg: dict) -> None:
         carousel = cfg.get('carousel')
@@ -214,22 +221,20 @@ class LCDHandler(BaseHandler):
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
 
     def _select_theme(self, theme: ThemeInfo) -> None:
-        """Select theme via LCDDevice and handle result."""
+        """Select theme via command bus and handle result."""
         log.info("Theme selected: %s (animated=%s)", theme.name, theme.is_animated)
         self._pixmap_cache.clear()
-        result = self._lcd.theme.select(theme)
-        image = result.get('image')
-        is_animated = result.get('is_animated', False)
+        payload = self._bus.dispatch(SelectThemeCommand(theme=theme)).payload
+        image = payload.get('image')
+        is_animated = payload.get('is_animated', False)
 
         if image:
-            fast = is_animated
-            self._w['preview'].set_image(image, fast=fast)
+            self._w['preview'].set_image(image, fast=is_animated)
             if self._lcd.auto_send and not is_animated:
                 self._lcd.frame.send(image)
 
         if is_animated and self._lcd.video.playing:
-            interval = result.get('interval', 33)
-            self._animation_timer.start(interval)
+            self._animation_timer.start(payload.get('interval', 33))
             self._w['preview'].set_playing(True)
             self._w['preview'].show_video_controls(True)
 
@@ -299,8 +304,8 @@ class LCDHandler(BaseHandler):
         """
         if mask_info.path:
             mask_dir = Path(mask_info.path)
-            result = self._lcd.load_mask_standalone(str(mask_dir))
-            image = result.get('image')
+            image = self._bus.dispatch(
+                LoadMaskCommand(mask_path=str(mask_dir))).payload.get('image')
             if image:
                 self._w['preview'].set_image(image)
             # C# reads config1.dc from mask dir (ReadSystemConfiguration)
@@ -321,9 +326,9 @@ class LCDHandler(BaseHandler):
             self._render_and_send()
 
     def save_theme(self, name: str) -> None:
-        result = self._lcd.theme.save(name, self._data_dir)
-        self._w['preview'].set_status(result.get('message', ''))
-        if result['success']:
+        result = self._bus.dispatch(SaveThemeCommand(name=name, data_dir=str(self._data_dir)))
+        self._w['preview'].set_status(result.payload.get('message', ''))
+        if result.success:
             td = _conf.settings.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
@@ -334,13 +339,14 @@ class LCDHandler(BaseHandler):
                     str(self._lcd.current_theme_path))
 
     def export_config(self, path: Path) -> None:
-        result = self._lcd.theme.export_config(path)
-        self._w['preview'].set_status(result.get('message', ''))
+        result = self._bus.dispatch(ExportThemeCommand(path=str(path)))
+        self._w['preview'].set_status(result.payload.get('message', ''))
 
     def import_config(self, path: Path) -> None:
-        result = self._lcd.theme.import_config(path, self._data_dir)
-        self._w['preview'].set_status(result.get('message', ''))
-        if result['success']:
+        result = self._bus.dispatch(
+            ImportThemeCommand(path=str(path), data_dir=str(self._data_dir)))
+        self._w['preview'].set_status(result.payload.get('message', ''))
+        if result.success:
             td = _conf.settings.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
@@ -393,10 +399,8 @@ class LCDHandler(BaseHandler):
         Settings.apply_format_prefs(overlay_config)
         self._w['theme_setting'].set_overlay_enabled(True)
         self._w['theme_setting'].load_from_overlay_config(overlay_config)
-        w, h = self._lcd.lcd_size
-        self._lcd.overlay.service.set_config_resolution(w, h)
-        self._lcd.overlay.set_config(overlay_config)
-        self._lcd.overlay.enable(True)
+        self._bus.dispatch(SetOverlayConfigCommand(config=overlay_config))
+        self._bus.dispatch(EnableOverlayCommand(on=True))
         self._render_and_send()
 
         if persist and self._device_key:
