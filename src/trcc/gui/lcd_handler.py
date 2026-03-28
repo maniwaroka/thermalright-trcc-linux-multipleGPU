@@ -28,7 +28,6 @@ from ..core.commands.lcd import (
     ImportThemeCommand,
     LoadMaskCommand,
     PauseVideoCommand,
-    RebuildOverlayCacheCommand,
     RenderAndSendCommand,
     RestoreLastThemeCommand,
     SaveThemeCommand,
@@ -44,6 +43,7 @@ from ..core.commands.lcd import (
     SetSplitModeCommand,
     SetVideoFitModeCommand,
     StopVideoCommand,
+    UpdateVideoCacheTextCommand,
 )
 from ..core.lcd_device import LCDDevice
 from ..core.models import (
@@ -113,9 +113,6 @@ class LCDHandler(BaseHandler):
         self._animation_timer: QTimer = make_timer(self._on_video_tick)
         self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
         self._flash_timer: QTimer = make_timer(self._on_flash_timeout, single_shot=True)
-        self._rebuild_debounce_timer: QTimer = make_timer(
-            self._on_rebuild_debounce, single_shot=True)
-        self._pending_metrics: Any = None
 
     # ── BaseHandler interface ────────────────────────────────────────
 
@@ -240,8 +237,14 @@ class LCDHandler(BaseHandler):
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
 
-    def _select_theme(self, theme: ThemeInfo) -> None:
-        """Select theme via command bus and handle result."""
+    def _select_theme(self, theme: ThemeInfo, *, send_frame: bool = True) -> None:
+        """Select theme via command bus and handle result.
+
+        Args:
+            send_frame: Send the frame to the device immediately. Pass False
+                when overlay config will follow — _load_theme_overlay_config
+                owns the single send in that case, avoiding a double-send blink.
+        """
         log.info("Theme selected: %s (animated=%s)", theme.name, theme.is_animated)
         self._pixmap_cache.clear()
         payload = self._bus.dispatch(SelectThemeCommand(theme=theme)).payload
@@ -250,7 +253,7 @@ class LCDHandler(BaseHandler):
 
         if image:
             self._w['preview'].set_image(image, fast=is_animated)
-            if self._lcd.auto_send and not is_animated:
+            if send_frame and self._lcd.auto_send and not is_animated:
                 self._bus.dispatch(SendFrameCommand(image=image))
 
         if is_animated and self._lcd.playing:
@@ -287,9 +290,11 @@ class LCDHandler(BaseHandler):
         self._w['theme_setting'].video_panel.set_enabled(False)
 
         theme = ThemeInfo.from_directory(path)
-        self._select_theme(theme)
+        # Suppress SendFrameCommand when overlay config will follow — the
+        # overlay load owns the single send, avoiding a double-send blink.
+        self._select_theme(theme, send_frame=not overlay_config)
         if overlay_config:
-            self._load_theme_overlay_config(path)
+            self._load_theme_overlay_config(path, persist=persist)
 
         if persist and self._device_key:
             log.info("Saving theme_path: %s (key=%s)", path, self._device_key)
@@ -380,28 +385,7 @@ class LCDHandler(BaseHandler):
             persist: If True, save overlay state to config.json (theme loads).
                      If False, apply but don't persist (mask loads — temporary).
         """
-        overlay_config = None
-
-        json_path = theme_dir / 'config.json'
-        if json_path.exists():
-            try:
-                from ..adapters.infra.dc_parser import load_config_json
-                result = load_config_json(str(json_path))
-                if result is not None:
-                    overlay_config = result[0]
-            except Exception:
-                pass
-
-        if overlay_config is None:
-            dc_path = theme_dir / 'config1.dc'
-            if not dc_path.exists():
-                return
-            try:
-                from ..adapters.infra.dc_config import DcConfig
-                dc = DcConfig(dc_path)
-                overlay_config = dc.to_overlay_config()
-            except Exception:
-                return
+        overlay_config = self._lcd.load_overlay_config_from_dir(str(theme_dir))
 
         if not overlay_config:
             # Custom themes without overlay — clear any stale saved overlay
@@ -411,6 +395,9 @@ class LCDHandler(BaseHandler):
                 Settings.save_device_setting(self._device_key, 'overlay', {
                     'enabled': False, 'config': {},
                 })
+            # Send the plain frame — callers may have suppressed SendFrameCommand
+            # to avoid double-send blink, so this is the single authoritative send.
+            self._render_and_send()
             return
 
         Settings.apply_format_prefs(overlay_config)
@@ -510,9 +497,8 @@ class LCDHandler(BaseHandler):
             self._bus.dispatch(EnableOverlayCommand(on=True))
         self._bus.dispatch(SetOverlayConfigCommand(config=element_data))
         if self._lcd.playing and self._lcd.last_metrics is not None:
-            log.debug("on_overlay_changed: video playing — forcing cache rebuild")
-            self._rebuild_debounce_timer.stop()
-            self._bus.dispatch(RebuildOverlayCacheCommand(metrics=self._lcd.last_metrics))
+            log.debug("on_overlay_changed: video playing — updating cache text overlay")
+            self._bus.dispatch(UpdateVideoCacheTextCommand(metrics=self._lcd.last_metrics))
         else:
             self._render_and_send()
 
@@ -532,30 +518,27 @@ class LCDHandler(BaseHandler):
         self._w['preview'].set_image(image)
 
     def on_overlay_tick(self, metrics: Any) -> None:
-        """Metrics tick: re-render and send every tick to keep the device alive.
+        """Metrics tick: keep device alive and update overlay text.
 
-        Video: debounce cache rebuild (metrics update baked into video frames).
-        Static: always re-render + send — device blanks without periodic frames,
-                and overlay metrics (time, CPU, etc.) must update every second.
+        Video: update cache text overlay once (O(1) — no frame loop).
+               The animation timer sends frames; text composited per tick.
+        Static + overlay enabled: background tick() (LCDDevice.tick) renders
+               and sends whenever metrics change. Nothing to do here — sending
+               again would cause a double-send blink on every refresh cycle.
+        Static + overlay disabled: tick() does not send (overlay off), so this
+               handler is responsible for the periodic keepalive send.
         """
         if not self._lcd.connected:
             return
 
         if self._lcd.playing:
-            if self._lcd.has_changed(metrics):
-                log.debug("overlay_tick: video playing, metrics changed — debouncing cache rebuild")
-                self._pending_metrics = metrics
-                self._rebuild_debounce_timer.start(300)
-        else:
-            log.debug("overlay_tick: static theme — sending frame (overlay=%s)", self._lcd.enabled)
+            log.debug("overlay_tick: video playing — updating cache text overlay")
+            self._bus.dispatch(UpdateVideoCacheTextCommand(metrics=metrics))
+        elif not self._lcd.enabled:
+            log.debug("overlay_tick: no overlay — keepalive send")
             self._render_and_send()
-
-    def _on_rebuild_debounce(self) -> None:
-        """Fire after metrics settle — rebuild video cache once."""
-        if self._pending_metrics is not None:
-            log.debug("overlay_tick: debounce fired — rebuilding cache")
-            self._bus.dispatch(RebuildOverlayCacheCommand(metrics=self._pending_metrics))
-            self._pending_metrics = None
+        else:
+            log.debug("overlay_tick: overlay enabled — tick() owns the send")
 
     def keepalive(self) -> None:
         """Periodic keepalive: resend current frame to prevent USB standby.
@@ -678,7 +661,7 @@ class LCDHandler(BaseHandler):
         path = Path(theme_info.path)
         if path.exists():
             theme = ThemeInfo.from_directory(path)
-            self._select_theme(theme)
+            self._select_theme(theme, send_frame=False)
             self._load_theme_overlay_config(path)
 
     # ── Rendering ──────────────────────────────────────────────────

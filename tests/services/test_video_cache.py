@@ -1,11 +1,10 @@
-"""Tests for VideoFrameCache — lazy per-frame encoding (C#-matching)."""
+"""Tests for VideoFrameCache — lazy per-frame surface adjustment."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 from conftest import make_test_surface, surface_size
 
-from trcc.core.models import HardwareMetrics
 from trcc.services.video_cache import VideoFrameCache
 
 
@@ -19,219 +18,153 @@ def _make_mask(w: int = 32, h: int = 32):
     return make_test_surface(w, h, (255, 255, 255, 128))
 
 
-def _make_overlay_svc(w: int = 32, h: int = 32):
-    """Create a mock OverlayService with render_text_only."""
-    svc = MagicMock()
-    svc.enabled = True
-    svc.theme_mask = None
-    svc.theme_mask_visible = True
-    svc.theme_mask_position = (0, 0)
-    svc._metrics = HardwareMetrics()
-    text_surface = make_test_surface(w, h, (0, 0, 0, 0))
-    svc.render_text_only.return_value = (text_surface, ('key', 1))
-    return svc
+def _build(frames, *, mask=None, brightness=100, rotation=0,
+           protocol='scsi', resolution=(32, 32), fbl=None, use_jpeg=False):
+    """Helper: build a VideoFrameCache from frames."""
+    cache = VideoFrameCache()
+    cache.build(
+        frames=frames, mask=mask, mask_position=(0, 0),
+        brightness=brightness, rotation=rotation,
+        protocol=protocol, resolution=resolution,
+        fbl=fbl, use_jpeg=use_jpeg,
+    )
+    return cache
 
 
 class TestBuild:
     """Test full cache build at video load."""
 
     def test_build_creates_active_cache(self):
-        frames = _make_frames(5, 32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
+        cache = _build(_make_frames(5, 32, 32))
         assert cache.active
-        # Lazy encoding: get_encoded produces correct bytes on access
-        data = cache.get_encoded(0)
-        assert isinstance(data, bytes)
-        # RGB565: 32*32*2 = 2048 bytes per frame
-        assert len(data) == 2048
+
+    def test_build_empty_frames_inactive(self):
+        cache = _build([])
+        assert not cache.active
+
+    def test_build_no_mask_shares_references(self):
+        frames = _make_frames(3, 32, 32)
+        cache = _build(frames, mask=None)
+        # Without mask, L2 references L1 frames directly (zero copy)
+        for i in range(3):
+            assert cache._masked_frames[i] is frames[i]
 
     def test_build_with_mask_composites(self):
         frames = _make_frames(3, 32, 32)
         mask = _make_mask(32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=mask, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
+        cache = _build(frames, mask=mask)
         assert cache.active
         assert len(cache._masked_frames) == 3
-        # Masked frames should differ from originals (mask composited)
+        # Masked frames differ from originals (mask composited)
         assert bytes(cache._masked_frames[0].constBits()) != bytes(frames[0].constBits())
 
-    def test_build_no_mask_shares_references(self):
-        frames = _make_frames(3, 32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        # Without mask, L2 should reference L1 frames directly
-        for i in range(3):
-            assert cache._masked_frames[i] is frames[i]
-
-    def test_build_empty_frames_inactive(self):
-        cache = VideoFrameCache()
-        cache.build(
-            frames=[], mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        assert not cache.active
-
-    def test_build_with_overlay_text(self):
-        frames = _make_frames(3, 32, 32)
-        overlay_svc = _make_overlay_svc(32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=overlay_svc, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        assert cache.active
-        overlay_svc.render_text_only.assert_called_once()
+    def test_encoding_params_stored(self):
+        cache = _build(_make_frames(2), protocol='hid', resolution=(320, 320),
+                       fbl=100, use_jpeg=True)
+        protocol, resolution, fbl, use_jpeg = cache.encoding_params
+        assert protocol == 'hid'
+        assert resolution == (320, 320)
+        assert fbl == 100
+        assert use_jpeg is True
 
 
 class TestAccess:
-    """Test per-tick frame access."""
+    """Test per-tick surface access."""
 
-    def test_get_encoded_returns_bytes(self):
+    def test_get_surface_returns_surface(self):
         frames = _make_frames(3, 32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        data = cache.get_encoded(0)
-        assert isinstance(data, bytes)
-        assert len(data) == 2048
+        cache = _build(frames)
+        surface = cache.get_surface(0)
+        assert surface is not None
+        assert surface_size(surface) == (32, 32)
 
-    def test_get_encoded_out_of_range(self):
+    def test_get_surface_out_of_range(self):
         cache = VideoFrameCache()
-        assert cache.get_encoded(0) is None
-        assert cache.get_encoded(-1) is None
-
-    def test_get_preview_returns_surface(self):
-        frames = _make_frames(3, 32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        preview = cache.get_preview(1)
-        assert preview is not None
-        assert surface_size(preview) == (32, 32)
-
-    def test_get_preview_out_of_range(self):
-        cache = VideoFrameCache()
-        assert cache.get_preview(0) is None
+        assert cache.get_surface(0) is None
+        assert cache.get_surface(-1) is None
 
     def test_cache_hit_same_frame(self):
-        """Accessing same frame twice reuses cached encoding."""
+        """Accessing same frame index twice reuses cached surface."""
         frames = _make_frames(3, 32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        data1 = cache.get_encoded(1)
-        data2 = cache.get_encoded(1)
-        assert data1 is data2  # Same object, not re-encoded
+        cache = _build(frames)
+        s1 = cache.get_surface(1)
+        s2 = cache.get_surface(1)
+        assert s1 is s2  # Same object — no re-adjustment
 
-    def test_different_frames_different_data(self):
-        """Different frame indices produce different encoded data."""
+    def test_different_frames_different_surfaces(self):
+        """Different frame indices produce different surfaces."""
         frames = _make_frames(3, 32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        data0 = cache.get_encoded(0)
-        data1 = cache.get_encoded(1)
-        # Frames have different colors, so encodings should differ
-        assert data0 != data1
+        cache = _build(frames)
+        s0 = cache.get_surface(0)
+        s1 = cache.get_surface(1)
+        # Frames have different colors (i*50 vs (i+1)*50)
+        assert bytes(s0.constBits()) != bytes(s1.constBits())
+
+
+class TestTextOverlay:
+    """Test text overlay update (once per refresh interval)."""
+
+    def test_no_text_by_default(self):
+        cache = _build(_make_frames(3))
+        assert not cache.has_text
+        assert cache.text_overlay is None
+
+    def test_update_text_overlay_stores_surface(self):
+        cache = _build(_make_frames(3))
+        text = make_test_surface(32, 32, (0, 0, 0, 128))
+        changed = cache.update_text_overlay(text, ('key', 1))
+        assert changed is True
+        assert cache.has_text
+        assert cache.text_overlay is text
+
+    def test_same_key_skips_update(self):
+        """Same text cache key → update_text_overlay returns False (no change)."""
+        cache = _build(_make_frames(3))
+        text = make_test_surface(32, 32, (0, 0, 0, 128))
+        cache.update_text_overlay(text, ('key', 1))
+        changed = cache.update_text_overlay(text, ('key', 1))
+        assert changed is False
+
+    def test_different_key_updates(self):
+        cache = _build(_make_frames(3))
+        t1 = make_test_surface(32, 32, (0, 0, 0, 128))
+        t2 = make_test_surface(32, 32, (255, 0, 0, 128))
+        cache.update_text_overlay(t1, ('key', 1))
+        changed = cache.update_text_overlay(t2, ('key', 2))
+        assert changed is True
+        assert cache.text_overlay is t2
+
+    def test_clear_text_overlay(self):
+        cache = _build(_make_frames(3))
+        text = make_test_surface(32, 32, (0, 0, 0, 128))
+        cache.update_text_overlay(text, ('key', 1))
+        cache.clear_text_overlay()
+        assert not cache.has_text
+        assert cache.text_overlay is None
 
 
 class TestRebuild:
-    """Test partial cache rebuilds."""
+    """Test partial cache rebuilds (brightness / rotation)."""
 
     def test_rebuild_from_brightness(self):
         frames = [make_test_surface(32, 32, (255, 255, 255)) for _ in range(3)]
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        original_encoded = cache.get_encoded(0)
+        cache = _build(frames, brightness=100)
+        s_full = cache.get_surface(0)
 
         cache.rebuild_from_brightness(50)
         assert cache._brightness == 50
-        # Next access should re-encode with new brightness
-        assert cache.get_encoded(0) != original_encoded
+        # L3 cleared — next access rebuilds with dimmer surface
+        s_dim = cache.get_surface(0)
+        assert bytes(s_dim.constBits()) != bytes(s_full.constBits())
 
-    def test_brightness_100_keeps_encoding(self):
-        """Full brightness produces same encoding as original build."""
+    def test_rebuild_from_brightness_same_value(self):
+        """Rebuild at same brightness — surfaces are identical."""
         frames = [make_test_surface(32, 32, (200, 200, 200)) for _ in range(3)]
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        original_encoded = cache.get_encoded(0)
-
-        # Rebuild at same brightness — encoding should not change
+        cache = _build(frames, brightness=100)
+        s1 = cache.get_surface(0)
         cache.rebuild_from_brightness(100)
-        assert cache.get_encoded(0) == original_encoded
-
-    def test_brightness_50_changes_encoding(self):
-        """50% brightness produces different encoding than 100%."""
-        frames = [make_test_surface(32, 32, (200, 200, 200)) for _ in range(3)]
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        original_encoded = cache.get_encoded(0)
-
-        cache.rebuild_from_brightness(50)
-        assert cache.get_encoded(0) != original_encoded
+        s2 = cache.get_surface(0)
+        assert bytes(s1.constBits()) == bytes(s2.constBits())
 
     def test_rebuild_from_rotation(self):
         from trcc.services.image import ImageService
@@ -240,59 +173,13 @@ class TestRebuild:
         red_quad = r.create_surface(16, 16, (255, 0, 0))
         base = r.composite(base, red_quad, (0, 0))
         frames = [r.copy_surface(base) for _ in range(3)]
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=None, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-        original_encoded = cache.get_encoded(0)
+        cache = _build(frames, rotation=0)
+        s0 = cache.get_surface(0)
 
         cache.rebuild_from_rotation(90)
         assert cache._rotation == 90
-        assert cache.get_encoded(0) != original_encoded
-
-    def test_rebuild_from_metrics(self):
-        frames = _make_frames(3, 32, 32)
-        overlay_svc = _make_overlay_svc(32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=overlay_svc, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-
-        # Change text overlay for rebuild
-        new_text = make_test_surface(32, 32, (255, 0, 0, 128))
-        overlay_svc.render_text_only.return_value = (new_text, ('key', 2))
-
-        original_encoded = cache.get_encoded(0)
-        cache.rebuild_from_metrics(overlay_svc, HardwareMetrics())
-        if cache._rebuild_thread:
-            cache._rebuild_thread.join(timeout=5)
-        assert cache.get_encoded(0) != original_encoded
-
-    def test_rebuild_from_metrics_same_key_skips(self):
-        """When text cache key hasn't changed, encoding stays the same."""
-        frames = _make_frames(3, 32, 32)
-        overlay_svc = _make_overlay_svc(32, 32)
-        cache = VideoFrameCache()
-        cache.build(
-            frames=frames, mask=None, mask_position=(0, 0),
-            overlay_svc=overlay_svc, metrics=HardwareMetrics(),
-            brightness=100, rotation=0,
-            protocol='scsi', resolution=(32, 32),
-            fbl=None, use_jpeg=False,
-        )
-
-        # Same key returned — encoding should be identical
-        original_encoded = cache.get_encoded(0)
-        cache.rebuild_from_metrics(overlay_svc, HardwareMetrics())
-        assert cache.get_encoded(0) == original_encoded
+        s90 = cache.get_surface(0)
+        assert bytes(s0.constBits()) != bytes(s90.constBits())
 
 
 class TestInactiveCache:
@@ -301,5 +188,10 @@ class TestInactiveCache:
     def test_inactive_cache_returns_none(self):
         cache = VideoFrameCache()
         assert not cache.active
-        assert cache.get_encoded(0) is None
-        assert cache.get_preview(0) is None
+        assert cache.get_surface(0) is None
+
+    def test_update_text_overlay_on_inactive_cache_is_safe(self):
+        cache = VideoFrameCache()
+        # update_text_overlay on inactive cache is safe (stores but has no frames)
+        cache.update_text_overlay(MagicMock(), ('key', 1))
+        assert cache.has_text

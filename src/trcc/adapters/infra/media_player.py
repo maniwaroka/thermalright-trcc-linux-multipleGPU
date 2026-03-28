@@ -22,31 +22,11 @@ from trcc.core.ports import RawFrame
 log = logging.getLogger(__name__)
 
 
-def _check_ffmpeg() -> bool:
-    """Check if ffmpeg is available in PATH."""
-    try:
-        result = subprocess.run(
-            ['ffmpeg', '-version'], capture_output=True, timeout=5,
-            creationflags=_NO_WINDOW,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
-FFMPEG_AVAILABLE = _check_ffmpeg()
-
-
 class VideoDecoder:
     """Decode video frames via FFmpeg pipe. No playback state."""
 
     def __init__(self, video_path: str, target_size: tuple[int, int],
                  fit_mode: str = 'fill') -> None:
-        if not FFMPEG_AVAILABLE:
-            from trcc.core.builder import ControllerBuilder
-            raise RuntimeError(
-                ControllerBuilder.for_current_os().build_setup().ffmpeg_install_help()
-            )
         self.frames: list[RawFrame] = []
         self.fps: int = 16  # Windows: originalImageHz = 16
 
@@ -159,10 +139,6 @@ class VideoDecoder:
         max_frames: int | None = None,
     ) -> int:
         """Extract video frames to PNG files via FFmpeg."""
-        if not FFMPEG_AVAILABLE:
-            log.warning("FFmpeg not available for video extraction")
-            return 0
-
         os.makedirs(output_dir, exist_ok=True)
         w, h = target_size
 

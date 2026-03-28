@@ -40,7 +40,7 @@ from ..core.commands.led import (
     UpdateMetricsLEDCommand,
 )
 from ..core.led_device import LEDDevice
-from ..core.models import DeviceInfo
+from ..core.models import LED_STYLES, DeviceInfo, resolve_led_style_id
 from .base import BaseHandler
 from .uc_led_control import UCLedControl
 
@@ -115,13 +115,12 @@ class LEDHandler(BaseHandler):
     def show(self, device: DeviceInfo) -> None:
         """Initialize LED device and start animation."""
         model = device.model or ''
-        from ..services.led import LEDService
-        led_style = device.led_style_id or LEDService.resolve_style_id(model)
+        led_style = device.led_style_id or resolve_led_style_id(model)
 
         self._led.initialize(device, led_style)
         self._style_id = led_style
 
-        style_info = LEDService.get_style_info(led_style)
+        style_info = LED_STYLES.get(led_style)
         if style_info:
             self._panel.initialize(
                 led_style, style_info.segment_count, style_info.zone_count,

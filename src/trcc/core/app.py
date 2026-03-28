@@ -81,6 +81,8 @@ class TrccApp:
         self._system_svc: SystemService | None = None
         self._metrics_thread: threading.Thread | None = None
         self._metrics_stop: threading.Event = threading.Event()
+        self._metrics_wake: threading.Event = threading.Event()
+        self._current_metrics: Any = None
         # Active buses — built when a device connects, cleared when it disconnects
         self._os_bus: CommandBus | None = None
         self._lcd_bus: CommandBus | None = None
@@ -348,6 +350,7 @@ class TrccApp:
             build_setup_fn=self._builder.build_setup,
             list_themes_fn=list_available,
             download_pack_fn=download_pack,
+            wake_metrics_fn=self.wake_metrics_loop,
         )
 
     # ── DI: device construction ──────────────────────────────────────────────
@@ -395,11 +398,19 @@ class TrccApp:
         """Inject the SystemService. Call before start_metrics_loop()."""
         self._system_svc = system_svc
 
-    def start_metrics_loop(self, interval: float = 1.0) -> None:
+    @property
+    def current_metrics(self) -> Any:
+        """Most recently polled metrics (with temp unit applied), or None."""
+        return self._current_metrics
+
+    def start_metrics_loop(self, interval: float | None = None) -> None:
         """Start background loop: poll metrics → push to all devices via tick().
 
         OS-blind — metrics come from SystemService (wraps OS SensorEnumerator).
-        Composition roots call this once after scan().
+        When interval is None (default), reads settings.refresh_interval each
+        tick so user changes take effect without restarting the loop.
+        Pass interval explicitly only in tests to control timing.
+        Temp unit is applied via HardwareMetrics.with_temp_unit() each tick.
         """
         if self._system_svc is None:
             raise RuntimeError(
@@ -408,9 +419,15 @@ class TrccApp:
         self._metrics_stop.clear()
 
         def _loop() -> None:
+            import trcc.conf as _conf
+
+            from .models import HardwareMetrics
             while not self._metrics_stop.is_set():
                 try:
-                    metrics = self._system_svc.all_metrics  # type: ignore[union-attr]
+                    raw = self._system_svc.all_metrics  # type: ignore[union-attr]
+                    metrics = HardwareMetrics.with_temp_unit(
+                        raw, _conf.settings.temp_unit)
+                    self._current_metrics = metrics
                     for path, device in list(self._devices.items()):
                         try:
                             device.update_metrics(metrics)
@@ -423,20 +440,33 @@ class TrccApp:
                     self._notify(AppEvent.METRICS_UPDATED, metrics)
                 except Exception:
                     log.exception("Metrics poll error")
-                self._metrics_stop.wait(interval)
+                sleep = interval if interval is not None else max(1, _conf.settings.refresh_interval)
+                self._metrics_wake.wait(sleep)
+                self._metrics_wake.clear()
 
         self._metrics_thread = threading.Thread(
             target=_loop, daemon=True, name="trcc-metrics")
         self._metrics_thread.start()
-        log.debug("Metrics loop started (interval=%.1fs)", interval)
+        log.debug("Metrics loop started (reads interval from settings)")
 
     def stop_metrics_loop(self) -> None:
         """Stop the background metrics loop."""
         self._metrics_stop.set()
+        self._metrics_wake.set()   # unblock any in-progress sleep immediately
         if self._metrics_thread and self._metrics_thread.is_alive():
             self._metrics_thread.join(timeout=3)
         self._metrics_thread = None
+        self._metrics_wake.clear()
         self._metrics_stop.clear()
+
+    def wake_metrics_loop(self) -> None:
+        """Wake the sleeping metrics loop immediately.
+
+        Call after changing settings.refresh_interval so the new interval
+        takes effect on the very next tick rather than after the old sleep
+        expires.
+        """
+        self._metrics_wake.set()
 
     # ── DI: infrastructure ───────────────────────────────────────────────────
 

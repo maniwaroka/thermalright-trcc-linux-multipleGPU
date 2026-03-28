@@ -46,6 +46,7 @@ def app():
         build_setup_fn=builder.build_setup,
         list_themes_fn=MagicMock(),
         download_pack_fn=MagicMock(return_value=0),
+        wake_metrics_fn=inst.wake_metrics_loop,
     )
     yield inst
     TrccApp.reset()

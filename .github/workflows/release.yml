@@ -143,6 +143,7 @@ jobs:
           Requires:   libusb1
           Requires:   sg3_utils
           Requires:   p7zip
+          Requires:   ffmpeg
           Recommends: python3-pynvml
           Recommends: python3-dbus
           Recommends: python3-hidapi
@@ -217,7 +218,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pyside6, python3-numpy, python3-psutil, python3-usb, python3-click, python3-typer, python3-fastapi, python3-uvicorn, libusb-1.0-0, sg3-utils, p7zip-full
+          Depends: python3 (>= 3.9), python3-pyside6, python3-numpy, python3-psutil, python3-usb, python3-click, python3-typer, python3-fastapi, python3-uvicorn, libusb-1.0-0, sg3-utils, p7zip-full, ffmpeg
           Recommends: python3-pynvml, python3-dbus, python3-hidapi
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
@@ -279,7 +280,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: all
-          Depends: python3 (>= 3.9), python3-pip, python3-venv, libusb-1.0-0, sg3-utils, p7zip-full, libxcb-cursor0
+          Depends: python3 (>= 3.9), python3-pip, python3-venv, libusb-1.0-0, sg3-utils, p7zip-full, libxcb-cursor0, ffmpeg
           Recommends: python3-dbus, python3-gi
           Maintainer: TRCC Linux Contributors <siembabdavid@gmail.com>
           Homepage: https://github.com/Lexonight1/thermalright-trcc-linux
@@ -380,6 +381,7 @@ jobs:
           depend = libusb
           depend = sg3_utils
           depend = p7zip
+          depend = ffmpeg
           optdepend = python-pynvml: NVIDIA GPU sensor support
           optdepend = python-dbus: Wayland session support
           optdepend = python-gobject: Wayland session support

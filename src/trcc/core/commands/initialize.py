@@ -91,6 +91,17 @@ class SetupWinUsbCommand(OSCommand):
 
 
 @dataclass(frozen=True, slots=True)
+class SetMetricsRefreshCommand(OSCommand):
+    """Set the metrics polling interval and wake the metrics loop immediately.
+
+    App-wide — GUI, CLI, and API dispatch this to change the refresh rate
+    without waiting for the current sleep to expire.
+    interval is clamped to [1, 100] by the handler before persisting.
+    """
+    interval: int = 1
+
+
+@dataclass(frozen=True, slots=True)
 class DownloadThemesCommand(OSCommand):
     """Download theme packs from GitHub.
 

@@ -26,12 +26,12 @@ from PySide6.QtCore import QTimer
 from trcc.core.commands.lcd import (
     EnableOverlayCommand,
     PauseVideoCommand,
-    RebuildOverlayCacheCommand,
     RenderAndSendCommand,
     SendFrameCommand,
     SetFlashIndexCommand,
     SetMaskPositionCommand,
     StopVideoCommand,
+    UpdateVideoCacheTextCommand,
 )
 from trcc.gui.lcd_handler import LCDHandler
 
@@ -89,6 +89,7 @@ def _make_lcd() -> MagicMock:
     lcd.render.return_value = {'image': MagicMock()}
 
     # Methods called by command handlers wired through _make_bus
+    lcd.load_overlay_config_from_dir.return_value = None
     lcd.set_brightness.return_value = {'success': True, 'message': 'OK'}
     lcd.set_rotation.return_value = {'success': True, 'message': 'OK'}
     lcd.set_split_mode.return_value = {'success': True, 'message': 'OK'}
@@ -130,7 +131,6 @@ def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
             ImportThemeCommand,
             LoadMaskCommand,
             PauseVideoCommand,
-            RebuildOverlayCacheCommand,
             RenderAndSendCommand,
             RestoreLastThemeCommand,
             SaveThemeCommand,
@@ -147,6 +147,7 @@ def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
             SetSplitModeCommand,
             SetVideoFitModeCommand,
             StopVideoCommand,
+            UpdateVideoCacheTextCommand,
         )
         if isinstance(cmd, SetBrightnessCommand):
             return CommandResult.from_dict(_lcd.set_brightness(cmd.level))
@@ -180,7 +181,7 @@ def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
             return CommandResult.from_dict(_lcd.seek(cmd.percent))
         if isinstance(cmd, SetVideoFitModeCommand):
             return CommandResult.from_dict(_lcd.set_fit_mode(cmd.mode))
-        if isinstance(cmd, RebuildOverlayCacheCommand):
+        if isinstance(cmd, UpdateVideoCacheTextCommand):
             return CommandResult.from_dict(_lcd.rebuild_video_cache(cmd.metrics))
         if isinstance(cmd, SetFlashIndexCommand):
             return CommandResult.from_dict(_lcd.set_flash_index(cmd.index))
@@ -257,16 +258,15 @@ class TestConstruction:
         h.is_background_active = True
         assert h.is_background_active is True
 
-    def test_four_timers_created(self):
+    def test_three_timers_created(self):
         calls = []
         def track_timer(cb, single_shot=False):
             calls.append((cb, single_shot))
             return MagicMock(spec=QTimer)
         _make_handler(make_timer=track_timer)
-        assert len(calls) == 4
-        # Flash and debounce timers are single_shot
+        assert len(calls) == 3
+        # Flash timer is single_shot
         assert calls[2][1] is True
-        assert calls[3][1] is True
 
 
 # =========================================================================
@@ -512,6 +512,46 @@ class TestThemeSelection:
         h.select_theme_from_path(path, persist=False)
         mock_settings.save_device_setting.assert_not_called()
 
+    @patch('trcc.gui.lcd_handler.Settings')
+    @patch('trcc.gui.lcd_handler.ThemeInfo')
+    def test_no_double_send_when_overlay_follows(self, mock_ti, mock_settings):
+        """select_theme_from_path must not dispatch SendFrameCommand when
+        overlay config will follow — avoids double-send blink on theme switch."""
+        mock_ti.from_directory.return_value = MagicMock()
+        h = _make_handler()
+        path = MagicMock(spec=Path)
+        path.exists.return_value = True
+        path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
+        # overlay_config=True (default) and load_overlay_config_from_dir returns None
+        # (theme has no overlay) — still must not SendFrameCommand; RenderAndSend owns the send
+        h._lcd.load_overlay_config_from_dir.return_value = None
+
+        h.select_theme_from_path(path)
+
+        assert not _dispatched(h, SendFrameCommand), (
+            "SendFrameCommand must not fire when overlay_config=True — "
+            "_load_theme_overlay_config owns the single send to avoid blink"
+        )
+
+    @patch('trcc.gui.lcd_handler.Settings')
+    @patch('trcc.gui.lcd_handler.ThemeInfo')
+    def test_single_render_and_send_on_theme_switch(self, mock_ti, mock_settings):
+        """Exactly one RenderAndSendCommand on a normal theme switch with overlay config."""
+        mock_ti.from_directory.return_value = MagicMock()
+        h = _make_handler()
+        path = MagicMock(spec=Path)
+        path.exists.return_value = True
+        path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
+        # Theme has an overlay config — full overlay path
+        h._lcd.load_overlay_config_from_dir.return_value = {'elements': []}
+
+        h.select_theme_from_path(path)
+
+        renders = _dispatched(h, RenderAndSendCommand)
+        sends = _dispatched(h, SendFrameCommand)
+        assert len(renders) == 1, f"Expected 1 RenderAndSendCommand, got {len(renders)}"
+        assert len(sends) == 0, f"Expected 0 SendFrameCommand, got {len(sends)}"
+
 
 # =========================================================================
 # Mask
@@ -700,27 +740,33 @@ class TestOverlay:
         assert saved[0] == 'dev0'
         assert saved[1] == 'overlay'
 
-    def test_overlay_tick_static_always_renders(self):
-        """on_overlay_tick always re-renders for static themes to keep device alive.
-
-        The device blanks without periodic frame sends — no has_changed guard.
-        Also keeps overlay metrics (time, CPU, etc.) live.
-        """
-        h = _make_handler()
-        h._lcd.playing = False
-        h._lcd.connected = True
-        h.on_overlay_tick(MagicMock())
-        assert _dispatched(h, RenderAndSendCommand)
-        h._rebuild_debounce_timer.start.assert_not_called()
-
-    def test_overlay_tick_static_renders_overlay_disabled(self):
-        """on_overlay_tick renders even when overlay is disabled (pure image theme)."""
+    def test_overlay_tick_no_overlay_sends_keepalive(self):
+        """on_overlay_tick sends when overlay is disabled — background tick() won't."""
         h = _make_handler()
         h._lcd.playing = False
         h._lcd.enabled = False
         h._lcd.connected = True
         h.on_overlay_tick(MagicMock())
         assert _dispatched(h, RenderAndSendCommand)
+        assert not _dispatched(h, UpdateVideoCacheTextCommand)
+
+    def test_overlay_tick_overlay_enabled_no_send(self):
+        """on_overlay_tick must NOT send when overlay is enabled.
+
+        LCDDevice.tick() (background thread) renders+sends whenever metrics
+        change. If on_overlay_tick also sends, every refresh cycle causes two
+        frames to hit the device — visible as a blink/flicker.
+        """
+        h = _make_handler()
+        h._lcd.playing = False
+        h._lcd.enabled = True
+        h._lcd.connected = True
+        h.on_overlay_tick(MagicMock())
+        assert not _dispatched(h, RenderAndSendCommand), (
+            "on_overlay_tick must not send when overlay is enabled — "
+            "tick() owns the send to avoid double-send blink"
+        )
+        assert not _dispatched(h, UpdateVideoCacheTextCommand)
 
     def test_overlay_tick_noop_when_disconnected(self):
         """on_overlay_tick does nothing when device is not connected."""
@@ -729,7 +775,7 @@ class TestOverlay:
         h._lcd.connected = False
         h.on_overlay_tick(MagicMock())
         assert not _dispatched(h, RenderAndSendCommand)
-        h._rebuild_debounce_timer.start.assert_not_called()
+        assert not _dispatched(h, UpdateVideoCacheTextCommand)
 
     def test_update_preview_sets_preview_image(self):
         """update_preview mirrors a frame rendered by tick() to the preview widget."""
@@ -738,24 +784,23 @@ class TestOverlay:
         h.update_preview(image)
         h._w['preview'].set_image.assert_called_once_with(image)
 
-    def test_overlay_tick_during_video_debounces_cache_rebuild(self):
+    def test_overlay_tick_during_video_dispatches_update_cache_text(self):
+        """on_overlay_tick while video plays dispatches UpdateVideoCacheTextCommand directly."""
         h = _make_handler()
         h._lcd.enabled = True
         h._lcd.playing = True
-        h._lcd.has_changed.return_value = True
         metrics = MagicMock()
         h.on_overlay_tick(metrics)
-        # rebuild is deferred — debounce timer starts, cache not rebuilt yet
-        h._rebuild_debounce_timer.start.assert_called_with(300)
-        assert not _dispatched(h, RebuildOverlayCacheCommand)
+        cmds = _dispatched(h, UpdateVideoCacheTextCommand)
+        assert cmds and cmds[0].metrics is metrics
 
-    def test_rebuild_debounce_dispatches_command(self):
-        """_on_rebuild_debounce dispatches RebuildOverlayCacheCommand."""
+    def test_overlay_tick_video_no_render_and_send(self):
+        """on_overlay_tick while video plays must not dispatch RenderAndSendCommand."""
         h = _make_handler()
-        h._pending_metrics = MagicMock()
-        h._on_rebuild_debounce()
-        assert _dispatched(h, RebuildOverlayCacheCommand)
-        assert h._pending_metrics is None
+        h._lcd.enabled = True
+        h._lcd.playing = True
+        h.on_overlay_tick(MagicMock())
+        assert not _dispatched(h, RenderAndSendCommand)
 
     def test_flash_element_dispatches_set_flash_index(self):
         """flash_element dispatches SetFlashIndexCommand with the correct index."""

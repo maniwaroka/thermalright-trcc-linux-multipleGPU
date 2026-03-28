@@ -36,6 +36,7 @@ from ..commands.initialize import (
     InitPlatformCommand,
     InstallDesktopCommand,
     SetLanguageCommand,
+    SetMetricsRefreshCommand,
     SetupPlatformCommand,
     SetupPolkitCommand,
     SetupSelinuxCommand,
@@ -64,6 +65,7 @@ class OSCommandHandler:
         '_build_setup',
         '_list_themes',
         '_download_pack',
+        '_wake_metrics',
     )
 
     def __init__(
@@ -76,6 +78,7 @@ class OSCommandHandler:
         build_setup_fn: Callable[[], Any],
         list_themes_fn: Callable[[], None],
         download_pack_fn: Callable[[str, bool], int],
+        wake_metrics_fn: Callable[[], None],
     ) -> None:
         self._bootstrap = bootstrap_fn
         self._set_renderer = set_renderer_fn
@@ -85,6 +88,7 @@ class OSCommandHandler:
         self._build_setup = build_setup_fn
         self._list_themes = list_themes_fn
         self._download_pack = download_pack_fn
+        self._wake_metrics = wake_metrics_fn
 
     def __call__(self, cmd: Command) -> CommandResult:
         match cmd:
@@ -112,6 +116,13 @@ class OSCommandHandler:
                     return CommandResult.fail(f"Unknown language code: {code}")
                 _conf.settings.lang = code
                 return CommandResult.ok(message=f"Language set to {code}")
+
+            case SetMetricsRefreshCommand(interval=interval):
+                log.debug("SetMetricsRefreshCommand: interval=%s", interval)
+                clamped = max(1, min(100, interval))
+                _conf.settings.set_refresh_interval(clamped)
+                self._wake_metrics()
+                return CommandResult.ok(message=f"Refresh interval set to {clamped}s")
 
             case SetupPlatformCommand(auto_yes=auto_yes):
                 log.debug("SetupPlatformCommand: auto_yes=%s", auto_yes)
@@ -170,6 +181,7 @@ def build_os_bus(
     build_setup_fn: Callable[[], Any],
     list_themes_fn: Callable[[], None],
     download_pack_fn: Callable[[str, bool], int],
+    wake_metrics_fn: Callable[[], None],
 ) -> CommandBus:
     """Build a CommandBus for OS/platform operations.
 
@@ -186,6 +198,7 @@ def build_os_bus(
         build_setup_fn=build_setup_fn,
         list_themes_fn=list_themes_fn,
         download_pack_fn=download_pack_fn,
+        wake_metrics_fn=wake_metrics_fn,
     )
     return (CommandBus()
             .add_middleware(LoggingMiddleware())
@@ -193,6 +206,7 @@ def build_os_bus(
             .register(InitPlatformCommand, h)
             .register(DiscoverDevicesCommand, h)
             .register(SetLanguageCommand, h)
+            .register(SetMetricsRefreshCommand, h)
             .register(SetupPlatformCommand, h)
             .register(SetupUdevCommand, h)
             .register(SetupSelinuxCommand, h)

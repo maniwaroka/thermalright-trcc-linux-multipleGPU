@@ -928,8 +928,8 @@ class LCDDevice(Device):
         return {"success": True, "image": image,
                 "message": f"Mask: {Path(mask_dir).name}"}
 
-    def rebuild_video_cache(self, metrics: Any) -> dict:
-        self._display_svc.rebuild_video_cache_metrics(metrics)
+    def update_video_cache_text(self, metrics: Any) -> dict:
+        self._display_svc.update_video_cache_text(metrics)
         return {"success": True}
 
     @property
@@ -967,6 +967,36 @@ class LCDDevice(Device):
 
     def set_overlay_mask_visible(self, visible: bool) -> dict:
         return self.set_mask_visible(visible)
+
+    def load_overlay_config_from_dir(self, theme_dir: str) -> dict | None:
+        """Parse overlay config from a theme directory.
+
+        Tries config.json first, then config1.dc.
+        Returns the overlay config dict, or None if neither file exists or both fail.
+        Uses the injected dc_config_cls and load_config_json_fn — no adapter imports
+        in the caller (GUI handler stays adapter-free).
+        """
+        p = Path(theme_dir)
+        overlay_config: dict | None = None
+
+        json_path = p / 'config.json'
+        if json_path.exists() and self._load_config_json_fn is not None:
+            try:
+                result = self._load_config_json_fn(str(json_path))
+                if result is not None:
+                    overlay_config = result[0]
+            except Exception:
+                pass
+
+        if overlay_config is None and self._dc_config_cls is not None:
+            dc_path = p / 'config1.dc'
+            if dc_path.exists():
+                try:
+                    overlay_config = self._dc_config_cls(dc_path).to_overlay_config()
+                except Exception:
+                    pass
+
+        return overlay_config or None
 
     # ── Lifecycle ──────────────────────────────────────────────────
 

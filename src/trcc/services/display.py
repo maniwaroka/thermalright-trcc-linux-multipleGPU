@@ -213,9 +213,9 @@ class DisplayService:
                 self.current_image = first_frame
                 self._clean_background = first_frame
 
-        # Build pre-baked cache for animated themes (only if device is connected)
+        # Build cache in background — avoids 650ms GUI freeze on theme select
         if result.get('is_animated') and self.media.has_frames and self.devices.selected:
-            self._build_video_cache()
+            self._start_video_cache_async()
 
         # Render with adjustments if we have a static image
         if result.get('image') and not result.get('is_animated'):
@@ -249,12 +249,11 @@ class DisplayService:
             self._clean_background = first_frame
         result['image'] = self.current_image
 
-        # Build pre-baked cache for cloud video themes
+        # Build cache in background — avoids GUI freeze on cloud theme load
         if self.media.has_frames:
-            log.debug("load_cloud_theme: building video cache")
-            self._build_video_cache()
-            log.debug("load_cloud_theme: cache active=%s",
-                      self._cache.active if self._cache else False)
+            log.debug("load_cloud_theme: starting async video cache build")
+            self._start_video_cache_async()
+            log.debug("load_cloud_theme: async cache build started")
         return result
 
     def apply_mask(self, mask_dir: Path) -> Any | None:
@@ -269,10 +268,10 @@ class DisplayService:
             mask_dir, self.working_dir, self.lcd_size)
         log.debug("apply_mask: _mask_source_dir=%s", self._mask_source_dir)
 
-        # Invalidate pre-baked video cache (old mask baked in)
+        # Rebuild cache async — new mask must be composited into L2
         self._cache = None
         if self.media.has_frames:
-            self._build_video_cache()
+            self._start_video_cache_async()
 
         return self.render_overlay()
 
@@ -409,21 +408,32 @@ class DisplayService:
 
         self.current_image = frame
 
-        # Fast path: pre-baked cache active — use directly
+        # Cache path: get brightness+rotation surface, composite text, encode
         if self._cache and self._cache.active:
             cf = self.media.state.current_frame
             total = self.media.state.total_frames
             index = (cf - 1) % total if total > 0 else 0
-            preview, encoded = self._cache.get_frame(index)
+            surface = self._cache.get_surface(index)
+            if surface is not None:
+                # Composite text overlay (same surface for all frames)
+                if self._cache.has_text:
+                    r = ImageService._r()
+                    surface = r.copy_surface(surface)
+                    surface = r.composite(surface, self._cache.text_overlay, (0, 0))
+                protocol, resolution, fbl, use_jpeg = self._cache.encoding_params
+                encoded = ImageService.encode_for_device(
+                    surface, protocol, resolution, fbl, use_jpeg)
+            else:
+                encoded = None
             return {
-                'preview': preview,
+                'preview': surface,
                 'frame_index': index,
                 'progress': progress,
                 'send_image': None,
                 'encoded': encoded,
             }
 
-        # Fallback: original pipeline (overlay disabled, or cache not built)
+        # Fallback: original pipeline (cache not yet built)
         if self.overlay.enabled:
             frame = self.overlay.render(frame)
 
@@ -444,13 +454,25 @@ class DisplayService:
 
     # -- Video frame cache -------------------------------------------------
 
+    def _start_video_cache_async(self) -> None:
+        """Build video cache in a background thread — zero GUI freeze."""
+        import threading
+        t = threading.Thread(
+            target=self._build_video_cache, daemon=True, name="trcc-cache-build")
+        t.start()
+
     def _build_video_cache(self) -> None:
-        """Build pre-baked video frame cache from current state."""
+        """Build L2 cache (mask compositing). Safe to run in a background thread.
+
+        Assigns self._cache atomically on completion so video_tick falls back
+        to the uncached path until the cache is ready.
+        """
         from .video_cache import VideoFrameCache
 
         device = self.devices.selected
         if not device:
-            raise RuntimeError("Cannot build video cache — no device selected")
+            log.warning("_build_video_cache: no device selected — skipping")
+            return
         protocol, resolution, fbl, use_jpeg = device.encoding_params
         cache = VideoFrameCache()
         cache.build(
@@ -459,8 +481,6 @@ class DisplayService:
                   if self.overlay.enabled and self.overlay.theme_mask_visible
                   else None),
             mask_position=self.overlay.theme_mask_position,
-            overlay_svc=self.overlay if self.overlay.enabled else None,
-            metrics=self.overlay._metrics,
             brightness=self.brightness,
             rotation=self.rotation,
             protocol=protocol,
@@ -468,18 +488,26 @@ class DisplayService:
             fbl=fbl,
             use_jpeg=use_jpeg,
         )
-        self._cache = cache
+        self._cache = cache  # atomic assignment — GIL keeps this safe
         if self._cpu_percent_fn is not None:
             log.info("video cache built: %d frames, trcc CPU %.1f%%",
                      len(self.media._frames), self._cpu_percent_fn())
         else:
             log.info("video cache built: %d frames", len(self.media._frames))
 
-    def rebuild_video_cache_metrics(self, metrics: Any) -> None:
-        """Rebuild video cache with new metrics text."""
-        if self._cache and self._cache.active:
-            self._cache.rebuild_from_metrics(
-                self.overlay if self.overlay.enabled else None, metrics)
+    def update_video_cache_text(self, metrics: Any) -> None:
+        """Update text overlay in cache once per refresh interval.
+
+        Renders text overlay O(1) and stores it. DisplayService.video_tick()
+        composites it onto each frame at tick time — no 147-frame encode loop.
+        """
+        if not (self._cache and self._cache.active):
+            return
+        if self.overlay.enabled:
+            surface, key = self.overlay.render_text_only(metrics)
+        else:
+            surface, key = None, None
+        self._cache.update_text_overlay(surface, key)
 
     # -- Blocking video loop (CLI / API) ------------------------------------
 

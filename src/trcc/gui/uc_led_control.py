@@ -29,8 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.models import HardwareMetrics
-from ..services.led import LEDService
+from ..core.models import LED_SELECT_ALL_STYLES, HardwareMetrics
 from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
@@ -870,7 +869,7 @@ class UCLedControl(QWidget):
         self._apply_zone_images(style_id)
         for i, btn in enumerate(self._zone_buttons):
             btn.setVisible(i < zone_count and zone_count > 1)
-        self._is_select_all_style = style_id in LEDService.SELECT_ALL_STYLES
+        self._is_select_all_style = style_id in LED_SELECT_ALL_STYLES
         self._carousel_btn.setVisible(zone_count > 1)
         self._carousel_btn.setToolTip(
             "Select all zones" if self._is_select_all_style

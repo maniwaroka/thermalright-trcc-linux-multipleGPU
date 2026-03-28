@@ -1639,11 +1639,15 @@ class TRCCApp(QMainWindow):
 
     def _on_refresh_changed(self, interval: int) -> None:
         log.debug("_on_refresh_changed: interval=%s", interval)
-        _conf.settings.set_refresh_interval(interval)
+        from ..core.app import TrccApp
+        from ..core.commands.initialize import SetMetricsRefreshCommand
+        TrccApp.get().os_bus.dispatch(SetMetricsRefreshCommand(interval=interval))
         self.uc_preview.set_status(f"Refresh: {interval}s")
 
     def _set_language(self, lang: str) -> None:
-        _conf.settings.lang = lang
+        from ..core.app import TrccApp
+        from ..core.commands.initialize import SetLanguageCommand
+        TrccApp.get().os_bus.dispatch(SetLanguageCommand(code=lang))
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
         self.uc_led_control.apply_localized_background()

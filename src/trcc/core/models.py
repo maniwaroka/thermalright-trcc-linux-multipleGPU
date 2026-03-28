@@ -757,6 +757,18 @@ LED_STYLES: dict[int, LedDeviceStyle] = {
     12: LedDeviceStyle(12, 62, 62, 0, "LF13", "DLF13", "D0LF13"),
 }
 
+# Style IDs that support "select all zones" — sync every zone to same
+# mode/color/brightness in one operation (PA120=2, LF10=7).
+LED_SELECT_ALL_STYLES: frozenset[int] = frozenset({2, 7})
+
+
+def resolve_led_style_id(model_name: str) -> int:
+    """Resolve LED style_id from device model name. Returns 1 (AX120) if unknown."""
+    for style_id, style in LED_STYLES.items():
+        if style.model_name == model_name:
+            return style_id
+    return 1
+
 
 @dataclass
 class LedHandshakeInfo(HandshakeResult):

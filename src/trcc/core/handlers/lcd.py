@@ -28,7 +28,6 @@ from ..commands.lcd import (
     LoadThemeByNameCommand,
     PauseVideoCommand,
     PlayVideoLoopCommand,
-    RebuildOverlayCacheCommand,
     RenderAndSendCommand,
     RenderOverlayFromDCCommand,
     ResetDisplayCommand,
@@ -49,6 +48,7 @@ from ..commands.lcd import (
     SetVideoFitModeCommand,
     StopVideoCommand,
     UpdateMetricsLCDCommand,
+    UpdateVideoCacheTextCommand,
 )
 from .base import DeviceCommandHandler
 
@@ -94,7 +94,7 @@ class LCDCommandHandler(DeviceCommandHandler):
         PauseVideoCommand,
         SeekVideoCommand,
         SetVideoFitModeCommand,
-        RebuildOverlayCacheCommand,
+        UpdateVideoCacheTextCommand,
         SetFlashIndexCommand,
         SetMaskPositionCommand,
         SendFrameCommand,
@@ -216,8 +216,8 @@ class LCDCommandHandler(DeviceCommandHandler):
             case SetVideoFitModeCommand(mode=mode):
                 return CommandResult.from_dict(self._lcd.set_fit_mode(mode))
 
-            case RebuildOverlayCacheCommand(metrics=metrics):
-                return CommandResult.from_dict(self._lcd.rebuild_video_cache(metrics))
+            case UpdateVideoCacheTextCommand(metrics=metrics):
+                return CommandResult.from_dict(self._lcd.update_video_cache_text(metrics))
 
             case SetFlashIndexCommand(index=index):
                 return CommandResult.from_dict(self._lcd.set_flash_index(index))

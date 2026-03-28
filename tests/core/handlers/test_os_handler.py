@@ -9,6 +9,7 @@ from trcc.core.commands.initialize import (
     InitPlatformCommand,
     InstallDesktopCommand,
     SetLanguageCommand,
+    SetMetricsRefreshCommand,
     SetupPlatformCommand,
     SetupPolkitCommand,
     SetupSelinuxCommand,
@@ -35,6 +36,7 @@ def _defaults() -> dict:
         )),
         list_themes_fn=MagicMock(),
         download_pack_fn=MagicMock(return_value=0),
+        wake_metrics_fn=MagicMock(),
     )
 
 
@@ -202,6 +204,40 @@ class TestDownloadThemesHandler:
         h = _make_handler(download_pack_fn=MagicMock(return_value=1))
         result = h(DownloadThemesCommand(pack='320x320'))
         assert not result
+
+
+# ── SetMetricsRefreshCommand ──────────────────────────────────────────────────
+
+class TestSetMetricsRefreshHandler:
+    def test_saves_interval_to_settings(self, tmp_config):
+        import trcc.conf as _conf
+        wake = MagicMock()
+        h = _make_handler(wake_metrics_fn=wake)
+        h(SetMetricsRefreshCommand(interval=5))
+        assert _conf.settings.refresh_interval == 5
+
+    def test_wakes_metrics_loop(self):
+        wake = MagicMock()
+        h = _make_handler(wake_metrics_fn=wake)
+        h(SetMetricsRefreshCommand(interval=3))
+        wake.assert_called_once()
+
+    def test_clamps_below_min(self, tmp_config):
+        import trcc.conf as _conf
+        h = _make_handler()
+        h(SetMetricsRefreshCommand(interval=0))
+        assert _conf.settings.refresh_interval == 1
+
+    def test_clamps_above_max(self, tmp_config):
+        import trcc.conf as _conf
+        h = _make_handler()
+        h(SetMetricsRefreshCommand(interval=999))
+        assert _conf.settings.refresh_interval == 100
+
+    def test_returns_ok(self):
+        h = _make_handler()
+        result = h(SetMetricsRefreshCommand(interval=10))
+        assert result
 
 
 # ── build_os_bus ──────────────────────────────────────────────────────────────

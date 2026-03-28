@@ -202,8 +202,11 @@ class SetVideoFitModeCommand(LCDCommand):
 
 
 @dataclass(frozen=True, slots=True)
-class RebuildOverlayCacheCommand(LCDCommand):
-    """Rebuild the pre-composited overlay cache for all video frames."""
+class UpdateVideoCacheTextCommand(LCDCommand):
+    """Update the text overlay in the video cache (once per refresh interval).
+
+    Replaces rebuild of all N frames — O(1) text render, no frame loop.
+    """
     metrics: Any = field(default=None, hash=False, compare=False)
 
 

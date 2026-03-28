@@ -9,7 +9,15 @@ from __future__ import annotations
 import logging
 from typing import Any, List, Optional, Tuple
 
-from ..core.models import HardwareMetrics, LEDMode, LEDState, LEDZoneState
+from ..core.models import (
+    LED_SELECT_ALL_STYLES,
+    LED_STYLES,
+    HardwareMetrics,
+    LEDMode,
+    LEDState,
+    LEDZoneState,
+    resolve_led_style_id,
+)
 from .led_config import load_led_config, save_led_config
 from .led_effects import LEDEffectEngine
 
@@ -33,7 +41,7 @@ class LEDService:
 
     # Styles where the checkbox means "Select all" (sync all zones)
     # instead of "Circulate" (timer rotation). C# FormLED.cs buttonLB_Click.
-    SELECT_ALL_STYLES = frozenset({2, 7})
+    SELECT_ALL_STYLES = LED_SELECT_ALL_STYLES
 
     # Methods delegated to LEDEffectEngine via __getattr__
     _ENGINE_METHODS = frozenset({
@@ -67,20 +75,12 @@ class LEDService:
 
     @staticmethod
     def resolve_style_id(model_name: str) -> int:
-        """Resolve LED style_id from device model name.
-
-        Replaces the view-layer iteration over LED_STYLES.
-        """
-        from ..core.models import LED_STYLES
-        for style_id, style in LED_STYLES.items():
-            if style.model_name == model_name:
-                return style_id
-        return 1
+        """Resolve LED style_id from device model name."""
+        return resolve_led_style_id(model_name)
 
     @staticmethod
     def get_style_info(style_id: int) -> Any:
         """Get LedDeviceStyle for a style_id."""
-        from ..core.models import LED_STYLES
         return LED_STYLES.get(style_id)
 
     # ── State mutators ──────────────────────────────────────────────

@@ -23,13 +23,12 @@ from PySide6.QtGui import (
     QPalette,
     QPen,
     QPixmap,
+    QTransform,
 )
 from PySide6.QtWidgets import QLabel, QProgressBar, QWidget
 
 import trcc.conf as _conf
-from trcc.adapters.infra.media_player import FFMPEG_AVAILABLE
 from trcc.core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
-from trcc.services import ImageService
 
 from .assets import Assets
 from .base import make_icon_button
@@ -430,11 +429,6 @@ class UCVideoCut(QWidget):
 
     def load_video(self, path):
         """Load a video file for trimming."""
-        if not FFMPEG_AVAILABLE:
-            self._lbl_info.setText("FFmpeg not available")
-            self._lbl_info.setVisible(True)
-            return
-
         self._video_path = str(path)
 
         # Get metadata with ffprobe
@@ -541,7 +535,8 @@ class UCVideoCut(QWidget):
             return
 
         # Apply rotation and scale to fit preview
-        img = ImageService.apply_rotation(img, self._rotation)
+        if self._rotation:
+            img = img.transformed(QTransform().rotate(self._rotation))
         w, h = img.width(), img.height()
         scale = min(PREVIEW_W / w, PREVIEW_H / h)
         new_w, new_h = int(w * scale), int(h * scale)
