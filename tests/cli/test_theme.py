@@ -13,67 +13,6 @@ from trcc.cli._theme import (
 )
 
 # ===========================================================================
-# Shared helpers
-# ===========================================================================
-
-def _make_local_theme(
-    name: str = "MyTheme",
-    is_animated: bool = False,
-    animation_path=None,
-    bg_exists: bool = True,
-    is_user: bool = False,
-    theme_path: str = "/themes/MyTheme",
-) -> MagicMock:
-    """Build a mock ThemeInfo for a local theme."""
-    t = MagicMock()
-    t.name = name if not is_user else f"Custom_{name}"
-    t.is_animated = is_animated
-    t.animation_path = animation_path
-    t.background_path = MagicMock()
-    t.background_path.exists.return_value = bg_exists
-    t.path = Path(theme_path)
-    t.category = None
-    return t
-
-
-def _make_cloud_theme(name: str = "CloudTheme", category: str = "a") -> MagicMock:
-    """Build a mock ThemeInfo for a cloud theme."""
-    t = MagicMock()
-    t.name = name
-    t.category = category
-    return t
-
-
-def _make_theme_dir() -> MagicMock:
-    """Mock settings.theme_dir with a valid path."""
-    td = MagicMock()
-    td.exists.return_value = True
-    td.path = Path("/themes/320x320")
-    return td
-
-
-def _make_web_dir() -> MagicMock:
-    """Mock settings.web_dir with a valid path."""
-    wd = MagicMock()
-    wd.exists.return_value = True
-    return wd
-
-
-def _make_mock_service(resolution=(320, 320)) -> MagicMock:
-    """Mock DeviceService with a selected device."""
-    dev = MagicMock()
-    dev.resolution = resolution
-    dev.path = "/dev/sg0"
-    dev.device_index = 0
-    dev.vid = 0x87CD
-    dev.pid = 0x70DB
-
-    svc = MagicMock()
-    svc.selected = dev
-    return svc
-
-
-# ===========================================================================
 # Shared patch targets
 # All imports in _theme.py are local (inside function bodies), so we patch
 # the canonical module locations rather than trcc.cli._theme.*
@@ -93,24 +32,24 @@ _PATCH_IMAGE_SVC = "trcc.services.ImageService"
 class TestListThemes:
     """list_themes() — local and cloud theme discovery."""
 
-    def _base_patches(self, td=None, wd=None, w=320, h=320):
+    def _base_patches(self, mock_theme_dir, mock_web_dir, td=None, wd=None, w=320, h=320):
         """Common patch context for list_themes."""
         settings_mock = MagicMock()
         settings_mock.width = w
         settings_mock.height = h
-        settings_mock.theme_dir = td or _make_theme_dir()
-        settings_mock.web_dir = wd or _make_web_dir()
+        settings_mock.theme_dir = td if td is not None else mock_theme_dir
+        settings_mock.web_dir = wd if wd is not None else mock_web_dir
 
         data_mgr = MagicMock()
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
         return settings_mock, data_mgr, theme_svc
 
-    def test_local_themes_prints_count(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
+    def test_local_themes_prints_count(self, capsys, make_local_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
         theme_svc.discover_local.return_value = [
-            _make_local_theme("Alpha"),
-            _make_local_theme("Beta"),
+            make_local_theme("Alpha"),
+            make_local_theme("Beta"),
         ]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -121,11 +60,11 @@ class TestListThemes:
         assert "Local themes" in out
         assert "2" in out
 
-    def test_local_themes_lists_names(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
+    def test_local_themes_lists_names(self, capsys, make_local_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
         theme_svc.discover_local.return_value = [
-            _make_local_theme("Alpha"),
-            _make_local_theme("Beta"),
+            make_local_theme("Alpha"),
+            make_local_theme("Beta"),
         ]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -135,9 +74,9 @@ class TestListThemes:
         assert "Alpha" in out
         assert "Beta" in out
 
-    def test_local_animated_theme_shown_as_video(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
-        animated = _make_local_theme("VideoTheme", is_animated=True)
+    def test_local_animated_theme_shown_as_video(self, capsys, make_local_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
+        animated = make_local_theme("VideoTheme", is_animated=True)
         theme_svc.discover_local.return_value = [animated]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -146,9 +85,9 @@ class TestListThemes:
         out = capsys.readouterr().out
         assert "video" in out
 
-    def test_local_static_theme_shown_as_static(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
-        static = _make_local_theme("StaticTheme", is_animated=False)
+    def test_local_static_theme_shown_as_static(self, capsys, make_local_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
+        static = make_local_theme("StaticTheme", is_animated=False)
         theme_svc.discover_local.return_value = [static]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -157,9 +96,9 @@ class TestListThemes:
         out = capsys.readouterr().out
         assert "static" in out
 
-    def test_local_user_theme_shown_with_user_tag(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
-        user = _make_local_theme("MyTheme", is_user=True)
+    def test_local_user_theme_shown_with_user_tag(self, capsys, make_local_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
+        user = make_local_theme("MyTheme", is_user=True)
         theme_svc.discover_local.return_value = [user]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -194,9 +133,9 @@ class TestListThemes:
         assert rc == 0
         assert "No local themes" in capsys.readouterr().out
 
-    def test_zero_resolution_errors(self, capsys):
+    def test_zero_resolution_errors(self, capsys, mock_theme_dir, mock_web_dir):
         """When no device resolution is saved (0x0), list_themes errors — no fallback."""
-        settings_mock, data_mgr, theme_svc = self._base_patches(w=0, h=0)
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir, w=0, h=0)
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
              patch(_PATCH_THEME_SVC, theme_svc):
@@ -204,11 +143,11 @@ class TestListThemes:
         assert rc == 1
         assert "connect" in capsys.readouterr().out.lower()
 
-    def test_cloud_themes_prints_count(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
+    def test_cloud_themes_prints_count(self, capsys, make_cloud_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
         theme_svc.discover_cloud.return_value = [
-            _make_cloud_theme("CloudA"),
-            _make_cloud_theme("CloudB"),
+            make_cloud_theme("CloudA"),
+            make_cloud_theme("CloudB"),
         ]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -219,10 +158,10 @@ class TestListThemes:
         assert "Cloud themes" in out
         assert "2" in out
 
-    def test_cloud_themes_shows_category(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
+    def test_cloud_themes_shows_category(self, capsys, make_cloud_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
         theme_svc.discover_cloud.return_value = [
-            _make_cloud_theme("CloudA", category="b"),
+            make_cloud_theme("CloudA", category="b"),
         ]
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -231,9 +170,9 @@ class TestListThemes:
         out = capsys.readouterr().out
         assert "[b]" in out
 
-    def test_cloud_theme_no_category_no_bracket(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
-        t = _make_cloud_theme("CloudA")
+    def test_cloud_theme_no_category_no_bracket(self, capsys, make_cloud_theme, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
+        t = make_cloud_theme("CloudA")
         t.category = None
         theme_svc.discover_cloud.return_value = [t]
         with patch(_PATCH_SETTINGS, settings_mock), \
@@ -269,8 +208,8 @@ class TestListThemes:
         assert rc == 0
         assert "No cloud themes" in capsys.readouterr().out
 
-    def test_cloud_passes_category_to_service(self, capsys):
-        settings_mock, data_mgr, theme_svc = self._base_patches()
+    def test_cloud_passes_category_to_service(self, capsys, mock_theme_dir, mock_web_dir):
+        settings_mock, data_mgr, theme_svc = self._base_patches(mock_theme_dir, mock_web_dir)
         theme_svc.discover_cloud.return_value = []
         with patch(_PATCH_SETTINGS, settings_mock), \
              patch(_PATCH_DATA_MANAGER, data_mgr), \
@@ -552,11 +491,11 @@ class TestSaveTheme:
 class TestExportTheme:
     """export_theme() — success, partial match, not found, no themes dir."""
 
-    def _base_patches(self, themes=None, td=None, w=320, h=320):
+    def _base_patches(self, mock_theme_dir, themes=None, td=None, w=320, h=320):
         settings_mock = MagicMock()
         settings_mock.width = w
         settings_mock.height = h
-        settings_mock.theme_dir = td or _make_theme_dir()
+        settings_mock.theme_dir = td if td is not None else mock_theme_dir
         data_mgr = MagicMock()
         theme_svc = MagicMock()
         theme_svc.return_value = theme_svc
@@ -566,9 +505,9 @@ class TestExportTheme:
             theme_svc.discover_local.return_value = themes
         return settings_mock, data_mgr, theme_svc
 
-    def test_exact_match_success(self, capsys, tmp_path):
-        t = _make_local_theme("MyTheme", theme_path="/themes/MyTheme")
-        sm, dm, ts = self._base_patches(themes=[t])
+    def test_exact_match_success(self, capsys, tmp_path, make_local_theme, mock_theme_dir):
+        t = make_local_theme("MyTheme", theme_path="/themes/MyTheme")
+        sm, dm, ts = self._base_patches(mock_theme_dir, themes=[t])
         ts.export_tr.return_value = (True, "Exported to /out/MyTheme.tr")
         with patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_DATA_MANAGER, dm), \
@@ -577,9 +516,9 @@ class TestExportTheme:
         assert rc == 0
         assert "Exported" in capsys.readouterr().out
 
-    def test_partial_match_success(self, capsys, tmp_path):
-        t = _make_local_theme("CoolThemeXL", theme_path="/themes/CoolThemeXL")
-        sm, dm, ts = self._base_patches(themes=[t])
+    def test_partial_match_success(self, capsys, tmp_path, make_local_theme, mock_theme_dir):
+        t = make_local_theme("CoolThemeXL", theme_path="/themes/CoolThemeXL")
+        sm, dm, ts = self._base_patches(mock_theme_dir, themes=[t])
         ts.export_tr.return_value = (True, "Exported")
         with patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_DATA_MANAGER, dm), \
@@ -587,8 +526,8 @@ class TestExportTheme:
             rc = export_theme("cool", str(tmp_path / "out.tr"))
         assert rc == 0
 
-    def test_not_found_returns_1(self, capsys, tmp_path):
-        sm, dm, ts = self._base_patches(themes=[_make_local_theme("OtherTheme")])
+    def test_not_found_returns_1(self, capsys, tmp_path, make_local_theme, mock_theme_dir):
+        sm, dm, ts = self._base_patches(mock_theme_dir, themes=[make_local_theme("OtherTheme")])
         with patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_DATA_MANAGER, dm), \
              patch(_PATCH_THEME_SVC, ts):
@@ -596,10 +535,10 @@ class TestExportTheme:
         assert rc == 1
         assert "not found" in capsys.readouterr().out.lower()
 
-    def test_theme_with_no_path_returns_1(self, capsys, tmp_path):
-        t = _make_local_theme("NullPath")
+    def test_theme_with_no_path_returns_1(self, capsys, tmp_path, make_local_theme, mock_theme_dir):
+        t = make_local_theme("NullPath")
         t.path = None  # no path attribute
-        sm, dm, ts = self._base_patches(themes=[t])
+        sm, dm, ts = self._base_patches(mock_theme_dir, themes=[t])
         with patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_DATA_MANAGER, dm), \
              patch(_PATCH_THEME_SVC, ts):
@@ -631,9 +570,9 @@ class TestExportTheme:
             rc = export_theme("AnyTheme", str(tmp_path / "out.tr"))
         assert rc == 1
 
-    def test_export_fails_returns_1(self, capsys, tmp_path):
-        t = _make_local_theme("MyTheme")
-        sm, dm, ts = self._base_patches(themes=[t])
+    def test_export_fails_returns_1(self, capsys, tmp_path, make_local_theme, mock_theme_dir):
+        t = make_local_theme("MyTheme")
+        sm, dm, ts = self._base_patches(mock_theme_dir, themes=[t])
         ts.export_tr.return_value = (False, "Export failed: permission denied")
         with patch(_PATCH_SETTINGS, sm), \
              patch(_PATCH_DATA_MANAGER, dm), \

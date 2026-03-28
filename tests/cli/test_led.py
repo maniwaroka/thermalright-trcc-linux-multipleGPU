@@ -8,81 +8,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from trcc.core.led_device import LEDDevice
 from trcc.core.models import LEDMode
 
 # =========================================================================
 # Patch-path constants
 # =========================================================================
-_CONNECT = "trcc.cli._led._connect_or_fail"
 _IPC = "trcc.core.instance.find_active"
-
-
-# =========================================================================
-# Fixtures
-# =========================================================================
-
-@pytest.fixture()
-def mock_svc():
-    """Fully mocked LEDService — no hardware required."""
-    svc = MagicMock()
-    svc.state = MagicMock()
-    svc.state.zones = [MagicMock(), MagicMock(), MagicMock()]
-    svc.state.segment_on = [True, False, True, False]
-    svc.tick.return_value = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
-    svc.apply_mask.return_value = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
-    svc.has_protocol = True
-    return svc
-
-
-@pytest.fixture()
-def led(mock_svc):
-    """LEDDevice wired to mock service."""
-    return LEDDevice(svc=mock_svc)
-
-
-@pytest.fixture()
-def led_empty():
-    """LEDDevice with no service (not connected)."""
-    return LEDDevice()
-
-
-@pytest.fixture()
-def led_no_zones(mock_svc):
-    """LEDDevice with no zones (empty list)."""
-    mock_svc.state.zones = []
-    return LEDDevice(svc=mock_svc)
-
-
-@pytest.fixture()
-def led_no_segments(mock_svc):
-    """LEDDevice with no segments (empty list)."""
-    mock_svc.state.segment_on = []
-    return LEDDevice(svc=mock_svc)
-
-
-@pytest.fixture()
-def mock_connect(led):
-    """Patch _connect_or_fail to return 0 (success) and wire TrccApp.led_device + led_bus.
-
-    led_bus is a REAL CommandBus wired to the mock led so tests can verify
-    that bus dispatch reaches the right service methods.
-    """
-    from trcc.core.app import TrccApp
-    mock_app = TrccApp._instance
-    mock_app.led_device = led
-    mock_app.led_bus = TrccApp.build_led_bus(mock_app, led)  # type: ignore[arg-type]
-    with patch(_CONNECT, return_value=0):
-        yield led
-
-
-@pytest.fixture()
-def mock_connect_fail():
-    """Patch _connect_or_fail to simulate no device (returns 1)."""
-    with patch(_CONNECT, return_value=1):
-        yield
 
 
 # =========================================================================
@@ -95,8 +27,8 @@ class TestLEDDeviceInit:
     def test_default_init_no_svc(self, led_empty):
         assert led_empty._svc is None
 
-    def test_init_with_svc(self, mock_svc, led):
-        assert led._svc is mock_svc
+    def test_init_with_svc(self, mock_led_svc, led):
+        assert led._svc is mock_led_svc
 
     def test_connected_false_when_no_svc(self, led_empty):
         assert led_empty.connected is False
@@ -111,8 +43,8 @@ class TestLEDDeviceInit:
         led._init_status = "AX120 (style 1)"
         assert led.status == "AX120 (style 1)"
 
-    def test_service_property_returns_svc(self, mock_svc, led):
-        assert led.service is mock_svc
+    def test_service_property_returns_svc(self, mock_led_svc, led):
+        assert led.service is mock_led_svc
 
     def test_service_property_none_when_disconnected(self, led_empty):
         assert led_empty.service is None
@@ -162,8 +94,8 @@ class TestLEDDeviceModeResolution:
 class TestLEDDeviceConnect:
     """connect() with mocked detect_devices + LEDService."""
 
-    def test_connect_returns_success_when_already_connected(self, mock_svc):
-        dev = LEDDevice(svc=mock_svc)
+    def test_connect_returns_success_when_already_connected(self, mock_led_svc):
+        dev = LEDDevice(svc=mock_led_svc)
         dev._init_status = "connected"
         result = dev.connect()
         assert result["success"] is True
@@ -273,34 +205,34 @@ class TestLEDDeviceValidation:
 class TestLEDDeviceInternalHelpers:
     """_apply_and_send and _send_and_save."""
 
-    def test_apply_and_send_calls_toggle_global_true(self, led, mock_svc):
+    def test_apply_and_send_calls_toggle_global_true(self, led, mock_led_svc):
         led._apply_and_send()
-        mock_svc.toggle_global.assert_called_with(True)
+        mock_led_svc.toggle_global.assert_called_with(True)
 
-    def test_apply_and_send_calls_tick(self, led, mock_svc):
+    def test_apply_and_send_calls_tick(self, led, mock_led_svc):
         led._apply_and_send()
-        mock_svc.tick.assert_called_once()
+        mock_led_svc.tick.assert_called_once()
 
-    def test_apply_and_send_calls_send_colors(self, led, mock_svc):
-        colors = mock_svc.tick.return_value
+    def test_apply_and_send_calls_send_colors(self, led, mock_led_svc):
+        colors = mock_led_svc.tick.return_value
         led._apply_and_send()
-        mock_svc.send_colors.assert_called_once_with(colors)
+        mock_led_svc.send_colors.assert_called_once_with(colors)
 
-    def test_apply_and_send_calls_save_config(self, led, mock_svc):
+    def test_apply_and_send_calls_save_config(self, led, mock_led_svc):
         led._apply_and_send()
-        mock_svc.save_config.assert_called_once()
+        mock_led_svc.save_config.assert_called_once()
 
-    def test_apply_and_send_returns_colors(self, led, mock_svc):
+    def test_apply_and_send_returns_colors(self, led, mock_led_svc):
         result = led._apply_and_send()
-        assert result == mock_svc.tick.return_value
+        assert result == mock_led_svc.tick.return_value
 
-    def test_send_and_save_calls_send_tick(self, led, mock_svc):
+    def test_send_and_save_calls_send_tick(self, led, mock_led_svc):
         led._send_and_save()
-        mock_svc.send_tick.assert_called_once()
+        mock_led_svc.send_tick.assert_called_once()
 
-    def test_send_and_save_calls_save_config(self, led, mock_svc):
+    def test_send_and_save_calls_save_config(self, led, mock_led_svc):
         led._send_and_save()
-        mock_svc.save_config.assert_called_once()
+        mock_led_svc.save_config.assert_called_once()
 
 
 # =========================================================================
@@ -315,17 +247,17 @@ class TestLEDDeviceGlobalOps:
         assert result["success"] is True
         assert "ff0000" in result["message"]
 
-    def test_set_color_calls_set_mode_static(self, led, mock_svc):
+    def test_set_color_calls_set_mode_static(self, led, mock_led_svc):
         led.set_color(0, 255, 0)
-        mock_svc.set_mode.assert_called_once_with(LEDMode.STATIC)
+        mock_led_svc.set_mode.assert_called_once_with(LEDMode.STATIC)
 
-    def test_set_color_calls_set_color_on_svc(self, led, mock_svc):
+    def test_set_color_calls_set_color_on_svc(self, led, mock_led_svc):
         led.set_color(10, 20, 30)
-        mock_svc.set_color.assert_called_once_with(10, 20, 30)
+        mock_led_svc.set_color.assert_called_once_with(10, 20, 30)
 
-    def test_set_color_returns_colors(self, led, mock_svc):
+    def test_set_color_returns_colors(self, led, mock_led_svc):
         result = led.set_color(255, 0, 0)
-        assert result["colors"] == mock_svc.tick.return_value
+        assert result["colors"] == mock_led_svc.tick.return_value
 
     def test_set_mode_static_not_animated(self, led):
         result = led.set_mode('static')
@@ -365,9 +297,9 @@ class TestLEDDeviceGlobalOps:
         result = led.set_mode('STATIC')
         assert result["success"] is True
 
-    def test_set_mode_calls_svc_set_mode(self, led, mock_svc):
+    def test_set_mode_calls_svc_set_mode(self, led, mock_led_svc):
         led.set_mode('static')
-        mock_svc.set_mode.assert_called_once_with(LEDMode.STATIC)
+        mock_led_svc.set_mode.assert_called_once_with(LEDMode.STATIC)
 
     def test_set_brightness_success(self, led):
         result = led.set_brightness(75)
@@ -391,34 +323,34 @@ class TestLEDDeviceGlobalOps:
         result = led.set_brightness(101)
         assert result["success"] is False
 
-    def test_set_brightness_calls_svc(self, led, mock_svc):
+    def test_set_brightness_calls_svc(self, led, mock_led_svc):
         led.set_brightness(50)
-        mock_svc.set_brightness.assert_called_once_with(50)
+        mock_led_svc.set_brightness.assert_called_once_with(50)
 
-    def test_off_success(self, led, mock_svc):
+    def test_off_success(self, led, mock_led_svc):
         result = led.off()
         assert result["success"] is True
         assert "off" in result["message"].lower()
 
-    def test_off_calls_toggle_global_false(self, led, mock_svc):
+    def test_off_calls_toggle_global_false(self, led, mock_led_svc):
         led.off()
-        mock_svc.toggle_global.assert_called_with(False)
+        mock_led_svc.toggle_global.assert_called_with(False)
 
-    def test_off_calls_send_tick(self, led, mock_svc):
+    def test_off_calls_send_tick(self, led, mock_led_svc):
         led.off()
-        mock_svc.send_tick.assert_called_once()
+        mock_led_svc.send_tick.assert_called_once()
 
-    def test_set_sensor_source_cpu(self, led, mock_svc):
+    def test_set_sensor_source_cpu(self, led, mock_led_svc):
         result = led.set_sensor_source('cpu')
         assert result["success"] is True
         assert "CPU" in result["message"]
 
-    def test_set_sensor_source_gpu(self, led, mock_svc):
+    def test_set_sensor_source_gpu(self, led, mock_led_svc):
         result = led.set_sensor_source('gpu')
         assert result["success"] is True
         assert "GPU" in result["message"]
 
-    def test_set_sensor_source_case_insensitive(self, led, mock_svc):
+    def test_set_sensor_source_case_insensitive(self, led, mock_led_svc):
         result = led.set_sensor_source('CPU')
         assert result["success"] is True
 
@@ -427,13 +359,13 @@ class TestLEDDeviceGlobalOps:
         assert result["success"] is False
         assert "cpu" in result["error"].lower() or "gpu" in result["error"].lower()
 
-    def test_set_sensor_source_calls_svc(self, led, mock_svc):
+    def test_set_sensor_source_calls_svc(self, led, mock_led_svc):
         led.set_sensor_source('gpu')
-        mock_svc.set_sensor_source.assert_called_once_with('gpu')
+        mock_led_svc.set_sensor_source.assert_called_once_with('gpu')
 
-    def test_set_sensor_source_saves_config(self, led, mock_svc):
+    def test_set_sensor_source_saves_config(self, led, mock_led_svc):
         led.set_sensor_source('cpu')
-        mock_svc.save_config.assert_called_once()
+        mock_led_svc.save_config.assert_called_once()
 
 
 # =========================================================================
@@ -443,7 +375,7 @@ class TestLEDDeviceGlobalOps:
 class TestLEDDeviceZoneOps:
     """set_zone_color, set_zone_mode, set_zone_brightness, toggle_zone, set_zone_sync."""
 
-    def test_set_zone_color_valid(self, led, mock_svc):
+    def test_set_zone_color_valid(self, led, mock_led_svc):
         result = led.set_zone_color(0, 255, 128, 0)
         assert result["success"] is True
         assert "Zone 0" in result["message"]
@@ -457,11 +389,11 @@ class TestLEDDeviceZoneOps:
         result = led.set_zone_color(-1, 255, 0, 0)
         assert result["success"] is False
 
-    def test_set_zone_color_calls_svc(self, led, mock_svc):
+    def test_set_zone_color_calls_svc(self, led, mock_led_svc):
         led.set_zone_color(1, 10, 20, 30)
-        mock_svc.set_zone_color.assert_called_once_with(1, 10, 20, 30)
+        mock_led_svc.set_zone_color.assert_called_once_with(1, 10, 20, 30)
 
-    def test_set_zone_mode_valid(self, led, mock_svc):
+    def test_set_zone_mode_valid(self, led, mock_led_svc):
         result = led.set_zone_mode(0, 'static')
         assert result["success"] is True
         assert "Zone 0" in result["message"]
@@ -475,11 +407,11 @@ class TestLEDDeviceZoneOps:
         assert result["success"] is False
         assert "laser" in result["error"]
 
-    def test_set_zone_mode_calls_svc(self, led, mock_svc):
+    def test_set_zone_mode_calls_svc(self, led, mock_led_svc):
         led.set_zone_mode(2, 'breathing')
-        mock_svc.set_zone_mode.assert_called_once_with(2, LEDMode.BREATHING)
+        mock_led_svc.set_zone_mode.assert_called_once_with(2, LEDMode.BREATHING)
 
-    def test_set_zone_brightness_valid(self, led, mock_svc):
+    def test_set_zone_brightness_valid(self, led, mock_led_svc):
         result = led.set_zone_brightness(0, 80)
         assert result["success"] is True
         assert "Zone 0" in result["message"]
@@ -498,16 +430,16 @@ class TestLEDDeviceZoneOps:
         result = led.set_zone_brightness(0, -5)
         assert result["success"] is False
 
-    def test_set_zone_brightness_calls_svc(self, led, mock_svc):
+    def test_set_zone_brightness_calls_svc(self, led, mock_led_svc):
         led.set_zone_brightness(1, 50)
-        mock_svc.set_zone_brightness.assert_called_once_with(1, 50)
+        mock_led_svc.set_zone_brightness.assert_called_once_with(1, 50)
 
-    def test_toggle_zone_on(self, led, mock_svc):
+    def test_toggle_zone_on(self, led, mock_led_svc):
         result = led.toggle_zone(0, True)
         assert result["success"] is True
         assert "ON" in result["message"]
 
-    def test_toggle_zone_off(self, led, mock_svc):
+    def test_toggle_zone_off(self, led, mock_led_svc):
         result = led.toggle_zone(1, False)
         assert result["success"] is True
         assert "OFF" in result["message"]
@@ -516,32 +448,32 @@ class TestLEDDeviceZoneOps:
         result = led.toggle_zone(99, True)
         assert result["success"] is False
 
-    def test_toggle_zone_calls_svc(self, led, mock_svc):
+    def test_toggle_zone_calls_svc(self, led, mock_led_svc):
         led.toggle_zone(2, True)
-        mock_svc.toggle_zone.assert_called_once_with(2, True)
+        mock_led_svc.toggle_zone.assert_called_once_with(2, True)
 
-    def test_set_zone_sync_enabled(self, led, mock_svc):
+    def test_set_zone_sync_enabled(self, led, mock_led_svc):
         result = led.set_zone_sync(True)
         assert result["success"] is True
         assert "enabled" in result["message"]
 
-    def test_set_zone_sync_disabled(self, led, mock_svc):
+    def test_set_zone_sync_disabled(self, led, mock_led_svc):
         result = led.set_zone_sync(False)
         assert result["success"] is True
         assert "disabled" in result["message"]
 
-    def test_set_zone_sync_with_interval(self, led, mock_svc):
+    def test_set_zone_sync_with_interval(self, led, mock_led_svc):
         result = led.set_zone_sync(True, interval=5)
         assert result["success"] is True
-        mock_svc.set_zone_sync_interval.assert_called_once_with(5)
+        mock_led_svc.set_zone_sync_interval.assert_called_once_with(5)
 
-    def test_set_zone_sync_no_interval_skips_set_interval(self, led, mock_svc):
+    def test_set_zone_sync_no_interval_skips_set_interval(self, led, mock_led_svc):
         led.set_zone_sync(True, interval=None)
-        mock_svc.set_zone_sync_interval.assert_not_called()
+        mock_led_svc.set_zone_sync_interval.assert_not_called()
 
-    def test_set_zone_sync_calls_svc(self, led, mock_svc):
+    def test_set_zone_sync_calls_svc(self, led, mock_led_svc):
         led.set_zone_sync(True)
-        mock_svc.set_zone_sync.assert_called_once_with(True)
+        mock_led_svc.set_zone_sync.assert_called_once_with(True)
 
 
 # =========================================================================
@@ -551,12 +483,12 @@ class TestLEDDeviceZoneOps:
 class TestLEDDeviceSegmentOps:
     """toggle_segment, set_clock_format, set_temp_unit."""
 
-    def test_toggle_segment_on(self, led, mock_svc):
+    def test_toggle_segment_on(self, led, mock_led_svc):
         result = led.toggle_segment(0, True)
         assert result["success"] is True
         assert "ON" in result["message"]
 
-    def test_toggle_segment_off(self, led, mock_svc):
+    def test_toggle_segment_off(self, led, mock_led_svc):
         result = led.toggle_segment(1, False)
         assert result["success"] is True
         assert "OFF" in result["message"]
@@ -569,40 +501,40 @@ class TestLEDDeviceSegmentOps:
         result = led.toggle_segment(-1, True)
         assert result["success"] is False
 
-    def test_toggle_segment_calls_svc(self, led, mock_svc):
+    def test_toggle_segment_calls_svc(self, led, mock_led_svc):
         led.toggle_segment(2, False)
-        mock_svc.toggle_segment.assert_called_once_with(2, False)
+        mock_led_svc.toggle_segment.assert_called_once_with(2, False)
 
     def test_toggle_segment_empty_list(self, led_no_segments):
         result = led_no_segments.toggle_segment(0, True)
         assert result["success"] is False
         assert "no segments" in result["error"]
 
-    def test_set_clock_format_24h(self, led, mock_svc):
+    def test_set_clock_format_24h(self, led, mock_led_svc):
         result = led.set_clock_format(True)
         assert result["success"] is True
         assert "24h" in result["message"]
 
-    def test_set_clock_format_12h(self, led, mock_svc):
+    def test_set_clock_format_12h(self, led, mock_led_svc):
         result = led.set_clock_format(False)
         assert result["success"] is True
         assert "12h" in result["message"]
 
-    def test_set_clock_format_calls_svc(self, led, mock_svc):
+    def test_set_clock_format_calls_svc(self, led, mock_led_svc):
         led.set_clock_format(True)
-        mock_svc.set_clock_format.assert_called_once_with(True)
+        mock_led_svc.set_clock_format.assert_called_once_with(True)
 
-    def test_set_temp_unit_celsius(self, led, mock_svc):
+    def test_set_temp_unit_celsius(self, led, mock_led_svc):
         result = led.set_temp_unit('C')
         assert result["success"] is True
         assert "C" in result["message"]
 
-    def test_set_temp_unit_fahrenheit(self, led, mock_svc):
+    def test_set_temp_unit_fahrenheit(self, led, mock_led_svc):
         result = led.set_temp_unit('F')
         assert result["success"] is True
         assert "F" in result["message"]
 
-    def test_set_temp_unit_lowercase(self, led, mock_svc):
+    def test_set_temp_unit_lowercase(self, led, mock_led_svc):
         result = led.set_temp_unit('f')
         assert result["success"] is True
 
@@ -611,9 +543,9 @@ class TestLEDDeviceSegmentOps:
         assert result["success"] is False
         assert "C" in result["error"] and "F" in result["error"]
 
-    def test_set_temp_unit_calls_svc(self, led, mock_svc):
+    def test_set_temp_unit_calls_svc(self, led, mock_led_svc):
         led.set_temp_unit('C')
-        mock_svc.set_seg_temp_unit.assert_called_once_with('C')
+        mock_led_svc.set_seg_temp_unit.assert_called_once_with('C')
 
 
 # =========================================================================
@@ -623,21 +555,21 @@ class TestLEDDeviceSegmentOps:
 class TestLEDDeviceTick:
     """tick() — advance one animation frame."""
 
-    def test_tick_returns_colors(self, led, mock_svc):
+    def test_tick_returns_colors(self, led, mock_led_svc):
         result = led.tick_with_result()
         assert "colors" in result
-        assert result["colors"] == mock_svc.tick.return_value
+        assert result["colors"] == mock_led_svc.tick.return_value
 
-    def test_tick_calls_svc_tick(self, led, mock_svc):
+    def test_tick_calls_svc_tick(self, led, mock_led_svc):
         led.tick()
-        mock_svc.tick.assert_called_once()
+        mock_led_svc.tick.assert_called_once()
 
-    def test_tick_calls_send_colors(self, led, mock_svc):
-        colors = mock_svc.tick.return_value
+    def test_tick_calls_send_colors(self, led, mock_led_svc):
+        colors = mock_led_svc.tick.return_value
         led.tick()
-        mock_svc.send_colors.assert_called_once_with(colors)
+        mock_led_svc.send_colors.assert_called_once_with(colors)
 
-    def test_tick_returns_display_colors(self, led, mock_svc):
+    def test_tick_returns_display_colors(self, led, mock_led_svc):
         result = led.tick_with_result()
         assert "display_colors" in result
 
@@ -754,7 +686,7 @@ class TestCLIHelpers:
         rc = _led_dispatch(ToggleLEDCommand, on=False)
         assert rc == 1
 
-    def test_led_dispatch_success(self, mock_connect):
+    def test_led_dispatch_success(self, mock_connect_led):
         from trcc.cli._led import _led_dispatch
         from trcc.core.commands.led import ToggleLEDCommand
 
@@ -774,14 +706,14 @@ class TestCLISetColor:
     _connect_or_fail is patched to avoid hardware; output is in result.stdout.
     """
 
-    def test_set_color_valid_hex(self, mock_connect):
+    def test_set_color_valid_hex(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-color', 'ff0000'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_color_with_hash_prefix(self, mock_connect):
+    def test_set_color_with_hash_prefix(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -810,7 +742,7 @@ class TestCLISetColor:
         result = CliRunner().invoke(app, ['led-color', 'ff0000'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_color_with_preview(self, mock_connect):
+    def test_set_color_with_preview(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -832,7 +764,7 @@ class TestCLISetColor:
 class TestCLISetMode:
     """set_mode CLI — static/animated/unknown, preview, KeyboardInterrupt."""
 
-    def test_set_mode_static(self, mock_connect):
+    def test_set_mode_static(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -840,7 +772,7 @@ class TestCLISetMode:
         assert result.return_value == 0
         assert "static" in result.stdout.lower()
 
-    def test_set_mode_unknown(self, mock_connect):
+    def test_set_mode_unknown(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -848,7 +780,7 @@ class TestCLISetMode:
         assert result.return_value == 1
         assert "fireworks" in result.stdout
 
-    def test_set_mode_unknown_prints_available(self, mock_connect):
+    def test_set_mode_unknown_prints_available(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -863,7 +795,7 @@ class TestCLISetMode:
         result = CliRunner().invoke(app, ['led-mode', 'static'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_mode_animated_runs_loop(self, mock_connect):
+    def test_set_mode_animated_runs_loop(self, mock_connect_led):
         """Animated mode enters loop; KeyboardInterrupt exits cleanly."""
         from typer.testing import CliRunner
 
@@ -874,12 +806,12 @@ class TestCLISetMode:
         assert result.return_value == 0
         assert "Stopped" in result.stdout
 
-    def test_set_mode_animated_with_preview(self, mock_connect, mock_svc):
+    def test_set_mode_animated_with_preview(self, mock_connect_led, mock_led_svc):
         """Animated preview calls zones_to_ansi on each tick."""
         from typer.testing import CliRunner
 
         from trcc.cli import app
-        mock_svc.tick.return_value = [(255, 0, 0)]
+        mock_led_svc.tick.return_value = [(255, 0, 0)]
         with patch('time.sleep', side_effect=KeyboardInterrupt), \
              patch('trcc.services.LEDService.zones_to_ansi',
                    return_value="[ANSI]") as mock_ansi:
@@ -887,7 +819,7 @@ class TestCLISetMode:
         assert result.return_value == 0
         mock_ansi.assert_called()
 
-    def test_set_mode_static_with_preview(self, mock_connect):
+    def test_set_mode_static_with_preview(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -904,14 +836,14 @@ class TestCLISetMode:
 class TestCLICommands:
     """set_led_brightness, led_off, set_sensor_source, zone/segment commands."""
 
-    def test_set_led_brightness_success(self, mock_connect):
+    def test_set_led_brightness_success(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-brightness', '60'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_led_brightness_invalid(self, mock_connect):
+    def test_set_led_brightness_invalid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -923,7 +855,7 @@ class TestCLICommands:
         result = CliRunner().invoke(app, ['led-brightness', '200'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_led_off_success(self, mock_connect):
+    def test_led_off_success(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -937,14 +869,14 @@ class TestCLICommands:
         result = CliRunner().invoke(app, ['led-off'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_sensor_source_cpu(self, mock_connect):
+    def test_set_sensor_source_cpu(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-sensor', 'cpu'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_sensor_source_invalid(self, mock_connect):
+    def test_set_sensor_source_invalid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -956,7 +888,7 @@ class TestCLICommands:
         result = CliRunner().invoke(app, ['led-sensor', 'fan'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_zone_color_valid(self, mock_connect):
+    def test_set_zone_color_valid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
@@ -978,120 +910,120 @@ class TestCLICommands:
         result = CliRunner().invoke(app, ['led-zone-color', '0', 'ff0000'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_zone_mode_valid(self, mock_connect):
+    def test_set_zone_mode_valid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-mode', '0', 'static'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_zone_mode_invalid_zone(self, mock_connect):
+    def test_set_zone_mode_invalid_zone(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-mode', '99', 'static'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_zone_brightness_valid(self, mock_connect):
+    def test_set_zone_brightness_valid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-brightness', '0', '75'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_zone_brightness_invalid(self, mock_connect):
+    def test_set_zone_brightness_invalid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-brightness', '0', '999'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_toggle_zone_on(self, mock_connect):
+    def test_toggle_zone_on(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-toggle', '1', 'true'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_toggle_zone_off(self, mock_connect):
+    def test_toggle_zone_off(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-toggle', '2', 'false'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_toggle_zone_invalid(self, mock_connect):
+    def test_toggle_zone_invalid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-toggle', '99', 'true'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_zone_sync_enabled(self, mock_connect):
+    def test_set_zone_sync_enabled(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-sync', 'true'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_zone_sync_disabled(self, mock_connect):
+    def test_set_zone_sync_disabled(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-sync', 'false'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_zone_sync_with_interval(self, mock_connect, mock_svc):
+    def test_set_zone_sync_with_interval(self, mock_connect_led, mock_led_svc):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-zone-sync', 'true', '--interval', '3'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
-        mock_svc.set_zone_sync_interval.assert_called_once_with(3)
+        mock_led_svc.set_zone_sync_interval.assert_called_once_with(3)
 
-    def test_toggle_segment_on(self, mock_connect):
+    def test_toggle_segment_on(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-segment', '0', 'true'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_toggle_segment_invalid(self, mock_connect):
+    def test_toggle_segment_invalid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-segment', '99', 'true'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
-    def test_set_clock_format_24h(self, mock_connect):
+    def test_set_clock_format_24h(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-clock', 'true'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_clock_format_12h(self, mock_connect):
+    def test_set_clock_format_12h(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-clock', 'false'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_temp_unit_celsius(self, mock_connect):
+    def test_set_temp_unit_celsius(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-temp-unit', 'C'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_temp_unit_fahrenheit(self, mock_connect):
+    def test_set_temp_unit_fahrenheit(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app
         result = CliRunner().invoke(app, ['led-temp-unit', 'F'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_temp_unit_invalid(self, mock_connect):
+    def test_set_temp_unit_invalid(self, mock_connect_led):
         from typer.testing import CliRunner
 
         from trcc.cli import app

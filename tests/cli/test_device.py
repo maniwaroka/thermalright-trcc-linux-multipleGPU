@@ -11,45 +11,6 @@ from trcc.cli._device import (
 )
 
 # =============================================================================
-# Helpers
-# =============================================================================
-
-def _make_detected_device(
-    scsi_device: str | None = "/dev/sg0",
-    product_name: str = "Frost Commander 360",
-    vid: int = 0x87CD,
-    pid: int = 0x70DB,
-    protocol: str = "scsi",
-    implementation: str = "generic",
-    device_type: int = 1,
-    path: str = "/dev/sg0",
-    usb_path: str = "1-2",
-    resolution: tuple[int, int] = (0, 0),
-) -> MagicMock:
-    """Build a MagicMock that looks like a detected device."""
-    dev = MagicMock()
-    dev.scsi_device = scsi_device
-    dev.product_name = product_name
-    dev.vid = vid
-    dev.pid = pid
-    dev.protocol = protocol
-    dev.implementation = implementation
-    dev.device_type = device_type
-    dev.path = path
-    dev.usb_path = usb_path
-    dev.resolution = resolution
-    return dev
-
-
-def _make_mock_service(devices=None, selected=None) -> MagicMock:
-    """Build a MagicMock DeviceService."""
-    svc = MagicMock()
-    svc.devices = devices if devices is not None else []
-    svc.selected = selected
-    return svc
-
-
-# =============================================================================
 # TestGetService
 # =============================================================================
 
@@ -62,16 +23,16 @@ class TestScanAndSelect:
         svc._devices = devices
         return svc
 
-    def test_explicit_path_match(self):
-        dev = _make_detected_device(path="/dev/sg1")
+    def test_explicit_path_match(self, make_detected_device):
+        dev = make_detected_device(path="/dev/sg1")
         svc = self._make_svc([dev])
         with patch.object(svc, 'detect'), \
              patch.object(svc, '_discover_resolution'):
             svc.scan_and_select("/dev/sg1")
         assert svc.selected is dev
 
-    def test_explicit_path_no_match_falls_back(self):
-        dev = _make_detected_device(path="/dev/sg0")
+    def test_explicit_path_no_match_falls_back(self, make_detected_device):
+        dev = make_detected_device(path="/dev/sg0")
         svc = self._make_svc([dev])
         with patch.object(svc, 'detect'), \
              patch.object(svc, '_discover_resolution'):
@@ -85,8 +46,8 @@ class TestScanAndSelect:
             svc.scan_and_select("/dev/sg0")
         assert svc.selected is None
 
-    def test_no_path_uses_saved(self):
-        dev = _make_detected_device(path="/dev/sg2")
+    def test_no_path_uses_saved(self, make_detected_device):
+        dev = make_detected_device(path="/dev/sg2")
         svc = self._make_svc([dev])
         with patch.object(svc, 'detect'), \
              patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg2"), \
@@ -94,8 +55,8 @@ class TestScanAndSelect:
             svc.scan_and_select()
         assert svc.selected is dev
 
-    def test_no_path_saved_not_found(self):
-        dev = _make_detected_device(path="/dev/sg0")
+    def test_no_path_saved_not_found(self, make_detected_device):
+        dev = make_detected_device(path="/dev/sg0")
         svc = self._make_svc([dev])
         with patch.object(svc, 'detect'), \
              patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg99"), \
@@ -103,8 +64,8 @@ class TestScanAndSelect:
             svc.scan_and_select()
         assert svc.selected is dev
 
-    def test_no_path_no_saved_selects_first(self):
-        dev = _make_detected_device()
+    def test_no_path_no_saved_selects_first(self, make_detected_device):
+        dev = make_detected_device()
         svc = self._make_svc([dev])
         with patch.object(svc, 'detect'), \
              patch("trcc.conf.Settings.get_selected_device", return_value=None), \
@@ -112,8 +73,8 @@ class TestScanAndSelect:
             svc.scan_and_select()
         assert svc.selected is dev
 
-    def test_already_selected_skips_saved(self):
-        dev = _make_detected_device()
+    def test_already_selected_skips_saved(self, make_detected_device):
+        dev = make_detected_device()
         svc = self._make_svc([dev])
         svc._selected = dev
         with patch.object(svc, 'detect'), \
@@ -122,8 +83,8 @@ class TestScanAndSelect:
             svc.scan_and_select()
         mock_get.assert_not_called()
 
-    def test_discover_called_when_selected(self):
-        dev = _make_detected_device()
+    def test_discover_called_when_selected(self, make_detected_device):
+        dev = make_detected_device()
         svc = self._make_svc([dev])
         with patch.object(svc, 'detect'), \
              patch.object(svc, '_discover_resolution') as mock_disc:
@@ -159,17 +120,17 @@ def test_use_jpeg_computed_from_protocol_fbl():
 class TestProbe:
     """_probe() — probe for hid_led, hid_type2, hid_type3, bulk_usblcdnew."""
 
-    def test_unknown_implementation_returns_empty(self):
+    def test_unknown_implementation_returns_empty(self, make_detected_device):
         """Unknown implementation type returns empty dict."""
-        dev = _make_detected_device(implementation="unknown_impl")
+        dev = make_detected_device(implementation="unknown_impl")
         result = _probe(dev)
         assert result == {}
 
     # -- hid_led ---
 
-    def test_hid_led_success(self):
+    def test_hid_led_success(self, make_detected_device):
         """hid_led: probe_led_model returns model info."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             implementation="hid_led", vid=0x0416, pid=0x8001
         )
 
@@ -188,9 +149,9 @@ class TestProbe:
         assert result["pm"] == 2
         assert result["style"] == 2
 
-    def test_hid_led_no_model_name_excluded(self):
+    def test_hid_led_no_model_name_excluded(self, make_detected_device):
         """hid_led: info with empty model_name produces empty result."""
-        dev = _make_detected_device(implementation="hid_led")
+        dev = make_detected_device(implementation="hid_led")
 
         led_info = MagicMock()
         led_info.model_name = None
@@ -203,9 +164,9 @@ class TestProbe:
 
         assert result == {}
 
-    def test_hid_led_probe_returns_none_excluded(self):
+    def test_hid_led_probe_returns_none_excluded(self, make_detected_device):
         """hid_led: probe_led_model returning None produces empty result."""
-        dev = _make_detected_device(implementation="hid_led")
+        dev = make_detected_device(implementation="hid_led")
 
         mock_led_mod = MagicMock()
         mock_led_mod.probe_led_model.return_value = None
@@ -215,9 +176,9 @@ class TestProbe:
 
         assert result == {}
 
-    def test_hid_led_exception_returns_empty(self):
+    def test_hid_led_exception_returns_empty(self, make_detected_device):
         """hid_led: exception in probe is swallowed, returns empty dict."""
-        dev = _make_detected_device(implementation="hid_led")
+        dev = make_detected_device(implementation="hid_led")
 
         mock_led_mod = MagicMock()
         mock_led_mod.probe_led_model.side_effect = RuntimeError("USB error")
@@ -229,9 +190,9 @@ class TestProbe:
 
     # -- hid_type2 ---
 
-    def test_hid_type2_success_with_serial(self):
+    def test_hid_type2_success_with_serial(self, make_detected_device):
         """hid_type2: HidHandshakeInfo is parsed for pm, resolution, serial."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             implementation="hid_type2",
             vid=0x0416, pid=0x5302,
             protocol="hid", device_type=2,
@@ -256,9 +217,9 @@ class TestProbe:
         # _probe returns full serial; _format truncates to 16 when rendering
         assert result.get("serial") == "SN123456789ABCDEF"
 
-    def test_hid_type2_no_serial_omitted(self):
+    def test_hid_type2_no_serial_omitted(self, make_detected_device):
         """hid_type2: empty serial is not included in result."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             implementation="hid_type2",
             vid=0x0416, pid=0x5302,
             protocol="hid", device_type=2,
@@ -280,9 +241,9 @@ class TestProbe:
 
         assert "serial" not in result
 
-    def test_hid_type2_exception_returns_empty(self):
+    def test_hid_type2_exception_returns_empty(self, make_detected_device):
         """hid_type2: exception in handshake is swallowed."""
-        dev = _make_detected_device(implementation="hid_type2")
+        dev = make_detected_device(implementation="hid_type2")
 
         with patch("trcc.adapters.device.factory.DeviceProtocolFactory") as mock_factory_cls:
             mock_factory_cls.get_protocol.side_effect = RuntimeError("HID error")
@@ -290,9 +251,9 @@ class TestProbe:
 
         assert result == {}
 
-    def test_hid_type3_routes_to_hid_branch(self):
+    def test_hid_type3_routes_to_hid_branch(self, make_detected_device):
         """hid_type3 takes the same HID probe path as hid_type2."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             implementation="hid_type3",
             vid=0x0418, pid=0x5303,
             protocol="hid", device_type=3,
@@ -317,9 +278,9 @@ class TestProbe:
 
     # -- bulk_usblcdnew ---
 
-    def test_bulk_success(self):
+    def test_bulk_success(self, make_detected_device):
         """bulk_usblcdnew: factory handshake parsed for resolution and pm."""
-        dev = _make_detected_device(implementation="bulk_usblcdnew")
+        dev = make_detected_device(implementation="bulk_usblcdnew")
 
         hs = MagicMock()
         hs.resolution = (480, 480)
@@ -336,9 +297,9 @@ class TestProbe:
         assert result["pm"] == 32
         mock_bp.close.assert_called_once()
 
-    def test_bulk_no_resolution_excluded(self):
+    def test_bulk_no_resolution_excluded(self, make_detected_device):
         """bulk_usblcdnew: falsy handshake result -> empty dict."""
-        dev = _make_detected_device(implementation="bulk_usblcdnew")
+        dev = make_detected_device(implementation="bulk_usblcdnew")
 
         mock_bp = MagicMock()
         mock_bp.handshake.return_value = None
@@ -350,9 +311,9 @@ class TestProbe:
         assert result == {}
         mock_bp.close.assert_called_once()
 
-    def test_bulk_exception_returns_empty(self):
+    def test_bulk_exception_returns_empty(self, make_detected_device):
         """bulk_usblcdnew: exception in handshake is swallowed."""
-        dev = _make_detected_device(implementation="bulk_usblcdnew")
+        dev = make_detected_device(implementation="bulk_usblcdnew")
 
         with patch("trcc.adapters.device.factory.DeviceProtocolFactory.create_protocol",
                    side_effect=RuntimeError("bulk error")):
@@ -368,9 +329,9 @@ class TestProbe:
 class TestFormat:
     """_format() — format device string with/without probe info."""
 
-    def test_scsi_device_uses_scsi_path(self):
+    def test_scsi_device_uses_scsi_path(self, make_detected_device):
         """SCSI device: path comes from scsi_device attribute."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             scsi_device="/dev/sg0",
             product_name="Frost Commander",
             vid=0x87CD, pid=0x70DB,
@@ -382,9 +343,9 @@ class TestFormat:
         assert "[87cd:70db]" in line
         assert "(SCSI)" in line
 
-    def test_hid_device_uses_vid_pid_path(self):
+    def test_hid_device_uses_vid_pid_path(self, make_detected_device):
         """HID device: path is formatted as vid:pid."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             scsi_device=None,
             product_name="AX120 Digital",
             vid=0x0416, pid=0x5302,
@@ -395,9 +356,9 @@ class TestFormat:
         assert "AX120 Digital" in line
         assert "(HID)" in line
 
-    def test_bulk_device_uses_vid_pid_path(self):
+    def test_bulk_device_uses_vid_pid_path(self, make_detected_device):
         """Bulk device: path is formatted as vid:pid."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             scsi_device=None,
             product_name="Frozen Warframe Pro",
             vid=0x87AD, pid=0x70DB,
@@ -407,9 +368,9 @@ class TestFormat:
         assert "87ad:70db" in line
         assert "(BULK)" in line
 
-    def test_ly_device_uses_vid_pid_path(self):
+    def test_ly_device_uses_vid_pid_path(self, make_detected_device):
         """LY device: path is formatted as vid:pid."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             scsi_device=None,
             product_name="Peerless Vision",
             vid=0x0416, pid=0x5408,
@@ -419,9 +380,9 @@ class TestFormat:
         assert "0416:5408" in line
         assert "(LY)" in line
 
-    def test_led_device_uses_vid_pid_path(self):
+    def test_led_device_uses_vid_pid_path(self, make_detected_device):
         """LED controller: path is formatted as vid:pid (issue #90)."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             scsi_device=None,
             product_name="LED Controller",
             vid=0x0416, pid=0x8001,
@@ -432,9 +393,9 @@ class TestFormat:
         assert "No device path found" not in line
         assert "(LED)" in line
 
-    def test_unknown_protocol_no_scsi_path_shows_fallback(self):
+    def test_unknown_protocol_no_scsi_path_shows_fallback(self, make_detected_device):
         """Unknown protocol without scsi_device: shows fallback path text."""
-        dev = _make_detected_device(
+        dev = make_detected_device(
             scsi_device=None,
             product_name="Unknown",
             vid=0x1234, pid=0x5678,
@@ -443,54 +404,54 @@ class TestFormat:
         line = _format(dev, probe=False)
         assert "No device path found" in line
 
-    def test_probe_false_skips_probe(self):
+    def test_probe_false_skips_probe(self, make_detected_device):
         """probe=False: _probe is never called."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe") as mock_probe:
             _format(dev, probe=False)
         mock_probe.assert_not_called()
 
-    def test_probe_true_calls_probe(self):
+    def test_probe_true_calls_probe(self, make_detected_device):
         """probe=True: _probe is called and result is appended."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe", return_value={}):
             line = _format(dev, probe=True)
         # Empty probe result -> no extra parens appended
         assert "(" not in line.split("—")[1] or "(SCSI)" in line
 
-    def test_probe_with_model(self):
+    def test_probe_with_model(self, make_detected_device):
         """probe=True with model info: model appears in output."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe", return_value={"model": "PA120 Digital"}):
             line = _format(dev, probe=True)
         assert "model: PA120 Digital" in line
 
-    def test_probe_with_resolution(self):
+    def test_probe_with_resolution(self, make_detected_device):
         """probe=True with resolution: WxH string appears in output."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe",
                    return_value={"resolution": (360, 360)}):
             line = _format(dev, probe=True)
         assert "resolution: 360x360" in line
 
-    def test_probe_with_pm(self):
+    def test_probe_with_pm(self, make_detected_device):
         """probe=True with PM: PM=N appears in output."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe", return_value={"pm": 54}):
             line = _format(dev, probe=True)
         assert "PM=54" in line
 
-    def test_probe_with_serial_truncated_to_16(self):
+    def test_probe_with_serial_truncated_to_16(self, make_detected_device):
         """probe=True with long serial: serial is truncated to 16 characters."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe",
                    return_value={"serial": "ABCDEFGHIJKLMNOPQRSTUVWXYZ"}):
             line = _format(dev, probe=True)
         assert "serial: ABCDEFGHIJKLMNOP" in line
 
-    def test_probe_with_all_details(self):
+    def test_probe_with_all_details(self, make_detected_device):
         """probe=True with all probe fields: all appear in output."""
-        dev = _make_detected_device()
+        dev = make_detected_device()
         with patch("trcc.cli._device._probe", return_value={
             "model": "PA120",
             "resolution": (480, 480),
@@ -513,13 +474,14 @@ class TestDetect:
 
     def _scsi_dev(
         self,
+        make_detected_device,
         path: str = "/dev/sg0",
         name: str = "Frost Commander",
         vid: int = 0x87CD,
         pid: int = 0x70DB,
         protocol: str = "scsi",
     ) -> MagicMock:
-        return _make_detected_device(
+        return make_detected_device(
             scsi_device=path, product_name=name,
             vid=vid, pid=pid, protocol=protocol,
         )
@@ -537,9 +499,9 @@ class TestDetect:
         result = detect(show_all=False, detect_fn=lambda: [], platform_setup=mock_setup)
         assert result == 1
 
-    def test_single_device_returns_0(self):
+    def test_single_device_returns_0(self, make_detected_device):
         """One device detected -> prints 'Active:', returns 0."""
-        dev = self._scsi_dev()
+        dev = self._scsi_dev(make_detected_device)
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
@@ -548,10 +510,10 @@ class TestDetect:
 
         assert result == 0
 
-    def test_show_all_lists_all_devices(self, capsys):
+    def test_show_all_lists_all_devices(self, capsys, make_detected_device):
         """show_all=True enumerates all devices with index."""
-        dev1 = self._scsi_dev("/dev/sg0", "Device A")
-        dev2 = self._scsi_dev("/dev/sg1", "Device B")
+        dev1 = self._scsi_dev(make_detected_device, "/dev/sg0", "Device A")
+        dev2 = self._scsi_dev(make_detected_device, "/dev/sg1", "Device B")
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
@@ -563,9 +525,9 @@ class TestDetect:
         assert "[2]" in captured.out
         assert result == 0
 
-    def test_show_all_marks_selected_device(self, capsys):
+    def test_show_all_marks_selected_device(self, capsys, make_detected_device):
         """show_all=True marks the saved selected device with '*'."""
-        dev = self._scsi_dev("/dev/sg0")
+        dev = self._scsi_dev(make_detected_device, "/dev/sg0")
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"), \
@@ -575,9 +537,9 @@ class TestDetect:
         captured = capsys.readouterr()
         assert "* [1]" in captured.out
 
-    def test_show_all_single_device_no_switch_hint(self, capsys):
+    def test_show_all_single_device_no_switch_hint(self, capsys, make_detected_device):
         """show_all with one device does not print 'use trcc select' hint."""
-        dev = self._scsi_dev()
+        dev = self._scsi_dev(make_detected_device)
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
@@ -587,10 +549,10 @@ class TestDetect:
         captured = capsys.readouterr()
         assert "trcc select" not in captured.out
 
-    def test_show_all_multiple_devices_shows_switch_hint(self, capsys):
+    def test_show_all_multiple_devices_shows_switch_hint(self, capsys, make_detected_device):
         """show_all with multiple devices prints 'use trcc select' hint."""
-        dev1 = self._scsi_dev("/dev/sg0")
-        dev2 = self._scsi_dev("/dev/sg1")
+        dev1 = self._scsi_dev(make_detected_device, "/dev/sg0")
+        dev2 = self._scsi_dev(make_detected_device, "/dev/sg1")
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value=None), \
@@ -600,10 +562,10 @@ class TestDetect:
         captured = capsys.readouterr()
         assert "trcc select" in captured.out
 
-    def test_saved_selected_device_shown_as_active(self, capsys):
+    def test_saved_selected_device_shown_as_active(self, capsys, make_detected_device):
         """When a saved device matches, it is shown as Active."""
-        dev0 = self._scsi_dev("/dev/sg0", "Device A")
-        dev1 = self._scsi_dev("/dev/sg1", "Device B")
+        dev0 = self._scsi_dev(make_detected_device, "/dev/sg0", "Device A")
+        dev1 = self._scsi_dev(make_detected_device, "/dev/sg1", "Device B")
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg1"), \
@@ -613,9 +575,9 @@ class TestDetect:
         captured = capsys.readouterr()
         assert "Device B" in captured.out
 
-    def test_udev_warning_printed_when_rules_missing(self, capsys):
+    def test_udev_warning_printed_when_rules_missing(self, capsys, make_detected_device):
         """Device needing udev rule update prints a warning."""
-        dev = self._scsi_dev(protocol="scsi")
+        dev = self._scsi_dev(make_detected_device, protocol="scsi")
         mock_setup = MagicMock()
         mock_setup.check_device_permissions.return_value = [
             "\nudev rules are missing. Run: trcc setup-udev\nA reboot may be required."
@@ -630,9 +592,9 @@ class TestDetect:
         assert "udev rules" in captured.out
         assert "setup-udev" in captured.out
 
-    def test_udev_warning_includes_reboot_for_scsi(self, capsys):
+    def test_udev_warning_includes_reboot_for_scsi(self, capsys, make_detected_device):
         """SCSI protocol (requires_reboot=True) adds reboot notice to udev warning."""
-        dev = self._scsi_dev(protocol="scsi")
+        dev = self._scsi_dev(make_detected_device, protocol="scsi")
         mock_setup = MagicMock()
         mock_setup.check_device_permissions.return_value = [
             "\nudev rules are missing. Run: trcc setup-udev\nA reboot may be required."
@@ -646,9 +608,9 @@ class TestDetect:
         captured = capsys.readouterr()
         assert "reboot" in captured.out
 
-    def test_udev_warning_no_reboot_for_hid(self, capsys):
+    def test_udev_warning_no_reboot_for_hid(self, capsys, make_detected_device):
         """HID protocol (requires_reboot=False) does NOT add reboot notice."""
-        dev = self._scsi_dev(protocol="hid", vid=0x0416, pid=0x5302)
+        dev = self._scsi_dev(make_detected_device, protocol="hid", vid=0x0416, pid=0x5302)
         dev.scsi_device = None
         mock_setup = MagicMock()
         mock_setup.check_device_permissions.return_value = [
@@ -663,9 +625,9 @@ class TestDetect:
         captured = capsys.readouterr()
         assert "reboot" not in captured.out
 
-    def test_no_udev_warning_when_rules_ok(self, capsys):
+    def test_no_udev_warning_when_rules_ok(self, capsys, make_detected_device):
         """No udev warning when check_device_permissions returns no warnings."""
-        dev = self._scsi_dev()
+        dev = self._scsi_dev(make_detected_device)
         mock_setup = self._ok_setup()
 
         with patch("trcc.conf.Settings.get_selected_device", return_value=None), \

@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from conftest import make_test_surface
 
 from trcc.core.lcd_device import LCDDevice
@@ -21,94 +20,8 @@ _IMG_SVC = "trcc.services.ImageService"
 _OVL_SVC = "trcc.services.OverlayService"
 _METRICS = "trcc.services.system.get_all_metrics"
 _DEV_SVC = "trcc.services.DeviceService"
-_CONNECT = "trcc.cli._display._connect_or_fail"
 _SETTINGS_KEY = "trcc.conf.Settings.device_config_key"
 _SETTINGS_SAVE = "trcc.conf.Settings.save_device_setting"
-
-
-# =========================================================================
-# Fixtures
-# =========================================================================
-
-@pytest.fixture
-def mock_device_info():
-    """A mock DeviceInfo (the selected device)."""
-    dev = MagicMock()
-    dev.resolution = (320, 320)
-    dev.path = "/dev/sg0"
-    dev.vid = 0x0402
-    dev.pid = 0x3922
-    dev.device_index = 0
-    return dev
-
-
-@pytest.fixture
-def mock_device_svc(mock_device_info):
-    """Mock DeviceService with a pre-selected device."""
-    svc = MagicMock()
-    svc.selected = mock_device_info
-    svc.send_frame.return_value = True
-    svc.is_busy = False
-    return svc
-
-
-@pytest.fixture
-def mock_display_svc():
-    """Mock DisplayService."""
-    svc = MagicMock()
-    svc.lcd_width = 320
-    svc.lcd_height = 320
-    svc.overlay = MagicMock()
-    svc.overlay.enabled = False
-    svc.media = MagicMock()
-    svc.media.has_frames = False
-    svc.current_image = None
-    svc.auto_send = False
-    return svc
-
-
-@pytest.fixture
-def mock_theme_svc():
-    """Mock ThemeService."""
-    return MagicMock()
-
-
-@pytest.fixture
-def lcd(mock_device_svc, mock_display_svc, mock_theme_svc):
-    """Fully wired LCDDevice with mock services."""
-    return LCDDevice(
-        device_svc=mock_device_svc,
-        display_svc=mock_display_svc,
-        theme_svc=mock_theme_svc,
-    )
-
-
-@pytest.fixture
-def lcd_empty():
-    """LCDDevice with no services (not connected)."""
-    return LCDDevice()
-
-
-@pytest.fixture
-def mock_connect(lcd):
-    """Patch _connect_or_fail to return 0 (success) and wire TrccApp.lcd_device + lcd_bus.
-
-    lcd_bus is a REAL CommandBus wired to the mock lcd so tests can verify
-    that bus dispatch reaches the right service methods.
-    """
-    from trcc.core.app import TrccApp
-    mock_app = TrccApp._instance
-    mock_app.lcd_device = lcd
-    mock_app.lcd_bus = TrccApp.build_lcd_bus(mock_app, lcd)  # type: ignore[arg-type]
-    with patch(_CONNECT, return_value=0):
-        yield lcd
-
-
-@pytest.fixture
-def mock_connect_fail():
-    """Patch _connect_or_fail to simulate no device (returns 1)."""
-    with patch(_CONNECT, return_value=1):
-        yield
 
 
 def _make_png(path: Path, w=10, h=10, color=(255, 0, 0)) -> Path:
@@ -665,7 +578,7 @@ class TestCLIHelpers:
 # =========================================================================
 
 class TestCLIImageCommands:
-    def test_send_image_cli_success(self, _mock_builder, mock_connect, tmp_path):
+    def test_send_image_cli_success(self, _mock_builder, mock_connect_lcd, tmp_path):
         from trcc.cli._display import send_image
 
         img_path = str(_make_png(tmp_path / "pic.png", w=10, h=10))
@@ -675,7 +588,7 @@ class TestCLIImageCommands:
             rc = send_image(_mock_builder, img_path)
         assert rc == 0
 
-    def test_send_image_cli_missing_file(self, _mock_builder, mock_connect, capsys):
+    def test_send_image_cli_missing_file(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import send_image
 
         # Real bus + real lcd: send_image("/nonexistent") → lcd.send_image fails → rc=1
@@ -683,7 +596,7 @@ class TestCLIImageCommands:
         assert rc == 1
         assert "Error" in capsys.readouterr().out
 
-    def test_send_color_cli_valid_hex(self, _mock_builder, mock_connect):
+    def test_send_color_cli_valid_hex(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import send_color
 
         mock_img = make_test_surface(320, 320)
@@ -691,7 +604,7 @@ class TestCLIImageCommands:
             rc = send_color(_mock_builder, "ff0000")
         assert rc == 0
 
-    def test_send_color_cli_with_hash_prefix(self, _mock_builder, mock_connect):
+    def test_send_color_cli_with_hash_prefix(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import send_color
 
         mock_img = make_test_surface(320, 320)
@@ -724,7 +637,7 @@ class TestCLIImageCommands:
 # =========================================================================
 
 class TestCLISettingCommands:
-    def test_set_brightness_cli_valid_1(self, _mock_builder, mock_connect):
+    def test_set_brightness_cli_valid_1(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_brightness
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -732,7 +645,7 @@ class TestCLISettingCommands:
             rc = set_brightness(_mock_builder, 1)
         assert rc == 0
 
-    def test_set_brightness_cli_valid_2(self, _mock_builder, mock_connect):
+    def test_set_brightness_cli_valid_2(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_brightness
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -740,7 +653,7 @@ class TestCLISettingCommands:
             rc = set_brightness(_mock_builder, 2)
         assert rc == 0
 
-    def test_set_brightness_cli_valid_3(self, _mock_builder, mock_connect):
+    def test_set_brightness_cli_valid_3(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_brightness
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -748,7 +661,7 @@ class TestCLISettingCommands:
             rc = set_brightness(_mock_builder, 3)
         assert rc == 0
 
-    def test_set_brightness_cli_invalid_prints_help(self, _mock_builder, mock_connect, capsys):
+    def test_set_brightness_cli_invalid_prints_help(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import set_brightness
 
         # Real bus + real lcd: set_brightness(-1) → lcd.set_brightness(-1) fails
@@ -765,7 +678,7 @@ class TestCLISettingCommands:
         rc = set_brightness(_mock_builder, 2)
         assert rc == 1
 
-    def test_set_rotation_cli_valid_0(self, _mock_builder, mock_connect):
+    def test_set_rotation_cli_valid_0(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_rotation
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -773,7 +686,7 @@ class TestCLISettingCommands:
             rc = set_rotation(_mock_builder, 0)
         assert rc == 0
 
-    def test_set_rotation_cli_valid_90(self, _mock_builder, mock_connect):
+    def test_set_rotation_cli_valid_90(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_rotation
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -781,7 +694,7 @@ class TestCLISettingCommands:
             rc = set_rotation(_mock_builder, 90)
         assert rc == 0
 
-    def test_set_rotation_cli_valid_180(self, _mock_builder, mock_connect):
+    def test_set_rotation_cli_valid_180(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_rotation
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -789,7 +702,7 @@ class TestCLISettingCommands:
             rc = set_rotation(_mock_builder, 180)
         assert rc == 0
 
-    def test_set_rotation_cli_valid_270(self, _mock_builder, mock_connect):
+    def test_set_rotation_cli_valid_270(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_rotation
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -797,7 +710,7 @@ class TestCLISettingCommands:
             rc = set_rotation(_mock_builder, 270)
         assert rc == 0
 
-    def test_set_rotation_cli_invalid_45(self, _mock_builder, mock_connect, capsys):
+    def test_set_rotation_cli_invalid_45(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import set_rotation
 
         # Real bus + real lcd: set_rotation(45) → lcd.set_rotation(45) fails
@@ -805,7 +718,7 @@ class TestCLISettingCommands:
         assert rc == 1
         assert "Error" in capsys.readouterr().out
 
-    def test_set_split_mode_cli_valid(self, _mock_builder, mock_connect):
+    def test_set_split_mode_cli_valid(self, _mock_builder, mock_connect_lcd):
         from trcc.cli._display import set_split_mode
 
         with patch(_SETTINGS_KEY, return_value="0"), \
@@ -813,7 +726,7 @@ class TestCLISettingCommands:
             rc = set_split_mode(_mock_builder, 0)
         assert rc == 0
 
-    def test_set_split_mode_cli_invalid(self, _mock_builder, mock_connect, capsys):
+    def test_set_split_mode_cli_invalid(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import set_split_mode
 
         # Real bus + real lcd: set_split_mode(5) → lcd.set_split_mode(5) fails
@@ -826,7 +739,7 @@ class TestCLISettingCommands:
 # =========================================================================
 
 class TestCLIOverlayCommands:
-    def test_load_mask_cli_success(self, _mock_builder, mock_connect, tmp_path):
+    def test_load_mask_cli_success(self, _mock_builder, mock_connect_lcd, tmp_path):
         from trcc.cli._display import load_mask
 
         mask_file = tmp_path / "mask.png"
@@ -848,13 +761,13 @@ class TestCLIOverlayCommands:
             rc = load_mask(_mock_builder, str(mask_file))
         assert rc == 0
 
-    def test_load_mask_cli_missing_path(self, _mock_builder, mock_connect, capsys):
+    def test_load_mask_cli_missing_path(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import load_mask
 
         rc = load_mask(_mock_builder, "/nonexistent/mask.png")
         assert rc == 1
 
-    def test_render_overlay_cli_success(self, _mock_builder, mock_connect, tmp_path, capsys):
+    def test_render_overlay_cli_success(self, _mock_builder, mock_connect_lcd, tmp_path, capsys):
         from trcc.cli._display import render_overlay
 
         dc_file = tmp_path / "config1.dc"
@@ -876,14 +789,14 @@ class TestCLIOverlayCommands:
         out = capsys.readouterr().out
         assert "orientation" in out
 
-    def test_render_overlay_cli_missing_path(self, _mock_builder, mock_connect, capsys):
+    def test_render_overlay_cli_missing_path(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import render_overlay
 
         rc = render_overlay(_mock_builder, "/nonexistent/config1.dc")
         assert rc == 1
         assert "Error" in capsys.readouterr().out
 
-    def test_render_overlay_cli_with_preview(self, _mock_builder, mock_connect, tmp_path,
+    def test_render_overlay_cli_with_preview(self, _mock_builder, mock_connect_lcd, tmp_path,
                                              capsys):
         from trcc.cli._display import render_overlay
 
@@ -912,7 +825,7 @@ class TestCLIOverlayCommands:
 # =========================================================================
 
 class TestCLIReset:
-    def test_reset_cli_success(self, _mock_builder, mock_connect, capsys):
+    def test_reset_cli_success(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import reset
 
         mock_img = make_test_surface(320, 320, (255, 0, 0))
@@ -929,7 +842,7 @@ class TestCLIReset:
         rc = reset(_mock_builder)
         assert rc == 1
 
-    def test_reset_cli_prints_device_path(self, _mock_builder, mock_connect, capsys):
+    def test_reset_cli_prints_device_path(self, _mock_builder, mock_connect_lcd, capsys):
         from trcc.cli._display import reset
 
         mock_img = make_test_surface(320, 320, (255, 0, 0))

@@ -1,10 +1,28 @@
-"""GUI test fixtures."""
+"""GUI layer test fixtures.
+
+Fixtures inherit from each other following the same DI chain as production code:
+
+    mock_lcd_device ──┐
+    mock_lcd_widgets ─┼→ lcd_handler
+    make_timer_fn ────┤       └→ make_lcd_handler (factory for custom overrides)
+    mock_lcd_bus ─────┘
+
+    mock_sensor_enumerator → sysinfo (via test class fixture)
+    make_panel_config → make_custom_panel_config
+"""
 from __future__ import annotations
 
-from unittest.mock import patch
+import os
+from unittest.mock import MagicMock, patch
 
 import pytest
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QPixmap
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+# ── TRCCApp shell ─────────────────────────────────────────────────────────────
 
 @pytest.fixture()
 def bare_trcc_app(qapp):
@@ -19,3 +37,323 @@ def bare_trcc_app(qapp):
         inst = TRCCApp.__new__(TRCCApp)
     yield inst
     TRCCApp._instance = None
+
+
+# ── LCD handler chain ─────────────────────────────────────────────────────────
+
+@pytest.fixture
+def mock_lcd_widgets():
+    """Dict of mock widgets matching LCDHandler constructor expectations."""
+    return {
+        'preview': MagicMock(),
+        'image_cut': MagicMock(),
+        'video_cut': MagicMock(),
+        'theme_setting': MagicMock(),
+        'theme_local': MagicMock(),
+        'theme_web': MagicMock(),
+        'theme_mask': MagicMock(),
+        'rotation_combo': MagicMock(),
+    }
+
+
+@pytest.fixture
+def make_timer_fn():
+    """Factory that produces a make_timer callable returning mock QTimers."""
+    def _outer():
+        def make_timer(callback, single_shot: bool = False) -> MagicMock:
+            t = MagicMock(spec=QTimer)
+            t._callback = callback
+            return t
+        return make_timer
+    return _outer
+
+
+@pytest.fixture
+def mock_lcd_device():
+    """Fully configured mock LCDDevice.
+
+    All method return values are pre-set so LCDHandler never raises when
+    routing commands through the bus.
+    """
+    lcd = MagicMock()
+    lcd.lcd_size = (320, 320)
+    lcd.resolution = (320, 320)
+    lcd.connected = True
+    lcd.auto_send = True
+    lcd.current_theme_path = None
+    lcd.enabled = False
+    lcd.playing = False
+    lcd.has_frames = False
+    lcd.interval = 33
+    lcd.last_metrics = None
+    lcd.has_changed.return_value = False
+    lcd.render.return_value = {'image': MagicMock()}
+    lcd.load_overlay_config_from_dir.return_value = None
+    lcd.set_brightness.return_value = {'success': True, 'message': 'OK'}
+    lcd.set_rotation.return_value = {'success': True, 'message': 'OK'}
+    lcd.set_split_mode.return_value = {'success': True, 'message': 'OK'}
+    lcd.set_resolution.return_value = {'success': True}
+    lcd.select.return_value = {'image': MagicMock(), 'is_animated': False}
+    lcd.save.return_value = {'success': True, 'message': 'Saved'}
+    lcd.export_config.return_value = {'success': True, 'message': 'Exported'}
+    lcd.import_config.return_value = {'success': True, 'message': 'Imported'}
+    lcd.set_config.return_value = {'success': True, 'message': 'Config set'}
+    lcd.enable.return_value = {'success': True, 'enabled': True}
+    lcd.enable_overlay.return_value = {'success': True}
+    lcd.pause.return_value = {'state': 'paused'}
+    lcd.stop.return_value = {'success': True}
+    lcd.seek.return_value = {'success': True}
+    lcd.set_fit_mode.return_value = {'success': True, 'image': None}
+    lcd.rebuild_video_cache.return_value = {'success': True}
+    lcd.set_flash_index.return_value = {'success': True}
+    lcd.set_mask_position.return_value = {'success': True}
+    lcd.render_and_send.return_value = {'success': True, 'image': MagicMock()}
+    lcd.send.return_value = None
+    lcd.load_mask_standalone.return_value = {'success': True, 'image': None}
+    lcd.restore_last_theme.return_value = {'success': False, 'error': 'No saved theme'}
+    lcd.device_service = MagicMock()
+    return lcd
+
+
+@pytest.fixture
+def mock_lcd_bus(mock_lcd_device):
+    """Mock CommandBus whose dispatch routes to mock_lcd_device methods.
+
+    Inherits mock_lcd_device so bus + device are always in sync.
+    """
+    from trcc.core.command_bus import CommandResult
+
+    bus = MagicMock()
+    _lcd = mock_lcd_device
+
+    def _dispatch(cmd: object) -> CommandResult:
+        from trcc.core.commands.lcd import (
+            EnableOverlayCommand,
+            ExportThemeCommand,
+            ImportThemeCommand,
+            LoadMaskCommand,
+            PauseVideoCommand,
+            RenderAndSendCommand,
+            RestoreLastThemeCommand,
+            SaveThemeCommand,
+            SeekVideoCommand,
+            SelectThemeCommand,
+            SendColorCommand,
+            SendFrameCommand,
+            SetBrightnessCommand,
+            SetFlashIndexCommand,
+            SetMaskPositionCommand,
+            SetOverlayConfigCommand,
+            SetResolutionCommand,
+            SetRotationCommand,
+            SetSplitModeCommand,
+            SetVideoFitModeCommand,
+            StopVideoCommand,
+            UpdateVideoCacheTextCommand,
+        )
+        if isinstance(cmd, SetBrightnessCommand):
+            return CommandResult.from_dict(_lcd.set_brightness(cmd.level))
+        if isinstance(cmd, SetRotationCommand):
+            return CommandResult.from_dict(_lcd.set_rotation(cmd.degrees))
+        if isinstance(cmd, SetSplitModeCommand):
+            return CommandResult.from_dict(_lcd.set_split_mode(cmd.mode))
+        if isinstance(cmd, SetResolutionCommand):
+            return CommandResult.from_dict(_lcd.set_resolution(cmd.width, cmd.height))
+        if isinstance(cmd, RestoreLastThemeCommand):
+            return CommandResult.from_dict(_lcd.restore_last_theme())
+        if isinstance(cmd, SelectThemeCommand):
+            return CommandResult.from_dict(_lcd.select(cmd.theme))
+        if isinstance(cmd, LoadMaskCommand):
+            return CommandResult.from_dict(_lcd.load_mask_standalone(cmd.mask_path))
+        if isinstance(cmd, SaveThemeCommand):
+            return CommandResult.from_dict(_lcd.save(cmd.name, cmd.data_dir))
+        if isinstance(cmd, ExportThemeCommand):
+            return CommandResult.from_dict(_lcd.export_config(cmd.path))
+        if isinstance(cmd, ImportThemeCommand):
+            return CommandResult.from_dict(_lcd.import_config(cmd.path, cmd.data_dir))
+        if isinstance(cmd, SetOverlayConfigCommand):
+            return CommandResult.from_dict(_lcd.set_config(cmd.config))
+        if isinstance(cmd, EnableOverlayCommand):
+            return CommandResult.from_dict(_lcd.enable_overlay(cmd.on))
+        if isinstance(cmd, StopVideoCommand):
+            return CommandResult.from_dict(_lcd.stop())
+        if isinstance(cmd, PauseVideoCommand):
+            return CommandResult.from_dict(_lcd.pause())
+        if isinstance(cmd, SeekVideoCommand):
+            return CommandResult.from_dict(_lcd.seek(cmd.percent))
+        if isinstance(cmd, SetVideoFitModeCommand):
+            return CommandResult.from_dict(_lcd.set_fit_mode(cmd.mode))
+        if isinstance(cmd, UpdateVideoCacheTextCommand):
+            return CommandResult.from_dict(_lcd.rebuild_video_cache(cmd.metrics))
+        if isinstance(cmd, SetFlashIndexCommand):
+            return CommandResult.from_dict(_lcd.set_flash_index(cmd.index))
+        if isinstance(cmd, SetMaskPositionCommand):
+            return CommandResult.from_dict(_lcd.set_mask_position(cmd.x, cmd.y))
+        if isinstance(cmd, SendFrameCommand):
+            _lcd.send(cmd.image)
+            return CommandResult.ok(message="Frame sent")
+        if isinstance(cmd, RenderAndSendCommand):
+            return CommandResult.from_dict(_lcd.render_and_send(cmd.skip_if_video))
+        if isinstance(cmd, SendColorCommand):
+            return CommandResult.ok(message="Color sent")
+        return CommandResult.ok(message="ok")
+
+    bus.dispatch.side_effect = _dispatch
+    return bus
+
+
+@pytest.fixture
+def lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, mock_lcd_bus, tmp_path):
+    """Default LCDHandler with all dependencies wired from fixtures."""
+    from trcc.gui.lcd_handler import LCDHandler
+    return LCDHandler(
+        lcd=mock_lcd_device,
+        widgets=mock_lcd_widgets,
+        make_timer=make_timer_fn(),
+        data_dir=tmp_path,
+        bus=mock_lcd_bus,
+    )
+
+
+@pytest.fixture
+def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, mock_lcd_bus, tmp_path):
+    """Factory: create LCDHandler with optional overrides.
+
+    Tests that need a non-default device, timer fn, or bus pass them as kwargs:
+        h = make_lcd_handler(lcd=custom_lcd)
+        h = make_lcd_handler(make_timer=tracking_timer)
+    """
+    from trcc.gui.lcd_handler import LCDHandler
+
+    def _factory(**overrides) -> LCDHandler:
+        lcd = overrides.pop('lcd', mock_lcd_device)
+        kw = {
+            'lcd': lcd,
+            'widgets': mock_lcd_widgets,
+            'make_timer': make_timer_fn(),
+            'data_dir': tmp_path,
+            'bus': mock_lcd_bus,
+        }
+        kw.update(overrides)
+        return LCDHandler(**kw)
+    return _factory
+
+
+@pytest.fixture
+def dispatched_commands():
+    """Helper: return all commands of a given type dispatched through a handler's bus."""
+    def _get(handler, cmd_type: type) -> list:
+        return [
+            c.args[0]
+            for c in handler._bus.dispatch.call_args_list
+            if isinstance(c.args[0], cmd_type)
+        ]
+    return _get
+
+
+# ── System info / panel fixtures ──────────────────────────────────────────────
+
+@pytest.fixture
+def make_panel_config():
+    """Factory: build a PanelConfig with sensible defaults."""
+    from trcc.adapters.system.config import PanelConfig, SensorBinding
+
+    def _factory(
+        category_id: int = 1,
+        name: str = "CPU",
+        sensors: list[SensorBinding] | None = None,
+    ) -> PanelConfig:
+        if sensors is None:
+            sensors = [
+                SensorBinding("TEMP", "hwmon:coretemp:temp1", "°C"),
+                SensorBinding("Usage", "psutil:cpu_percent", "%"),
+                SensorBinding("Clock", "psutil:cpu_freq", "MHz"),
+                SensorBinding("Power", "rapl:package-0", "W"),
+            ]
+        return PanelConfig(category_id=category_id, name=name, sensors=sensors)
+    return _factory
+
+
+@pytest.fixture
+def make_custom_panel_config(make_panel_config):
+    """Factory: build a custom (category_id=0) PanelConfig.
+
+    Inherits make_panel_config so sensor defaults are consistent.
+    """
+    from trcc.adapters.system.config import SensorBinding
+
+    def _factory(name: str = "Custom"):
+        return make_panel_config(
+            category_id=0,
+            name=name,
+            sensors=[
+                SensorBinding("Sensor 1", "", ""),
+                SensorBinding("Sensor 2", "", ""),
+                SensorBinding("Sensor 3", "", ""),
+                SensorBinding("Sensor 4", "", ""),
+            ],
+        )
+    return _factory
+
+
+@pytest.fixture
+def mock_sensor_enumerator():
+    """Mock SensorEnumerator that returns empty results."""
+    enum = MagicMock()
+    enum.discover.return_value = []
+    enum.read_all.return_value = {}
+    return enum
+
+
+@pytest.fixture
+def make_led_state():
+    """Factory: build a mock LED state object."""
+    from trcc.core.models import LEDMode, LEDZoneState
+
+    def _factory(
+        *,
+        zones: list[LEDZoneState] | None = None,
+        mode: LEDMode = LEDMode.STATIC,
+        color: tuple[int, int, int] = (255, 0, 0),
+        brightness: int = 65,
+        global_on: bool = True,
+        memory_ratio: int = 1,
+    ) -> MagicMock:
+        state = MagicMock()
+        state.zones = zones or []
+        state.mode = mode
+        state.color = color
+        state.brightness = brightness
+        state.global_on = global_on
+        state.memory_ratio = memory_ratio
+        state.segment_on = [True] * 10
+        return state
+    return _factory
+
+
+# ── Assets patching ───────────────────────────────────────────────────────────
+
+@pytest.fixture
+def mock_assets():
+    """Patch Assets across common GUI modules to avoid filesystem I/O.
+
+    Yields the mock Assets class so tests can configure return values.
+    """
+    defaults = {
+        "get": MagicMock(return_value=None),
+        "exists": MagicMock(return_value=False),
+        "load_pixmap": MagicMock(return_value=QPixmap()),
+        "get_localized": MagicMock(return_value="fake"),
+    }
+    modules = [
+        "trcc.gui.uc_color_wheel.Assets",
+        "trcc.gui.uc_screen_led.Assets",
+        "trcc.gui.uc_led_control.Assets",
+        "trcc.gui.uc_system_info.Assets",
+        "trcc.gui.lcd_handler.Assets",
+    ]
+    patches = [patch(m, **defaults) for m in modules]
+    mocks = [p.start() for p in patches]
+    yield mocks[0]
+    for p in patches:
+        p.stop()

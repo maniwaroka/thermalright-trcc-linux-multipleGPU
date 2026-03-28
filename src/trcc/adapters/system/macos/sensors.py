@@ -20,6 +20,7 @@ import ctypes.util
 import datetime
 import logging
 import platform
+import re
 import struct
 import subprocess
 import threading
@@ -205,6 +206,7 @@ class MacOSSensorEnumerator(SensorEnumeratorABC):
             SensorInfo('psutil:mem_used', 'Memory Used', 'memory', 'MB', 'psutil'),
             SensorInfo('psutil:mem_total', 'Memory Total', 'memory', 'MB', 'psutil'),
             SensorInfo('psutil:mem_percent', 'Memory Usage', 'memory', '%', 'psutil'),
+            SensorInfo('computed:disk_percent', 'Disk Usage', 'disk_io', '%', 'computed'),
             SensorInfo('computed:disk_read', 'Disk Read', 'disk_io', 'MB/s', 'computed'),
             SensorInfo('computed:disk_write', 'Disk Write', 'disk_io', 'MB/s', 'computed'),
             SensorInfo('computed:net_up', 'Network Upload', 'network_io', 'KB/s', 'computed'),
@@ -296,6 +298,7 @@ class MacOSSensorEnumerator(SensorEnumeratorABC):
         readings['psutil:mem_used'] = mem.used / (1024 * 1024)
         readings['psutil:mem_total'] = mem.total / (1024 * 1024)
         readings['psutil:mem_percent'] = mem.percent
+        readings['computed:disk_percent'] = self._poll_apfs_disk_percent()
 
         # SMC (Intel) or IOKit (Apple Silicon)
         if IS_APPLE_SILICON:
@@ -388,6 +391,35 @@ class MacOSSensorEnumerator(SensorEnumeratorABC):
         except Exception:
             pass
 
+    def _poll_apfs_disk_percent(self) -> float:
+        """Read APFS container disk usage via diskutil.
+
+        psutil.disk_usage('/') only reports the root snapshot volume (~3%),
+        not the actual APFS container usage. `diskutil apfs list` gives real
+        container-level numbers.
+        """
+        try:
+            result = subprocess.run(
+                ['diskutil', 'apfs', 'list'],
+                capture_output=True, text=True, timeout=5,
+            )
+            capacity = 0
+            in_use = 0
+            for line in result.stdout.splitlines():
+                if 'Size (Capacity Ceiling)' in line:
+                    m = re.search(r'(\d+)\s+B', line)
+                    if m:
+                        capacity = int(m.group(1))
+                elif 'Capacity In Use By Volumes' in line:
+                    m = re.search(r'(\d+)\s+B', line)
+                    if m:
+                        in_use = int(m.group(1))
+            if capacity > 0:
+                return round(in_use / capacity * 100, 1)
+        except Exception:
+            log.debug("diskutil apfs list failed", exc_info=True)
+        return psutil.disk_usage('/').percent
+
     def _read_smc_key(self, key: str) -> float | None:
         """Read a single SMC key value (Intel Macs only).
 
@@ -467,6 +499,7 @@ class MacOSSensorEnumerator(SensorEnumeratorABC):
         mapping['mem_available'] = 'psutil:mem_used'
 
         # Disk / Network
+        mapping['disk_percent'] = 'computed:disk_percent'
         mapping['disk_read'] = 'computed:disk_read'
         mapping['disk_write'] = 'computed:disk_write'
         mapping['net_up'] = 'computed:net_up'
@@ -490,7 +523,6 @@ def _parse_metric(line: str) -> float:
         "CPU die temperature: 45.23 C" → 45.23
         "Fan: 1200 rpm" → 1200.0
     """
-    import re
     match = re.search(r'([\d.]+)', line.split(':')[-1])
     if match:
         return float(match.group(1))

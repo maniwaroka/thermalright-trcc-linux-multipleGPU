@@ -34,192 +34,6 @@ from trcc.core.commands.lcd import (
     StopVideoCommand,
     UpdateVideoCacheTextCommand,
 )
-from trcc.gui.lcd_handler import LCDHandler
-
-# =========================================================================
-# Helpers
-# =========================================================================
-
-
-def _make_widgets() -> dict:
-    """Build a dict of mock widgets matching LCDHandler expectations."""
-    return {
-        'preview': MagicMock(),
-        'image_cut': MagicMock(),
-        'video_cut': MagicMock(),
-        'theme_setting': MagicMock(),
-        'theme_local': MagicMock(),
-        'theme_web': MagicMock(),
-        'theme_mask': MagicMock(),
-        'rotation_combo': MagicMock(),
-    }
-
-
-def _make_timer_fn():
-    """Return a make_timer callable that returns MagicMock QTimers."""
-    def make_timer(callback, single_shot=False):
-        t = MagicMock(spec=QTimer)
-        t._callback = callback
-        return t
-    return make_timer
-
-
-def _make_lcd() -> MagicMock:
-    """Build a mock LCDDevice.
-
-    Sets the properties the handler reads directly (enabled, playing,
-    has_frames, has_changed, render, interval, last_metrics) plus all the
-    method return values that the command handler calls internally.
-    """
-    lcd = MagicMock()
-    lcd.lcd_size = (320, 320)
-    lcd.resolution = (320, 320)
-    lcd.connected = True
-    lcd.auto_send = True
-    lcd.current_theme_path = None
-
-    # Properties the handler reads directly (no sub-object indirection)
-    lcd.enabled = False
-    lcd.playing = False
-    lcd.has_frames = False
-    lcd.interval = 33
-    lcd.last_metrics = None
-    lcd.has_changed.return_value = False
-
-    # render() is called directly by render_and_preview()
-    lcd.render.return_value = {'image': MagicMock()}
-
-    # Methods called by command handlers wired through _make_bus
-    lcd.load_overlay_config_from_dir.return_value = None
-    lcd.set_brightness.return_value = {'success': True, 'message': 'OK'}
-    lcd.set_rotation.return_value = {'success': True, 'message': 'OK'}
-    lcd.set_split_mode.return_value = {'success': True, 'message': 'OK'}
-    lcd.set_resolution.return_value = {'success': True}
-    lcd.select.return_value = {'image': MagicMock(), 'is_animated': False}
-    lcd.save.return_value = {'success': True, 'message': 'Saved'}
-    lcd.export_config.return_value = {'success': True, 'message': 'Exported'}
-    lcd.import_config.return_value = {'success': True, 'message': 'Imported'}
-    lcd.set_config.return_value = {'success': True, 'message': 'Config set'}
-    lcd.enable.return_value = {'success': True, 'enabled': True}
-    lcd.enable_overlay.return_value = {'success': True}
-    lcd.pause.return_value = {'state': 'paused'}
-    lcd.stop.return_value = {'success': True}
-    lcd.seek.return_value = {'success': True}
-    lcd.set_fit_mode.return_value = {'success': True, 'image': None}
-    lcd.rebuild_video_cache.return_value = {'success': True}
-    lcd.set_flash_index.return_value = {'success': True}
-    lcd.set_mask_position.return_value = {'success': True}
-    lcd.render_and_send.return_value = {'success': True, 'image': MagicMock()}
-    lcd.send.return_value = None
-    lcd.load_mask_standalone.return_value = {'success': True, 'image': None}
-    lcd.restore_last_theme.return_value = {'success': False, 'error': 'No saved theme'}
-
-    lcd.device_service = MagicMock()
-    return lcd
-
-
-def _make_bus(lcd: MagicMock | None = None) -> MagicMock:
-    """Mock CommandBus whose dispatch returns a result wrapping the device call."""
-    from trcc.core.command_bus import CommandResult
-
-    bus = MagicMock()
-    _lcd = lcd or _make_lcd()
-
-    def _dispatch(cmd: object) -> CommandResult:
-        from trcc.core.commands.lcd import (
-            EnableOverlayCommand,
-            ExportThemeCommand,
-            ImportThemeCommand,
-            LoadMaskCommand,
-            PauseVideoCommand,
-            RenderAndSendCommand,
-            RestoreLastThemeCommand,
-            SaveThemeCommand,
-            SeekVideoCommand,
-            SelectThemeCommand,
-            SendColorCommand,
-            SendFrameCommand,
-            SetBrightnessCommand,
-            SetFlashIndexCommand,
-            SetMaskPositionCommand,
-            SetOverlayConfigCommand,
-            SetResolutionCommand,
-            SetRotationCommand,
-            SetSplitModeCommand,
-            SetVideoFitModeCommand,
-            StopVideoCommand,
-            UpdateVideoCacheTextCommand,
-        )
-        if isinstance(cmd, SetBrightnessCommand):
-            return CommandResult.from_dict(_lcd.set_brightness(cmd.level))
-        if isinstance(cmd, SetRotationCommand):
-            return CommandResult.from_dict(_lcd.set_rotation(cmd.degrees))
-        if isinstance(cmd, SetSplitModeCommand):
-            return CommandResult.from_dict(_lcd.set_split_mode(cmd.mode))
-        if isinstance(cmd, SetResolutionCommand):
-            return CommandResult.from_dict(_lcd.set_resolution(cmd.width, cmd.height))
-        if isinstance(cmd, RestoreLastThemeCommand):
-            return CommandResult.from_dict(_lcd.restore_last_theme())
-        if isinstance(cmd, SelectThemeCommand):
-            return CommandResult.from_dict(_lcd.select(cmd.theme))
-        if isinstance(cmd, LoadMaskCommand):
-            return CommandResult.from_dict(_lcd.load_mask_standalone(cmd.mask_path))
-        if isinstance(cmd, SaveThemeCommand):
-            return CommandResult.from_dict(_lcd.save(cmd.name, cmd.data_dir))
-        if isinstance(cmd, ExportThemeCommand):
-            return CommandResult.from_dict(_lcd.export_config(cmd.path))
-        if isinstance(cmd, ImportThemeCommand):
-            return CommandResult.from_dict(_lcd.import_config(cmd.path, cmd.data_dir))
-        if isinstance(cmd, SetOverlayConfigCommand):
-            return CommandResult.from_dict(_lcd.set_config(cmd.config))
-        if isinstance(cmd, EnableOverlayCommand):
-            return CommandResult.from_dict(_lcd.enable_overlay(cmd.on))
-        if isinstance(cmd, StopVideoCommand):
-            return CommandResult.from_dict(_lcd.stop())
-        if isinstance(cmd, PauseVideoCommand):
-            return CommandResult.from_dict(_lcd.pause())
-        if isinstance(cmd, SeekVideoCommand):
-            return CommandResult.from_dict(_lcd.seek(cmd.percent))
-        if isinstance(cmd, SetVideoFitModeCommand):
-            return CommandResult.from_dict(_lcd.set_fit_mode(cmd.mode))
-        if isinstance(cmd, UpdateVideoCacheTextCommand):
-            return CommandResult.from_dict(_lcd.rebuild_video_cache(cmd.metrics))
-        if isinstance(cmd, SetFlashIndexCommand):
-            return CommandResult.from_dict(_lcd.set_flash_index(cmd.index))
-        if isinstance(cmd, SetMaskPositionCommand):
-            return CommandResult.from_dict(_lcd.set_mask_position(cmd.x, cmd.y))
-        if isinstance(cmd, SendFrameCommand):
-            _lcd.send(cmd.image)
-            return CommandResult.ok(message="Frame sent")
-        if isinstance(cmd, RenderAndSendCommand):
-            return CommandResult.from_dict(_lcd.render_and_send(cmd.skip_if_video))
-        if isinstance(cmd, SendColorCommand):
-            return CommandResult.ok(message="Color sent")
-        return CommandResult.ok(message="ok")
-
-    bus.dispatch.side_effect = _dispatch
-    return bus
-
-
-def _dispatched(handler: LCDHandler, cmd_type: type) -> list:
-    """Return all commands of cmd_type dispatched through the bus."""
-    return [c.args[0] for c in handler._bus.dispatch.call_args_list
-            if isinstance(c.args[0], cmd_type)]
-
-
-def _make_handler(**overrides) -> LCDHandler:
-    """Create LCDHandler with all mocks."""
-    lcd = overrides.pop('lcd', _make_lcd())
-    kw = {
-        'lcd': lcd,
-        'widgets': _make_widgets(),
-        'make_timer': _make_timer_fn(),
-        'data_dir': Path('/tmp/trcc-test'),
-        'bus': _make_bus(lcd),
-    }
-    kw.update(overrides)
-    return LCDHandler(**kw)
-
 
 # =========================================================================
 # Construction
@@ -229,42 +43,35 @@ def _make_handler(**overrides) -> LCDHandler:
 class TestConstruction:
     """LCDHandler construction and properties."""
 
-    def test_stores_lcd(self):
-        lcd = _make_lcd()
-        h = _make_handler(lcd=lcd)
-        assert h.display is lcd
+    def test_stores_lcd(self, make_lcd_handler, mock_lcd_device):
+        h = make_lcd_handler(lcd=mock_lcd_device)
+        assert h.display is mock_lcd_device
 
-    def test_device_key_starts_empty(self):
-        h = _make_handler()
-        assert h.device_key == ''
+    def test_device_key_starts_empty(self, lcd_handler):
+        assert lcd_handler.device_key == ''
 
-    def test_brightness_level_default(self):
-        h = _make_handler()
-        assert h.brightness_level == 100  # DEFAULT_BRIGHTNESS_LEVEL = 100%
+    def test_brightness_level_default(self, lcd_handler):
+        assert lcd_handler.brightness_level == 100  # DEFAULT_BRIGHTNESS_LEVEL = 100%
 
-    def test_split_mode_default(self):
-        h = _make_handler()
-        assert h.split_mode == 0
+    def test_split_mode_default(self, lcd_handler):
+        assert lcd_handler.split_mode == 0
 
-    def test_ldd_is_split_default_false(self):
-        h = _make_handler()
-        assert h.ldd_is_split is False
+    def test_ldd_is_split_default_false(self, lcd_handler):
+        assert lcd_handler.ldd_is_split is False
 
-    def test_is_background_active_default_false(self):
-        h = _make_handler()
-        assert h.is_background_active is False
+    def test_is_background_active_default_false(self, lcd_handler):
+        assert lcd_handler.is_background_active is False
 
-    def test_is_background_active_setter(self):
-        h = _make_handler()
-        h.is_background_active = True
-        assert h.is_background_active is True
+    def test_is_background_active_setter(self, lcd_handler):
+        lcd_handler.is_background_active = True
+        assert lcd_handler.is_background_active is True
 
-    def test_three_timers_created(self):
+    def test_three_timers_created(self, make_lcd_handler):
         calls = []
         def track_timer(cb, single_shot=False):
             calls.append((cb, single_shot))
             return MagicMock(spec=QTimer)
-        _make_handler(make_timer=track_timer)
+        make_lcd_handler(make_timer=track_timer)
         assert len(calls) == 3
         # Flash timer is single_shot
         assert calls[2][1] is True
@@ -287,63 +94,58 @@ class TestApplyDeviceConfig:
         return dev
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_sets_device_key(self, mock_settings):
+    def test_sets_device_key(self, mock_settings, lcd_handler):
         mock_settings.device_config_key.return_value = 'test_key'
         mock_settings.get_device_config.return_value = {}
-        h = _make_handler()
-        h.apply_device_config(self._device(), 320, 320)
-        assert h.device_key == 'test_key'
+        lcd_handler.apply_device_config(self._device(), 320, 320)
+        assert lcd_handler.device_key == 'test_key'
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_restores_brightness(self, mock_settings):
+    def test_restores_brightness(self, mock_settings, lcd_handler, dispatched_commands):
         """Stored percent value restored directly — no level mapping."""
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {'brightness_level': 50}
-        h = _make_handler()
-        h.apply_device_config(self._device(), 320, 320)
-        assert h.brightness_level == 50
-        cmds = _dispatched(h, SetBrightnessCommand)
+        lcd_handler.apply_device_config(self._device(), 320, 320)
+        assert lcd_handler.brightness_level == 50
+        cmds = dispatched_commands(lcd_handler, SetBrightnessCommand)
         assert cmds and cmds[0].level == 50
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_restores_rotation(self, mock_settings):
+    def test_restores_rotation(self, mock_settings, make_lcd_handler, mock_lcd_device):
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {'rotation': 90}
-        h = _make_handler()
+        h = make_lcd_handler()
         h.apply_device_config(self._device(), 320, 320)
-        h._lcd.set_rotation.assert_called_with(90)
+        mock_lcd_device.set_rotation.assert_called_with(90)
         h._w['rotation_combo'].setCurrentIndex.assert_called_with(1)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_resolution_change_updates_widgets(self, mock_settings):
+    def test_resolution_change_updates_widgets(self, mock_settings, make_lcd_handler, mock_lcd_device):
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        lcd = _make_lcd()
-        lcd.lcd_size = (320, 320)
-        h = _make_handler(lcd=lcd)
+        mock_lcd_device.lcd_size = (320, 320)
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.apply_device_config(self._device(), 480, 480)
         # Widgets always updated — InitializeDeviceCommand is owned by _wire_bus, not here
         h._w['preview'].set_resolution.assert_called_with(480, 480)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_widgets_always_updated(self, mock_settings):
+    def test_widgets_always_updated(self, mock_settings, lcd_handler):
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        h = _make_handler()
-        h.apply_device_config(self._device(), 320, 320)
+        lcd_handler.apply_device_config(self._device(), 320, 320)
         # Widget updates are unconditional — InitializeDeviceCommand not dispatched here
-        h._w['preview'].set_resolution.assert_called_with(320, 320)
-        h._w['image_cut'].set_resolution.assert_called_with(320, 320)
-        h._w['video_cut'].set_resolution.assert_called_with(320, 320)
-        h._w['theme_setting'].set_resolution.assert_called_with(320, 320)
+        lcd_handler._w['preview'].set_resolution.assert_called_with(320, 320)
+        lcd_handler._w['image_cut'].set_resolution.assert_called_with(320, 320)
+        lcd_handler._w['video_cut'].set_resolution.assert_called_with(320, 320)
+        lcd_handler._w['theme_setting'].set_resolution.assert_called_with(320, 320)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_split_mode_restored_for_split_resolution(self, mock_settings):
+    def test_split_mode_restored_for_split_resolution(self, mock_settings, make_lcd_handler, mock_lcd_device):
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {'split_mode': 1}
-        lcd = _make_lcd()
-        lcd.lcd_size = (320, 320)  # different from target to trigger change
-        h = _make_handler(lcd=lcd)
+        mock_lcd_device.lcd_size = (320, 320)  # different from target to trigger change
+        h = make_lcd_handler(lcd=mock_lcd_device)
         # 1600x720 is the split resolution (SPLIT_MODE_RESOLUTIONS)
         h.apply_device_config(self._device((1600, 720)), 1600, 720)
         assert h.ldd_is_split is True
@@ -370,7 +172,7 @@ class TestUpdateThemeDirectories:
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler._conf')
-    def test_auto_loads_first_theme_on_first_install(self, mock_conf, mock_settings, tmp_path):
+    def test_auto_loads_first_theme_on_first_install(self, mock_conf, mock_settings, make_lcd_handler, mock_lcd_device, dispatched_commands, tmp_path):
         """With no current image and no saved theme_path, auto-loads the first theme folder."""
         from trcc.core.commands.lcd import SelectThemeCommand
 
@@ -383,20 +185,19 @@ class TestUpdateThemeDirectories:
 
         mock_settings.get_device_config.return_value = {}  # no saved theme_path
 
-        lcd = _make_lcd()
-        lcd.current_image = None  # no image loaded yet
+        mock_lcd_device.current_image = None  # no image loaded yet
 
         with patch('trcc.gui.lcd_handler.ThemeInfo') as mock_ti:
             mock_ti.from_directory.return_value = MagicMock()
-            h = _make_handler(lcd=lcd)
+            h = make_lcd_handler(lcd=mock_lcd_device)
             h._device_key = 'dev0'
             h._update_theme_directories()
 
-        assert _dispatched(h, SelectThemeCommand), "Should auto-load first theme on first install"
+        assert dispatched_commands(h, SelectThemeCommand), "Should auto-load first theme on first install"
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler._conf')
-    def test_skips_auto_load_when_saved_theme_exists(self, mock_conf, mock_settings, tmp_path):
+    def test_skips_auto_load_when_saved_theme_exists(self, mock_conf, mock_settings, make_lcd_handler, mock_lcd_device, dispatched_commands, tmp_path):
         """With no current image but a saved theme_path, skips auto-load to preserve user selection."""
         from trcc.core.commands.lcd import SelectThemeCommand
 
@@ -410,19 +211,18 @@ class TestUpdateThemeDirectories:
         # User has a saved theme — must not overwrite it
         mock_settings.get_device_config.return_value = {'theme_path': '/themes/MyTheme'}
 
-        lcd = _make_lcd()
-        lcd.current_image = None
+        mock_lcd_device.current_image = None
 
-        h = _make_handler(lcd=lcd)
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h._device_key = 'dev0'
         h._update_theme_directories()
 
-        assert not _dispatched(h, SelectThemeCommand), \
+        assert not dispatched_commands(h, SelectThemeCommand), \
             "Must not auto-load theme1 when user already has a saved theme_path"
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler._conf')
-    def test_skips_auto_load_when_image_already_showing(self, mock_conf, mock_settings, tmp_path):
+    def test_skips_auto_load_when_image_already_showing(self, mock_conf, mock_settings, make_lcd_handler, mock_lcd_device, dispatched_commands, tmp_path):
         """With a current image already loaded, skips auto-load regardless of saved config."""
         from trcc.core.commands.lcd import SelectThemeCommand
 
@@ -434,14 +234,13 @@ class TestUpdateThemeDirectories:
         mock_conf.settings.masks_dir = None
         mock_settings.get_device_config.return_value = {}
 
-        lcd = _make_lcd()
-        lcd.current_image = MagicMock()  # image already showing
+        mock_lcd_device.current_image = MagicMock()  # image already showing
 
-        h = _make_handler(lcd=lcd)
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h._device_key = 'dev0'
         h._update_theme_directories()
 
-        assert not _dispatched(h, SelectThemeCommand), \
+        assert not dispatched_commands(h, SelectThemeCommand), \
             "Must not auto-load when current_image is already set"
 
 
@@ -455,103 +254,96 @@ class TestThemeSelection:
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
-    def test_select_theme_from_path_calls_select(self, mock_ti, mock_settings):
+    def test_select_theme_from_path_calls_select(self, mock_ti, mock_settings, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import SelectThemeCommand
         mock_ti.from_directory.return_value = MagicMock()
-        h = _make_handler()
         path = MagicMock(spec=Path)
         path.exists.return_value = True
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
 
-        h.select_theme_from_path(path)
-        assert _dispatched(h, SelectThemeCommand)
+        lcd_handler.select_theme_from_path(path)
+        assert dispatched_commands(lcd_handler, SelectThemeCommand)
 
-    def test_select_theme_nonexistent_path_noop(self):
+    def test_select_theme_nonexistent_path_noop(self, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import SelectThemeCommand
-        h = _make_handler()
         path = MagicMock(spec=Path)
         path.exists.return_value = False
-        h.select_theme_from_path(path)
-        assert not _dispatched(h, SelectThemeCommand)
+        lcd_handler.select_theme_from_path(path)
+        assert not dispatched_commands(lcd_handler, SelectThemeCommand)
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
-    def test_select_theme_stops_video(self, mock_ti, mock_settings):
+    def test_select_theme_stops_video(self, mock_ti, mock_settings, lcd_handler, dispatched_commands):
         """Theme selection dispatches StopVideoCommand through the bus."""
         mock_ti.from_directory.return_value = MagicMock()
-        h = _make_handler()
         path = MagicMock(spec=Path)
         path.exists.return_value = True
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
 
-        h.select_theme_from_path(path)
-        assert _dispatched(h, StopVideoCommand)
+        lcd_handler.select_theme_from_path(path)
+        assert dispatched_commands(lcd_handler, StopVideoCommand)
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
-    def test_select_theme_persists_path(self, mock_ti, mock_settings):
+    def test_select_theme_persists_path(self, mock_ti, mock_settings, lcd_handler):
         mock_ti.from_directory.return_value = MagicMock()
-        h = _make_handler()
-        h._device_key = 'dev0'
+        lcd_handler._device_key = 'dev0'
         path = MagicMock(spec=Path)
         path.exists.return_value = True
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
         path.__str__ = lambda self: '/themes/TestTheme'
 
-        h.select_theme_from_path(path, persist=True)
+        lcd_handler.select_theme_from_path(path, persist=True)
         mock_settings.save_device_setting.assert_any_call(
             'dev0', 'theme_path', '/themes/TestTheme')
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
-    def test_select_theme_no_persist(self, mock_ti, mock_settings):
+    def test_select_theme_no_persist(self, mock_ti, mock_settings, lcd_handler):
         mock_ti.from_directory.return_value = MagicMock()
-        h = _make_handler()
-        h._device_key = 'dev0'
+        lcd_handler._device_key = 'dev0'
         path = MagicMock(spec=Path)
         path.exists.return_value = True
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
 
-        h.select_theme_from_path(path, persist=False)
+        lcd_handler.select_theme_from_path(path, persist=False)
         mock_settings.save_device_setting.assert_not_called()
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
-    def test_no_double_send_when_overlay_follows(self, mock_ti, mock_settings):
+    def test_no_double_send_when_overlay_follows(self, mock_ti, mock_settings, lcd_handler, dispatched_commands):
         """select_theme_from_path must not dispatch SendFrameCommand when
         overlay config will follow — avoids double-send blink on theme switch."""
         mock_ti.from_directory.return_value = MagicMock()
-        h = _make_handler()
         path = MagicMock(spec=Path)
         path.exists.return_value = True
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
         # overlay_config=True (default) and load_overlay_config_from_dir returns None
         # (theme has no overlay) — still must not SendFrameCommand; RenderAndSend owns the send
-        h._lcd.load_overlay_config_from_dir.return_value = None
+        lcd_handler._lcd.load_overlay_config_from_dir.return_value = None
 
-        h.select_theme_from_path(path)
+        lcd_handler.select_theme_from_path(path)
 
-        assert not _dispatched(h, SendFrameCommand), (
+        assert not dispatched_commands(lcd_handler, SendFrameCommand), (
             "SendFrameCommand must not fire when overlay_config=True — "
             "_load_theme_overlay_config owns the single send to avoid blink"
         )
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
-    def test_single_render_and_send_on_theme_switch(self, mock_ti, mock_settings):
+    def test_single_render_and_send_on_theme_switch(self, mock_ti, mock_settings, lcd_handler, dispatched_commands):
         """Exactly one RenderAndSendCommand on a normal theme switch with overlay config."""
         mock_ti.from_directory.return_value = MagicMock()
-        h = _make_handler()
         path = MagicMock(spec=Path)
         path.exists.return_value = True
         path.__truediv__ = lambda self, x: MagicMock(exists=lambda: False)
         # Theme has an overlay config — full overlay path
-        h._lcd.load_overlay_config_from_dir.return_value = {'elements': []}
+        lcd_handler._lcd.load_overlay_config_from_dir.return_value = {'elements': []}
 
-        h.select_theme_from_path(path)
+        lcd_handler.select_theme_from_path(path)
 
-        renders = _dispatched(h, RenderAndSendCommand)
-        sends = _dispatched(h, SendFrameCommand)
+        renders = dispatched_commands(lcd_handler, RenderAndSendCommand)
+        sends = dispatched_commands(lcd_handler, SendFrameCommand)
         assert len(renders) == 1, f"Expected 1 RenderAndSendCommand, got {len(renders)}"
         assert len(sends) == 0, f"Expected 0 SendFrameCommand, got {len(sends)}"
 
@@ -565,87 +357,81 @@ class TestMask:
     """apply_mask — loads mask, updates preview, persists."""
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_apply_mask_with_path(self, mock_settings):
+    def test_apply_mask_with_path(self, mock_settings, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import LoadMaskCommand
-        h = _make_handler()
-        h._device_key = 'dev0'
+        lcd_handler._device_key = 'dev0'
         mask_info = MagicMock()
         mask_info.path = '/masks/01'
-        h._lcd.load_mask_standalone.return_value = {
+        lcd_handler._lcd.load_mask_standalone.return_value = {
             'success': True, 'image': MagicMock()}
-        h.apply_mask(mask_info)
-        assert _dispatched(h, LoadMaskCommand)
+        lcd_handler.apply_mask(mask_info)
+        assert dispatched_commands(lcd_handler, LoadMaskCommand)
         mock_settings.save_device_setting.assert_called_with(
             'dev0', 'mask_path', '/masks/01')
 
-    def test_apply_mask_no_path_sets_status(self):
-        h = _make_handler()
+    def test_apply_mask_no_path_sets_status(self, lcd_handler):
         mask_info = MagicMock()
         mask_info.path = None
         mask_info.name = "Empty"
-        h.apply_mask(mask_info)
-        h._w['preview'].set_status.assert_called_once()
+        lcd_handler.apply_mask(mask_info)
+        lcd_handler._w['preview'].set_status.assert_called_once()
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_restore_dispatches_restore_last_theme_command(self, mock_settings):
+    def test_restore_dispatches_restore_last_theme_command(self, mock_settings, make_lcd_handler, mock_lcd_device, dispatched_commands):
         """apply_device_config dispatches RestoreLastThemeCommand — shared path with CLI/API."""
         from trcc.core.commands.lcd import RestoreLastThemeCommand
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        lcd = _make_lcd()
-        lcd.restore_last_theme.return_value = {'success': False, 'error': 'No saved theme'}
-        h = _make_handler(lcd=lcd)
+        mock_lcd_device.restore_last_theme.return_value = {'success': False, 'error': 'No saved theme'}
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.apply_device_config(
             MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
-        assert _dispatched(h, RestoreLastThemeCommand)
+        assert dispatched_commands(h, RestoreLastThemeCommand)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_restore_updates_preview_on_success(self, mock_settings):
+    def test_restore_updates_preview_on_success(self, mock_settings, make_lcd_handler, mock_lcd_device):
         """apply_device_config updates preview widget when RestoreLastThemeCommand succeeds."""
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        lcd = _make_lcd()
         img = MagicMock()
-        lcd.restore_last_theme.return_value = {
+        mock_lcd_device.restore_last_theme.return_value = {
             'success': True, 'image': img, 'is_animated': False,
             'overlay_config': None, 'overlay_enabled': False,
         }
-        h = _make_handler(lcd=lcd)
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.apply_device_config(
             MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
         h._w['preview'].set_image.assert_called_once_with(img, fast=False)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_restore_starts_animation_timer_for_video_theme(self, mock_settings):
+    def test_restore_starts_animation_timer_for_video_theme(self, mock_settings, make_lcd_handler, mock_lcd_device):
         """apply_device_config starts animation timer when restoring a video theme."""
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        lcd = _make_lcd()
-        lcd.playing = True
+        mock_lcd_device.playing = True
         img = MagicMock()
-        lcd.restore_last_theme.return_value = {
+        mock_lcd_device.restore_last_theme.return_value = {
             'success': True, 'image': img, 'is_animated': True,
             'overlay_config': None, 'overlay_enabled': False,
         }
-        h = _make_handler(lcd=lcd)
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.apply_device_config(
             MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
         h._animation_timer.start.assert_called_with(33)  # lcd.interval = 33
         h._w['preview'].set_playing.assert_called_with(True)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_restore_no_animation_timer_for_static_theme(self, mock_settings):
+    def test_restore_no_animation_timer_for_static_theme(self, mock_settings, make_lcd_handler, mock_lcd_device):
         """apply_device_config does NOT start animation timer for a static theme."""
         mock_settings.device_config_key.return_value = 'k'
         mock_settings.get_device_config.return_value = {}
-        lcd = _make_lcd()
-        lcd.playing = False
+        mock_lcd_device.playing = False
         img = MagicMock()
-        lcd.restore_last_theme.return_value = {
+        mock_lcd_device.restore_last_theme.return_value = {
             'success': True, 'image': img, 'is_animated': False,
             'overlay_config': None, 'overlay_enabled': True,
         }
-        h = _make_handler(lcd=lcd)
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.apply_device_config(
             MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
         h._animation_timer.start.assert_not_called()
@@ -659,40 +445,36 @@ class TestMask:
 class TestVideo:
     """play_pause, stop, seek, tick."""
 
-    def test_play_pause_toggles(self):
+    def test_play_pause_toggles(self, make_lcd_handler, mock_lcd_device, dispatched_commands):
         """play_pause dispatches PauseVideoCommand; result state drives timer."""
-        lcd = _make_lcd()
-        lcd.pause.return_value = {'state': 'playing', 'success': True}
-        h = _make_handler(lcd=lcd)
+        mock_lcd_device.pause.return_value = {'state': 'playing', 'success': True}
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.play_pause()
-        assert _dispatched(h, PauseVideoCommand)
+        assert dispatched_commands(h, PauseVideoCommand)
         h._w['preview'].set_playing.assert_called_with(True)
         h._animation_timer.start.assert_called_with(33)  # lcd.interval = 33
 
-    def test_play_pause_pauses(self):
+    def test_play_pause_pauses(self, make_lcd_handler, mock_lcd_device, dispatched_commands):
         """play_pause dispatches PauseVideoCommand; paused state stops timer."""
-        lcd = _make_lcd()
-        lcd.pause.return_value = {'state': 'paused', 'success': True}
-        h = _make_handler(lcd=lcd)
+        mock_lcd_device.pause.return_value = {'state': 'paused', 'success': True}
+        h = make_lcd_handler(lcd=mock_lcd_device)
         h.play_pause()
         h._w['preview'].set_playing.assert_called_with(False)
         h._animation_timer.stop.assert_called()
 
-    def test_stop_video_dispatches_command(self):
+    def test_stop_video_dispatches_command(self, lcd_handler, dispatched_commands):
         """stop_video dispatches StopVideoCommand through the bus."""
-        h = _make_handler()
-        h.stop_video()
-        assert _dispatched(h, StopVideoCommand)
-        h._animation_timer.stop.assert_called()
-        h._w['preview'].set_playing.assert_called_with(False)
-        h._w['preview'].show_video_controls.assert_called_with(False)
+        lcd_handler.stop_video()
+        assert dispatched_commands(lcd_handler, StopVideoCommand)
+        lcd_handler._animation_timer.stop.assert_called()
+        lcd_handler._w['preview'].set_playing.assert_called_with(False)
+        lcd_handler._w['preview'].show_video_controls.assert_called_with(False)
 
-    def test_seek_dispatches_command(self):
+    def test_seek_dispatches_command(self, lcd_handler, dispatched_commands):
         """seek dispatches SeekVideoCommand with correct percent."""
         from trcc.core.commands.lcd import SeekVideoCommand
-        h = _make_handler()
-        h.seek(50.0)
-        cmds = _dispatched(h, SeekVideoCommand)
+        lcd_handler.seek(50.0)
+        cmds = dispatched_commands(lcd_handler, SeekVideoCommand)
         assert cmds and cmds[0].percent == 50.0
 
 
@@ -705,130 +487,117 @@ class TestOverlay:
     """on_overlay_changed, on_overlay_tick, flash_element."""
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_overlay_changed_dispatches_enable_and_config(self, mock_settings):
+    def test_overlay_changed_dispatches_enable_and_config(self, mock_settings, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import SetOverlayConfigCommand
-        h = _make_handler()
-        h._device_key = 'dev0'
-        h._lcd.enabled = False  # overlay disabled — should trigger EnableOverlayCommand
-        h._w['theme_setting'].overlay_grid.overlay_enabled = True
+        lcd_handler._device_key = 'dev0'
+        lcd_handler._lcd.enabled = False  # overlay disabled — should trigger EnableOverlayCommand
+        lcd_handler._w['theme_setting'].overlay_grid.overlay_enabled = True
         data = {'elements': []}
-        h.on_overlay_changed(data)
-        assert _dispatched(h, EnableOverlayCommand)
-        cmds = _dispatched(h, SetOverlayConfigCommand)
+        lcd_handler.on_overlay_changed(data)
+        assert dispatched_commands(lcd_handler, EnableOverlayCommand)
+        cmds = dispatched_commands(lcd_handler, SetOverlayConfigCommand)
         assert cmds and cmds[0].config == data
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_overlay_changed_empty_data_noop(self, mock_settings):
+    def test_overlay_changed_empty_data_noop(self, mock_settings, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import SetOverlayConfigCommand
-        h = _make_handler()
-        h.on_overlay_changed({})
-        assert not _dispatched(h, SetOverlayConfigCommand)
+        lcd_handler.on_overlay_changed({})
+        assert not dispatched_commands(lcd_handler, SetOverlayConfigCommand)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_overlay_changed_none_data_noop(self, mock_settings):
+    def test_overlay_changed_none_data_noop(self, mock_settings, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import SetOverlayConfigCommand
-        h = _make_handler()
-        h.on_overlay_changed(None)
-        assert not _dispatched(h, SetOverlayConfigCommand)
+        lcd_handler.on_overlay_changed(None)
+        assert not dispatched_commands(lcd_handler, SetOverlayConfigCommand)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_overlay_changed_persists(self, mock_settings):
-        h = _make_handler()
-        h._device_key = 'dev0'
-        h._w['theme_setting'].overlay_grid.overlay_enabled = True
+    def test_overlay_changed_persists(self, mock_settings, lcd_handler):
+        lcd_handler._device_key = 'dev0'
+        lcd_handler._w['theme_setting'].overlay_grid.overlay_enabled = True
         data = {'elements': [{'type': 'text'}]}
-        h.on_overlay_changed(data)
+        lcd_handler.on_overlay_changed(data)
         mock_settings.save_device_setting.assert_called_once()
         saved = mock_settings.save_device_setting.call_args[0]
         assert saved[0] == 'dev0'
         assert saved[1] == 'overlay'
 
-    def test_overlay_tick_no_overlay_no_send(self):
+    def test_overlay_tick_no_overlay_no_send(self, lcd_handler, dispatched_commands):
         """on_overlay_tick must NOT send for static no-overlay themes.
 
         Sending every refresh cycle (1–5 s) causes visible blinking.
         Static themes don't change — no periodic resend needed.
         """
-        h = _make_handler()
-        h._lcd.playing = False
-        h._lcd.enabled = False
-        h._lcd.connected = True
-        h.on_overlay_tick(MagicMock())
-        assert not _dispatched(h, RenderAndSendCommand)
-        assert not _dispatched(h, UpdateVideoCacheTextCommand)
+        lcd_handler._lcd.playing = False
+        lcd_handler._lcd.enabled = False
+        lcd_handler._lcd.connected = True
+        lcd_handler.on_overlay_tick(MagicMock())
+        assert not dispatched_commands(lcd_handler, RenderAndSendCommand)
+        assert not dispatched_commands(lcd_handler, UpdateVideoCacheTextCommand)
 
-    def test_overlay_tick_overlay_enabled_no_send(self):
+    def test_overlay_tick_overlay_enabled_no_send(self, lcd_handler, dispatched_commands):
         """on_overlay_tick must NOT send when overlay is enabled.
 
         LCDDevice.tick() (background thread) renders+sends whenever metrics
         change. If on_overlay_tick also sends, every refresh cycle causes two
         frames to hit the device — visible as a blink/flicker.
         """
-        h = _make_handler()
-        h._lcd.playing = False
-        h._lcd.enabled = True
-        h._lcd.connected = True
-        h.on_overlay_tick(MagicMock())
-        assert not _dispatched(h, RenderAndSendCommand), (
+        lcd_handler._lcd.playing = False
+        lcd_handler._lcd.enabled = True
+        lcd_handler._lcd.connected = True
+        lcd_handler.on_overlay_tick(MagicMock())
+        assert not dispatched_commands(lcd_handler, RenderAndSendCommand), (
             "on_overlay_tick must not send when overlay is enabled — "
             "tick() owns the send to avoid double-send blink"
         )
-        assert not _dispatched(h, UpdateVideoCacheTextCommand)
+        assert not dispatched_commands(lcd_handler, UpdateVideoCacheTextCommand)
 
-    def test_overlay_tick_noop_when_disconnected(self):
+    def test_overlay_tick_noop_when_disconnected(self, lcd_handler, dispatched_commands):
         """on_overlay_tick does nothing when device is not connected."""
-        h = _make_handler()
-        h._lcd.playing = False
-        h._lcd.connected = False
-        h.on_overlay_tick(MagicMock())
-        assert not _dispatched(h, RenderAndSendCommand)
-        assert not _dispatched(h, UpdateVideoCacheTextCommand)
+        lcd_handler._lcd.playing = False
+        lcd_handler._lcd.connected = False
+        lcd_handler.on_overlay_tick(MagicMock())
+        assert not dispatched_commands(lcd_handler, RenderAndSendCommand)
+        assert not dispatched_commands(lcd_handler, UpdateVideoCacheTextCommand)
 
-    def test_update_preview_sets_preview_image(self):
+    def test_update_preview_sets_preview_image(self, lcd_handler):
         """update_preview mirrors a frame rendered by tick() to the preview widget."""
-        h = _make_handler()
         image = MagicMock()
-        h.update_preview(image)
-        h._w['preview'].set_image.assert_called_once_with(image)
+        lcd_handler.update_preview(image)
+        lcd_handler._w['preview'].set_image.assert_called_once_with(image)
 
-    def test_overlay_tick_during_video_dispatches_update_cache_text(self):
+    def test_overlay_tick_during_video_dispatches_update_cache_text(self, lcd_handler, dispatched_commands):
         """on_overlay_tick while video plays dispatches UpdateVideoCacheTextCommand directly."""
-        h = _make_handler()
-        h._lcd.enabled = True
-        h._lcd.playing = True
+        lcd_handler._lcd.enabled = True
+        lcd_handler._lcd.playing = True
         metrics = MagicMock()
-        h.on_overlay_tick(metrics)
-        cmds = _dispatched(h, UpdateVideoCacheTextCommand)
+        lcd_handler.on_overlay_tick(metrics)
+        cmds = dispatched_commands(lcd_handler, UpdateVideoCacheTextCommand)
         assert cmds and cmds[0].metrics is metrics
 
-    def test_overlay_tick_video_no_render_and_send(self):
+    def test_overlay_tick_video_no_render_and_send(self, lcd_handler, dispatched_commands):
         """on_overlay_tick while video plays must not dispatch RenderAndSendCommand."""
-        h = _make_handler()
-        h._lcd.enabled = True
-        h._lcd.playing = True
-        h.on_overlay_tick(MagicMock())
-        assert not _dispatched(h, RenderAndSendCommand)
+        lcd_handler._lcd.enabled = True
+        lcd_handler._lcd.playing = True
+        lcd_handler.on_overlay_tick(MagicMock())
+        assert not dispatched_commands(lcd_handler, RenderAndSendCommand)
 
-    def test_flash_element_dispatches_set_flash_index(self):
+    def test_flash_element_dispatches_set_flash_index(self, lcd_handler, dispatched_commands):
         """flash_element dispatches SetFlashIndexCommand with the correct index."""
-        h = _make_handler()
-        h.flash_element(3)
-        cmds = _dispatched(h, SetFlashIndexCommand)
+        lcd_handler.flash_element(3)
+        cmds = dispatched_commands(lcd_handler, SetFlashIndexCommand)
         assert cmds and cmds[0].index == 3
-        h._flash_timer.start.assert_called_with(980)
+        lcd_handler._flash_timer.start.assert_called_with(980)
 
-    def test_flash_timeout_clears_flash_index(self):
+    def test_flash_timeout_clears_flash_index(self, lcd_handler, dispatched_commands):
         """_on_flash_timeout dispatches SetFlashIndexCommand(index=-1)."""
-        h = _make_handler()
-        h._on_flash_timeout()
-        cmds = _dispatched(h, SetFlashIndexCommand)
+        lcd_handler._on_flash_timeout()
+        cmds = dispatched_commands(lcd_handler, SetFlashIndexCommand)
         assert cmds and cmds[0].index == -1
 
-    def test_update_mask_position_dispatches_command(self):
+    def test_update_mask_position_dispatches_command(self, lcd_handler, dispatched_commands):
         """update_mask_position dispatches SetMaskPositionCommand."""
-        h = _make_handler()
-        h.update_mask_position(10, 20)
-        cmds = _dispatched(h, SetMaskPositionCommand)
+        lcd_handler.update_mask_position(10, 20)
+        cmds = dispatched_commands(lcd_handler, SetMaskPositionCommand)
         assert cmds and cmds[0].x == 10 and cmds[0].y == 20
 
 
@@ -840,60 +609,53 @@ class TestOverlay:
 class TestDisplaySettings:
     """set_brightness, set_rotation, set_split_mode."""
 
-    def test_set_brightness_updates_level(self):
-        h = _make_handler()
-        h._lcd.set_brightness.return_value = {'success': True, 'image': MagicMock()}
-        h.set_brightness(50)
-        assert h.brightness_level == 50
+    def test_set_brightness_updates_level(self, lcd_handler):
+        lcd_handler._lcd.set_brightness.return_value = {'success': True, 'image': MagicMock()}
+        lcd_handler.set_brightness(50)
+        assert lcd_handler.brightness_level == 50
 
-    def test_set_brightness_updates_preview(self):
-        h = _make_handler()
+    def test_set_brightness_updates_preview(self, lcd_handler):
         img = MagicMock()
-        h._lcd.set_brightness.return_value = {'success': True, 'image': img}
-        h.set_brightness(3)
-        h._w['preview'].set_image.assert_called_with(img)
+        lcd_handler._lcd.set_brightness.return_value = {'success': True, 'image': img}
+        lcd_handler.set_brightness(3)
+        lcd_handler._w['preview'].set_image.assert_called_with(img)
 
-    def test_set_brightness_sends_frame_if_auto_send(self):
+    def test_set_brightness_sends_frame_if_auto_send(self, lcd_handler, dispatched_commands):
         """set_brightness dispatches SendFrameCommand when auto_send is on."""
-        h = _make_handler()
         img = MagicMock()
-        h._lcd.set_brightness.return_value = {'success': True, 'image': img}
-        h._lcd.auto_send = True
-        h.set_brightness(2)
-        cmds = _dispatched(h, SendFrameCommand)
+        lcd_handler._lcd.set_brightness.return_value = {'success': True, 'image': img}
+        lcd_handler._lcd.auto_send = True
+        lcd_handler.set_brightness(2)
+        cmds = dispatched_commands(lcd_handler, SendFrameCommand)
         assert cmds and cmds[0].image is img
 
-    def test_set_brightness_no_send_if_no_auto(self):
-        h = _make_handler()
+    def test_set_brightness_no_send_if_no_auto(self, lcd_handler, dispatched_commands):
         img = MagicMock()
-        h._lcd.set_brightness.return_value = {'success': True, 'image': img}
-        h._lcd.auto_send = False
-        h.set_brightness(2)
-        assert not _dispatched(h, SendFrameCommand)
+        lcd_handler._lcd.set_brightness.return_value = {'success': True, 'image': img}
+        lcd_handler._lcd.auto_send = False
+        lcd_handler.set_brightness(2)
+        assert not dispatched_commands(lcd_handler, SendFrameCommand)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_set_rotation_persists(self, mock_settings):
-        h = _make_handler()
-        h._device_key = 'dev0'
-        h._lcd.set_rotation.return_value = {'success': True, 'image': MagicMock()}
-        h.set_rotation(90)
+    def test_set_rotation_persists(self, mock_settings, lcd_handler):
+        lcd_handler._device_key = 'dev0'
+        lcd_handler._lcd.set_rotation.return_value = {'success': True, 'image': MagicMock()}
+        lcd_handler.set_rotation(90)
         mock_settings.save_device_setting.assert_called_with('dev0', 'rotation', 90)
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.conf.settings')
-    def test_set_rotation_resolves_cloud_dirs(self, mock_conf, mock_settings):
-        h = _make_handler()
-        h._lcd.set_rotation.return_value = {'success': True}
-        h.set_rotation(270)
+    def test_set_rotation_resolves_cloud_dirs(self, mock_conf, mock_settings, lcd_handler):
+        lcd_handler._lcd.set_rotation.return_value = {'success': True}
+        lcd_handler.set_rotation(270)
         mock_conf.resolve_cloud_dirs.assert_called_with(270)
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_set_split_mode_updates_state(self, mock_settings):
-        h = _make_handler()
-        h._device_key = 'dev0'
-        h._lcd.set_split_mode.return_value = {'success': True, 'image': MagicMock()}
-        h.set_split_mode(2)
-        assert h.split_mode == 2
+    def test_set_split_mode_updates_state(self, mock_settings, lcd_handler):
+        lcd_handler._device_key = 'dev0'
+        lcd_handler._lcd.set_split_mode.return_value = {'success': True, 'image': MagicMock()}
+        lcd_handler.set_split_mode(2)
+        assert lcd_handler.split_mode == 2
         mock_settings.save_device_setting.assert_called_with('dev0', 'split_mode', 2)
 
 
@@ -905,26 +667,23 @@ class TestDisplaySettings:
 class TestBackgroundScreencast:
     """on_background_toggle, on_screencast_frame."""
 
-    def test_background_toggle_on_stops_video(self):
+    def test_background_toggle_on_stops_video(self, lcd_handler, dispatched_commands):
         """Background toggle dispatches StopVideoCommand through the bus."""
-        h = _make_handler()
-        h.on_background_toggle(True)
-        assert h.is_background_active is True
-        h._animation_timer.stop.assert_called()
-        assert _dispatched(h, StopVideoCommand)
+        lcd_handler.on_background_toggle(True)
+        assert lcd_handler.is_background_active is True
+        lcd_handler._animation_timer.stop.assert_called()
+        assert dispatched_commands(lcd_handler, StopVideoCommand)
 
-    def test_background_toggle_off(self):
-        h = _make_handler()
-        h.on_background_toggle(False)
-        assert h.is_background_active is False
+    def test_background_toggle_off(self, lcd_handler):
+        lcd_handler.on_background_toggle(False)
+        assert lcd_handler.is_background_active is False
 
-    def test_screencast_frame_dispatches_send_frame(self):
+    def test_screencast_frame_dispatches_send_frame(self, lcd_handler, dispatched_commands):
         """on_screencast_frame dispatches SendFrameCommand."""
-        h = _make_handler()
         img = MagicMock()
-        h.on_screencast_frame(img)
-        h._w['preview'].set_image.assert_called_with(img)
-        cmds = _dispatched(h, SendFrameCommand)
+        lcd_handler.on_screencast_frame(img)
+        lcd_handler._w['preview'].set_image.assert_called_with(img)
+        cmds = dispatched_commands(lcd_handler, SendFrameCommand)
         assert cmds and cmds[0].image is img
 
 
@@ -938,34 +697,31 @@ class TestThemeIO:
 
     @patch('trcc.conf.settings')
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_save_theme_success(self, mock_settings_cls, mock_conf):
+    def test_save_theme_success(self, mock_settings_cls, mock_conf, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import SaveThemeCommand
-        h = _make_handler()
         td = MagicMock()
         td.exists.return_value = True
         mock_conf.theme_dir = td
-        h.save_theme("MyTheme")
-        cmds = _dispatched(h, SaveThemeCommand)
+        lcd_handler.save_theme("MyTheme")
+        cmds = dispatched_commands(lcd_handler, SaveThemeCommand)
         assert cmds and cmds[0].name == "MyTheme"
-        h._w['preview'].set_status.assert_called_with('Saved')
+        lcd_handler._w['preview'].set_status.assert_called_with('Saved')
 
-    def test_export_config(self):
+    def test_export_config(self, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import ExportThemeCommand
-        h = _make_handler()
-        h.export_config(Path('/out/theme.tr'))
-        assert _dispatched(h, ExportThemeCommand)
+        lcd_handler.export_config(Path('/out/theme.tr'))
+        assert dispatched_commands(lcd_handler, ExportThemeCommand)
 
     @patch('trcc.conf.settings')
-    def test_import_config_success_reloads(self, mock_conf):
+    def test_import_config_success_reloads(self, mock_conf, lcd_handler, dispatched_commands):
         from trcc.core.commands.lcd import ImportThemeCommand
-        h = _make_handler()
         td = MagicMock()
         td.exists.return_value = True
         mock_conf.theme_dir = td
-        h.import_config(Path('/in/theme.tr'))
-        assert _dispatched(h, ImportThemeCommand)
-        h._w['theme_local'].set_theme_directory.assert_called_once()
-        h._w['theme_local'].load_themes.assert_called_once()
+        lcd_handler.import_config(Path('/in/theme.tr'))
+        assert dispatched_commands(lcd_handler, ImportThemeCommand)
+        lcd_handler._w['theme_local'].set_theme_directory.assert_called_once()
+        lcd_handler._w['theme_local'].load_themes.assert_called_once()
 
 
 # =========================================================================
@@ -976,29 +732,26 @@ class TestThemeIO:
 class TestRender:
     """render_and_preview, _render_and_send."""
 
-    def test_render_and_preview_returns_image(self):
+    def test_render_and_preview_returns_image(self, lcd_handler):
         """render_and_preview calls lcd.render() directly (read-only, no bus)."""
-        h = _make_handler()
         img = MagicMock()
-        h._lcd.render.return_value = {'image': img}
-        result = h.render_and_preview()
+        lcd_handler._lcd.render.return_value = {'image': img}
+        result = lcd_handler.render_and_preview()
         assert result is img
-        h._w['preview'].set_image.assert_called_with(img)
+        lcd_handler._w['preview'].set_image.assert_called_with(img)
 
-    def test_render_and_preview_no_image(self):
-        h = _make_handler()
-        h._lcd.render.return_value = {}
-        result = h.render_and_preview()
+    def test_render_and_preview_no_image(self, lcd_handler):
+        lcd_handler._lcd.render.return_value = {}
+        result = lcd_handler.render_and_preview()
         assert result is None
 
-    def test_render_and_send_dispatches_command(self):
+    def test_render_and_send_dispatches_command(self, lcd_handler, dispatched_commands):
         """_render_and_send dispatches RenderAndSendCommand and updates preview."""
-        h = _make_handler()
         img = MagicMock()
-        h._lcd.render_and_send.return_value = {'success': True, 'image': img}
-        h._render_and_send()
-        assert _dispatched(h, RenderAndSendCommand)
-        h._w['preview'].set_image.assert_called_with(img)
+        lcd_handler._lcd.render_and_send.return_value = {'success': True, 'image': img}
+        lcd_handler._render_and_send()
+        assert dispatched_commands(lcd_handler, RenderAndSendCommand)
+        lcd_handler._w['preview'].set_image.assert_called_with(img)
 
 
 # =========================================================================
@@ -1009,18 +762,16 @@ class TestRender:
 class TestLifecycle:
     """stop_timers, cleanup."""
 
-    def test_stop_timers(self):
-        h = _make_handler()
-        h.stop_timers()
-        h._animation_timer.stop.assert_called()
-        h._slideshow_timer.stop.assert_called()
+    def test_stop_timers(self, lcd_handler):
+        lcd_handler.stop_timers()
+        lcd_handler._animation_timer.stop.assert_called()
+        lcd_handler._slideshow_timer.stop.assert_called()
 
-    def test_cleanup_dispatches_stop_video(self):
+    def test_cleanup_dispatches_stop_video(self, lcd_handler, dispatched_commands):
         """cleanup dispatches StopVideoCommand — ensures video state is consistent."""
-        h = _make_handler()
-        h.cleanup()
-        h._animation_timer.stop.assert_called()
-        h._slideshow_timer.stop.assert_called()
-        h._flash_timer.stop.assert_called()
-        assert _dispatched(h, StopVideoCommand)
-        h._lcd.cleanup.assert_called()
+        lcd_handler.cleanup()
+        lcd_handler._animation_timer.stop.assert_called()
+        lcd_handler._slideshow_timer.stop.assert_called()
+        lcd_handler._flash_timer.stop.assert_called()
+        assert dispatched_commands(lcd_handler, StopVideoCommand)
+        lcd_handler._lcd.cleanup.assert_called()

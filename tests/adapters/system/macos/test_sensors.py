@@ -25,6 +25,7 @@ class TestDiscoverPsutil:
         assert 'psutil:cpu_percent' in ids
         assert 'psutil:cpu_freq' in ids
         assert 'psutil:mem_used' in ids
+        assert 'computed:disk_percent' in ids
         assert 'computed:disk_read' in ids
         assert 'computed:net_up' in ids
 
@@ -140,10 +141,51 @@ class TestPollPsutil:
         mock_dt.datetime.now.return_value = datetime(2026, 3, 13, 14, 0, 0)
 
         enum = _make_enum()
-        enum._poll_once()
+        with patch.object(enum, '_poll_apfs_disk_percent', return_value=45.0), \
+             patch.object(enum, '_poll_smc'), \
+             patch.object(enum, '_poll_apple_silicon'):
+            enum._poll_once()
         readings = enum.read_all()
         assert readings['psutil:cpu_percent'] == 42.0
         assert readings['psutil:cpu_freq'] == 3200.0
+        assert readings['computed:disk_percent'] == 45.0
+
+
+class TestPollApfsDiskPercent:
+
+    DISKUTIL_OUTPUT = (
+        "APFS Container Reference:     disk1\n"
+        "Size (Capacity Ceiling):      500107862016 B (500.1 GB)\n"
+        "Minimum Size:                 N/A\n"
+        "Capacity In Use By Volumes:   400086323200 B (400.1 GB)\n"
+        "Capacity Not Allocated:       100021538816 B (100.0 GB)\n"
+    )
+
+    @patch(f'{MODULE}.subprocess')
+    def test_parses_apfs_container(self, mock_sub):
+        mock_sub.run.return_value = MagicMock(stdout=self.DISKUTIL_OUTPUT)
+        enum = _make_enum()
+        pct = enum._poll_apfs_disk_percent()
+        # 400086323200 / 500107862016 ≈ 79.999... → 80.0
+        assert pct == round(400086323200 / 500107862016 * 100, 1)
+
+    @patch(f'{MODULE}.subprocess')
+    @patch(f'{MODULE}.psutil')
+    def test_falls_back_to_psutil_on_error(self, mock_psutil, mock_sub):
+        mock_sub.run.side_effect = FileNotFoundError("no diskutil")
+        mock_psutil.disk_usage.return_value = MagicMock(percent=55.0)
+        enum = _make_enum()
+        pct = enum._poll_apfs_disk_percent()
+        assert pct == 55.0
+
+    @patch(f'{MODULE}.subprocess')
+    @patch(f'{MODULE}.psutil')
+    def test_falls_back_when_capacity_zero(self, mock_psutil, mock_sub):
+        mock_sub.run.return_value = MagicMock(stdout="no capacity lines here\n")
+        mock_psutil.disk_usage.return_value = MagicMock(percent=30.0)
+        enum = _make_enum()
+        pct = enum._poll_apfs_disk_percent()
+        assert pct == 30.0
 
 
 class TestPollAppleSilicon:

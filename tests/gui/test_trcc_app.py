@@ -50,70 +50,6 @@ from trcc.gui.uc_system_info import (
 )
 
 # =========================================================================
-# Helpers
-# =========================================================================
-
-
-def _make_panel_config(
-    category_id: int = 1,
-    name: str = "CPU",
-    sensors: list[SensorBinding] | None = None,
-) -> PanelConfig:
-    """Build a PanelConfig with sensible defaults."""
-    if sensors is None:
-        sensors = [
-            SensorBinding("TEMP", "hwmon:coretemp:temp1", "°C"),
-            SensorBinding("Usage", "psutil:cpu_percent", "%"),
-            SensorBinding("Clock", "psutil:cpu_freq", "MHz"),
-            SensorBinding("Power", "rapl:package-0", "W"),
-        ]
-    return PanelConfig(category_id=category_id, name=name, sensors=sensors)
-
-
-def _make_custom_panel_config(name: str = "Custom") -> PanelConfig:
-    """Build a custom (category_id=0) PanelConfig."""
-    return _make_panel_config(
-        category_id=0,
-        name=name,
-        sensors=[
-            SensorBinding("Sensor 1", "", ""),
-            SensorBinding("Sensor 2", "", ""),
-            SensorBinding("Sensor 3", "", ""),
-            SensorBinding("Sensor 4", "", ""),
-        ],
-    )
-
-
-def _make_mock_enumerator() -> MagicMock:
-    """Create a mock SensorEnumerator that returns empty results."""
-    enum = MagicMock()
-    enum.discover.return_value = []
-    enum.read_all.return_value = {}
-    return enum
-
-
-def _make_mock_led_state(
-    *,
-    zones: list[LEDZoneState] | None = None,
-    mode: LEDMode = LEDMode.STATIC,
-    color: tuple[int, int, int] = (255, 0, 0),
-    brightness: int = 65,
-    global_on: bool = True,
-    memory_ratio: int = 1,
-) -> MagicMock:
-    """Create a mock LED state object."""
-    state = MagicMock()
-    state.zones = zones or []
-    state.mode = mode
-    state.color = color
-    state.brightness = brightness
-    state.global_on = global_on
-    state.memory_ratio = memory_ratio
-    state.segment_on = [True] * 10
-    return state
-
-
-# =========================================================================
 # Module constants (uc_system_info)
 # =========================================================================
 
@@ -187,9 +123,9 @@ class TestSystemInfoPanel:
     """Test single SystemInfoPanel widget."""
 
     @pytest.fixture
-    def panel(self, qapp):
+    def panel(self, qapp, make_panel_config):
         """Create a SystemInfoPanel with mocked Assets."""
-        config = _make_panel_config()
+        config = make_panel_config()
         with (
             patch("trcc.gui.uc_system_info.Assets") as mock_assets,
             patch("trcc.gui.uc_system_info.set_background_pixmap"),
@@ -199,9 +135,9 @@ class TestSystemInfoPanel:
         return p
 
     @pytest.fixture
-    def custom_panel(self, qapp):
+    def custom_panel(self, qapp, make_custom_panel_config):
         """Create a custom (deletable) SystemInfoPanel."""
-        config = _make_custom_panel_config()
+        config = make_custom_panel_config()
         with (
             patch("trcc.gui.uc_system_info.Assets") as mock_assets,
             patch("trcc.gui.uc_system_info.set_background_pixmap"),
@@ -458,9 +394,8 @@ class TestUCSystemInfo:
     """Test the UCSystemInfo dashboard container."""
 
     @pytest.fixture
-    def sysinfo(self, qapp, tmp_path):
+    def sysinfo(self, qapp, tmp_path, mock_sensor_enumerator):
         """Create UCSystemInfo with mocked dependencies."""
-        mock_enum = _make_mock_enumerator()
         config_path = tmp_path / "system_config.json"
         with (
             patch("trcc.gui.uc_system_info.Assets") as mock_assets,
@@ -469,7 +404,7 @@ class TestUCSystemInfo:
         ):
             mock_assets.load_pixmap.return_value = QPixmap()
             mock_assets.SYSINFO_BG = "A0test.png"
-            widget = UCSystemInfo(mock_enum, SysInfoConfig())
+            widget = UCSystemInfo(mock_sensor_enumerator, SysInfoConfig())
         return widget
 
     def test_construction(self, sysinfo):
@@ -504,12 +439,12 @@ class TestUCSystemInfo:
 
     # ── Page navigation ──
 
-    def test_change_page_forward(self, sysinfo):
+    def test_change_page_forward(self, sysinfo, make_custom_panel_config):
         """Adding enough panels to need a second page, then navigating."""
         # Add 7 more panels to get 13 total (need 2 pages)
         for i in range(7):
             sysinfo._config.panels.append(
-                _make_custom_panel_config(name=f"Extra{i}")
+                make_custom_panel_config(name=f"Extra{i}")
             )
         sysinfo._rebuild_grid()
         assert sysinfo._page == 0
@@ -517,10 +452,10 @@ class TestUCSystemInfo:
         sysinfo._change_page(1)
         assert sysinfo._page == 1
 
-    def test_change_page_backward(self, sysinfo):
+    def test_change_page_backward(self, sysinfo, make_custom_panel_config):
         for i in range(7):
             sysinfo._config.panels.append(
-                _make_custom_panel_config(name=f"Extra{i}")
+                make_custom_panel_config(name=f"Extra{i}")
             )
         sysinfo._rebuild_grid()
         sysinfo._change_page(1)
@@ -560,9 +495,9 @@ class TestUCSystemInfo:
 
     # ── Delete panel ──
 
-    def test_on_delete_clicked_removes_panel(self, sysinfo):
+    def test_on_delete_clicked_removes_panel(self, sysinfo, make_custom_panel_config):
         # Add a custom panel first
-        custom = _make_custom_panel_config()
+        custom = make_custom_panel_config()
         sysinfo._config.panels.append(custom)
         count_before = len(sysinfo._config.panels)
         with (
@@ -712,7 +647,7 @@ class TestLEDHandler:
         return panel
 
     @pytest.fixture
-    def handler(self, qapp, mock_panel):
+    def handler(self, qapp, mock_panel, make_led_state):
         """Create a LEDHandler with a real QWidget for QTimer parent."""
         from trcc.gui.trcc_app import LEDHandler
 
@@ -724,12 +659,13 @@ class TestLEDHandler:
         h._qt_parent = real_parent  # prevent GC
         h._panel = mock_panel
         h._temp_unit_cb = on_temp
+        h._make_led_state = make_led_state
         return h
 
     def _wire_led(self, handler, zones=None, **state_kw):
         """Attach a mock LEDDevice to the handler. Returns the mock."""
         mock_led = MagicMock()
-        mock_led.state = _make_mock_led_state(zones=zones, **state_kw)
+        mock_led.state = handler._make_led_state(zones=zones, **state_kw)
         handler._led = mock_led
         return mock_led
 
@@ -840,21 +776,21 @@ class TestLEDHandler:
             mock_settings.temp_unit = 0
             handler.show(device)
 
-    def _make_device_and_style(self, model="AX120_DIGITAL", style_id=1,
+    def _make_device_and_style(self, handler, model="AX120_DIGITAL", style_id=1,
                                zone_count=1, segment_count=10):
         """Create device mock + style info for show() tests."""
         device = MagicMock()
         device.model = model
         device.led_style_id = style_id
         mock_led = MagicMock()
-        mock_led.state = _make_mock_led_state()
+        mock_led.state = handler._make_led_state()
         style_info = MagicMock()
         style_info.segment_count = segment_count
         style_info.zone_count = zone_count
         return device, mock_led, style_info
 
     def test_show_creates_led_device(self, handler):
-        device, mock_led, style_info = self._make_device_and_style()
+        device, mock_led, style_info = self._make_device_and_style(handler)
         self._show_with_mock_led(handler, device, mock_led, style_info)
         assert handler._led is mock_led
         assert handler._active is True
@@ -867,20 +803,20 @@ class TestLEDHandler:
         which wires get_protocol. show() must use the injected device, not
         create a new one.
         """
-        device, mock_led, style_info = self._make_device_and_style()
+        device, mock_led, style_info = self._make_device_and_style(handler)
         self._show_with_mock_led(handler, device, mock_led, style_info)
         mock_led.initialize.assert_called_once_with(device, 1)
         handler.stop()
 
     def test_show_starts_timer(self, handler):
-        device, mock_led, style_info = self._make_device_and_style()
+        device, mock_led, style_info = self._make_device_and_style(handler)
         self._show_with_mock_led(handler, device, mock_led, style_info)
         assert handler._timer.isActive()
         handler.stop()
 
     def test_show_initializes_led_device(self, handler):
         device, mock_led, style_info = self._make_device_and_style(
-            model="PA120_DIGITAL", style_id=2, zone_count=4)
+            handler, model="PA120_DIGITAL", style_id=2, zone_count=4)
         self._show_with_mock_led(handler, device, mock_led, style_info,
                                  style_id=2)
         mock_led.initialize.assert_called_once_with(device, 2)
