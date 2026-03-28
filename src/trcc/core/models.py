@@ -2190,10 +2190,33 @@ CLOUD_THEME_URL_KEYS: dict[str, str] = {
 # Cloud mask server URLs by resolution string.
 # Source: C# UCMask server endpoints.
 CLOUD_MASK_URLS: dict[str, str] = {
-    "240x240": "http://www.czhorde.cc/tr/zt240240/",
-    "320x320": "http://www.czhorde.cc/tr/zt320320/",
-    "360x360": "http://www.czhorde.cc/tr/zt360360/",
-    "480x480": "http://www.czhorde.cc/tr/zt480480/",
+    "240x240":   "http://www.czhorde.cc/tr/zt240240/",
+    "240x320":   "http://www.czhorde.cc/tr/zt240320/",
+    "320x240":   "http://www.czhorde.cc/tr/zt320240/",
+    "320x320":   "http://www.czhorde.cc/tr/zt320320/",
+    "360x360":   "http://www.czhorde.cc/tr/zt360360/",
+    "480x480":   "http://www.czhorde.cc/tr/zt480480/",
+    "480x640":   "http://www.czhorde.cc/tr/zt480640/",
+    "480x800":   "http://www.czhorde.cc/tr/zt480800/",
+    "480x854":   "http://www.czhorde.cc/tr/zt480854/",
+    "480x1280":  "http://www.czhorde.cc/tr/zt4801280/",
+    "540x960":   "http://www.czhorde.cc/tr/zt540960/",
+    "640x480":   "http://www.czhorde.cc/tr/zt640480/",
+    "720x1600":  "http://www.czhorde.cc/tr/zt7201600/",
+    "800x480":   "http://www.czhorde.cc/tr/zt800480/",
+    "854x480":   "http://www.czhorde.cc/tr/zt854480/",
+    "960x540":   "http://www.czhorde.cc/tr/zt960540/",
+    "1280x480":  "http://www.czhorde.cc/tr/zt1280480/",
+    "1600x720":  "http://www.czhorde.cc/tr/zt1600720/",
+    "1920x462":  "http://www.czhorde.cc/tr/zt1920462/",
+    "462x1920":  "http://www.czhorde.cc/tr/zt4621920/",
+    # Billboard/side-strip devices (cloud-only, no bundled archives)
+    "640x172":   "http://www.czhorde.cc/tr/zt640172/",
+    "172x640":   "http://www.czhorde.cc/tr/zt172640/",
+    "960x320":   "http://www.czhorde.cc/tr/zt960320/",
+    "320x960":   "http://www.czhorde.cc/tr/zt320960/",
+    "1920x440":  "http://www.czhorde.cc/tr/zt1920440/",
+    "440x1920":  "http://www.czhorde.cc/tr/zt4401920/",
 }
 
 # Cloud theme server base URL templates (resolution suffix appended at runtime).

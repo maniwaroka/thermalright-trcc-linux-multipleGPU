@@ -423,6 +423,12 @@ class DataManager:
         DataManager.ensure_web(width, height)
         _report(f"Downloading mask themes for {width}x{height}...")
         DataManager.ensure_web_masks(width, height)
+        if width != height:
+            # Non-square devices support portrait/landscape rotation — ensure both
+            _report(f"Downloading web previews for {height}x{width}...")
+            DataManager.ensure_web(height, width)
+            _report(f"Downloading mask themes for {height}x{width}...")
+            DataManager.ensure_web_masks(height, width)
         DataManager.mark_resolution_installed(width, height)
         _report(f"Data ready for {width}x{height}.")
 

@@ -622,6 +622,53 @@ class TestEnsureWebMasksExtracted(unittest.TestCase):
                 self.assertFalse(DataManager.ensure_web_masks(320, 320))
 
 
+class TestEnsureAll(unittest.TestCase):
+    """Test DataManager.ensure_all resolution installation."""
+
+    def _mock_ensure(self, side_effect=None):
+        return patch.multiple(
+            DataManager,
+            is_resolution_installed=staticmethod(lambda w, h: False),
+            mark_resolution_installed=staticmethod(lambda w, h: None),
+            ensure_themes=staticmethod(lambda w, h: True),
+            ensure_web=staticmethod(lambda w, h: True),
+            ensure_web_masks=staticmethod(lambda w, h: True),
+        )
+
+    def test_square_only_installs_native(self):
+        """Square devices (320x320) do not install a rotated variant."""
+        calls = []
+        with patch.object(DataManager, 'is_resolution_installed', return_value=False), \
+             patch.object(DataManager, 'mark_resolution_installed'), \
+             patch.object(DataManager, 'ensure_themes'), \
+             patch.object(DataManager, 'ensure_web', side_effect=lambda w, h: calls.append((w, h))), \
+             patch.object(DataManager, 'ensure_web_masks', side_effect=lambda w, h: calls.append((w, h))):
+            DataManager.ensure_all(320, 320)
+        self.assertEqual(calls, [(320, 320), (320, 320)])
+
+    def test_non_square_installs_both_orientations(self):
+        """Non-square devices (1280x480) also install the portrait (480x1280) web+masks."""
+        web_calls = []
+        mask_calls = []
+        with patch.object(DataManager, 'is_resolution_installed', return_value=False), \
+             patch.object(DataManager, 'mark_resolution_installed'), \
+             patch.object(DataManager, 'ensure_themes'), \
+             patch.object(DataManager, 'ensure_web', side_effect=lambda w, h: web_calls.append((w, h))), \
+             patch.object(DataManager, 'ensure_web_masks', side_effect=lambda w, h: mask_calls.append((w, h))):
+            DataManager.ensure_all(1280, 480)
+        self.assertIn((1280, 480), web_calls)
+        self.assertIn((480, 1280), web_calls)
+        self.assertIn((1280, 480), mask_calls)
+        self.assertIn((480, 1280), mask_calls)
+
+    def test_skips_if_already_installed(self):
+        """ensure_all is a no-op when resolution is already installed."""
+        with patch.object(DataManager, 'is_resolution_installed', return_value=True), \
+             patch.object(DataManager, 'ensure_themes') as mock_themes:
+            DataManager.ensure_all(320, 320)
+        mock_themes.assert_not_called()
+
+
 # -- download_archive SSL ---------------------------------------------------
 
 class TestDownloadArchiveSSL(unittest.TestCase):
