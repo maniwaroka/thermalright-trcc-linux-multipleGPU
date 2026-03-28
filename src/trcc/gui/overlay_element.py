@@ -5,6 +5,8 @@ live hardware metrics, and selection overlay.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import QMenu, QWidget
@@ -19,6 +21,8 @@ from ..core.models import (
 )
 from .assets import Assets
 from .constants import Colors, Sizes
+
+log = logging.getLogger(__name__)
 
 # ============================================================================
 # Overlay element constants (matching Tkinter UCXiTongXianShiSub)
@@ -87,6 +91,8 @@ class OverlayElementWidget(QWidget):
 
     def set_config(self, config):
         """Set element config or None to clear."""
+        log.debug("element[%d] set_config mode=%s", self.index,
+                  config.mode if config else None)
         self.config = config
         self._live_value = ''
         self._live_unit = ''

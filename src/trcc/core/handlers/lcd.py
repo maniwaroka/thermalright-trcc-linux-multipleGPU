@@ -6,6 +6,7 @@ public entry points — callers never instantiate the handler directly.
 """
 from __future__ import annotations
 
+import logging
 import threading
 from typing import TYPE_CHECKING, ClassVar
 
@@ -25,19 +26,28 @@ from ..commands.lcd import (
     InitializeDeviceCommand,
     LoadMaskCommand,
     LoadThemeByNameCommand,
+    PauseVideoCommand,
     PlayVideoLoopCommand,
+    RebuildOverlayCacheCommand,
+    RenderAndSendCommand,
     RenderOverlayFromDCCommand,
     ResetDisplayCommand,
     RestoreLastThemeCommand,
     SaveThemeCommand,
+    SeekVideoCommand,
     SelectThemeCommand,
     SendColorCommand,
+    SendFrameCommand,
     SendImageCommand,
     SetBrightnessCommand,
+    SetFlashIndexCommand,
+    SetMaskPositionCommand,
     SetOverlayConfigCommand,
     SetResolutionCommand,
     SetRotationCommand,
     SetSplitModeCommand,
+    SetVideoFitModeCommand,
+    StopVideoCommand,
     UpdateMetricsLCDCommand,
 )
 from .base import DeviceCommandHandler
@@ -45,6 +55,8 @@ from .base import DeviceCommandHandler
 if TYPE_CHECKING:
     from ..lcd_device import LCDDevice
     from ..ports import EnsureDataFn
+
+log = logging.getLogger(__name__)
 
 
 class LCDCommandHandler(DeviceCommandHandler):
@@ -78,13 +90,22 @@ class LCDCommandHandler(DeviceCommandHandler):
         EnableOverlayCommand,
         UpdateMetricsLCDCommand,
         EnsureDataCommand,
+        StopVideoCommand,
+        PauseVideoCommand,
+        SeekVideoCommand,
+        SetVideoFitModeCommand,
+        RebuildOverlayCacheCommand,
+        SetFlashIndexCommand,
+        SetMaskPositionCommand,
+        SendFrameCommand,
+        RenderAndSendCommand,
     )
 
     def __init__(self, lcd: LCDDevice, ensure_fn: EnsureDataFn | None = None) -> None:
         self._lcd = lcd
         self._ensure_fn = ensure_fn
 
-    def __call__(self, cmd: Command) -> CommandResult:
+    def __call__(self, cmd: Command) -> CommandResult:  # noqa: C901
         match cmd:
             case RestoreLastThemeCommand():
                 return CommandResult.from_dict(self._lcd.restore_last_theme())
@@ -135,6 +156,7 @@ class LCDCommandHandler(DeviceCommandHandler):
                 return CommandResult.from_dict(self._lcd.reset())
 
             case InitializeDeviceCommand(width=width, height=height):
+                log.debug("InitializeDeviceCommand: width=%d height=%d", width, height)
                 import trcc.conf as _conf
                 _conf.settings.set_resolution(width, height)
                 self._lcd.initialize(_conf.settings.user_data_dir)
@@ -143,6 +165,7 @@ class LCDCommandHandler(DeviceCommandHandler):
                     message=f"Device initialized at {width}x{height}")
 
             case SetResolutionCommand(width=width, height=height):
+                log.debug("SetResolutionCommand: width=%d height=%d", width, height)
                 result = self._lcd.set_resolution(width, height)
                 if width and height:
                     self(EnsureDataCommand(width=width, height=height))
@@ -165,6 +188,7 @@ class LCDCommandHandler(DeviceCommandHandler):
                 return CommandResult.from_dict(self._lcd.update_metrics(metrics))
 
             case EnsureDataCommand(width=width, height=height):
+                log.debug("EnsureDataCommand: spawning background thread width=%d height=%d", width, height)
                 ensure_fn = self._ensure_fn
                 lcd = self._lcd
 
@@ -179,6 +203,37 @@ class LCDCommandHandler(DeviceCommandHandler):
                     target=_bg, daemon=True, name="data-extract").start()
                 return CommandResult.ok(
                     message=f"Data download started for {width}x{height}")
+
+            case StopVideoCommand():
+                return CommandResult.from_dict(self._lcd.stop())
+
+            case PauseVideoCommand():
+                return CommandResult.from_dict(self._lcd.pause())
+
+            case SeekVideoCommand(percent=percent):
+                return CommandResult.from_dict(self._lcd.seek(percent))
+
+            case SetVideoFitModeCommand(mode=mode):
+                return CommandResult.from_dict(self._lcd.set_fit_mode(mode))
+
+            case RebuildOverlayCacheCommand(metrics=metrics):
+                return CommandResult.from_dict(self._lcd.rebuild_video_cache(metrics))
+
+            case SetFlashIndexCommand(index=index):
+                return CommandResult.from_dict(self._lcd.set_flash_index(index))
+
+            case SetMaskPositionCommand(x=x, y=y):
+                return CommandResult.from_dict(self._lcd.set_mask_position(x, y))
+
+            case SendFrameCommand(image=image):
+                if image is None:
+                    return CommandResult.fail("SendFrameCommand: no image provided")
+                self._lcd.send(image)
+                return CommandResult.ok(message="Frame sent")
+
+            case RenderAndSendCommand(skip_if_video=skip_if_video):
+                return CommandResult.from_dict(
+                    self._lcd.render_and_send(skip_if_video))
 
             case _:
                 return CommandResult.fail(
@@ -197,6 +252,7 @@ def build_lcd_bus(
     Logging + timing middleware. One handler instance shared across all
     registered command types — auto-registered from LCDCommandHandler.handles.
     """
+    log.debug("build_lcd_bus: lcd=%r ensure_fn=%r", lcd, ensure_fn)
     h = LCDCommandHandler(lcd, ensure_fn)
     bus = (CommandBus()
            .add_middleware(LoggingMiddleware())
@@ -215,4 +271,5 @@ def build_lcd_gui_bus(
     Adds RateLimitMiddleware — GUI slider events fire continuously and must
     not saturate the USB bus.
     """
+    log.debug("build_lcd_gui_bus: lcd=%r", lcd)
     return build_lcd_bus(lcd, ensure_fn) | RateLimitMiddleware(min_interval_ms=50.0)

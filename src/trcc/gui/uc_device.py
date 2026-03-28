@@ -7,6 +7,7 @@ Shows connected LCD devices as clickable buttons.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import QLabel, QPushButton, QWidget
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
 from .constants import Colors, Layout, Sizes
+
+log = logging.getLogger(__name__)
 
 # Map device model names to A1 image base names (without .png)
 DEVICE_IMAGE_MAP = {
@@ -238,6 +241,7 @@ class UCDevice(BasePanel):
             self._select_device(self.devices[0])
 
     def _on_device_clicked(self, device_info: dict) -> None:
+        log.debug("_on_device_clicked: %s", device_info.get('path'))
         self._select_device(device_info)
 
     def _deselect_all_devices(self) -> None:
@@ -250,12 +254,25 @@ class UCDevice(BasePanel):
         self.sensor_btn.setChecked(False)
         self.about_btn.setChecked(False)
 
+    def _restore_selection(self, device_info: dict) -> None:
+        """Restore visual selection after sidebar rebuild — no signal emitted.
+
+        Used by update_devices when the selected path hasn't changed so callers
+        don't re-initialize an already-running device.
+        """
+        log.debug("_restore_selection: %s (no signal)", device_info.get('path'))
+        self._deselect_header_buttons()
+        self.selected_device = device_info
+        for btn in self.device_buttons:
+            btn.setChecked(btn.device_info == device_info)  # type: ignore[attr-defined]
+
     def _select_device(self, device_info: dict) -> None:
-        """Select a device button — deselects sensor and about.
+        """Select a device button — deselects sensor and about — emits device_selected.
 
         Windows: userButton_Click sets clicked device to bitmap2 (active),
         all others to bitmap1, button1 to inactive, buttonSetting to inactive.
         """
+        log.debug("_select_device: %s (emitting device_selected)", device_info.get('path'))
         self._deselect_header_buttons()
         self.selected_device = device_info
         for btn in self.device_buttons:
@@ -265,6 +282,7 @@ class UCDevice(BasePanel):
 
     def _on_home_clicked(self) -> None:
         """Sensor/Home clicked — deselects about and all devices."""
+        log.debug("_on_home_clicked: sensor/home button clicked")
         self.sensor_btn.setChecked(True)
         self.about_btn.setChecked(False)
         self._deselect_all_devices()
@@ -273,6 +291,7 @@ class UCDevice(BasePanel):
 
     def _on_about_clicked(self) -> None:
         """About/Settings clicked — deselects sensor and all devices."""
+        log.debug("_on_about_clicked: about/control-center button clicked")
         self.about_btn.setChecked(True)
         self.sensor_btn.setChecked(False)
         self._deselect_all_devices()
@@ -310,6 +329,7 @@ class UCDevice(BasePanel):
         Only rebuilds buttons if the set of device paths has changed.
         Preserves current selection when possible.
         """
+        log.debug("update_devices: old=%s new=%s", [d.get('path') for d in self.devices], [d.get('path') for d in devices])
         old_paths = {d.get('path') for d in self.devices}
         new_paths = {d.get('path') for d in devices}
         if old_paths == new_paths:
@@ -323,12 +343,15 @@ class UCDevice(BasePanel):
             self.selected_device = None
             return
 
-        # Restore previous selection or select first device
+        # Restore previous selection or select first device.
+        # Use _restore_selection (no signal) when the path is unchanged —
+        # only emit device_selected for genuinely new devices so callers
+        # don't re-initialize an already-running device.
         restored = False
         if prev_path:
             for d in devices:
                 if d.get('path') == prev_path:
-                    self._select_device(d)
+                    self._restore_selection(d)
                     restored = True
                     break
         if not restored:
@@ -339,6 +362,7 @@ class UCDevice(BasePanel):
 
         Called when returning to form view from About or System Info.
         """
+        log.debug("restore_device_selection: selected=%s", self.selected_device.get('path') if self.selected_device else None)
         self._deselect_header_buttons()
         if self.selected_device:
             for btn in self.device_buttons:

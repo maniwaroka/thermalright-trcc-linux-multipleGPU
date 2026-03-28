@@ -12,6 +12,7 @@ Matches Windows UCScreenLED.cs rendering exactly:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -20,6 +21,8 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
 from .assets import Assets
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # LED position arrays — exact coordinates from UCScreenLED.cs
@@ -461,6 +464,7 @@ class UCScreenLED(QWidget):
 
     def set_style(self, style_id: int, segment_count: int) -> None:
         """Configure for a specific LED device style."""
+        log.debug("set_style id=%d segment_count=%d", style_id, segment_count)
         self._style_id = style_id
         self._positions = STYLE_POSITIONS.get(style_id, _POS_1)
         self._led_count = len(self._positions)

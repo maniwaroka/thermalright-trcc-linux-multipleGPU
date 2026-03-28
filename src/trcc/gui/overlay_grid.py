@@ -5,6 +5,8 @@ selection, add/delete, and serialization to overlay config format.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QPushButton
@@ -19,6 +21,8 @@ from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Sizes, Styles
 from .overlay_element import OverlayElementWidget
+
+log = logging.getLogger(__name__)
 
 
 class OverlayGridPanel(QFrame):
@@ -81,6 +85,7 @@ class OverlayGridPanel(QFrame):
         self._toggle_btn.clicked.connect(self._on_toggle)
 
     def _on_toggle(self, checked):
+        log.debug("_on_toggle: overlay_enabled=%s→%s", self._overlay_enabled, checked)
         self._overlay_enabled = checked
         self.toggle_changed.emit(checked)
         self.elements_changed.emit()
@@ -110,6 +115,7 @@ class OverlayGridPanel(QFrame):
             cell.update()
 
     def _on_cell_clicked(self, index):
+        log.debug("_on_cell_clicked: index=%s (configs=%s)", index, len(self._configs))
         # Deselect previous
         if 0 <= self._selected_index < len(self._cells):
             self._cells[self._selected_index].set_selected(False)
@@ -127,6 +133,7 @@ class OverlayGridPanel(QFrame):
             self._selected_index = -1
 
     def _on_cell_double_clicked(self, index):
+        log.debug("_on_cell_double_clicked: index=%s", index)
         if index < len(self._configs):
             self.delete_element(index)
 

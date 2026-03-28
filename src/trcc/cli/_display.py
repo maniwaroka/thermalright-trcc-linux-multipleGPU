@@ -4,10 +4,13 @@ Presentation-only: builder injected by _cmd_* boundary functions, call method, p
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from trcc.cli import _cli_handler
 from trcc.core.models import parse_hex_color as _parse_hex
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # CLI presentation helpers
@@ -24,14 +27,17 @@ def _connect_or_fail(device: str | None = None) -> int:
     from trcc.core.commands.initialize import DiscoverDevicesCommand
     from trcc.core.instance import find_active
     from trcc.ipc import create_lcd_proxy
+    log.debug("connecting LCD device=%s", device)
     app = TrccApp.get()
     app.set_ipc_handlers(find_active, create_lcd_proxy)
     result = app.os_bus.dispatch(DiscoverDevicesCommand(path=device))
     if not result.success or not app.has_lcd:
         error = result.payload.get("error", "No LCD device found.")
+        log.warning("LCD connect failed: %s", error)
         print(error)
         print("Run 'trcc report' to diagnose.")
         return 1
+    log.debug("LCD connected successfully")
     return 0
 
 
@@ -62,6 +68,7 @@ def test(device=None, loop=False, preview=False):
         from trcc.core.commands.lcd import SendColorCommand
         from trcc.services import ImageService
 
+        log.debug("test display device=%s loop=%s", device, loop)
         rc = _connect_or_fail(device)
         if rc:
             return rc
@@ -114,7 +121,9 @@ def play_video(builder, video_path, *, device=None, loop=True, duration=0,
                date_format=0):
     """Play video/GIF/ZT on LCD device with optional overlay."""
     try:
+        log.debug("play_video path=%s device=%s loop=%s", video_path, device, loop)
         if not os.path.exists(video_path):
+            log.warning("video file not found: %s", video_path)
             print(f"Error: File not found: {video_path}")
             return 1
 
@@ -212,6 +221,7 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
     from trcc.core.app import TrccApp
     from trcc.services import ImageService
 
+    log.debug("screencast device=%s region=(%d,%d,%d,%d) fps=%d", device, x, y, w, h, fps)
     rc = _connect_or_fail(device)
     if rc:
         return rc
@@ -293,6 +303,7 @@ def send_image(builder, image_path, device=None, preview=False):
     """Send image to LCD."""
     from trcc.core.app import TrccApp
     from trcc.core.commands.lcd import SendImageCommand
+    log.debug("send_image path=%s device=%s", image_path, device)
     rc = _connect_or_fail(device)
     if rc:
         return rc
@@ -305,6 +316,7 @@ def send_color(builder, hex_color, device=None, preview=False):
     """Send solid color to LCD."""
     from trcc.core.app import TrccApp
     from trcc.core.commands.lcd import SendColorCommand
+    log.debug("send_color hex=%s device=%s", hex_color, device)
     rgb = _parse_hex(hex_color)
     if not rgb:
         print("Error: Invalid hex color. Use format: ff0000")

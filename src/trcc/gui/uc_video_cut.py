@@ -8,6 +8,7 @@ and Theme.zt export.
 
 from __future__ import annotations
 
+import logging
 import os
 import struct
 import subprocess
@@ -32,6 +33,8 @@ from trcc.services import ImageService
 
 from .assets import Assets
 from .base import make_icon_button
+
+log = logging.getLogger(__name__)
 
 # ============================================================================
 # Constants
@@ -556,14 +559,17 @@ class UCVideoCut(QWidget):
     # =========================================================================
 
     def _on_width_fit(self):
+        log.debug("_on_width_fit: width_fit=True")
         self._width_fit = True
         self._seek_and_show(self._start_ms)
 
     def _on_height_fit(self):
+        log.debug("_on_height_fit: width_fit=False")
         self._width_fit = False
         self._seek_and_show(self._start_ms)
 
     def _on_rotate(self):
+        log.debug("_on_rotate: rotation=%s→%s", self._rotation, (self._rotation + 90) % 360)
         self._rotation = (self._rotation + 90) % 360
         self._seek_and_show(self._start_ms)
 
@@ -572,6 +578,7 @@ class UCVideoCut(QWidget):
     # =========================================================================
 
     def _on_preview_toggle(self):
+        log.debug("_on_preview_toggle: previewing=%s→%s", self._previewing, not self._previewing)
         if self._previewing:
             self._stop_preview()
         else:
@@ -597,6 +604,7 @@ class UCVideoCut(QWidget):
     # =========================================================================
 
     def _on_export(self):
+        log.debug("_on_export: video_path=%s start=%s end=%s", self._video_path, self._start_ms, self._end_ms)
         if self._is_processing or not self._video_path:
             return
 
@@ -619,10 +627,12 @@ class UCVideoCut(QWidget):
         self._export_worker.start()
 
     def _on_export_progress(self, percent, message):
+        log.debug("_on_export_progress: %s%% %s", percent, message)
         self._progress.setValue(percent)
         self._lbl_info.setText(message)
 
     def _on_export_finished(self, output_path):
+        log.debug("_on_export_finished: output_path=%s", output_path)
         self._is_processing = False
         self._btn_export.setEnabled(True)
         self._progress.setVisible(False)
@@ -630,6 +640,7 @@ class UCVideoCut(QWidget):
         self.video_cut_done.emit(output_path)
 
     def _on_export_error(self, message):
+        log.debug("_on_export_error: %s", message)
         self._is_processing = False
         self._btn_export.setEnabled(True)
         self._progress.setVisible(False)
@@ -637,6 +648,7 @@ class UCVideoCut(QWidget):
         self._lbl_info.setVisible(True)
 
     def _on_close(self):
+        log.debug("_on_close: emitting video_cut_done('')")
         self._stop_preview()
         self._cleanup_video()
         self.video_cut_done.emit('')

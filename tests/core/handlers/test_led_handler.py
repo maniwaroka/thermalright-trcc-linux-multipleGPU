@@ -148,7 +148,8 @@ class TestLEDGuiCommandHandler:
     def test_unregistered_command_returns_fail(self):
         led = _mock_led()
         h = LEDGuiCommandHandler(led)
-        result = h(ToggleLEDCommand(on=True))
+        # SetLEDSensorSourceCommand has no GUI update_* equivalent — truly unregistered
+        result = h(SetLEDSensorSourceCommand(source="gpu"))
         assert not result
 
 

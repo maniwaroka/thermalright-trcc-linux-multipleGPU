@@ -113,3 +113,46 @@ class SetClockFormatCommand(LEDCommand):
 class SetTempUnitLEDCommand(LEDCommand):
     """Set the temperature unit shown on the segment display."""
     unit: str = "C"  # "C" | "F"
+
+
+@dataclass(frozen=True, slots=True)
+class SelectZoneCommand(LEDCommand):
+    """Select the active zone for editing (state-only, no hardware send)."""
+    zone: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SetZoneSyncZoneCommand(LEDCommand):
+    """Set the sync target for a zone carousel slot."""
+    zi: int = 0
+    sel: Any = field(default=None, hash=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class SetZoneSyncIntervalCommand(LEDCommand):
+    """Set the zone carousel rotation interval (seconds)."""
+    secs: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class SetWeekStartCommand(LEDCommand):
+    """Set whether the segment display week starts on Sunday."""
+    is_sun: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class SetDiskIndexCommand(LEDCommand):
+    """Set which disk index to show on the segment display."""
+    idx: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SetMemoryRatioCommand(LEDCommand):
+    """Set the memory ratio display mode on the segment display."""
+    ratio: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SetTestModeCommand(LEDCommand):
+    """Enable or disable LED hardware test mode."""
+    on: bool = False

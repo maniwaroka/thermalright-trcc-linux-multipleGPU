@@ -4,8 +4,12 @@ Presentation-only: builder injected by _cmd_* boundary functions, call method, p
 """
 from __future__ import annotations
 
+import logging
+
 from trcc.cli import _cli_handler
 from trcc.core.models import parse_hex_color as _parse_hex
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # CLI presentation helpers
@@ -23,12 +27,15 @@ def _connect_or_fail() -> int:
     from trcc.core.instance import find_active
     from trcc.ipc import create_led_proxy
 
+    log.debug("connecting LED device")
     app = TrccApp.get()
     app.set_ipc_handlers(find_active, create_led_proxy)
     result = app.os_bus.dispatch(DiscoverDevicesCommand())
     if not result.success or not app.has_led:
+        log.warning("LED connect failed: no LED device found")
         print("No LED device found.")
         return 1
+    log.debug("LED connected successfully")
     return 0
 
 
@@ -46,6 +53,7 @@ def _print_result(result: dict, *, preview: bool = False) -> int:
 
 def _led_dispatch(cmd_cls, preview: bool = False, **fields) -> int:
     """Connect LED, dispatch a command through the bus, print result."""
+    log.debug("LED dispatch cmd=%s fields=%s", cmd_cls.__name__, fields)
     rc = _connect_or_fail()
     if rc:
         return rc
@@ -63,6 +71,7 @@ def set_color(builder, hex_color, *, preview=False):
     """Set LED static color."""
     from trcc.core.app import TrccApp
     from trcc.core.commands.led import SetLEDColorCommand
+    log.debug("set_color hex=%s", hex_color)
     rgb = _parse_hex(hex_color)
     if not rgb:
         print("Error: Invalid hex color. Use format: ff0000")
@@ -80,6 +89,7 @@ def set_mode(builder, mode_name, *, preview=False):
     """Set LED effect mode."""
     import time
 
+    log.debug("set_mode mode=%s", mode_name)
     rc = _connect_or_fail()
     if rc:
         return rc

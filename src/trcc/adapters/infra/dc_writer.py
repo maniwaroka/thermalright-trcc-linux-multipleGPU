@@ -44,6 +44,7 @@ Export Format (.tr files):
     Followed by embedded binary data for images
 """
 
+import logging
 import os
 import struct
 from pathlib import Path
@@ -59,11 +60,14 @@ from trcc.core.models import (
 
 from .binary_reader import BinaryReader
 
+log = logging.getLogger(__name__)
+
 # ── Core binary writing ──────────────────────────────────────────────────
 
 
 def write(config: ThemeConfig, filepath: str) -> None:
     """Write a config1.dc file in Windows-compatible binary format."""
+    log.debug("write: filepath=%s elements=%d", filepath, len(config.elements))
     with open(filepath, 'wb') as f:
         f.write(struct.pack('B', 0xDD))
         f.write(struct.pack('?', config.system_info_enabled))
@@ -79,6 +83,7 @@ def write_tr(config: ThemeConfig, theme_path: str, export_path: str) -> None:
     The .tr format is a config1.dc with magic header 0xDD,0xDC,0xDD,0xDC
     followed by embedded image data.
     """
+    log.debug("write_tr: theme_path=%s export_path=%s", theme_path, export_path)
     with open(export_path, 'wb') as f:
         f.write(struct.pack('BBBB', 0xDD, 0xDC, 0xDD, 0xDC))
         f.write(struct.pack('?', config.system_info_enabled))
@@ -277,6 +282,7 @@ def save_theme(theme_path: str,
 
     Creates: 00.png, 01.png (mask), config1.dc, Theme.png (preview), config.json.
     """
+    log.debug("save_theme: theme_path=%s display=%dx%d", theme_path, display_width, display_height)
     os.makedirs(theme_path, exist_ok=True)
 
     if background_image:
@@ -399,6 +405,7 @@ def write_json(theme_path: str,
 
 def export_theme(theme_path: str, export_path: str) -> None:
     """Export a theme as a .tr file for sharing."""
+    log.debug("export_theme: theme_path=%s export_path=%s", theme_path, export_path)
     from .dc_parser import DcParser
 
     config_file = os.path.join(theme_path, "config1.dc")
@@ -442,6 +449,7 @@ def _parsed_to_theme_config(parsed: dict) -> ThemeConfig:
 
 def import_theme(tr_path: str, theme_path: str) -> None:
     """Import a .tr file to create a theme directory."""
+    log.debug("import_theme: tr_path=%s theme_path=%s", tr_path, theme_path)
     os.makedirs(theme_path, exist_ok=True)
 
     with open(tr_path, 'rb') as f:

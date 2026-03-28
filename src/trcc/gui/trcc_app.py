@@ -298,6 +298,7 @@ class TRCCApp(QMainWindow):
 
     def on_app_event(self, event: AppEvent, data: Any) -> None:
         """Receive events from TrccApp (called from any thread)."""
+        log.debug("on_app_event: %s", event)
         if event == AppEvent.DEVICES_CHANGED:
             # data = list[Device] — full rescan result
             self._device_added_signal.emit(('changed', data))
@@ -314,6 +315,7 @@ class TRCCApp(QMainWindow):
 
     def _on_device_added_main_thread(self, payload: Any) -> None:
         kind, data = payload
+        log.debug("_on_device_added_main_thread: kind=%s", kind)
         if kind == 'changed':
             self._rebuild_all_handlers(data)
         else:
@@ -321,6 +323,7 @@ class TRCCApp(QMainWindow):
 
     def _on_device_removed_main_thread(self, device: Any) -> None:
         path = device.device_info.path if device.device_info else ''
+        log.debug("_on_device_removed_main_thread: path=%s", path)
         self._remove_handler(path)
 
     def _rebuild_all_handlers(self, devices: list) -> None:
@@ -424,7 +427,7 @@ class TRCCApp(QMainWindow):
                     w, h = info.resolution
                     if (w, h) == (0, 0):
                         self._start_handshake(info)
-                    else:
+                    elif not handler.device_key:
                         handler.apply_device_config(info, w, h)
                         self._update_ldd_icon()
         elif isinstance(handler, LEDHandler):
@@ -986,6 +989,7 @@ class TRCCApp(QMainWindow):
             self.uc_activity_sidebar.setVisible(False)
 
     def _show_view(self, view: str) -> None:
+        log.debug("_show_view: %s", view)
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_system_info.setVisible(view == 'sysinfo')
@@ -1054,10 +1058,8 @@ class TRCCApp(QMainWindow):
 
         self.uc_activity_sidebar.sensor_clicked.connect(self._on_sensor_element_add)
 
-        self.uc_about.close_requested.connect(
-            lambda: (self._show_view('form'), self.uc_device.restore_device_selection()))
-        self.uc_led_control.close_requested.connect(
-            lambda: (self._show_view('form'), self.uc_device.restore_device_selection()))
+        self.uc_about.close_requested.connect(self._on_about_close_requested)
+        self.uc_led_control.close_requested.connect(self._on_led_close_requested)
         self.uc_about.language_changed.connect(self._set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
@@ -1068,8 +1070,21 @@ class TRCCApp(QMainWindow):
     def _on_device_widget_clicked(self, device_info: dict) -> None:
         """User clicked a device in the sidebar."""
         path = device_info.get('path', '')
+        log.debug("_on_device_widget_clicked: path=%s", path)
         if path:
             self._activate_device(path)
+
+    def _on_about_close_requested(self) -> None:
+        """Close button on About/Control Center panel — return to form view."""
+        log.debug("_on_about_close_requested: returning to form")
+        self._show_view('form')
+        self.uc_device.restore_device_selection()
+
+    def _on_led_close_requested(self) -> None:
+        """Close button on LED control panel — return to form view."""
+        log.debug("_on_led_close_requested: returning to form")
+        self._show_view('form')
+        self.uc_device.restore_device_selection()
 
     def _active_lcd(self) -> LCDHandler | None:
         h = self._handlers.get(self._active_path)
@@ -1082,6 +1097,7 @@ class TRCCApp(QMainWindow):
     # ── Handshake (LCD resolution discovery) ────────────────────────
 
     def _start_handshake(self, device: DeviceInfo) -> None:
+        log.debug("_start_handshake: path=%s pending=%s", device.path, self._handshake_pending)
         if self._handshake_pending:
             return
         self._handshake_pending = True
@@ -1107,6 +1123,7 @@ class TRCCApp(QMainWindow):
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_handshake_done(self, device: DeviceInfo, data: tuple | None) -> None:
+        log.debug("_on_handshake_done: path=%s data=%s", device.path, data)
         self._handshake_pending = False
         if not data:
             self.uc_preview.set_status("Handshake failed — replug device")
@@ -1124,10 +1141,14 @@ class TRCCApp(QMainWindow):
         handler = self._handlers.get(device.path)
         if isinstance(handler, LCDHandler):
             w, h = resolution
-            handler.apply_device_config(device, w, h)
-            self._update_ldd_icon()
-            if Settings.show_info_module():
-                self.uc_info_module.setVisible(True)
+            log.debug("_on_handshake_done: handler found device_key=%r", handler.device_key)
+            if not handler.device_key:
+                handler.apply_device_config(device, w, h)
+                self._update_ldd_icon()
+                if Settings.show_info_module():
+                    self.uc_info_module.setVisible(True)
+            else:
+                log.debug("_on_handshake_done: skipping apply_device_config — already initialized")
 
     def _resolve_device_identity(self, device: DeviceInfo, pm: int, sub: int = 0) -> None:
         from ..core.models import get_button_image
@@ -1149,6 +1170,7 @@ class TRCCApp(QMainWindow):
     # ── Theme Event Handlers ─────────────────────────────────────────
 
     def _on_local_theme_clicked(self, theme_info: Any) -> None:
+        log.debug("_on_local_theme_clicked: %s", getattr(theme_info, 'name', theme_info))
         h = self._active_lcd()
         if h:
             h.select_theme_from_path(Path(theme_info.path))
@@ -1158,11 +1180,13 @@ class TRCCApp(QMainWindow):
             self.theme_name_input.setText(name)
 
     def _on_cloud_theme_clicked(self, theme_info: Any) -> None:
+        log.debug("_on_cloud_theme_clicked: %s", getattr(theme_info, 'name', theme_info))
         h = self._active_lcd()
         if h:
             h.select_cloud_theme(theme_info)
 
     def _on_mask_clicked(self, mask_info: Any) -> None:
+        log.debug("_on_mask_clicked: %s", getattr(mask_info, 'name', mask_info))
         h = self._active_lcd()
         if h:
             h.apply_mask(mask_info)
@@ -1191,6 +1215,7 @@ class TRCCApp(QMainWindow):
     # ── Settings Delegates ──────────────────────────────────────────
 
     def _on_settings_delegate(self, cmd: Any, info: Any, data: Any) -> None:
+        log.debug("_on_settings_delegate: cmd=%s info=%s", cmd, info)
         h = self._active_lcd()
         if cmd == UCThemeSetting.CMD_BACKGROUND_LOAD_IMAGE:
             self._on_load_image_clicked()
@@ -1239,6 +1264,7 @@ class TRCCApp(QMainWindow):
     # ── Background / Screencast / Video Toggles ─────────────────────
 
     def _on_background_toggle(self, enabled: bool) -> None:
+        log.debug("_on_background_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if not h:
             return
@@ -1247,6 +1273,7 @@ class TRCCApp(QMainWindow):
         h.on_background_toggle(enabled)
 
     def _on_screencast_toggle(self, enabled: bool) -> None:
+        log.debug("_on_screencast_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if not h:
             return
@@ -1260,6 +1287,7 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(f"Screencast: {'On' if enabled else 'Off'}")
 
     def _on_video_display_toggle(self, enabled: bool) -> None:
+        log.debug("_on_video_display_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if not h:
             return
@@ -1484,6 +1512,7 @@ class TRCCApp(QMainWindow):
         self.uc_activity_sidebar.setVisible(False)
 
     def _on_overlay_toggle(self, enabled: bool) -> None:
+        log.debug("_on_overlay_toggle: enabled=%s", enabled)
         h = self._active_lcd()
         if h:
             h.display.enable_overlay(enabled)
@@ -1551,6 +1580,7 @@ class TRCCApp(QMainWindow):
     # ── Display Settings ────────────────────────────────────────────
 
     def _on_rotation_change(self, index: int) -> None:
+        log.debug("_on_rotation_change: index=%s", index)
         h = self._active_lcd()
         if h:
             h.set_rotation(index * 90)
@@ -1590,6 +1620,7 @@ class TRCCApp(QMainWindow):
     # ── Global Settings ─────────────────────────────────────────────
 
     def _on_temp_unit_changed(self, unit: str) -> None:
+        log.debug("_on_temp_unit_changed: unit=%s", unit)
         temp_int = 1 if unit == 'F' else 0
         h = self._active_lcd()
         if h:
@@ -1607,6 +1638,7 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(f"HDD info: {'Enabled' if on else 'Disabled'}")
 
     def _on_refresh_changed(self, interval: int) -> None:
+        log.debug("_on_refresh_changed: interval=%s", interval)
         _conf.settings.set_refresh_interval(interval)
         self.uc_preview.set_status(f"Refresh: {interval}s")
 

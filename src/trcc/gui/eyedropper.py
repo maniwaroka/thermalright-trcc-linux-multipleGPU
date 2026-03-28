@@ -10,6 +10,8 @@ Matches Windows FormGetColor functionality:
 Uses the same grab_full_screen() utility as ScreenCaptureOverlay.
 """
 
+import logging
+
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import (
     QColor,
@@ -19,6 +21,8 @@ from PySide6.QtGui import (
 )
 
 from .screen_capture import BaseScreenOverlay
+
+log = logging.getLogger(__name__)
 
 
 class EyedropperOverlay(BaseScreenOverlay):
@@ -164,10 +168,10 @@ class EyedropperOverlay(BaseScreenOverlay):
 
     def _accept(self):
         """Accept the current color and close."""
+        r, g, b = (self._current_color.red(),
+                   self._current_color.green(),
+                   self._current_color.blue())
+        log.debug("eyedropper color accepted: rgb(%d, %d, %d)", r, g, b)
         self.hide()
-        self.color_picked.emit(
-            self._current_color.red(),
-            self._current_color.green(),
-            self._current_color.blue(),
-        )
+        self.color_picked.emit(r, g, b)
         self.deleteLater()

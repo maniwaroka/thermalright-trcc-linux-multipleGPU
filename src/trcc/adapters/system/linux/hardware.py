@@ -5,10 +5,13 @@ Used by LED memory/disk info panels (C# UCLEDMemoryInfo, UCLEDHarddiskInfo).
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 # Fields to extract from dmidecode -t memory (Type 17: Memory Device)
 _DMI_MEMORY_FIELDS = {
@@ -47,6 +50,7 @@ def get_memory_info() -> list[dict[str, str]]:
     speed, configured_memory_speed, size, form_factor (DIMM/SODIMM),
     rank, data_width, configured_voltage, memory_technology.
     """
+    log.debug("get_memory_info: querying dmidecode")
     slots: list[dict[str, str]] = []
     try:
         result = subprocess.run(
@@ -72,6 +76,7 @@ def get_memory_info() -> list[dict[str, str]]:
     except Exception:
         pass
 
+    log.debug("get_memory_info: found %d populated slots", len(slots))
     # Fallback: at least report total from psutil
     if not slots:
         try:
@@ -91,6 +96,7 @@ def get_disk_info() -> list[dict[str, str]]:
     Returns one dict per physical disk with model, size, type (SSD/HDD),
     and health status (PASSED/FAILED) from SMART if available.
     """
+    log.debug("get_disk_info: querying lsblk")
     disks: list[dict[str, str]] = []
     try:
         import json as _json
@@ -117,6 +123,7 @@ def get_disk_info() -> list[dict[str, str]]:
                 disks.append(disk)
     except Exception:
         pass
+    log.debug("get_disk_info: found %d disks", len(disks))
     return disks
 
 

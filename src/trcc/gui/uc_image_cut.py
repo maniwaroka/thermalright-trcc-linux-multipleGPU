@@ -6,6 +6,8 @@ images to LCD target resolution.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
@@ -23,6 +25,8 @@ import trcc.conf as _conf
 
 from .assets import Assets
 from .base import make_icon_button
+
+log = logging.getLogger(__name__)
 
 # ============================================================================
 # Constants
@@ -357,12 +361,15 @@ class UCImageCut(QWidget):
     # =========================================================================
 
     def _on_width_fit(self):
+        log.debug("_on_width_fit")
         self._fit_width()
 
     def _on_height_fit(self):
+        log.debug("_on_height_fit")
         self._fit_height()
 
     def _on_rotate(self):
+        log.debug("_on_rotate: rotation=%s→%s", self._rotation, (self._rotation + 90) % 360)
         self._rotation = (self._rotation + 90) % 360
         self._pan_x = 0
         self._pan_y = 0
@@ -374,8 +381,10 @@ class UCImageCut(QWidget):
                 self._fit_width()
 
     def _on_ok(self):
+        log.debug("_on_ok: emitting image_cut_done with cropped output")
         output = self._get_cropped_output()
         self.image_cut_done.emit(output)
 
     def _on_close(self):
+        log.debug("_on_close: emitting image_cut_done(None)")
         self.image_cut_done.emit(None)

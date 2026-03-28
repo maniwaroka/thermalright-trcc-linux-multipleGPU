@@ -321,9 +321,14 @@ class TestLCDDeviceOverlay(unittest.TestCase):
 
     def test_set_config(self):
         disp = MagicMock()
+        disp.lcd_width = 320
+        disp.lcd_height = 320
+        disp.overlay = MagicMock(spec=['set_config_resolution', 'set_config'])
         lcd = _make_lcd(display_svc=disp)
         result = lcd.set_config({'key': 'val'})
         self.assertTrue(result['success'])
+        disp.overlay.set_config_resolution.assert_called_once_with(320, 320)
+        disp.overlay.set_config.assert_called_once_with({'key': 'val'})
 
 
 # =============================================================================

@@ -6,6 +6,7 @@ No pytest dependency — pure Python with stdlib tracemalloc + time.
 from __future__ import annotations
 
 import gc
+import logging
 import time
 import tracemalloc
 from typing import Any, Callable
@@ -13,6 +14,8 @@ from unittest.mock import MagicMock
 
 from ..core.models import FBL_PROFILES, HardwareMetrics, LEDMode, LEDState, PlaybackState
 from ..core.perf import PerfReport
+
+log = logging.getLogger(__name__)
 
 
 def _cpu_per_iter(fn: Callable[[], Any], iterations: int = 100) -> float:
@@ -46,6 +49,7 @@ def _mem_growth(setup: Callable[[], Any], body: Callable[[], Any],
 
 def run_benchmarks() -> PerfReport:
     """Run all performance benchmarks and return a PerfReport."""
+    log.debug("starting CPU/memory benchmarks")
     from ..services.image import ImageService
     from ..services.led import LEDService
     from ..services.media import MediaService
@@ -323,6 +327,7 @@ def run_device_benchmarks(
 
     Adapter dependencies are injected by the caller (CLI/API composition root).
     """
+    log.debug("starting device benchmarks")
     report = PerfReport()
 
     # Pause GUI daemon if running (exclusive device access)

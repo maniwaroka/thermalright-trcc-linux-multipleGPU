@@ -1,7 +1,11 @@
 """Device detection, selection, and probing."""
 from __future__ import annotations
 
+import logging
+
 from trcc.cli import _cli_handler
+
+log = logging.getLogger(__name__)
 
 
 def _probe(dev):
@@ -10,6 +14,7 @@ def _probe(dev):
     Returns a dict with resolved fields, or empty dict if no probe available.
     """
     result = {}
+    log.debug("probing device %04x:%04x impl=%s", dev.vid, dev.pid, dev.implementation)
 
     # LED devices: probe via led_device cache/handshake
     if dev.implementation == 'hid_led':
@@ -20,8 +25,9 @@ def _probe(dev):
                 result['model'] = info.model_name
                 result['pm'] = info.pm
                 result['style'] = info.style
+                log.debug("LED probe result: model=%s pm=%s", info.model_name, info.pm)
         except Exception:
-            pass
+            log.debug("LED probe failed for %04x:%04x", dev.vid, dev.pid)
 
     # HID LCD devices: probe via hid_device handshake
     elif dev.implementation in ('hid_type2', 'hid_type3'):
@@ -41,8 +47,10 @@ def _probe(dev):
                 result['resolution'] = raw_info.resolution
                 if raw_info.serial:
                     result['serial'] = raw_info.serial
+                log.debug("HID probe result: pm=%s resolution=%s",
+                          raw_info.mode_byte_1, raw_info.resolution)
         except Exception:
-            pass
+            log.debug("HID probe failed for %04x:%04x", dev.vid, dev.pid)
 
     # Bulk USB devices: probe via factory
     elif dev.implementation == 'bulk_usblcdnew':
@@ -53,9 +61,10 @@ def _probe(dev):
             if hs and hs.resolution:
                 result['resolution'] = hs.resolution
                 result['pm'] = hs.model_id
+                log.debug("bulk probe result: resolution=%s pm=%s", hs.resolution, hs.model_id)
             bp.close()
         except Exception:
-            pass
+            log.debug("bulk probe failed for %04x:%04x", dev.vid, dev.pid)
 
     return result
 
@@ -101,11 +110,13 @@ def detect(show_all=False, detect_fn=None, platform_setup=None):
     from trcc.conf import Settings
     from trcc.core.builder import ControllerBuilder
 
+    log.debug("detect called show_all=%s", show_all)
     if detect_fn is None:
         detect_fn = ControllerBuilder.for_current_os().build_detect_fn()
     if platform_setup is None:
         platform_setup = ControllerBuilder.for_current_os().build_setup()
     devices = detect_fn()
+    log.debug("detected %d device(s)", len(devices))
 
     if not devices:
         print("No compatible TRCC LCD device detected.")
@@ -142,6 +153,7 @@ def select(number, detect_fn=None):
     from trcc.conf import Settings
     from trcc.core.builder import ControllerBuilder
 
+    log.debug("select device number=%d", number)
     if detect_fn is None:
         detect_fn = ControllerBuilder.for_current_os().build_detect_fn()
     devices = detect_fn()

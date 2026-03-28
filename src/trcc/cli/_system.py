@@ -1,6 +1,7 @@
 """System setup and administration commands."""
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -9,10 +10,13 @@ from pathlib import Path
 
 from trcc.core.platform import LINUX, detect_install_method, is_root
 
+log = logging.getLogger(__name__)
+
 
 def _require_linux(command: str) -> int | None:
     """Return error code if not on Linux, None if OK to proceed."""
     if not LINUX:
+        log.debug("command '%s' skipped: not on Linux", command)
         print(f"'{command}' is for Linux only.")
         from trcc.core.builder import ControllerBuilder
         hint = ControllerBuilder.for_current_os().build_setup().linux_command_hint()
@@ -30,6 +34,7 @@ def _real_user_home():
 
 def setup_udev(dry_run: bool = False) -> int:
     """Install udev rules for LCD device access (Linux only)."""
+    log.debug("setup_udev dry_run=%s", dry_run)
     err = _require_linux("setup-udev")
     if err is not None:
         return err
@@ -90,6 +95,7 @@ def show_info(builder=None, *, preview: bool = False, metric: str | None = None)
         from trcc.cli import _ensure_system
         from trcc.services.system import format_metric, get_all_metrics
 
+        log.debug("show_info preview=%s metric=%s", preview, metric)
         if builder is not None:
             _ensure_system(builder)
         metrics = get_all_metrics()
@@ -174,7 +180,7 @@ def _is_externally_managed() -> bool:
 
 def uninstall(*, yes: bool = False):
     """Remove all TRCC config, udev rules, autostart, and desktop files."""
-
+    log.debug("uninstall yes=%s", yes)
     from trcc.conf import Settings
 
     # Clear resolution markers before wiping config dir
@@ -282,6 +288,7 @@ def uninstall(*, yes: bool = False):
 
 def report(detect_fn=None):
     """Generate a full diagnostic report for bug reports."""
+    log.debug("collecting diagnostic report")
     from trcc.adapters.infra.debug_report import DebugReport
     from trcc.adapters.infra.doctor import run_doctor
 
@@ -296,6 +303,7 @@ def report(detect_fn=None):
 
 def download_themes(pack=None, show_list=False, force=False, show_info=False):
     """Download theme packs (like spacy download)."""
+    log.debug("download_themes pack=%s show_list=%s force=%s", pack, show_list, force)
     try:
         if show_info and pack:
             from trcc.adapters.infra.theme_downloader import show_info as pack_info

@@ -16,6 +16,7 @@ math_angle = (hue - 270) % 360.
 Original color ring by Lcstyle (GitHub PR #9).
 """
 
+import logging
 import math
 from typing import Optional
 
@@ -32,6 +33,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from .assets import Assets
+
+log = logging.getLogger(__name__)
 
 
 class UCColorWheel(QWidget):
@@ -233,6 +236,7 @@ class UCColorWheel(QWidget):
     def _toggle_onoff(self):
         """Toggle LED on/off state (C# UCColorA.buttonDSHX_Click)."""
         self._onoff = 0 if self._onoff == 1 else 1
+        log.debug("LED on/off toggled: %s", "ON" if self._onoff == 1 else "OFF")
         self._update_onoff_image()
         self.onoff_changed.emit(self._onoff)
 

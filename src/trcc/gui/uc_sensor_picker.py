@@ -11,6 +11,8 @@ panel row.
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -27,6 +29,8 @@ from ..core.ports import SensorEnumerator
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Styles
+
+log = logging.getLogger(__name__)
 
 # Dialog dimensions (matches Windows FormSystemInfo)
 DIALOG_W = 490
@@ -244,12 +248,14 @@ class SensorPickerDialog(QDialog):
 
     def _on_row_clicked(self, sensor_id: str):
         """Handle radio-button selection (only one sensor selected)."""
+        log.debug("_on_row_clicked: sensor_id=%s", sensor_id)
         self._selected_id = sensor_id
         for row in self._rows:
             row.set_selected(row.sensor.id == sensor_id)
 
     def _on_ok(self):
         """Confirm selection."""
+        log.debug("_on_ok: selected_id=%s", self._selected_id)
         if self._selected_id:
             for row in self._rows:
                 if row.sensor.id == self._selected_id:

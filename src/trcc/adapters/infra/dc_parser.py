@@ -8,6 +8,7 @@ Based on decompiled Windows TRCC code:
 - FormCZTV.cs - Config file read/write
 """
 
+import logging
 import struct
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -22,6 +23,8 @@ from trcc.core.models import (
 )
 
 from .binary_reader import BinaryReader
+
+log = logging.getLogger(__name__)
 
 
 class DcParser:
@@ -51,6 +54,7 @@ class DcParser:
 
         Based on C# BinaryReader pattern from FormCZTV.ReadSystemConfiguration.
         """
+        log.debug("parse: filepath=%s", filepath)
         with open(filepath, 'rb') as f:
             data = f.read()
 
@@ -571,6 +575,7 @@ class DcParser:
     @staticmethod
     def load_json(filepath: str) -> Optional[Tuple[dict, dict]]:
         """Load theme config from a JSON file (config.json)."""
+        log.debug("load_json: filepath=%s", filepath)
         import json
 
         try:

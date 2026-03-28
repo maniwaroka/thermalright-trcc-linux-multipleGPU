@@ -5,9 +5,13 @@ Shows 4 sensor boxes (CPU temp, GPU temp, CPU%, GPU%) above the preview.
 Matches Windows TRCC Information Module functionality.
 """
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+log = logging.getLogger(__name__)
 
 # Default sensors: (metric_key, label, color)
 DEFAULT_SENSORS = [

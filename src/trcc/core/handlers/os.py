@@ -18,6 +18,7 @@ TrccApp.build_os_bus() injects its own methods:
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
 import trcc.conf as _conf
@@ -42,6 +43,8 @@ from ..commands.initialize import (
     SetupWinUsbCommand,
 )
 from ..i18n import LANGUAGE_NAMES
+
+log = logging.getLogger(__name__)
 
 
 class OSCommandHandler:
@@ -86,12 +89,14 @@ class OSCommandHandler:
     def __call__(self, cmd: Command) -> CommandResult:
         match cmd:
             case InitPlatformCommand(verbosity=verbosity, renderer_factory=rf):
+                log.debug("InitPlatformCommand: verbosity=%d renderer_factory=%r", verbosity, rf)
                 self._bootstrap(verbosity)
                 if rf is not None:
                     self._set_renderer(rf())
                 return CommandResult.ok(message="platform ready")
 
             case DiscoverDevicesCommand(path=path):
+                log.debug("DiscoverDevicesCommand: path=%r", path)
                 devices = self._scan()
                 if path and not self._has_device(path):
                     return CommandResult.fail(f"Device not found: {path}")
@@ -102,12 +107,14 @@ class OSCommandHandler:
                 )
 
             case SetLanguageCommand(code=code):
+                log.debug("SetLanguageCommand: code=%s", code)
                 if code not in LANGUAGE_NAMES:
                     return CommandResult.fail(f"Unknown language code: {code}")
                 _conf.settings.lang = code
                 return CommandResult.ok(message=f"Language set to {code}")
 
             case SetupPlatformCommand(auto_yes=auto_yes):
+                log.debug("SetupPlatformCommand: auto_yes=%s", auto_yes)
                 rc = self._build_setup().run(auto_yes=auto_yes)
                 return CommandResult.ok() if rc == 0 else CommandResult.fail(
                     "Setup failed")
@@ -138,6 +145,7 @@ class OSCommandHandler:
                     "WinUSB setup failed")
 
             case DownloadThemesCommand(pack=pack, force=force):
+                log.debug("DownloadThemesCommand: pack=%r force=%s", pack, force)
                 if not pack:
                     self._list_themes()
                     return CommandResult.ok(message="Listed available theme packs")
@@ -168,6 +176,7 @@ def build_os_bus(
     All three UI adapters (CLI, API, GUI) dispatch OS commands here.
     The handler delegates to injected callables — callers are blind to the OS.
     """
+    log.debug("build_os_bus: wiring OS command handler")
     h = OSCommandHandler(
         bootstrap_fn=bootstrap_fn,
         set_renderer_fn=set_renderer_fn,

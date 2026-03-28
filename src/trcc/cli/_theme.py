@@ -1,7 +1,11 @@
 """Theme discovery and loading commands."""
 from __future__ import annotations
 
+import logging
+
 from trcc.cli import _cli_handler
+
+log = logging.getLogger(__name__)
 
 
 @_cli_handler
@@ -10,6 +14,7 @@ def list_themes(cloud=False, category=None):
     from trcc.conf import settings
     from trcc.services import ThemeService
 
+    log.debug("list_themes cloud=%s category=%s", cloud, category)
     w, h = settings.width, settings.height
     if not w or not h:
         print("No device resolution saved. Connect your device first.")
@@ -50,6 +55,7 @@ def load_theme(builder, name, *, device=None, preview=False):
     from trcc.core.commands.lcd import LoadThemeByNameCommand, PlayVideoLoopCommand
     from trcc.services import ImageService
 
+    log.debug("load_theme name=%s device=%s", name, device)
     rc = _connect_or_fail(device)
     if rc:
         return rc
@@ -101,6 +107,7 @@ def save_theme(name, *, device=None, video=None, background=None,
     from trcc.core.app import TrccApp
     from trcc.services import ImageService, ThemeService
 
+    log.debug("save_theme name=%s device=%s background=%s", name, device, background)
     rc = _connect_or_fail(device)
     if rc:
         return rc
@@ -194,6 +201,7 @@ def export_theme(theme_name, output_path):
     from trcc.conf import settings
     from trcc.services import ThemeService
 
+    log.debug("export_theme name=%s output=%s", theme_name, output_path)
     w, h = settings.width, settings.height
     if not w or not h:
         print("No device resolution saved. Connect your device first.")
@@ -244,6 +252,7 @@ def import_theme(file_path, *, device=None):
     from trcc.core.app import TrccApp
     from trcc.services import ThemeService
 
+    log.debug("import_theme path=%s device=%s", file_path, device)
     rc = _connect_or_fail(device)
     if rc:
         return rc

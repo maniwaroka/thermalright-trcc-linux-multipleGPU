@@ -7,6 +7,8 @@ DataTablePanel: Context-sensitive format controls (C/F, 12H/24H, date format, te
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
@@ -23,6 +25,8 @@ from ..core.models import OverlayMode
 from .assets import Assets
 from .base import set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
+
+log = logging.getLogger(__name__)
 
 
 class DataTablePanel(QFrame):
@@ -154,18 +158,21 @@ class DataTablePanel(QFrame):
 
     def _on_unit_clicked(self):
         """Toggle C/F: mode_sub 0↔1."""
+        log.debug("_on_unit_clicked: mode_sub=%s→%s", self._mode_sub, 0 if self._mode_sub else 1)
         self._mode_sub = 0 if self._mode_sub else 1
         self._update_unit_image()
         self.format_changed.emit(self._current_mode, self._mode_sub)
 
     def _on_time_clicked(self):
         """Toggle 12H/24H: mode_sub 1↔2 (Windows: 1=12H shows P12H, else P24H)."""
+        log.debug("_on_time_clicked: mode_sub=%s→%s", self._mode_sub, 2 if self._mode_sub == 1 else 1)
         self._mode_sub = 2 if self._mode_sub == 1 else 1
         self._update_time_image()
         self.format_changed.emit(self._current_mode, self._mode_sub)
 
     def _on_date_clicked(self):
         """Cycle date format: 1→2→3→4→1 (PYMD→PDMY→PMD→PDM)."""
+        log.debug("_on_date_clicked: mode_sub=%s→%s", self._mode_sub, (self._mode_sub % 4) + 1)
         self._mode_sub = (self._mode_sub % 4) + 1
         self._update_date_image()
         self.format_changed.emit(self._current_mode, self._mode_sub)
@@ -272,6 +279,7 @@ class DisplayModePanel(QFrame):
             self._action_buttons.append(btn)
 
     def _on_toggle(self, checked):
+        log.debug("_on_toggle: mode_id=%s checked=%s", self.mode_id, checked)
         self._set_actions_enabled(checked)
         self.mode_changed.emit(self.mode_id, checked)
 
@@ -423,6 +431,7 @@ class MaskPanel(DisplayModePanel):
         """Handle X/Y value change."""
         if self._updating:
             return
+        log.debug("_on_position_changed: x=%s y=%s", self.entry_x.text(), self.entry_y.text())
         try:
             x = int(self.entry_x.text() or '0')
             y = int(self.entry_y.text() or '0')
@@ -431,6 +440,7 @@ class MaskPanel(DisplayModePanel):
             pass
 
     def _on_eye_toggle(self):
+        log.debug("_on_eye_toggle: mask_visible=%s→%s", self._mask_visible, not self._mask_visible)
         self._mask_visible = not self._mask_visible
         self._update_eye_icon()
         self.mask_visibility_toggled.emit(self._mask_visible)
@@ -593,6 +603,7 @@ class ScreenCastPanel(DisplayModePanel):
         """Handle coordinate value change with aspect ratio locking."""
         if self._updating:
             return
+        log.debug("_on_coord_changed: which=%s val=%s", which, getattr(self, f'entry_{which}', None) and getattr(self, f'entry_{which}').text())
         try:
             val = int(getattr(self, f'entry_{which}').text() or '0')
         except ValueError:
@@ -626,6 +637,7 @@ class ScreenCastPanel(DisplayModePanel):
         return self._ASPECT_RATIOS.get(self._resolution, 0.75)
 
     def _on_border_toggle(self):
+        log.debug("_on_border_toggle: show_border=%s→%s", self._show_border, not self._show_border)
         self._show_border = not self._show_border
         self._update_border_icon()
         self.border_toggled.emit(self._show_border)

@@ -677,13 +677,14 @@ class TestLEDHandler:
     """Test the LEDHandler mediator from trcc_app.
 
     LEDHandler is the GUI adapter for LED devices (hexagonal pattern).
-    All signal handlers call LEDDevice.update_*() (state-only),
-    the 150ms tick timer handles animation + USB send (C# pattern).
+    All signal handlers dispatch commands through the CommandBus — the bus
+    routes to LEDGuiCommandHandler which calls update_*() (state-only).
+    The 150ms tick timer handles animation + USB send (C# pattern).
 
     Key architecture rules tested:
-    - Handlers call LEDDevice.update_*() not set_*() (no immediate send)
+    - Handlers dispatch through the bus, never call LED methods directly
     - No handler calls tick() or save_config() directly
-    - Zone-aware handlers forward to zone methods when zones exist
+    - Zone-aware handlers dispatch additional zone commands when zones exist
     - Periodic config save happens in _on_tick, not in handlers
     """
 
@@ -792,9 +793,10 @@ class TestLEDHandler:
         handler.set_temp_unit("C")  # Should not raise
 
     def test_set_temp_unit_with_led(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetTempUnitLEDCommand
+        self._wire_led(handler)
         handler.set_temp_unit("F")
-        mock_led.set_seg_temp_unit.assert_called_once_with("F")
+        handler._bus.dispatch.assert_called_once_with(SetTempUnitLEDCommand(unit="F"))
 
     # ── _sync_ui_from_state ──────────────────────────────────────
 
@@ -956,11 +958,12 @@ class TestLEDHandler:
         mock_led.tick.assert_not_called()
 
     def test_on_mode_changed_forwards_to_zone(self, handler):
+        from trcc.core.commands.led import SetZoneModeCommand
         zones = [LEDZoneState(), LEDZoneState()]
-        mock_led = self._wire_led(handler, zones=zones)
+        self._wire_led(handler, zones=zones)
         handler._panel.selected_zone = 1
         handler._on_mode_changed(3)
-        mock_led.update_zone_mode.assert_called_once_with(1, 3)
+        handler._bus.dispatch.assert_any_call(SetZoneModeCommand(zone=1, mode=3))
 
     def test_on_mode_changed_forces_save(self, handler):
         """Mode change sets save counter to interval (forces next-tick save)."""
@@ -987,18 +990,20 @@ class TestLEDHandler:
         mock_led.tick.assert_not_called()
 
     def test_on_color_changed_forwards_to_zone(self, handler):
-        from trcc.core.commands.led import SetLEDColorCommand
+        from trcc.core.commands.led import SetLEDColorCommand, SetZoneColorCommand
         zones = [LEDZoneState(), LEDZoneState()]
-        mock_led = self._wire_led(handler, zones=zones)
+        self._wire_led(handler, zones=zones)
         handler._panel.selected_zone = 1
         handler._on_color_changed(10, 20, 30)
-        handler._bus.dispatch.assert_called_once_with(SetLEDColorCommand(r=10, g=20, b=30))
-        mock_led.update_zone_color.assert_called_once_with(1, 10, 20, 30)
+        handler._bus.dispatch.assert_any_call(SetLEDColorCommand(r=10, g=20, b=30))
+        handler._bus.dispatch.assert_any_call(SetZoneColorCommand(zone=1, r=10, g=20, b=30))
 
     def test_on_color_changed_no_zone_forward_without_zones(self, handler):
-        mock_led = self._wire_led(handler)  # no zones
+        from trcc.core.commands.led import SetZoneColorCommand
+        self._wire_led(handler)  # no zones
         handler._on_color_changed(10, 20, 30)
-        mock_led.update_zone_color.assert_not_called()
+        dispatched = [c.args[0] for c in handler._bus.dispatch.call_args_list]
+        assert not any(isinstance(cmd, SetZoneColorCommand) for cmd in dispatched)
 
     # ── Signal handlers: brightness ──────────────────────────────
 
@@ -1012,16 +1017,19 @@ class TestLEDHandler:
         handler._bus.dispatch.assert_called_once_with(SetLEDBrightnessCommand(level=80))
 
     def test_on_brightness_changed_forwards_to_zone(self, handler):
+        from trcc.core.commands.led import SetZoneBrightnessCommand
         zones = [LEDZoneState(), LEDZoneState()]
-        mock_led = self._wire_led(handler, zones=zones)
+        self._wire_led(handler, zones=zones)
         handler._panel.selected_zone = 0
         handler._on_brightness_changed(60)
-        mock_led.update_zone_brightness.assert_called_once_with(0, 60)
+        handler._bus.dispatch.assert_any_call(SetZoneBrightnessCommand(zone=0, level=60))
 
     def test_on_brightness_changed_no_zone_forward_without_zones(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetZoneBrightnessCommand
+        self._wire_led(handler)
         handler._on_brightness_changed(60)
-        mock_led.update_zone_brightness.assert_not_called()
+        dispatched = [c.args[0] for c in handler._bus.dispatch.call_args_list]
+        assert not any(isinstance(cmd, SetZoneBrightnessCommand) for cmd in dispatched)
 
     # ── Signal handlers: global toggle ───────────────────────────
 
@@ -1029,14 +1037,16 @@ class TestLEDHandler:
         handler._on_global_toggled(True)  # Should not raise
 
     def test_on_global_toggled_on(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import ToggleLEDCommand
+        self._wire_led(handler)
         handler._on_global_toggled(True)
-        mock_led.update_global_on.assert_called_once_with(True)
+        handler._bus.dispatch.assert_called_once_with(ToggleLEDCommand(on=True))
 
     def test_on_global_toggled_off(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import ToggleLEDCommand
+        self._wire_led(handler)
         handler._on_global_toggled(False)
-        mock_led.update_global_on.assert_called_once_with(False)
+        handler._bus.dispatch.assert_called_once_with(ToggleLEDCommand(on=False))
 
     # ── Signal handlers: segment click ───────────────────────────
 
@@ -1045,23 +1055,27 @@ class TestLEDHandler:
 
     def test_on_segment_clicked_toggles_segment(self, handler):
         """Click toggles segment on→off (reads current, sends inverse)."""
+        from trcc.core.commands.led import ToggleSegmentCommand
         mock_led = self._wire_led(handler)
         mock_led.state.segment_on = [True, False, True]
         handler._on_segment_clicked(0)
-        mock_led.update_segment.assert_called_once_with(0, False)
+        handler._bus.dispatch.assert_called_once_with(ToggleSegmentCommand(index=0, on=False))
 
     def test_on_segment_clicked_toggles_off_to_on(self, handler):
+        from trcc.core.commands.led import ToggleSegmentCommand
         mock_led = self._wire_led(handler)
         mock_led.state.segment_on = [True, False, True]
         handler._on_segment_clicked(1)
-        mock_led.update_segment.assert_called_once_with(1, True)
+        handler._bus.dispatch.assert_called_once_with(ToggleSegmentCommand(index=1, on=True))
 
     def test_on_segment_clicked_out_of_range(self, handler):
         """Out-of-range index is silently ignored."""
+        from trcc.core.commands.led import ToggleSegmentCommand
         mock_led = self._wire_led(handler)
         mock_led.state.segment_on = [True, True]
         handler._on_segment_clicked(5)
-        mock_led.update_segment.assert_not_called()
+        dispatched = [c.args[0] for c in handler._bus.dispatch.call_args_list]
+        assert not any(isinstance(cmd, ToggleSegmentCommand) for cmd in dispatched)
 
     # ── Signal handlers: zone select ─────────────────────────────
 
@@ -1069,13 +1083,14 @@ class TestLEDHandler:
         handler._on_zone_selected(0)  # Should not raise
 
     def test_on_zone_selected_loads_zone_state(self, handler):
+        from trcc.core.commands.led import SelectZoneCommand
         z0 = LEDZoneState(mode=LEDMode.COLORFUL, color=(10, 20, 30),
                           brightness=50, on=False)
         z1 = LEDZoneState(mode=LEDMode.RAINBOW, color=(40, 50, 60),
                           brightness=70, on=True)
-        mock_led = self._wire_led(handler, zones=[z0, z1])
+        self._wire_led(handler, zones=[z0, z1])
         handler._on_zone_selected(1)
-        mock_led.update_selected_zone.assert_called_once_with(1)
+        handler._bus.dispatch.assert_called_once_with(SelectZoneCommand(zone=1))
         handler._panel.load_zone_state.assert_called_once_with(
             1, LEDMode.RAINBOW.value, (40, 50, 60), 70, True
         )
@@ -1091,14 +1106,16 @@ class TestLEDHandler:
         handler._on_zone_toggled(0, True)  # Should not raise
 
     def test_on_zone_toggled_on(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import ToggleZoneCommand
+        self._wire_led(handler)
         handler._on_zone_toggled(2, True)
-        mock_led.update_zone_on.assert_called_once_with(2, True)
+        handler._bus.dispatch.assert_called_once_with(ToggleZoneCommand(zone=2, on=True))
 
     def test_on_zone_toggled_off(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import ToggleZoneCommand
+        self._wire_led(handler)
         handler._on_zone_toggled(1, False)
-        mock_led.update_zone_on.assert_called_once_with(1, False)
+        handler._bus.dispatch.assert_called_once_with(ToggleZoneCommand(zone=1, on=False))
 
     # ── Signal handlers: carousel (zone sync) ────────────────────
 
@@ -1106,30 +1123,34 @@ class TestLEDHandler:
         handler._on_carousel_changed(True)  # Should not raise
 
     def test_on_carousel_changed_enable(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetZoneSyncCommand
+        self._wire_led(handler)
         handler._on_carousel_changed(True)
-        mock_led.update_zone_sync.assert_called_once_with(True)
+        handler._bus.dispatch.assert_called_once_with(SetZoneSyncCommand(enabled=True))
 
     def test_on_carousel_changed_disable(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetZoneSyncCommand
+        self._wire_led(handler)
         handler._on_carousel_changed(False)
-        mock_led.update_zone_sync.assert_called_once_with(False)
+        handler._bus.dispatch.assert_called_once_with(SetZoneSyncCommand(enabled=False))
 
     def test_on_carousel_zone_changed_no_led(self, handler):
         handler._on_carousel_zone_changed(0, True)  # Should not raise
 
     def test_on_carousel_zone_changed(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetZoneSyncZoneCommand
+        self._wire_led(handler)
         handler._on_carousel_zone_changed(2, True)
-        mock_led.update_zone_sync_zone.assert_called_once_with(2, True)
+        handler._bus.dispatch.assert_called_once_with(SetZoneSyncZoneCommand(zi=2, sel=True))
 
     def test_on_carousel_interval_changed_no_led(self, handler):
         handler._on_carousel_interval_changed(5)  # Should not raise
 
     def test_on_carousel_interval_changed(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetZoneSyncIntervalCommand
+        self._wire_led(handler)
         handler._on_carousel_interval_changed(10)
-        mock_led.update_zone_sync_interval.assert_called_once_with(10)
+        handler._bus.dispatch.assert_called_once_with(SetZoneSyncIntervalCommand(secs=10))
 
     # ── Signal handlers: clock format ────────────────────────────
 
@@ -1137,14 +1158,16 @@ class TestLEDHandler:
         handler._on_clock_format_changed(True)  # Should not raise
 
     def test_on_clock_format_changed_24h(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetClockFormatCommand
+        self._wire_led(handler)
         handler._on_clock_format_changed(True)
-        mock_led.update_clock_format.assert_called_once_with(True)
+        handler._bus.dispatch.assert_called_once_with(SetClockFormatCommand(is_24h=True))
 
     def test_on_clock_format_changed_12h(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetClockFormatCommand
+        self._wire_led(handler)
         handler._on_clock_format_changed(False)
-        mock_led.update_clock_format.assert_called_once_with(False)
+        handler._bus.dispatch.assert_called_once_with(SetClockFormatCommand(is_24h=False))
 
     # ── Signal handlers: week start ──────────────────────────────
 
@@ -1152,14 +1175,16 @@ class TestLEDHandler:
         handler._on_week_start_changed(True)  # Should not raise
 
     def test_on_week_start_changed_sunday(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetWeekStartCommand
+        self._wire_led(handler)
         handler._on_week_start_changed(True)
-        mock_led.update_week_start.assert_called_once_with(True)
+        handler._bus.dispatch.assert_called_once_with(SetWeekStartCommand(is_sun=True))
 
     def test_on_week_start_changed_monday(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetWeekStartCommand
+        self._wire_led(handler)
         handler._on_week_start_changed(False)
-        mock_led.update_week_start.assert_called_once_with(False)
+        handler._bus.dispatch.assert_called_once_with(SetWeekStartCommand(is_sun=False))
 
     # ── Signal handlers: disk index ──────────────────────────────
 
@@ -1167,9 +1192,10 @@ class TestLEDHandler:
         handler._on_disk_index_changed(0)  # Should not raise
 
     def test_on_disk_index_changed(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetDiskIndexCommand
+        self._wire_led(handler)
         handler._on_disk_index_changed(3)
-        mock_led.update_disk_index.assert_called_once_with(3)
+        handler._bus.dispatch.assert_called_once_with(SetDiskIndexCommand(idx=3))
 
     # ── Signal handlers: memory ratio ────────────────────────────
 
@@ -1177,9 +1203,10 @@ class TestLEDHandler:
         handler._on_memory_ratio_changed(1)  # Should not raise
 
     def test_on_memory_ratio_changed(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetMemoryRatioCommand
+        self._wire_led(handler)
         handler._on_memory_ratio_changed(2)
-        mock_led.update_memory_ratio.assert_called_once_with(2)
+        handler._bus.dispatch.assert_called_once_with(SetMemoryRatioCommand(ratio=2))
 
     # ── Signal handlers: test mode ───────────────────────────────
 
@@ -1187,14 +1214,16 @@ class TestLEDHandler:
         handler._on_test_mode_changed(True)  # Should not raise
 
     def test_on_test_mode_changed_enable(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetTestModeCommand
+        self._wire_led(handler)
         handler._on_test_mode_changed(True)
-        mock_led.update_test_mode.assert_called_once_with(True)
+        handler._bus.dispatch.assert_called_once_with(SetTestModeCommand(on=True))
 
     def test_on_test_mode_changed_disable(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import SetTestModeCommand
+        self._wire_led(handler)
         handler._on_test_mode_changed(False)
-        mock_led.update_test_mode.assert_called_once_with(False)
+        handler._bus.dispatch.assert_called_once_with(SetTestModeCommand(on=False))
 
     # ── Metrics ──────────────────────────────────────────────────
 
@@ -1202,19 +1231,21 @@ class TestLEDHandler:
         handler.update_from_metrics(MagicMock())  # Should not raise
 
     def test_update_from_metrics_forwards_to_led_and_panel(self, handler):
-        mock_led = self._wire_led(handler)
+        from trcc.core.commands.led import UpdateMetricsLEDCommand
+        self._wire_led(handler)
         metrics = MagicMock()
         handler.update_from_metrics(metrics)
-        mock_led.update_metrics.assert_called_once_with(metrics)
+        handler._bus.dispatch.assert_called_once_with(UpdateMetricsLEDCommand(metrics=metrics))
         handler._panel.update_metrics.assert_called_once_with(metrics)
 
     # ── Hexagonal purity: no handler calls set_*() / tick() ──────
 
     def test_handlers_never_call_set_methods(self, handler):
-        """All handlers use update_*() (state-only), never set_*() (immediate).
+        """All handlers dispatch through the bus, never call set_*() directly.
 
-        This is the core hexagonal invariant: GUI adapter sets state,
-        timer-driven tick handles animation + USB send.
+        This is the core hexagonal invariant: GUI adapter dispatches commands,
+        LEDGuiCommandHandler calls update_*() (state-only), timer-driven tick
+        handles animation + USB send.
         """
         mock_led = self._wire_led(handler, zones=[LEDZoneState()])
         handler._panel.selected_zone = 0
@@ -1390,11 +1421,10 @@ class TestDevicePollLEDAutoSelect:
     showed all zeros until the user manually clicked the device button.
     """
 
-    def test_auto_select_led_calls_show(self, qapp):
+    def test_auto_select_led_calls_show(self, bare_trcc_app):
         """When _activate_device selects an LED path, handler.show() is called
         if the handler is not yet active."""
         from trcc.gui.led_handler import LEDHandler
-        from trcc.gui.trcc_app import TRCCApp
 
         mock_info = MagicMock()
         mock_info.path = 'led_path'
@@ -1404,15 +1434,122 @@ class TestDevicePollLEDAutoSelect:
         mock_handler.device_info = mock_info
         mock_handler.view_name = 'led'
 
-        with patch.object(TRCCApp, '__init__', lambda self, *a, **kw: None):
-            app = TRCCApp.__new__(TRCCApp)
-            app._handlers = {'led_path': mock_handler}
-            app._active_path = ''
-            app._show_view = MagicMock()
-
-            app._activate_device('led_path')
+        app = bare_trcc_app
+        app._handlers = {'led_path': mock_handler}
+        app._active_path = ''
+        app._show_view = MagicMock()
+        app._activate_device('led_path')
 
         mock_handler.show.assert_called_once_with(mock_info)
+
+
+# =========================================================================
+# _activate_device LCD guard — no re-init on sidebar re-navigation
+# =========================================================================
+
+
+class TestActivateDeviceLCDGuard:
+    """_activate_device must not call apply_device_config when device_key is already set.
+
+    Regression test: clicking control-center / metrics sidebar items was triggering
+    a full apply_device_config (600 ms SCSI operation) on every click because
+    _activate_device was unconditional. Fixed by guarding with `not handler.device_key`.
+    """
+
+    def _make_lcd_handler(self, device_key: str = ''):
+        from trcc.gui.lcd_handler import LCDHandler
+
+        info = MagicMock()
+        info.resolution = (320, 320)
+
+        mock_handler = MagicMock(spec=LCDHandler)
+        mock_handler.device_key = device_key
+        mock_handler.display.connected = True
+        mock_handler.display.device_info = info
+        mock_handler.view_name = 'lcd'
+        return mock_handler
+
+    def test_apply_device_config_called_on_first_activation(self, bare_trcc_app):
+        """apply_device_config is called when device_key is empty (first activation)."""
+        handler = self._make_lcd_handler(device_key='')
+
+        app = bare_trcc_app
+        app._handlers = {'lcd_path': handler}
+        app._active_path = ''
+        app._show_view = MagicMock()
+        app._update_ldd_icon = MagicMock()
+        app._start_handshake = MagicMock()
+        app._activate_device('lcd_path')
+
+        handler.apply_device_config.assert_called_once()
+
+    def test_apply_device_config_skipped_when_already_initialized(self, bare_trcc_app):
+        """apply_device_config is NOT called when device_key is already set (re-navigation)."""
+        handler = self._make_lcd_handler(device_key='0:0402:3922')
+
+        app = bare_trcc_app
+        app._handlers = {'lcd_path': handler}
+        app._active_path = ''
+        app._show_view = MagicMock()
+        app._update_ldd_icon = MagicMock()
+        app._start_handshake = MagicMock()
+        app._activate_device('lcd_path')
+
+        handler.apply_device_config.assert_not_called()
+
+
+class TestHandshakeDoneGuard:
+    """_on_handshake_done must not call apply_device_config when device_key is set.
+
+    Regression test: if a handshake completes while a theme is already playing
+    (e.g. duplicate handshake signal), apply_device_config fired unconditionally,
+    stopped the video theme, and reloaded the saved static theme_path.
+    Fixed by guarding with `not handler.device_key`.
+    """
+
+    def _make_handler(self, device_key: str):
+        from trcc.gui.lcd_handler import LCDHandler
+
+        device = MagicMock()
+        device.path = 'lcd_path'
+        device.resolution = (320, 320)
+
+        handler = MagicMock(spec=LCDHandler)
+        handler.device_key = device_key
+        handler.view_name = 'lcd'
+
+        return device, handler
+
+    def test_applies_config_on_first_handshake(self, bare_trcc_app):
+        """apply_device_config is called when device_key is empty (first handshake)."""
+        from trcc.conf import Settings
+
+        device, handler = self._make_handler(device_key='')
+        app = bare_trcc_app
+        app._handshake_pending = True
+        app._handlers = {'lcd_path': handler}
+        app._update_ldd_icon = MagicMock()
+        app.uc_preview = MagicMock()
+        app.uc_info_module = MagicMock()
+        app._resolve_device_identity = MagicMock()
+
+        with patch.object(Settings, 'show_info_module', return_value=False):
+            app._on_handshake_done(device, ((320, 320), 100, 0, 0))
+        handler.apply_device_config.assert_called_once()
+
+    def test_skips_config_on_duplicate_handshake(self, bare_trcc_app):
+        """apply_device_config is NOT called when device_key already set (duplicate handshake)."""
+        device, handler = self._make_handler(device_key='0:0402:3922')
+        app = bare_trcc_app
+        app._handshake_pending = True
+        app._handlers = {'lcd_path': handler}
+        app._update_ldd_icon = MagicMock()
+        app.uc_preview = MagicMock()
+        app.uc_info_module = MagicMock()
+        app._resolve_device_identity = MagicMock()
+
+        app._on_handshake_done(device, ((320, 320), 100, 0, 0))
+        handler.apply_device_config.assert_not_called()
 
 
 # =========================================================================
@@ -1430,22 +1567,18 @@ class TestViewSwitchLEDKeepsRunning:
     """
 
     @pytest.fixture()
-    def app(self, qapp):
-        from trcc.gui.trcc_app import TRCCApp
-        TRCCApp._instance = None
-        with patch.object(TRCCApp, '__init__', lambda self, *a, **kw: None):
-            inst = TRCCApp.__new__(TRCCApp)
-            inst._led = MagicMock()
-            inst._led.active = True
-            inst.form_container = MagicMock()
-            inst.uc_about = MagicMock()
-            inst.uc_system_info = MagicMock()
-            inst.uc_led_control = MagicMock()
-            inst.uc_activity_sidebar = MagicMock()
-            inst.form1_close_btn = MagicMock()
-            inst.form1_help_btn = MagicMock()
-            yield inst
-            TRCCApp._instance = None
+    def app(self, bare_trcc_app):
+        inst = bare_trcc_app
+        inst._led = MagicMock()
+        inst._led.active = True
+        inst.form_container = MagicMock()
+        inst.uc_about = MagicMock()
+        inst.uc_system_info = MagicMock()
+        inst.uc_led_control = MagicMock()
+        inst.uc_activity_sidebar = MagicMock()
+        inst.form1_close_btn = MagicMock()
+        inst.form1_help_btn = MagicMock()
+        return inst
 
     def test_show_view_form_does_not_stop_led(self, app):
         """Switching to 'form' view must not stop active LED."""

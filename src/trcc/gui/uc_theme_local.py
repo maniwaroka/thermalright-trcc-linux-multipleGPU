@@ -12,6 +12,7 @@ Features:
 """
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from ..core.models import LocalThemeItem
 from .assets import Assets
 from .base import BaseThemeBrowser, BaseThumbnail
 from .constants import Layout, Styles
+
+log = logging.getLogger(__name__)
 
 
 class ThemeThumbnail(BaseThumbnail):
@@ -322,6 +325,7 @@ class UCThemeLocal(BaseThemeBrowser):
 
     def _on_item_clicked(self, item_info: dict):
         """Extend base to also invoke delegate."""
+        log.debug("_on_item_clicked: %s (emitting theme_selected)", getattr(item_info, 'name', item_info))
         super()._on_item_clicked(item_info)
         self.invoke_delegate(self.CMD_THEME_SELECTED, item_info)
 

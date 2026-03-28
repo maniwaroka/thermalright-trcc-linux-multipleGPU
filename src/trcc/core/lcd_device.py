@@ -71,6 +71,39 @@ class LCDDevice(Device):
         if self._display_svc is not None and self._display_svc.on_data_ready is not None:
             self._display_svc.on_data_ready()
 
+    def set_data_ready_callback(self, fn: Any) -> None:
+        """Register a callback invoked when background data extraction completes."""
+        if self._display_svc is not None:
+            self._display_svc.on_data_ready = fn
+
+    def set_flash_index(self, index: int) -> dict:
+        """Set the overlay element flash-skip index (-1 clears flash state)."""
+        if self._display_svc and self._display_svc.overlay:
+            self._display_svc.overlay.flash_skip_index = index
+        return {"success": True, "index": index}
+
+    def set_mask_position(self, x: int, y: int) -> dict:
+        """Move the mask overlay and invalidate the overlay render cache."""
+        if self._display_svc and self._display_svc.overlay:
+            self._display_svc.overlay.theme_mask_position = (x, y)
+            self._display_svc.overlay._invalidate_cache()
+        return {"success": True, "message": f"Mask position: ({x}, {y})"}
+
+    def render_and_send(self, skip_if_video: bool = False) -> dict:
+        """Render the overlay and send to device if auto_send is on.
+
+        Returns {'image': rendered_image} so callers can update their preview.
+        skip_if_video suppresses the send (not the render) during video playback.
+        """
+        if not self._display_svc:
+            return {"success": False, "image": None}
+        if skip_if_video and self.playing:
+            return {"success": False, "image": None, "message": "Video playing"}
+        image = self._display_svc.render_overlay()
+        if image and self.auto_send and self.connected:
+            self.send(image)
+        return {"success": True, "image": image}
+
     def _build_services(self, device_svc: Any) -> None:
         """Wire up all services from a DeviceService via injected factory."""
         if self._build_services_fn is None:
@@ -848,7 +881,7 @@ class LCDDevice(Device):
 
     def set_config(self, config: dict) -> dict:
         w, h = self.lcd_size
-        self._display_svc.overlay.service.set_config_resolution(w, h)
+        self._display_svc.overlay.set_config_resolution(w, h)
         self._display_svc.overlay.set_config(config)
         return {"success": True, "message": f"Overlay config: {len(config)} elements"}
 

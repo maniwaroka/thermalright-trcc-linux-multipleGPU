@@ -6,6 +6,8 @@ Contains the LCD preview with decorative frame.
 """
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSlider, QVBoxLayout
@@ -13,6 +15,8 @@ from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSlider, QVBoxLayout
 from .assets import Assets
 from .base import BasePanel, ImageLabel, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
+
+log = logging.getLogger(__name__)
 
 
 class UCPreview(BasePanel):
@@ -188,14 +192,17 @@ class UCPreview(BasePanel):
 
     def _on_drag_started(self, wx: int, wy: int):
         lx, ly = self._widget_to_lcd(wx, wy)
+        log.debug("_on_drag_started: widget=(%s,%s) lcd=(%s,%s)", wx, wy, lx, ly)
         self.element_drag_start.emit(lx, ly)
 
     def _on_drag_moved(self, wx: int, wy: int):
         lx, ly = self._widget_to_lcd(wx, wy)
+        log.debug("_on_drag_moved: widget=(%s,%s) lcd=(%s,%s)", wx, wy, lx, ly)
         self.element_drag_move.emit(lx, ly)
 
     def _on_nudge(self, dx: int, dy: int):
         """Forward keyboard nudge as LCD-scaled delta."""
+        log.debug("_on_nudge: dx=%s dy=%s", dx, dy)
         _, _, pw, ph, _ = self._offset_info
         if pw <= 0 or ph <= 0:
             return
@@ -209,18 +216,23 @@ class UCPreview(BasePanel):
         self.element_nudge.emit(lcd_dx, lcd_dy)
 
     def _on_preview_clicked(self):
+        log.debug("_on_preview_clicked")
         self.image_clicked.emit(0, 0)
 
     def _on_play_pause(self):
+        log.debug("_on_play_pause")
         self.invoke_delegate(self.CMD_VIDEO_PLAY_PAUSE)
 
     def _on_height_fit(self):
+        log.debug("_on_height_fit")
         self.invoke_delegate(self.CMD_VIDEO_FIT_HEIGHT)
 
     def _on_width_fit(self):
+        log.debug("_on_width_fit")
         self.invoke_delegate(self.CMD_VIDEO_FIT_WIDTH)
 
     def _on_seek(self, value):
+        log.debug("_on_seek: value=%s", value)
         self.invoke_delegate(self.CMD_VIDEO_SEEK, value)
 
     def set_image(self, image, fast: bool = False):

@@ -177,3 +177,61 @@ class RestoreLastThemeCommand(LCDCommand):
     loads the theme, applies mask and overlay, and returns the result dict so
     each adapter can update its own presentation layer.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class StopVideoCommand(LCDCommand):
+    """Stop video/GIF playback and reset to idle."""
+
+
+@dataclass(frozen=True, slots=True)
+class PauseVideoCommand(LCDCommand):
+    """Toggle pause on current video/GIF playback."""
+
+
+@dataclass(frozen=True, slots=True)
+class SeekVideoCommand(LCDCommand):
+    """Seek to a position in the video (0.0–1.0)."""
+    percent: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class SetVideoFitModeCommand(LCDCommand):
+    """Set the video frame scaling/fit mode."""
+    mode: str = "contain"
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildOverlayCacheCommand(LCDCommand):
+    """Rebuild the pre-composited overlay cache for all video frames."""
+    metrics: Any = field(default=None, hash=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class SetFlashIndexCommand(LCDCommand):
+    """Set the overlay element flash-skip index (-1 to clear)."""
+    index: int = -1
+
+
+@dataclass(frozen=True, slots=True)
+class SetMaskPositionCommand(LCDCommand):
+    """Move the mask overlay to a new position (pixels from top-left)."""
+    x: int = 0
+    y: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SendFrameCommand(LCDCommand):
+    """Send a pre-rendered frame directly to the LCD device."""
+    image: Any = field(default=None, hash=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class RenderAndSendCommand(LCDCommand):
+    """Render the overlay and send to device.
+
+    skip_if_video=True skips the send (not the render) when video is playing —
+    the animation timer owns frame delivery during video playback.
+    Returns {'image': rendered_image} in payload so callers can update preview.
+    """
+    skip_if_video: bool = False

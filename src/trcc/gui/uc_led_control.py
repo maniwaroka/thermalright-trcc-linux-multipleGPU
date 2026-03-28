@@ -12,6 +12,7 @@ All LED devices (styles 1-12) use this single panel — matching Windows
 FormLED.cs which is one form for all LED device types.
 """
 
+import logging
 from typing import Dict, List, Tuple
 
 from PySide6.QtCore import QRect, Qt, Signal
@@ -34,6 +35,8 @@ from .assets import Assets
 from .base import set_background_pixmap
 from .uc_color_wheel import UCColorWheel
 from .uc_screen_led import UCScreenLED
+
+log = logging.getLogger(__name__)
 
 # =========================================================================
 # Layout constants (from FormLED.cs InitializeComponent, ClientSize 1274x800)
@@ -977,6 +980,7 @@ class UCLedControl(QWidget):
 
     def _on_mode_clicked(self, index: int):
         """Handle mode button click."""
+        log.debug("_on_mode_clicked: index=%s", index)
         self._current_mode = index
         for i, btn in enumerate(self._mode_buttons):
             btn.setChecked(i == index)
@@ -985,11 +989,13 @@ class UCLedControl(QWidget):
 
     def _on_hue_changed(self, hue: int):
         """Handle color wheel hue selection -> update RGB sliders."""
+        log.debug("_on_hue_changed: hue=%s", hue)
         color = QColor.fromHsv(hue, 255, 255)
         self._set_color(color.red(), color.green(), color.blue())
 
     def _on_rgb_changed(self):
         """Handle RGB slider change."""
+        log.debug("_on_rgb_changed: r=%s g=%s b=%s", self._rgb_sliders[0].value(), self._rgb_sliders[1].value(), self._rgb_sliders[2].value())
         r = self._rgb_sliders[0].value()
         g = self._rgb_sliders[1].value()
         b = self._rgb_sliders[2].value()
@@ -1002,6 +1008,7 @@ class UCLedControl(QWidget):
 
     def _on_spinbox_changed(self, index: int, value: int):
         """Handle RGB spinbox change."""
+        log.debug("_on_spinbox_changed: index=%s value=%s", index, value)
         self._rgb_sliders[index].blockSignals(True)
         self._rgb_sliders[index].setValue(value)
         self._rgb_sliders[index].blockSignals(False)
@@ -1034,6 +1041,7 @@ class UCLedControl(QWidget):
 
     def _on_wheel_onoff(self, val: int):
         """Handle color wheel center on/off toggle (C# ucColor2Delegate)."""
+        log.debug("_on_wheel_onoff: val=%s (on=%s)", val, val == 1)
         self.global_toggled.emit(val == 1)
 
     # -- Zone selection --
@@ -1045,6 +1053,7 @@ class UCLedControl(QWidget):
         Carousel ON: multi-select (toggle zone in/out of rotation).
         Carousel OFF: radio-select (one zone at a time).
         """
+        log.debug("_on_zone_clicked: zone_index=%s carousel=%s", zone_index, self._carousel_mode)
         if self._is_select_all_style and self._carousel_mode:
             # Select all: keep all buttons checked, ignore click (C# early return)
             for btn in self._zone_buttons[:self._zone_count]:
@@ -1078,6 +1087,7 @@ class UCLedControl(QWidget):
         Styles 2/7: "Select all" — all zone buttons checked, no interval.
         Other styles: "Circulate" — multi-select zones with timer interval.
         """
+        log.debug("_on_sync_toggled: carousel=%s", carousel)
         self._carousel_mode = carousel
         if self._is_select_all_style:
             # Select all: check all zone buttons, never show interval
@@ -1099,6 +1109,7 @@ class UCLedControl(QWidget):
 
     def _on_carousel_interval_changed(self, text: str = ""):
         """Handle carousel interval input change (C# textBoxTimer_TextChanged)."""
+        log.debug("_on_carousel_interval_changed: text=%r", text)
         if not text:
             text = self._carousel_interval.text()
         if text.isdigit() and int(text) > 0:
@@ -1290,6 +1301,7 @@ class UCLedControl(QWidget):
 
     def _on_ddr_changed(self, index: int) -> None:
         """Handle DDR multiplier combo selection."""
+        log.debug("_on_ddr_changed: index=%s", index)
         ratio = self._ddr_combo.itemData(index)
         if ratio and isinstance(ratio, int):
             self._memory_ratio = ratio
@@ -1324,6 +1336,7 @@ class UCLedControl(QWidget):
 
     def _on_disk_selected(self, idx: int) -> None:
         """Handle disk selector change — emit signal."""
+        log.debug("_on_disk_selected: idx=%s", idx)
         self.disk_index_changed.emit(idx)
 
     def update_lf11_disk_metrics(self, metrics: HardwareMetrics) -> None:

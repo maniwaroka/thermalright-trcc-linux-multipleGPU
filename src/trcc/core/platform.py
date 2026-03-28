@@ -5,10 +5,13 @@ use to select the right concrete classes.
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 import sys
+
+log = logging.getLogger(__name__)
 
 LINUX = sys.platform.startswith('linux')
 WINDOWS = sys.platform == 'win32'
@@ -48,16 +51,20 @@ def detect_install_method() -> str:
     Returns 'pipx', 'pip', 'pacman', 'dnf', or 'apt'.
     """
     if 'pipx' in sys.prefix:
+        log.debug("install method: pipx")
         return 'pipx'
     try:
         from importlib.metadata import distribution
         dist = distribution('trcc-linux')
         installer = (dist.read_text('INSTALLER') or '').strip()
         if installer == 'pip':
+            log.debug("install method: pip (INSTALLER metadata)")
             return 'pip'
     except Exception:
         pass
     for mgr in ('pacman', 'dnf', 'apt'):
         if shutil.which(mgr):
+            log.debug("install method: %s (package manager detected)", mgr)
             return mgr
+    log.debug("install method: pip (fallback)")
     return 'pip'
