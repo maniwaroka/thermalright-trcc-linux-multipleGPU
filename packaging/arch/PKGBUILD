@@ -16,6 +16,7 @@ depends=(
     'python-typer'
     'python-fastapi'
     'python-multipart'
+    'python-prompt_toolkit'
     'libusb'
     'sg3_utils'
     'p7zip'

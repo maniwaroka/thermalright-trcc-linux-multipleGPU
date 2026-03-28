@@ -39,6 +39,7 @@ dependencies = [
     "tzdata>=2024.1; sys_platform == 'win32'",
     "uvicorn[standard]>=0.20",
     "python-multipart>=0.0.6",
+    "prompt_toolkit>=3.0.0",
     "wmi>=1.5.1; sys_platform == 'win32'",
 ]
 

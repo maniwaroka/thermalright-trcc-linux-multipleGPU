@@ -1119,6 +1119,62 @@ def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
 
 
 # =========================================================================
+# Interactive shell
+# =========================================================================
+
+@app.command("shell")
+def _cmd_shell() -> int:
+    """Open interactive TRCC shell — type commands without the 'trcc' prefix."""
+    import shlex
+
+    import click
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.completion import WordCompleter
+    from prompt_toolkit.history import FileHistory
+
+    from trcc.core.paths import USER_DATA_DIR
+
+    # Build tab-completer from all registered commands
+    click_app = typer.main.get_command(app)
+    commands = sorted(click_app.commands.keys())  # type: ignore[union-attr]
+    completer = WordCompleter(commands, sentence=True)
+
+    history_file = Path(USER_DATA_DIR) / "shell_history"
+    session: PromptSession = PromptSession(
+        history=FileHistory(str(history_file)),
+        completer=completer,
+    )
+
+    print("TRCC shell — type commands without 'trcc' prefix. Tab to complete. Ctrl+D to exit.")
+    while True:
+        try:
+            text = session.prompt("trcc> ").strip()
+        except KeyboardInterrupt:
+            continue
+        except EOFError:
+            break
+
+        if not text:
+            continue
+        if text in ("exit", "quit"):
+            break
+
+        try:
+            args = shlex.split(text)
+            click_app.main(args, standalone_mode=False)
+        except click.exceptions.Exit:
+            pass
+        except click.exceptions.Abort:
+            print("\nAborted.")
+        except SystemExit:
+            pass
+        except Exception as e:
+            print(f"Error: {e}")
+
+    return 0
+
+
+# =========================================================================
 # Main entry point
 # =========================================================================
 
