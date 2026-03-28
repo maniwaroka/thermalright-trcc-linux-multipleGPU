@@ -1,5 +1,12 @@
 # Changelog
 
+## v9.2.5
+
+### Fixes
+- **Cloud mask download fails for portrait/rotated devices** (issue #95): `CLOUD_MASK_URLS` was missing all non-square resolutions — users with 1280x480 and other rotatable devices got "No cloud URL" when switching to portrait and trying to download masks. All landscape+portrait pairs now registered
+- **Billboard devices missing from cloud mask URLs**: 640x172, 960x320, 1920x440 (and their portrait variants) can now download cloud masks
+- **Portrait web+mask data not extracted on first install**: `ensure_all()` now extracts bundled web previews and masks for both orientations when a non-square device is first set up
+
 ## v9.2.4
 
 ### Fixes
