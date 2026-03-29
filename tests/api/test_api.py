@@ -314,8 +314,8 @@ class TestDisplayEndpoints(unittest.TestCase):
         api_module._display_dispatcher = self.mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        from trcc.core.handlers.lcd import build_lcd_bus
-        TrccApp.get()._lcd_bus = build_lcd_bus(self.mock_lcd)
+
+        TrccApp.get()._lcd_device = self.mock_lcd
 
     def tearDown(self):
         from trcc.core.app import TrccApp
@@ -441,8 +441,8 @@ class TestLEDEndpoints(unittest.TestCase):
         api_module._led_dispatcher = self.mock_led
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        from trcc.core.handlers.led import build_led_bus
-        TrccApp.get()._led_bus = build_led_bus(self.mock_led)
+
+        TrccApp.get()._led_device = self.mock_led
 
     def tearDown(self):
         from trcc.core.app import TrccApp
@@ -516,10 +516,10 @@ class TestThemeOperations(unittest.TestCase):
 
     def _wire(self, mock_lcd) -> None:
         from trcc.core.app import TrccApp
-        from trcc.core.handlers.lcd import build_lcd_bus
+
 
         api_module._display_dispatcher = mock_lcd
-        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
+        TrccApp.get()._lcd_device = mock_lcd
 
     def test_load_theme_no_device(self):
         api_module._display_dispatcher = None
@@ -684,11 +684,9 @@ class TestI18nEndpoints(unittest.TestCase):
 
     def test_set_language(self):
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
-        from trcc.core.commands.initialize import SetLanguageCommand
 
         mock_app = MagicMock()
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="Language set to de")
+        mock_app.set_language.return_value = {"success": True, "message": "Language set to de"}
         with patch.object(TrccApp, 'get', return_value=mock_app):
             resp = self.client.put("/i18n/language/de")
 
@@ -696,14 +694,13 @@ class TestI18nEndpoints(unittest.TestCase):
         data = resp.json()
         self.assertEqual(data["code"], "de")
         self.assertEqual(data["name"], "Deutsch")
-        mock_app.os_bus.dispatch.assert_called_once_with(SetLanguageCommand(code="de"))
+        mock_app.set_language.assert_called_once_with("de")
 
     def test_set_language_invalid(self):
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = MagicMock()
-        mock_app.os_bus.dispatch.return_value = CommandResult.fail("Unknown language code: zzz")
+        mock_app.set_language.return_value = {"success": False, "error": "Unknown language code: zzz"}
         with patch.object(TrccApp, 'get', return_value=mock_app):
             resp = self.client.put("/i18n/language/zzz")
 
@@ -895,7 +892,7 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
     def test_load_animated_theme_starts_video(self):
         """Loading an animated theme routes through dispatcher and returns animated flag."""
         from trcc.core.app import TrccApp
-        from trcc.core.handlers.lcd import build_lcd_bus
+
 
         mock_lcd = MagicMock()
         mock_lcd.connected = True
@@ -907,7 +904,7 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
         api_module._display_dispatcher = mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
+        TrccApp.get()._lcd_device = mock_lcd
 
         resp = self.client.post("/themes/load", json={"name": "VideoTheme"})
 
@@ -1720,7 +1717,7 @@ class TestLEDErrorPaths(unittest.TestCase):
 
     def setUp(self) -> None:
         from trcc.core.app import TrccApp
-        from trcc.core.handlers.led import build_led_bus
+
 
         configure_auth(None)
         self.client = TestClient(app)
@@ -1730,7 +1727,7 @@ class TestLEDErrorPaths(unittest.TestCase):
         api_module._led_dispatcher = self.mock_led
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        TrccApp.get()._led_bus = build_led_bus(self.mock_led)
+        TrccApp.get()._led_device = self.mock_led
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -1922,7 +1919,7 @@ class TestThemeEdgeCases(unittest.TestCase):
     def test_load_theme_success_delegates_to_dispatcher(self) -> None:
         """API layer delegates to lcd.load_theme_by_name — thin adapter."""
         from trcc.core.app import TrccApp
-        from trcc.core.handlers.lcd import build_lcd_bus
+
 
         mock_lcd = MagicMock()
         mock_lcd.connected = True
@@ -1931,7 +1928,7 @@ class TestThemeEdgeCases(unittest.TestCase):
             "success": True, "message": "Theme: Theme001",
         }
         api_module._display_dispatcher = mock_lcd
-        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
+        TrccApp.get()._lcd_device = mock_lcd
 
         resp = self.client.post("/themes/load", json={"name": "Theme001"})
 
@@ -1941,7 +1938,7 @@ class TestThemeEdgeCases(unittest.TestCase):
     def test_load_theme_failure_returns_400(self) -> None:
         """Dispatcher failure propagated as 400 via dispatch_result."""
         from trcc.core.app import TrccApp
-        from trcc.core.handlers.lcd import build_lcd_bus
+
 
         mock_lcd = MagicMock()
         mock_lcd.connected = True
@@ -1950,7 +1947,7 @@ class TestThemeEdgeCases(unittest.TestCase):
             "success": False, "error": "No image file in theme",
         }
         api_module._display_dispatcher = mock_lcd
-        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
+        TrccApp.get()._lcd_device = mock_lcd
 
         resp = self.client.post("/themes/load", json={"name": "Broken"})
 
@@ -2208,11 +2205,11 @@ class TestDisplayHappyPaths(unittest.TestCase):
             mock_sys = MagicMock()
             mock_sys.all_metrics = HardwareMetrics()
             api_module._system_svc = mock_sys
-        # Real TrccApp so build_lcd_bus() builds a real CommandBus routing to mock_lcd
+        # Real TrccApp so LCD methods route to mock_lcd directly
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        from trcc.core.handlers.lcd import build_lcd_bus
-        TrccApp.get()._lcd_bus = build_lcd_bus(self.mock_lcd)
+
+        TrccApp.get()._lcd_device = self.mock_lcd
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -2369,11 +2366,11 @@ class TestLEDHappyPaths(unittest.TestCase):
         self.mock_led.connected = True
         self.mock_led.status = "AX120 Digital (style 1)"
         api_module._led_dispatcher = self.mock_led
-        # Real TrccApp so build_led_bus() builds a real CommandBus routing to mock_led
+        # Real TrccApp so LED methods route to mock_led directly
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        from trcc.core.handlers.led import build_led_bus
-        TrccApp.get()._led_bus = build_led_bus(self.mock_led)
+
+        TrccApp.get()._led_device = self.mock_led
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -2450,7 +2447,7 @@ class TestLEDHappyPaths(unittest.TestCase):
         resp = self.client.post("/led/off")
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_led.toggle_global.assert_called_once_with(False)
+        self.mock_led.toggle_global.assert_called_once_with(on=False)
 
     def test_set_sensor_cpu(self) -> None:
         self.mock_led.set_sensor_source.return_value = {
@@ -2831,7 +2828,7 @@ class TestDisplayTestEndpoint(unittest.TestCase):
     @patch('trcc.api.stop_video_playback')
     def test_display_test_success(self, mock_stop_v, mock_stop_o, mock_solid, mock_sleep):
         from trcc.core.app import TrccApp
-        from trcc.core.handlers.lcd import build_lcd_bus
+
 
         mock_lcd = MagicMock()
         mock_lcd.connected = True
@@ -2840,7 +2837,7 @@ class TestDisplayTestEndpoint(unittest.TestCase):
         api_module._display_dispatcher = mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        TrccApp.get()._lcd_bus = build_lcd_bus(mock_lcd)
+        TrccApp.get()._lcd_device = mock_lcd
 
         mock_img = MagicMock()
         mock_solid.return_value = mock_img
@@ -2946,7 +2943,7 @@ def test_select_device_calls_discover_resolution(no_device_app):
 def test_select_device_standalone_calls_ensure_all(lcd_only_app):
     """Standalone select dispatches EnsureDataCommand through the lcd_bus.
 
-    Chain: os_bus.dispatch(DiscoverDevicesCommand)
+    Chain: discover() → scan() → _wire_device()
            → _fake_dispatch() wires lcd_device + real lcd_bus
            → api/devices.py dispatches EnsureDataCommand on lcd_bus
            → RestoreLastThemeCommand dispatched → mock_lcd.restore_last_theme() called

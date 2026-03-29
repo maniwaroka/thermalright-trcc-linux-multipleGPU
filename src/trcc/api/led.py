@@ -32,31 +32,33 @@ def _get_led():
     return _led_dispatcher
 
 
+def _led():
+    """Get LEDDevice from TrccApp. Raises 409 if not connected."""
+    from trcc.core.app import TrccApp
+    from trcc.core.led_device import LEDDevice
+    _get_led()
+    led: LEDDevice = TrccApp.get().led
+    return led
+
+
 # ── Global operations ──────────────────────────────────────────────────
 
 @router.post("/color")
 def set_color(body: HexColorRequest) -> dict:
     """Set LED static color."""
     from trcc.api import stop_led_loop
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetLEDColorCommand
 
     stop_led_loop()
     r, g, b = parse_hex_or_400(body.hex)
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetLEDColorCommand(r=r, g=g, b=b))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_color(r, g, b))
 
 
 @router.post("/mode")
 def set_mode(body: ModeRequest) -> dict:
     """Set LED effect mode (static, breathing, colorful, rainbow, temp_linked, load_linked)."""
     from trcc.api import start_led_loop, stop_led_loop
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetLEDModeCommand
     from trcc.core.models import LEDMode
 
-    _get_led()
     try:
         mode = LEDMode[body.mode.upper()]
     except KeyError:
@@ -64,7 +66,7 @@ def set_mode(body: ModeRequest) -> dict:
             status_code=400,
             detail=f"Unknown mode '{body.mode}'. Choose: {', '.join(m.name.lower() for m in LEDMode)}",
         )
-    result = dispatch_result(TrccApp.get().led_bus.dispatch(SetLEDModeCommand(mode=mode)).payload)
+    result = dispatch_result(_led().set_mode(mode))
     if result.get("animated"):
         start_led_loop()
     else:
@@ -75,36 +77,22 @@ def set_mode(body: ModeRequest) -> dict:
 @router.post("/brightness")
 def set_brightness(body: LEDBrightnessRequest) -> dict:
     """Set LED brightness (0-100)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetLEDBrightnessCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetLEDBrightnessCommand(level=body.level))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_brightness(body.level))
 
 
 @router.post("/off")
 def turn_off() -> dict:
     """Turn LEDs off."""
     from trcc.api import stop_led_loop
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import ToggleLEDCommand
 
     stop_led_loop()
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(ToggleLEDCommand(on=False))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().toggle_global(on=False))
 
 
 @router.post("/sensor")
 def set_sensor(body: LEDSensorRequest) -> dict:
     """Set CPU/GPU sensor source for temp/load linked modes."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetLEDSensorSourceCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetLEDSensorSourceCommand(source=body.source))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_sensor_source(body.source))
 
 
 # ── Zone operations ────────────────────────────────────────────────────
@@ -112,23 +100,15 @@ def set_sensor(body: LEDSensorRequest) -> dict:
 @router.post("/zones/{zone}/color")
 def set_zone_color(zone: int, body: HexColorRequest) -> dict:
     """Set color for a specific LED zone."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetZoneColorCommand
-
     r, g, b = parse_hex_or_400(body.hex)
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetZoneColorCommand(zone=zone, r=r, g=g, b=b))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_zone_color(zone, r, g, b))
 
 
 @router.post("/zones/{zone}/mode")
 def set_zone_mode(zone: int, body: ModeRequest) -> dict:
     """Set effect mode for a specific LED zone."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetZoneModeCommand
     from trcc.core.models import LEDMode
 
-    _get_led()
     try:
         mode = LEDMode[body.mode.upper()]
     except KeyError:
@@ -136,41 +116,25 @@ def set_zone_mode(zone: int, body: ModeRequest) -> dict:
             status_code=400,
             detail=f"Unknown mode '{body.mode}'. Choose: {', '.join(m.name.lower() for m in LEDMode)}",
         )
-    result = TrccApp.get().led_bus.dispatch(SetZoneModeCommand(zone=zone, mode=mode))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_zone_mode(zone, mode))
 
 
 @router.post("/zones/{zone}/brightness")
 def set_zone_brightness(zone: int, body: LEDBrightnessRequest) -> dict:
     """Set brightness for a specific LED zone (0-100)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetZoneBrightnessCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetZoneBrightnessCommand(zone=zone, level=body.level))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_zone_brightness(zone, body.level))
 
 
 @router.post("/zones/{zone}/toggle")
 def toggle_zone(zone: int, body: ToggleRequest) -> dict:
     """Toggle a specific LED zone on/off."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import ToggleZoneCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(ToggleZoneCommand(zone=zone, on=body.on))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().toggle_zone(zone, body.on))
 
 
 @router.post("/sync")
 def set_sync(body: ZoneSyncRequest) -> dict:
     """Enable/disable zone sync (circulate/select-all)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetZoneSyncCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetZoneSyncCommand(enabled=body.enabled, interval=body.interval or 0))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_zone_sync(body.enabled, body.interval or 0))
 
 
 # ── Segment operations ─────────────────────────────────────────────────
@@ -178,34 +142,19 @@ def set_sync(body: ZoneSyncRequest) -> dict:
 @router.post("/segments/{index}/toggle")
 def toggle_segment(index: int, body: ToggleRequest) -> dict:
     """Toggle a specific LED segment on/off."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import ToggleSegmentCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(ToggleSegmentCommand(index=index, on=body.on))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().toggle_segment(index, body.on))
 
 
 @router.post("/clock")
 def set_clock(body: ClockFormatRequest) -> dict:
     """Set LED segment display clock format (12h/24h)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetClockFormatCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetClockFormatCommand(is_24h=body.is_24h))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_clock_format(body.is_24h))
 
 
 @router.post("/temp-unit")
 def set_temp_unit(body: TempUnitRequest) -> dict:
     """Set LED segment display temperature unit (C/F)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.commands.led import SetTempUnitLEDCommand
-
-    _get_led()
-    result = TrccApp.get().led_bus.dispatch(SetTempUnitLEDCommand(unit=body.unit))
-    return dispatch_result(result.payload)
+    return dispatch_result(_led().set_temp_unit(body.unit))
 
 
 # ── Test endpoint ─────────────────────────────────────────────────────
@@ -216,11 +165,7 @@ def test_led(
     mode: str = "static",
     segments: int = 64,
 ) -> dict:
-    """Run LED preview with real system metrics. No device needed.
-
-    Returns computed LED colors for the given mode and segment count.
-    Useful for testing without hardware.
-    """
+    """Run LED preview with real system metrics. No device needed."""
     from trcc.core.models import LEDMode, LEDState
     from trcc.services.led import LEDService
 

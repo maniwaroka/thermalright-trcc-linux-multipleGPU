@@ -65,8 +65,6 @@ def app():
     builder.build_detect_fn.return_value = lambda: []  # empty by default
     inst = TrccApp(builder)
     TrccApp._instance = inst
-    # Wire a real os_bus so bootstrap() can dispatch InitPlatformCommand
-    inst._os_bus = inst.build_os_bus()
     yield inst
     TrccApp.reset()
 
@@ -106,8 +104,8 @@ class TestScanSingleLcd:
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_detect_fn.return_value = lambda: [detected]
         app._builder.build_device.return_value = lcd_dev
-        # build_lcd_bus needs a real bus — delegate to actual method
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+        # _wire_device stores the device on TrccApp
+
         return app, lcd_dev
 
     def test_returns_one_device(self, lcd_app):
@@ -138,7 +136,7 @@ class TestScanSingleLcd:
         called_with = []
         app._ensure_data_fn = lambda w, h, progress_fn=None: called_with.append((w, h))
 
-        with patch.object(app._os_bus, 'dispatch'):
+        with patch.object(app, 'init_platform'):
             app.bootstrap()
 
         assert (320, 320) in called_with
@@ -149,12 +147,11 @@ class TestScanSingleLcd:
         lcd_dev = _mock_lcd_device("2-1", resolution=(0, 0))
         app._builder.build_detect_fn.return_value = lambda: [detected]
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
 
         called_with = []
         app._ensure_data_fn = lambda w, h, progress_fn=None: called_with.append((w, h))
 
-        with patch.object(app._os_bus, 'dispatch'):
+        with patch.object(app, 'init_platform'):
             app.bootstrap()
 
         assert called_with == []
@@ -169,7 +166,7 @@ class TestScanSingleLed:
         led_dev = _mock_led_device("2-2")
         app._builder.build_detect_fn.return_value = lambda: [detected]
         app._builder.build_device.return_value = led_dev
-        app.build_led_bus = TrccApp.build_led_bus.__get__(app, TrccApp)
+
         return app, led_dev
 
     def test_led_bus_wired(self, led_app):
@@ -197,7 +194,7 @@ class TestScanParallel:
         devices = [_mock_lcd_device(f"2-{i}") for i in range(4)]
         app._builder.build_detect_fn.return_value = lambda: detected_list
         app._builder.build_device.side_effect = devices
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
 
         result = app.scan()
         assert len(result) == 4
@@ -223,7 +220,7 @@ class TestScanParallel:
 
         app._builder.build_detect_fn.return_value = lambda: detected_list
         app._builder.build_device.side_effect = devices
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
 
         app.scan()
         # 3 serial 50ms connects = 150ms; parallel with barrier = ~50ms
@@ -243,7 +240,7 @@ class TestScanParallel:
 
         app._builder.build_detect_fn.return_value = lambda: [d0, d1, d2]
         app._builder.build_device.side_effect = [dev0, dev1, dev2]
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
 
         result = app.scan()
         assert len(result) == 2
@@ -268,8 +265,8 @@ class TestScanParallel:
 # ── bootstrap() ──────────────────────────────────────────────────────────────
 
 class TestBootstrap:
-    def test_dispatches_init_platform_then_scans(self, app):
-        """bootstrap() must call InitPlatformCommand then scan()."""
+    def test_calls_init_platform_then_scans(self, app):
+        """bootstrap() must call init_platform then scan()."""
         scan_called = []
         original_scan = app.scan
 
@@ -279,46 +276,40 @@ class TestBootstrap:
 
         app.scan = tracking_scan
 
-        with patch.object(app._os_bus, 'dispatch') as mock_dispatch:
+        with patch.object(app, 'init_platform') as mock_init:
             app.bootstrap()
 
-        from trcc.core.commands.initialize import InitPlatformCommand
-        mock_dispatch.assert_called_once()
-        assert isinstance(mock_dispatch.call_args[0][0], InitPlatformCommand)
+        mock_init.assert_called_once()
         assert len(scan_called) == 1
 
-    def test_passes_renderer_factory_to_init_command(self, app):
+    def test_passes_renderer_factory_to_init_platform(self, app):
         renderer_factory = MagicMock()
-        with patch.object(app._os_bus, 'dispatch') as mock_dispatch:
+        with patch.object(app, 'init_platform') as mock_init:
             app.bootstrap(renderer_factory=renderer_factory)
 
-        from trcc.core.commands.initialize import InitPlatformCommand
-        cmd = mock_dispatch.call_args[0][0]
-        assert isinstance(cmd, InitPlatformCommand)
-        assert cmd.renderer_factory is renderer_factory
+        mock_init.assert_called_once()
+        assert mock_init.call_args[1].get('renderer_factory') is renderer_factory
 
     def test_returns_scan_results(self, app):
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_detect_fn.return_value = lambda: [detected]
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
 
-        with patch.object(app._os_bus, 'dispatch'):
+        with patch.object(app, 'init_platform'):
             result = app.bootstrap()
 
         assert len(result) == 1
 
     def test_no_renderer_factory_still_works(self, app):
-        with patch.object(app._os_bus, 'dispatch') as mock_dispatch:
+        with patch.object(app, 'init_platform') as mock_init:
             app.bootstrap()
 
-        cmd = mock_dispatch.call_args[0][0]
-        assert cmd.renderer_factory is None
+        assert mock_init.call_args[1].get('renderer_factory') is None
 
     def test_bootstrap_calls_ensure_data_blocking(self, app):
         """bootstrap() must call _ensure_data_blocking after scan()."""
-        with patch.object(app._os_bus, 'dispatch'), \
+        with patch.object(app, 'init_platform'), \
              patch.object(app, '_ensure_data_blocking') as mock_ensure:
             app.bootstrap()
         mock_ensure.assert_called_once_with()
@@ -333,7 +324,7 @@ class TestEnsureDataBlocking:
         lcd_dev = _mock_lcd_device("2-1", resolution=(320, 320))
         app._builder.build_detect_fn.return_value = lambda: [detected]
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
         app.scan()
         return app, lcd_dev
 
@@ -355,7 +346,7 @@ class TestEnsureDataBlocking:
         devices = [_mock_lcd_device("2-1"), _mock_lcd_device("2-2")]
         app._builder.build_detect_fn.return_value = lambda: detected_list
         app._builder.build_device.side_effect = devices
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
         app.scan()
 
         called = []
@@ -389,7 +380,7 @@ class TestHotPlug:
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
 
         app.device_connected(detected)
         assert app.has_lcd
@@ -399,7 +390,7 @@ class TestHotPlug:
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
 
         observer = MagicMock()
         app.register(observer)
@@ -419,7 +410,7 @@ class TestHotPlug:
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
         app.device_connected(detected)
         assert app.has_lcd
 
@@ -434,7 +425,7 @@ class TestHotPlug:
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
         app.device_connected(detected)
 
         observer = MagicMock()
@@ -446,7 +437,7 @@ class TestHotPlug:
         detected = _detected_led("2-2")
         led_dev = _mock_led_device("2-2")
         app._builder.build_device.return_value = led_dev
-        app.build_led_bus = TrccApp.build_led_bus.__get__(app, TrccApp)
+
         app.device_connected(detected)
         assert app.has_led
 
@@ -464,7 +455,7 @@ class TestWireBusIpcInjection:
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
         app.device_connected(detected)
 
         assert lcd_dev._find_active_fn is find_fn
@@ -476,7 +467,7 @@ class TestWireBusIpcInjection:
         detected = _detected("2-1")
         lcd_dev = _mock_lcd_device("2-1")
         app._builder.build_device.return_value = lcd_dev
-        app.build_lcd_bus = TrccApp.build_lcd_bus.__get__(app, TrccApp)
+
         app.device_connected(detected)
 
         assert lcd_dev._proxy_factory_fn is proxy_fn

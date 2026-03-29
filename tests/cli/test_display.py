@@ -497,11 +497,10 @@ class TestCLIHelpers:
     def test_connect_or_fail_success(self, capsys):
         from trcc.cli._display import _connect_or_fail
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp.get()
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="1 device(s) found")  # type: ignore[union-attr]
-        mock_app.has_lcd = True  # type: ignore[union-attr]
+        mock_app.discover.return_value = {"success": True, "message": "1 device(s) found"}
+        mock_app.has_lcd = True
         rc = _connect_or_fail()
 
         assert rc == 0
@@ -509,11 +508,10 @@ class TestCLIHelpers:
     def test_connect_or_fail_no_device(self, capsys):
         from trcc.cli._display import _connect_or_fail
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp.get()
-        mock_app.os_bus.dispatch.return_value = CommandResult.fail("No LCD device found.")  # type: ignore[union-attr]
-        mock_app.has_lcd = False  # type: ignore[union-attr]
+        mock_app.discover.return_value = {"success": False, "error": "No LCD device found."}
+        mock_app.has_lcd = False
         rc = _connect_or_fail()
 
         assert rc == 1
@@ -522,15 +520,13 @@ class TestCLIHelpers:
     def test_connect_or_fail_passes_device_arg(self):
         from trcc.cli._display import _connect_or_fail
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
-        from trcc.core.commands.initialize import DiscoverDevicesCommand
 
         mock_app = TrccApp.get()
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="ok")  # type: ignore[union-attr]
-        mock_app.has_lcd = True  # type: ignore[union-attr]
+        mock_app.discover.return_value = {"success": True, "message": "ok"}
+        mock_app.has_lcd = True
         _connect_or_fail("/dev/sg2")
 
-        mock_app.os_bus.dispatch.assert_called_once_with(DiscoverDevicesCommand(path="/dev/sg2"))  # type: ignore[union-attr]
+        mock_app.discover.assert_called_once_with(path="/dev/sg2")
 
     def test_print_result_success(self, capsys):
         from trcc.cli._display import _print_result
@@ -882,11 +878,10 @@ class TestCLIResume:
         """No LCD found after 10 attempts → rc=1, prints 'No compatible'."""
         from trcc.cli._display import resume
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
         mock_app.has_lcd = False
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok()
+        mock_app.discover.return_value = {"success": True, "message": "ok"}
 
         with patch(_TIME):
             rc = resume(_mock_builder)
@@ -895,14 +890,13 @@ class TestCLIResume:
         assert "No compatible" in capsys.readouterr().out
 
     def test_resume_no_theme(self, _mock_builder, capsys):
-        """Device found but RestoreLastThemeCommand fails → rc=1, prints error."""
+        """Device found but restore_last_theme fails → rc=1, prints error."""
         from trcc.cli._display import resume
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
         mock_app.has_lcd = True
-        mock_app.lcd_bus.dispatch.return_value = CommandResult.fail("No saved theme")
+        mock_app.lcd.restore_last_theme.return_value = {"success": False, "error": "No saved theme"}
 
         with patch(_TIME):
             rc = resume(_mock_builder)
@@ -911,15 +905,14 @@ class TestCLIResume:
         assert "No saved theme" in capsys.readouterr().out
 
     def test_resume_success(self, _mock_builder, capsys):
-        """Device found and RestoreLastThemeCommand succeeds → rc=0, prints 'Resumed'."""
+        """Device found and restore_last_theme succeeds → rc=0, prints 'Resumed'."""
         from trcc.cli._display import resume
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
         mock_app.has_lcd = True
-        mock_app.lcd_device.device_path = "/dev/sg0"
-        mock_app.lcd_bus.dispatch.return_value = CommandResult.ok()
+        mock_app.lcd.device_path = "/dev/sg0"
+        mock_app.lcd.restore_last_theme.return_value = {"success": True}
 
         with patch(_TIME):
             rc = resume(_mock_builder)
@@ -931,21 +924,20 @@ class TestCLIResume:
         """Device not found initially → prints 'Waiting', succeeds when found."""
         from trcc.cli._display import resume
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
-        mock_app.lcd_device.device_path = "/dev/sg0"
-        # First 2 dispatches: has_lcd=False; 3rd: has_lcd=True
+        mock_app.lcd.device_path = "/dev/sg0"
+        mock_app.lcd.restore_last_theme.return_value = {"success": True}
+        # First 2 discover calls: has_lcd=False; 3rd: has_lcd=True
         call_count = 0
 
-        def _dispatch(cmd):
+        def _discover(**kw):
             nonlocal call_count
             call_count += 1
             mock_app.has_lcd = call_count >= 3
-            return CommandResult.ok()
+            return {"success": True, "message": "ok"}
 
-        mock_app.os_bus.dispatch.side_effect = _dispatch
-        mock_app.lcd_bus.dispatch.return_value = CommandResult.ok()
+        mock_app.discover.side_effect = _discover
 
         with patch(_TIME):
             rc = resume(_mock_builder)

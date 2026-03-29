@@ -102,15 +102,14 @@ def select_device(device_id: int) -> dict:
         _device_svc.on_frame_sent = api.set_current_image
 
         from trcc.core.app import TrccApp
-        from trcc.core.commands.initialize import DiscoverDevicesCommand
         app = TrccApp.get()
-        app.os_bus.dispatch(DiscoverDevicesCommand(path=getattr(dev, 'path', None)))
+        app.discover(path=getattr(dev, 'path', None))
 
         if app.has_led:
             api._led_dispatcher = app.led_device
         else:
             _device_svc._discover_resolution(dev)
-            # Fallback: wire LCD from existing device service if os_bus didn't find one
+            # Fallback: wire LCD from existing device service if discover didn't find one
             if not app.has_lcd:
                 api._display_dispatcher = app.lcd_from_service(_device_svc)
             else:
@@ -121,26 +120,17 @@ def select_device(device_id: int) -> dict:
                 return {"selected": dev.name, "resolution": dev.resolution}
             w_res, h_res = dev.resolution or (0, 0)
 
-            # Download/extract theme data for this resolution via command bus
-            # (lcd_bus may not be wired yet in edge-case fallback paths — skip gracefully)
-            from trcc.core.app import TrccApp
-            from trcc.core.commands.lcd import EnsureDataCommand
-            try:
-                TrccApp.get().lcd_bus.dispatch(EnsureDataCommand(width=w_res, height=h_res))
-            except RuntimeError:
-                pass
+            # Download/extract theme data for this resolution in background
+            if w_res and h_res and app.has_lcd and app.lcd_device is not None:
+                app._ensure_data_background(app.lcd_device, w_res, h_res)
 
             api.set_current_image(ImageService.solid_color(0, 0, 0, w_res, h_res))
 
             lcd.restore_device_settings()
-            try:
-                from trcc.core.commands.lcd import RestoreLastThemeCommand
-                result = TrccApp.get().lcd_bus.dispatch(RestoreLastThemeCommand()).payload
-                if result.get("image"):
-                    api.set_current_image(result["image"])
-                    log.info("Restored last theme for preview")
-            except RuntimeError:
-                pass
+            result = lcd.restore_last_theme()
+            if result.get("image"):
+                api.set_current_image(result["image"])
+                log.info("Restored last theme for preview")
 
     # Mount static file directories for this device's resolution
     w, h = dev.resolution or (0, 0)

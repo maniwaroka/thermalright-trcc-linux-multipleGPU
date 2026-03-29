@@ -68,8 +68,8 @@ class TestCLISendPipeline(unittest.TestCase):
         mock_get_protocol.return_value = mock_protocol
 
         builder = self._real_builder()
-        # Use a real TrccApp so build_lcd_bus() returns a real bus that
-        # routes commands through to the actual LCDDevice methods.
+        # Use a real TrccApp so CLI commands route through to
+        # the actual LCDDevice methods.
         real_app = TrccApp(builder)
         TrccApp._instance = real_app  # type: ignore[assignment]
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -128,22 +128,18 @@ class TestCLIResumePipeline(unittest.TestCase):
     """CLI resume() → DeviceService.detect → load config → ImageService → send."""
 
     def test_resume_with_saved_theme(self):
-        """resume() dispatches RestoreLastThemeCommand when device is available."""
+        """resume() calls lcd.restore_last_theme when device is available."""
         from trcc.cli import resume
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
-        from trcc.core.commands.lcd import RestoreLastThemeCommand
 
         mock_app = TrccApp._instance
         mock_app.has_lcd = True
-        mock_app.lcd_device.device_path = "/dev/sg0"
-        mock_app.lcd_bus.dispatch.return_value = CommandResult.ok()
+        mock_app.lcd.device_path = "/dev/sg0"
+        mock_app.lcd.restore_last_theme.return_value = {"success": True}
 
         result = resume(MagicMock())
         self.assertEqual(result, 0)
-        # Verify RestoreLastThemeCommand was dispatched through the bus
-        dispatched = mock_app.lcd_bus.dispatch.call_args[0][0]
-        self.assertIsInstance(dispatched, RestoreLastThemeCommand)
+        mock_app.lcd.restore_last_theme.assert_called_once()
 
     @patch("trcc.core.builder.ControllerBuilder.build_detect_fn")
     def test_resume_no_devices(self, mock_build_detect_fn):

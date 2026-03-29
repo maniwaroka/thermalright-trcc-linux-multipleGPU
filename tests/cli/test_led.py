@@ -582,13 +582,12 @@ class TestCLIHelpers:
     """CLI presentation helpers in _led.py."""
 
     def test_connect_or_fail_success(self, capsys):
-        """_connect_or_fail returns 0 when os_bus dispatch succeeds and has_led is True."""
+        """_connect_or_fail returns 0 when discover succeeds and has_led is True."""
         from trcc.cli._led import _connect_or_fail
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="ok")
+        mock_app.discover.return_value = {"success": True, "message": "ok"}
         mock_app.has_led = True
 
         with patch(_IPC, return_value=None):
@@ -600,10 +599,9 @@ class TestCLIHelpers:
         """_connect_or_fail returns 1 and prints error when no LED device found."""
         from trcc.cli._led import _connect_or_fail
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
-        mock_app.os_bus.dispatch.return_value = CommandResult.fail("No LED device found")
+        mock_app.discover.return_value = {"success": False, "error": "No LED device found"}
         mock_app.has_led = False
 
         with patch(_IPC, return_value=None):
@@ -616,10 +614,9 @@ class TestCLIHelpers:
         """_connect_or_fail returns 0 with no extra output when no status in result."""
         from trcc.cli._led import _connect_or_fail
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = TrccApp._instance
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="ok")
+        mock_app.discover.return_value = {"success": True, "message": "ok"}
         mock_app.has_led = True
 
         with patch(_IPC, return_value=None):
@@ -679,18 +676,16 @@ class TestCLIHelpers:
             _print_result(result, preview=True)
         mock_ansi.assert_not_called()
 
-    def test_led_dispatch_no_device(self, mock_connect_fail):
-        from trcc.cli._led import _led_dispatch
-        from trcc.core.commands.led import ToggleLEDCommand
-
-        rc = _led_dispatch(ToggleLEDCommand, on=False)
+    def test_led_off_no_device(self, mock_connect_fail):
+        """led_off returns 1 when no device found."""
+        from trcc.cli._led import led_off
+        rc = led_off(MagicMock())
         assert rc == 1
 
-    def test_led_dispatch_success(self, mock_connect_led):
-        from trcc.cli._led import _led_dispatch
-        from trcc.core.commands.led import ToggleLEDCommand
-
-        rc = _led_dispatch(ToggleLEDCommand, on=False)
+    def test_led_off_success(self, mock_connect_led):
+        """led_off returns 0 when device is available."""
+        from trcc.cli._led import led_off
+        rc = led_off(MagicMock())
         assert rc == 0
 
 
@@ -747,10 +742,9 @@ class TestCLISetColor:
 
         from trcc.cli import app
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
-        TrccApp._instance.build_led_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
-            CommandResult.ok(message="color ok", colors=[[0, 0, 255]]))
+        TrccApp._instance.led.set_color.return_value = {
+            "success": True, "message": "color ok", "colors": [[0, 0, 255]]}
         with patch('trcc.services.LEDService.zones_to_ansi', return_value="[ANSI]"):
             result = CliRunner().invoke(app, ['led-color', '0000ff', '--preview'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
@@ -848,10 +842,9 @@ class TestCLICommands:
 
         from trcc.cli import app
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
-        TrccApp._instance.build_led_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
-            CommandResult.fail("LED brightness must be 0-100"))
+        TrccApp._instance.led.set_brightness.return_value = {
+            "success": False, "error": "LED brightness must be 0-100"}
         result = CliRunner().invoke(app, ['led-brightness', '200'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 
@@ -881,10 +874,9 @@ class TestCLICommands:
 
         from trcc.cli import app
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
-        TrccApp._instance.build_led_bus.return_value.dispatch.return_value = (  # type: ignore[union-attr]
-            CommandResult.fail("Source must be 'cpu' or 'gpu'"))
+        TrccApp._instance.led.set_sensor_source.return_value = {
+            "success": False, "error": "Source must be 'cpu' or 'gpu'"}
         result = CliRunner().invoke(app, ['led-sensor', 'fan'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 1
 

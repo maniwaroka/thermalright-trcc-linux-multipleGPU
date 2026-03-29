@@ -4,8 +4,7 @@ Fixtures inherit from each other following the same DI chain as production code:
 
     mock_lcd_device ──┐
     mock_lcd_widgets ─┼→ lcd_handler
-    make_timer_fn ────┤       └→ make_lcd_handler (factory for custom overrides)
-    mock_lcd_bus ─────┘
+    make_timer_fn ────┘       └→ make_lcd_handler (factory for custom overrides)
 
     mock_sensor_enumerator → sysinfo (via test class fixture)
     make_panel_config → make_custom_panel_config
@@ -116,94 +115,7 @@ def mock_lcd_device():
 
 
 @pytest.fixture
-def mock_lcd_bus(mock_lcd_device):
-    """Mock CommandBus whose dispatch routes to mock_lcd_device methods.
-
-    Inherits mock_lcd_device so bus + device are always in sync.
-    """
-    from trcc.core.command_bus import CommandResult
-
-    bus = MagicMock()
-    _lcd = mock_lcd_device
-
-    def _dispatch(cmd: object) -> CommandResult:
-        from trcc.core.commands.lcd import (
-            EnableOverlayCommand,
-            ExportThemeCommand,
-            ImportThemeCommand,
-            LoadMaskCommand,
-            PauseVideoCommand,
-            RenderAndSendCommand,
-            RestoreLastThemeCommand,
-            SaveThemeCommand,
-            SeekVideoCommand,
-            SelectThemeCommand,
-            SendColorCommand,
-            SendFrameCommand,
-            SetBrightnessCommand,
-            SetFlashIndexCommand,
-            SetMaskPositionCommand,
-            SetOverlayConfigCommand,
-            SetResolutionCommand,
-            SetRotationCommand,
-            SetSplitModeCommand,
-            SetVideoFitModeCommand,
-            StopVideoCommand,
-            UpdateVideoCacheTextCommand,
-        )
-        if isinstance(cmd, SetBrightnessCommand):
-            return CommandResult.from_dict(_lcd.set_brightness(cmd.level))
-        if isinstance(cmd, SetRotationCommand):
-            return CommandResult.from_dict(_lcd.set_rotation(cmd.degrees))
-        if isinstance(cmd, SetSplitModeCommand):
-            return CommandResult.from_dict(_lcd.set_split_mode(cmd.mode))
-        if isinstance(cmd, SetResolutionCommand):
-            return CommandResult.from_dict(_lcd.set_resolution(cmd.width, cmd.height))
-        if isinstance(cmd, RestoreLastThemeCommand):
-            return CommandResult.from_dict(_lcd.restore_last_theme())
-        if isinstance(cmd, SelectThemeCommand):
-            return CommandResult.from_dict(_lcd.select(cmd.theme))
-        if isinstance(cmd, LoadMaskCommand):
-            return CommandResult.from_dict(_lcd.load_mask_standalone(cmd.mask_path))
-        if isinstance(cmd, SaveThemeCommand):
-            return CommandResult.from_dict(_lcd.save(cmd.name, cmd.data_dir))
-        if isinstance(cmd, ExportThemeCommand):
-            return CommandResult.from_dict(_lcd.export_config(cmd.path))
-        if isinstance(cmd, ImportThemeCommand):
-            return CommandResult.from_dict(_lcd.import_config(cmd.path, cmd.data_dir))
-        if isinstance(cmd, SetOverlayConfigCommand):
-            return CommandResult.from_dict(_lcd.set_config(cmd.config))
-        if isinstance(cmd, EnableOverlayCommand):
-            return CommandResult.from_dict(_lcd.enable_overlay(cmd.on))
-        if isinstance(cmd, StopVideoCommand):
-            return CommandResult.from_dict(_lcd.stop())
-        if isinstance(cmd, PauseVideoCommand):
-            return CommandResult.from_dict(_lcd.pause())
-        if isinstance(cmd, SeekVideoCommand):
-            return CommandResult.from_dict(_lcd.seek(cmd.percent))
-        if isinstance(cmd, SetVideoFitModeCommand):
-            return CommandResult.from_dict(_lcd.set_fit_mode(cmd.mode))
-        if isinstance(cmd, UpdateVideoCacheTextCommand):
-            return CommandResult.from_dict(_lcd.rebuild_video_cache(cmd.metrics))
-        if isinstance(cmd, SetFlashIndexCommand):
-            return CommandResult.from_dict(_lcd.set_flash_index(cmd.index))
-        if isinstance(cmd, SetMaskPositionCommand):
-            return CommandResult.from_dict(_lcd.set_mask_position(cmd.x, cmd.y))
-        if isinstance(cmd, SendFrameCommand):
-            _lcd.send(cmd.image)
-            return CommandResult.ok(message="Frame sent")
-        if isinstance(cmd, RenderAndSendCommand):
-            return CommandResult.from_dict(_lcd.render_and_send(cmd.skip_if_video))
-        if isinstance(cmd, SendColorCommand):
-            return CommandResult.ok(message="Color sent")
-        return CommandResult.ok(message="ok")
-
-    bus.dispatch.side_effect = _dispatch
-    return bus
-
-
-@pytest.fixture
-def lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, mock_lcd_bus, tmp_path):
+def lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path):
     """Default LCDHandler with all dependencies wired from fixtures."""
     from trcc.gui.lcd_handler import LCDHandler
     return LCDHandler(
@@ -211,15 +123,14 @@ def lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, mock_lcd_bus, 
         widgets=mock_lcd_widgets,
         make_timer=make_timer_fn(),
         data_dir=tmp_path,
-        bus=mock_lcd_bus,
     )
 
 
 @pytest.fixture
-def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, mock_lcd_bus, tmp_path):
+def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path):
     """Factory: create LCDHandler with optional overrides.
 
-    Tests that need a non-default device, timer fn, or bus pass them as kwargs:
+    Tests that need a non-default device or timer fn pass them as kwargs:
         h = make_lcd_handler(lcd=custom_lcd)
         h = make_lcd_handler(make_timer=tracking_timer)
     """
@@ -232,23 +143,10 @@ def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, mock_lcd_
             'widgets': mock_lcd_widgets,
             'make_timer': make_timer_fn(),
             'data_dir': tmp_path,
-            'bus': mock_lcd_bus,
         }
         kw.update(overrides)
         return LCDHandler(**kw)
     return _factory
-
-
-@pytest.fixture
-def dispatched_commands():
-    """Helper: return all commands of a given type dispatched through a handler's bus."""
-    def _get(handler, cmd_type: type) -> list:
-        return [
-            c.args[0]
-            for c in handler._bus.dispatch.call_args_list
-            if isinstance(c.args[0], cmd_type)
-        ]
-    return _get
 
 
 # ── System info / panel fixtures ──────────────────────────────────────────────

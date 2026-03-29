@@ -48,47 +48,39 @@ def set_color(body: HexColorRequest) -> dict:
     """Send solid color to LCD."""
     from trcc.api import stop_overlay_loop, stop_video_playback
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import SendColorCommand
 
     stop_video_playback()
     stop_overlay_loop()
     r, g, b = parse_hex_or_400(body.hex)
     _get_display()
-    result = TrccApp.get().lcd_bus.dispatch(SendColorCommand(r=r, g=g, b=b))
-    return dispatch_result(result.payload)
+    return dispatch_result(TrccApp.get().lcd.send_color(r, g, b))
 
 
 @router.post("/brightness")
 def set_brightness(body: BrightnessRequest) -> dict:
     """Set display brightness (1=25%, 2=50%, 3=100%). Persists to config."""
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import SetBrightnessCommand
 
     _get_display()
-    result = TrccApp.get().lcd_bus.dispatch(SetBrightnessCommand(level=body.level))
-    return dispatch_result(result.payload)
+    return dispatch_result(TrccApp.get().lcd.set_brightness(body.level))
 
 
 @router.post("/rotation")
 def set_rotation(body: RotationRequest) -> dict:
     """Set display rotation (0, 90, 180, 270). Persists to config."""
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import SetRotationCommand
 
     _get_display()
-    result = TrccApp.get().lcd_bus.dispatch(SetRotationCommand(degrees=body.degrees))
-    return dispatch_result(result.payload)
+    return dispatch_result(TrccApp.get().lcd.set_rotation(body.degrees))
 
 
 @router.post("/split")
 def set_split(body: SplitRequest) -> dict:
     """Set split mode (0=off, 1-3=Dynamic Island). Persists to config."""
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import SetSplitModeCommand
 
     _get_display()
-    result = TrccApp.get().lcd_bus.dispatch(SetSplitModeCommand(mode=body.mode))
-    return dispatch_result(result.payload)
+    return dispatch_result(TrccApp.get().lcd.set_split_mode(body.mode))
 
 
 @router.post("/reset")
@@ -96,13 +88,11 @@ def reset_display() -> dict:
     """Reset device by sending solid red frame."""
     from trcc.api import stop_overlay_loop, stop_video_playback
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import ResetDisplayCommand
 
     stop_video_playback()
     stop_overlay_loop()
     _get_display()
-    result = TrccApp.get().lcd_bus.dispatch(ResetDisplayCommand())
-    return dispatch_result(result.payload)
+    return dispatch_result(TrccApp.get().lcd.reset())
 
 
 @router.post("/mask")
@@ -124,9 +114,8 @@ async def load_mask(image: UploadFile) -> dict:
 
     try:
         from trcc.core.app import TrccApp
-        from trcc.core.commands.lcd import LoadMaskCommand
-        result = TrccApp.get().lcd_bus.dispatch(LoadMaskCommand(mask_path=tmp_path))
-        return dispatch_result(result.payload)
+        result = TrccApp.get().lcd.load_mask_standalone(tmp_path)
+        return dispatch_result(result)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
@@ -149,12 +138,10 @@ async def render_overlay(dc_path: str, send: bool = True) -> dict:
         raise HTTPException(status_code=400, detail="Invalid overlay path")
 
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import RenderOverlayFromDCCommand
 
     _get_display()
-    result = TrccApp.get().lcd_bus.dispatch(
-        RenderOverlayFromDCCommand(dc_path=safe_path, send=send))
-    return dispatch_result(result.payload)
+    result = TrccApp.get().lcd.render_overlay_from_dc(safe_path, send=send)
+    return dispatch_result(result)
 
 
 @router.get("/status")
@@ -249,13 +236,12 @@ def test_display() -> dict:
     ]
 
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import SendColorCommand
     from trcc.services import ImageService
 
-    bus = TrccApp.get().lcd_bus
+    lcd = TrccApp.get().lcd
     for r, g, b, _name in colors:
         img = ImageService.solid_color(r, g, b, w, h)
-        bus.dispatch(SendColorCommand(r=r, g=g, b=b))
+        lcd.send_color(r, g, b)
         time.sleep(1)
 
     # Update preview with last frame
@@ -406,9 +392,7 @@ async def create_theme(
 
     if mask_path:
         from trcc.core.app import TrccApp
-        from trcc.core.commands.lcd import LoadMaskCommand
-        mask_result = TrccApp.get().lcd_bus.dispatch(
-            LoadMaskCommand(mask_path=str(mask_path))).payload
+        mask_result = TrccApp.get().lcd.load_mask_standalone(str(mask_path))
         if not mask_result.get("success"):
             raise HTTPException(status_code=400, detail=mask_result.get("error", "Mask load failed"))
         img = mask_result.get("image", img)

@@ -52,7 +52,6 @@ def load_theme(builder, name, *, device=None, preview=False):
     """Load a theme by name and send to LCD."""
     from trcc.cli._display import _connect_or_fail
     from trcc.core.app import TrccApp
-    from trcc.core.commands.lcd import LoadThemeByNameCommand, PlayVideoLoopCommand
     from trcc.services import ImageService
 
     log.debug("load_theme name=%s device=%s", name, device)
@@ -60,30 +59,25 @@ def load_theme(builder, name, *, device=None, preview=False):
     if rc:
         return rc
 
-    result = TrccApp.get().lcd_bus.dispatch(
-        LoadThemeByNameCommand(name=name)).payload
+    lcd = TrccApp.get().lcd
+    result = lcd.load_theme_by_name(name)
 
     if not result.get("success"):
         print(f"Error: {result.get('error', 'Unknown error')}")
         return 1
 
     if result.get("is_animated") and result.get("theme_path"):
-        lcd = TrccApp.get().lcd_device
-        assert lcd is not None
         print(f"Playing '{name}' → {lcd.device_path}")
         print("Press Ctrl+C to stop.")
         try:
-            loop_result = TrccApp.get().lcd_bus.dispatch(
-                PlayVideoLoopCommand(video_path=str(result["theme_path"]), loop=True)
-            ).payload
+            loop_result = lcd.play_video_loop(
+                str(result["theme_path"]), loop=True)
             print(f"\n{loop_result.get('message', 'Done')}.")
         except KeyboardInterrupt:
             print("\nStopped.")
     else:
         img = result.get("image")
         if img:
-            lcd = TrccApp.get().lcd_device
-            assert lcd is not None
             print(f"Loaded '{name}' → {lcd.device_path}")
             if preview:
                 print(ImageService.to_ansi(img))
@@ -112,8 +106,7 @@ def save_theme(name, *, device=None, video=None, background=None,
     if rc:
         return rc
 
-    lcd = TrccApp.get().lcd_device
-    assert lcd is not None
+    lcd = TrccApp.get().lcd
     w, h = lcd.lcd_size
 
     # --background replaces --video (auto-detect animated vs static)
@@ -129,13 +122,11 @@ def save_theme(name, *, device=None, video=None, background=None,
         suffix = p.suffix.lower()
         if suffix in ('.mp4', '.gif', '.zt', '.webm', '.avi', '.mkv'):
             video_path = p
-            # Load first frame as background thumbnail
             bg = ImageService.open_and_resize(p, w, h)
         else:
             bg = ImageService.open_and_resize(p, w, h)
 
     if not bg:
-        # Fall back to current theme's background (device index 0 = selected)
         from trcc.conf import Settings
         cfg = Settings.get_device_config("0")
         theme_path = cfg.get('theme_path')
@@ -149,7 +140,6 @@ def save_theme(name, *, device=None, video=None, background=None,
         print("No background to save. Provide --background or load a theme first.")
         return 1
 
-    # Build overlay config from --metric specs
     overlay_config: dict = {}
     if metrics:
         from trcc.core.models import build_overlay_config
@@ -168,7 +158,6 @@ def save_theme(name, *, device=None, video=None, background=None,
             print(f"Error: {e}")
             return 1
 
-    # Load mask image if provided
     mask_img = None
     mask_source = None
     if mask:
@@ -214,7 +203,6 @@ def export_theme(theme_name, output_path):
         print(f"No themes for {w}x{h}.")
         return 1
 
-    # Find theme by name
     themes = ThemeService.discover_local(td.path, (w, h))
     match = next((t for t in themes if t.name == theme_name), None)
     if not match:
@@ -257,8 +245,7 @@ def import_theme(file_path, *, device=None):
     if rc:
         return rc
 
-    lcd = TrccApp.get().lcd_device
-    assert lcd is not None
+    lcd = TrccApp.get().lcd
     w, h = lcd.lcd_size
     data_dir = _settings.user_data_dir
 

@@ -131,25 +131,34 @@ def _mock_builder(mock_platform):
     mock_builder.with_renderer.return_value = mock_builder
     mock_builder.with_data_dir.return_value = mock_builder
 
-    from trcc.core.command_bus import CommandResult
-    mock_app = MagicMock(spec=TrccApp)
+    mock_app = MagicMock()
     mock_app.builder = mock_builder
     mock_app._ensure_data_fn = None
 
-    # Default bus dispatch result — success so CLI commands don't print "Error".
-    # Tests that need a failure result should override explicitly.
-    _ok = CommandResult.ok(message="ok")
-    mock_app.build_lcd_bus.return_value.dispatch.return_value = _ok
-    mock_app.build_led_bus.return_value.dispatch.return_value = _ok
-    # lcd_bus/led_bus — stored buses used by CLI after connect
-    mock_app.lcd_bus.dispatch.return_value = _ok
-    mock_app.led_bus.dispatch.return_value = _ok
-    # os_bus — routes DiscoverDevicesCommand, InitPlatformCommand
-    # Default: discover succeeds (has_lcd=True, has_led=True after dispatch)
-    mock_app.os_bus.dispatch.return_value = _ok
+    # Default return values — success dicts so CLI commands don't print "Error".
+    _ok = {"success": True, "message": "ok"}
+    mock_app.discover.return_value = _ok
+    mock_app.init_platform.return_value = None
+    mock_app.set_language.return_value = _ok
+    # lcd/led properties return MagicMock by default (via spec=TrccApp)
     # has_lcd/has_led — True by default so _connect_or_fail passes
     mock_app.has_lcd = True
     mock_app.has_led = True
+    # lcd_device / led_device — mocks that CLI test_display etc. access
+    mock_app.lcd_device = MagicMock()
+    mock_app.led_device = MagicMock()
+    # lcd/led shorthand — writable so CLI conftest can swap them
+    mock_app.lcd = mock_app.lcd_device
+    mock_app.led = mock_app.led_device
+    # OS methods — return sensible defaults
+    mock_app.setup_platform.return_value = 0
+    mock_app.setup_udev.return_value = 0
+    mock_app.setup_selinux.return_value = 0
+    mock_app.setup_polkit.return_value = 0
+    mock_app.install_desktop.return_value = 0
+    mock_app.setup_winusb.return_value = 0
+    mock_app.download_themes.return_value = 0
+    mock_app.set_metrics_refresh.return_value = _ok
 
     # Set the singleton so TrccApp.get() returns mock_app without needing init().
     # Composition roots call TrccApp.get() in CLI commands — this prevents RuntimeError.
@@ -348,38 +357,41 @@ def settings_with_resolution(tmp_config):
     return tmp_config
 
 @pytest.fixture
-def failed_lcd_bus():
-    """Mock CommandBus that always returns CommandResult.fail.
+def failed_lcd_device():
+    """Mock LCDDevice whose methods always return failure dicts.
 
-    Use to test failure paths in LCD command handlers without needing a real device.
-
-    Example::
-
-        def test_brightness_failure(failed_lcd_bus):
-            TrccApp.get().lcd_bus = failed_lcd_bus
-            rc = set_brightness(level=1)
-            assert rc == 1
+    Use to test failure paths in LCD operations without needing a real device.
     """
     from unittest.mock import MagicMock
 
-    from trcc.core.command_bus import CommandBus, CommandResult
-    bus = MagicMock(spec=CommandBus)
-    bus.dispatch.return_value = CommandResult.fail("simulated failure")
-    return bus
+    lcd = MagicMock()
+    _fail = {"success": False, "error": "simulated failure"}
+    lcd.set_brightness.return_value = _fail
+    lcd.set_rotation.return_value = _fail
+    lcd.set_split_mode.return_value = _fail
+    lcd.send_image.return_value = _fail
+    lcd.send_color.return_value = _fail
+    lcd.restore_last_theme.return_value = _fail
+    lcd.select.return_value = _fail
+    lcd.load_mask_standalone.return_value = _fail
+    return lcd
 
 
 @pytest.fixture
-def failed_led_bus():
-    """Mock CommandBus that always returns CommandResult.fail.
+def failed_led_device():
+    """Mock LEDDevice whose methods always return failure dicts.
 
-    Use to test failure paths in LED command handlers without needing a real device.
+    Use to test failure paths in LED operations without needing a real device.
     """
     from unittest.mock import MagicMock
 
-    from trcc.core.command_bus import CommandBus, CommandResult
-    bus = MagicMock(spec=CommandBus)
-    bus.dispatch.return_value = CommandResult.fail("simulated failure")
-    return bus
+    led = MagicMock()
+    _fail = {"success": False, "error": "simulated failure"}
+    led.update_color.return_value = _fail
+    led.update_mode.return_value = _fail
+    led.update_brightness.return_value = _fail
+    led.turn_off.return_value = _fail
+    return led
 
 
 @pytest.fixture

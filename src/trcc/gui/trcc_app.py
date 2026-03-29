@@ -356,16 +356,12 @@ class TRCCApp(QMainWindow):
 
         if isinstance(device, LEDDevice):
             if path not in self._handlers:
-                from ..core.app import TrccApp
-                led_bus = TrccApp.get().build_led_gui_bus(device)
                 handler: BaseHandler = LEDHandler(
-                    device, self.uc_led_control, self._on_temp_unit_changed, bus=led_bus)
+                    device, self.uc_led_control, self._on_temp_unit_changed)
                 self._handlers[path] = handler
                 log.info("LED handler added: %s", path)
         elif isinstance(device, LCDDevice):
             if path not in self._handlers:
-                from ..core.app import TrccApp
-                lcd_bus = TrccApp.get().build_lcd_gui_bus(device)
                 widgets = {
                     'preview': self.uc_preview,
                     'theme_setting': self.uc_theme_setting,
@@ -378,7 +374,7 @@ class TRCCApp(QMainWindow):
                 }
                 lcd_handler = LCDHandler(
                     device, widgets, self._make_timer, self._data_dir,
-                    is_visible_fn=self.is_app_visible, bus=lcd_bus)
+                    is_visible_fn=self.is_app_visible)
                 self._handlers[path] = lcd_handler
                 log.info("LCD handler added: %s", path)
                 # Wire IPC frame capture if server is already running
@@ -1644,14 +1640,12 @@ class TRCCApp(QMainWindow):
     def _on_refresh_changed(self, interval: int) -> None:
         log.debug("_on_refresh_changed: interval=%s", interval)
         from ..core.app import TrccApp
-        from ..core.commands.initialize import SetMetricsRefreshCommand
-        TrccApp.get().os_bus.dispatch(SetMetricsRefreshCommand(interval=interval))
+        TrccApp.get().set_metrics_refresh(interval)
         self.uc_preview.set_status(f"Refresh: {interval}s")
 
     def _set_language(self, lang: str) -> None:
         from ..core.app import TrccApp
-        from ..core.commands.initialize import SetLanguageCommand
-        TrccApp.get().os_bus.dispatch(SetLanguageCommand(code=lang))
+        TrccApp.get().set_language(lang)
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
         self.uc_led_control.apply_localized_background()

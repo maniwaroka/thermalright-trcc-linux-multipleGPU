@@ -1177,12 +1177,11 @@ def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
 def main():
     """Main CLI entry point — composition root.
 
-    Initialization via commands:
-      1. InitPlatformCommand  — logging, OS, settings, renderer
-      2. DiscoverDevicesCommand — triggered per command that needs a device
+    Initialization:
+      1. init_platform()  — logging, OS, settings, renderer
+      2. discover() — triggered per command that needs a device
     """
     from trcc.core.app import AppEvent, AppObserver, TrccApp
-    from trcc.core.commands.initialize import InitPlatformCommand
 
     trcc_app = TrccApp.init()
 
@@ -1205,10 +1204,10 @@ def main():
         _progress_obs = _CliProgressObserver()
         trcc_app.register(_progress_obs)
 
-    trcc_app.os_bus.dispatch(InitPlatformCommand(
+    trcc_app.init_platform(
         verbosity=_verbose,
         renderer_factory=_renderer_factory,
-    ))
+    )
 
     try:
         result = app(standalone_mode=False, obj=trcc_app)

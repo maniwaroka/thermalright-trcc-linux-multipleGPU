@@ -1,8 +1,8 @@
-"""Tests for TrccApp OS-bus handlers, metrics loop, and observer lifecycle.
+"""Tests for TrccApp init_platform, discover, set_language, setup_*, metrics loop,
+and observer lifecycle.
 
 Coverage targets:
-  - core/app.py: build_os_bus() handler closures (_init_platform, _set_language,
-    _setup_*, _download_themes)
+  - core/app.py: init_platform(), discover(), set_language(), setup_*()
   - core/app.py: start_metrics_loop(), stop_metrics_loop()
   - core/app.py: unregister(), _notify() exception isolation
 """
@@ -14,77 +14,53 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from trcc.core.app import AppEvent, AppObserver, TrccApp
-from trcc.core.commands.initialize import (
-    DiscoverDevicesCommand,
-    InitPlatformCommand,
-    InstallDesktopCommand,
-    SetLanguageCommand,
-    SetupPlatformCommand,
-    SetupPolkitCommand,
-    SetupSelinuxCommand,
-    SetupUdevCommand,
-    SetupWinUsbCommand,
-)
 
 # ── Shared fixture ────────────────────────────────────────────────────────────
 
 @pytest.fixture()
 def app():
-    """Fresh TrccApp with a mocked builder and a real os_bus."""
-    from trcc.core.handlers.os import build_os_bus
+    """Fresh TrccApp with a mocked builder."""
     TrccApp.reset()
     builder = MagicMock()
     builder.build_detect_fn.return_value = lambda: []
     inst = TrccApp(builder)
     TrccApp._instance = inst
-    inst._os_bus = build_os_bus(
-        bootstrap_fn=builder.bootstrap,
-        set_renderer_fn=inst.set_renderer,
-        scan_fn=lambda: inst.scan(),
-        ensure_data_fn=lambda: inst._ensure_data_blocking(),
-        has_device_fn=lambda path: path in inst._devices,
-        build_setup_fn=builder.build_setup,
-        list_themes_fn=MagicMock(),
-        download_pack_fn=MagicMock(return_value=0),
-        wake_metrics_fn=inst.wake_metrics_loop,
-    )
     yield inst
     TrccApp.reset()
 
 
-# ── InitPlatformCommand handler ───────────────────────────────────────────────
+# ── init_platform ────────────────────────────────────────────────────────────
 
-class TestInitPlatformHandler:
+class TestInitPlatform:
     def test_bootstrap_called(self, app):
-        """Handler must call builder.bootstrap() with the verbosity."""
-        app._os_bus.dispatch(InitPlatformCommand(verbosity=0))
+        """init_platform must call builder.bootstrap()."""
+        app.init_platform(verbosity=0)
         app._builder.bootstrap.assert_called_once_with(0)
 
     def test_bootstrap_passes_verbosity(self, app):
-        app._os_bus.dispatch(InitPlatformCommand(verbosity=3))
+        app.init_platform(verbosity=3)
         app._builder.bootstrap.assert_called_once_with(3)
 
     def test_renderer_factory_called_when_provided(self, app):
         renderer = MagicMock()
         factory = MagicMock(return_value=renderer)
-        app._os_bus.dispatch(InitPlatformCommand(renderer_factory=factory))
+        app.init_platform(renderer_factory=factory)
         factory.assert_called_once()
 
     def test_renderer_injected_into_builder(self, app):
         renderer = MagicMock()
         factory = MagicMock(return_value=renderer)
         with patch('trcc.services.image.ImageService.set_renderer'):
-            app._os_bus.dispatch(InitPlatformCommand(renderer_factory=factory))
+            app.init_platform(renderer_factory=factory)
         app._builder.with_renderer.assert_called_once_with(renderer)
 
     def test_no_renderer_factory_skips_set_renderer(self, app):
         """No renderer_factory → with_renderer() must NOT be called."""
-        app._os_bus.dispatch(InitPlatformCommand())
+        app.init_platform()
         app._builder.with_renderer.assert_not_called()
 
     def test_bootstrap_progress_event_emitted(self, app):
         """BOOTSTRAP_PROGRESS must be notified when ensure_fn fires a message."""
-        from trcc.core.app import AppEvent, AppObserver
         received: list[str] = []
 
         class _Obs(AppObserver):
@@ -97,54 +73,54 @@ class TestInitPlatformHandler:
         assert received == ["Downloading themes…"]
 
 
-# ── DiscoverDevicesCommand handler ────────────────────────────────────────────
+# ── discover() ───────────────────────────────────────────────────────────────
 
-class TestDiscoverHandler:
-    def test_dispatch_returns_ok_when_no_devices(self, app):
-        result = app._os_bus.dispatch(DiscoverDevicesCommand())
-        assert result.success
+class TestDiscover:
+    def test_returns_success_when_no_devices(self, app):
+        result = app.discover()
+        assert result["success"]
 
-    def test_dispatch_scans_devices(self, app):
-        """DiscoverDevicesCommand must call scan()."""
+    def test_scans_devices(self, app):
+        """discover() must call scan()."""
         with patch.object(app, 'scan', return_value=[]) as mock_scan:
-            app._os_bus.dispatch(DiscoverDevicesCommand())
+            app.discover()
         mock_scan.assert_called_once()
 
     def test_path_not_found_returns_fail(self, app):
-        result = app._os_bus.dispatch(DiscoverDevicesCommand(path="/dev/sg99"))
-        assert not result.success
+        result = app.discover(path="/dev/sg99")
+        assert not result["success"]
 
     def test_discover_calls_ensure_data_blocking(self, app):
-        """DiscoverDevicesCommand must run _ensure_data_blocking after scan."""
+        """discover() must run _ensure_data_blocking after scan."""
         with patch.object(app, '_ensure_data_blocking') as mock_ensure:
-            app._os_bus.dispatch(DiscoverDevicesCommand())
+            app.discover()
         mock_ensure.assert_called_once_with()
 
 
-# ── SetLanguageCommand handler ────────────────────────────────────────────────
+# ── set_language() ───────────────────────────────────────────────────────────
 
-class TestSetLanguageHandler:
+class TestSetLanguage:
     def test_valid_code_updates_settings(self, app):
         with patch('trcc.conf.settings') as mock_settings:
-            app._os_bus.dispatch(SetLanguageCommand(code='en'))
+            app.set_language('en')
         assert mock_settings.lang == 'en'
 
     def test_unknown_code_returns_fail(self, app):
-        result = app._os_bus.dispatch(SetLanguageCommand(code='xx_unknown'))
-        assert not result.success
+        result = app.set_language('xx_unknown')
+        assert not result["success"]
 
     def test_unknown_code_does_not_update_lang(self, app):
-        """Handler must bail out before touching settings on an unknown code."""
+        """set_language must bail out before touching settings on an unknown code."""
         with patch('trcc.conf.settings') as mock_settings:
             mock_settings.lang = 'en'
-            app._os_bus.dispatch(SetLanguageCommand(code='xx_unknown'))
+            app.set_language('xx_unknown')
             assert mock_settings.lang == 'en'
 
 
-# ── Setup command handlers ────────────────────────────────────────────────────
+# ── Setup methods ────────────────────────────────────────────────────────────
 
-class TestSetupCommandHandlers:
-    """Each setup command delegates to the matching PlatformSetup method."""
+class TestSetupMethods:
+    """Each setup method delegates to the matching PlatformSetup method."""
 
     def _mock_setup(self, app, rc: int = 0):
         """Return a mock setup adapter and inject it via build_setup."""
@@ -160,46 +136,38 @@ class TestSetupCommandHandlers:
 
     def test_setup_platform_calls_run(self, app):
         setup = self._mock_setup(app)
-        app._os_bus.dispatch(SetupPlatformCommand(auto_yes=True))
+        app.setup_platform(auto_yes=True)
         setup.run.assert_called_once_with(auto_yes=True)
 
-    def test_setup_platform_fail_rc_returns_fail(self, app):
+    def test_setup_platform_fail_rc(self, app):
         self._mock_setup(app, rc=1)
-        result = app._os_bus.dispatch(SetupPlatformCommand())
-        assert not result.success
+        rc = app.setup_platform()
+        assert rc == 1
 
     def test_setup_udev_calls_setup_udev(self, app):
         setup = self._mock_setup(app)
-        app._os_bus.dispatch(SetupUdevCommand(dry_run=True))
+        app.setup_udev(dry_run=True)
         setup.setup_udev.assert_called_once_with(dry_run=True)
 
     def test_setup_selinux_calls_setup_selinux(self, app):
         setup = self._mock_setup(app)
-        app._os_bus.dispatch(SetupSelinuxCommand())
+        app.setup_selinux()
         setup.setup_selinux.assert_called_once()
 
     def test_setup_polkit_calls_setup_polkit(self, app):
         setup = self._mock_setup(app)
-        app._os_bus.dispatch(SetupPolkitCommand())
+        app.setup_polkit()
         setup.setup_polkit.assert_called_once()
 
     def test_install_desktop_calls_install_desktop(self, app):
         setup = self._mock_setup(app)
-        app._os_bus.dispatch(InstallDesktopCommand())
+        app.install_desktop()
         setup.install_desktop.assert_called_once()
 
     def test_setup_winusb_calls_setup_winusb(self, app):
         setup = self._mock_setup(app)
-        app._os_bus.dispatch(SetupWinUsbCommand())
+        app.setup_winusb()
         setup.setup_winusb.assert_called_once()
-
-    def test_setup_fail_rc_returns_fail_for_each(self, app):
-        self._mock_setup(app, rc=1)
-        for cmd in (SetupUdevCommand(), SetupSelinuxCommand(),
-                    SetupPolkitCommand(), InstallDesktopCommand(),
-                    SetupWinUsbCommand()):
-            result = app._os_bus.dispatch(cmd)
-            assert not result.success, f"{cmd} should return fail on rc=1"
 
 
 # ── Metrics loop ──────────────────────────────────────────────────────────────

@@ -4,7 +4,8 @@ Self-contained handler for a single LED device. Owns an LEDDevice,
 manages animation timer, signal wiring, and GUI state sync.
 TRCCApp creates one LEDHandler per connected LED device.
 
-All device mutations go through the CommandBus (same path as CLI/API).
+All device mutations call LEDDevice update_* methods directly (state-only).
+The 150ms tick timer handles batching hardware sends.
 State reads (led.state.*) are direct — they carry no side-effects.
 """
 from __future__ import annotations
@@ -16,29 +17,6 @@ from PySide6.QtCore import QTimer
 
 import trcc.conf as _conf
 
-from ..core.command_bus import CommandBus
-from ..core.commands.led import (
-    SelectZoneCommand,
-    SetClockFormatCommand,
-    SetDiskIndexCommand,
-    SetLEDBrightnessCommand,
-    SetLEDColorCommand,
-    SetLEDModeCommand,
-    SetMemoryRatioCommand,
-    SetTempUnitLEDCommand,
-    SetTestModeCommand,
-    SetWeekStartCommand,
-    SetZoneBrightnessCommand,
-    SetZoneColorCommand,
-    SetZoneModeCommand,
-    SetZoneSyncCommand,
-    SetZoneSyncIntervalCommand,
-    SetZoneSyncZoneCommand,
-    ToggleLEDCommand,
-    ToggleSegmentCommand,
-    ToggleZoneCommand,
-    UpdateMetricsLEDCommand,
-)
 from ..core.led_device import LEDDevice
 from ..core.models import LED_STYLES, DeviceInfo, resolve_led_style_id
 from .base import BaseHandler
@@ -51,8 +29,8 @@ class LEDHandler(BaseHandler):
     """Handler for a single LED device.
 
     Owns LEDDevice lifecycle, animation timer, signal wiring.
-    GUI signal handlers dispatch commands through the bus — the 150 ms tick
-    handles animation + send. State reads (led.state.*) remain direct.
+    GUI signal handlers call update_* methods directly on the device
+    (state-only). The 150ms tick handles animation + hardware send.
     """
 
     _SAVE_INTERVAL = 20  # save config every N ticks (~3 s)
@@ -62,14 +40,10 @@ class LEDHandler(BaseHandler):
         led: LEDDevice,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
-        bus: CommandBus | None = None,
     ) -> None:
-        if bus is None:
-            raise ValueError("LEDHandler requires a CommandBus — inject via build_led_gui_bus()")
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
         self._led = led
-        self._bus: CommandBus = bus
         self._active = False
         self._style_id = 0
         self._save_counter = 0
@@ -130,7 +104,7 @@ class LEDHandler(BaseHandler):
         self._sync_ui_from_state()
 
         seg_unit = "F" if _conf.settings.temp_unit == 1 else "C"
-        self._bus.dispatch(SetTempUnitLEDCommand(unit=seg_unit))
+        self._led.set_seg_temp_unit(seg_unit)
 
         self._active = True
         self._timer.start(150)
@@ -147,10 +121,10 @@ class LEDHandler(BaseHandler):
     def set_temp_unit(self, unit: str) -> None:
         if self._led:
             log.debug("LED: temp_unit=%s", unit)
-            self._bus.dispatch(SetTempUnitLEDCommand(unit=unit))
+            self._led.set_seg_temp_unit(unit)
 
     def restart_if_needed(self) -> None:
-        """Restart animation timer if active but stopped (e.g. after window hide)."""
+        """Restart animation timer if active but stopped."""
         if self._active and not self._timer.isActive():
             log.warning("LED tick timer was stopped — restarting")
             self._timer.start(150)
@@ -158,7 +132,7 @@ class LEDHandler(BaseHandler):
     def update_from_metrics(self, metrics: Any) -> None:
         if not self._led:
             return
-        self._bus.dispatch(UpdateMetricsLEDCommand(metrics=metrics))
+        self._led.update_metrics(metrics)
         self._panel.update_metrics(metrics)
 
     # ── Private ──────────────────────────────────────────────────────
@@ -199,40 +173,37 @@ class LEDHandler(BaseHandler):
     def _on_mode_changed(self, mode: Any) -> None:
         if not self._led:
             return
-        self._bus.dispatch(SetLEDModeCommand(mode=mode))
+        self._led.update_mode(mode)
         if self._led.state.zones:
-            self._bus.dispatch(SetZoneModeCommand(zone=self._panel.selected_zone, mode=mode))
+            self._led.update_zone_mode(self._panel.selected_zone, mode)
         self._save_counter = self._SAVE_INTERVAL
 
     def _on_color_changed(self, r: int, g: int, b: int) -> None:
         if not self._led:
             return
-        self._bus.dispatch(SetLEDColorCommand(r=r, g=g, b=b))
+        self._led.update_color(r, g, b)
         if self._led.state.zones:
-            self._bus.dispatch(
-                SetZoneColorCommand(zone=self._panel.selected_zone, r=r, g=g, b=b))
+            self._led.update_zone_color(self._panel.selected_zone, r, g, b)
 
     def _on_brightness_changed(self, val: int) -> None:
         if not self._led:
             return
-        self._bus.dispatch(SetLEDBrightnessCommand(level=val))
+        self._led.update_brightness(val)
         if self._led.state.zones:
-            self._bus.dispatch(
-                SetZoneBrightnessCommand(zone=self._panel.selected_zone, level=val))
+            self._led.update_zone_brightness(self._panel.selected_zone, val)
 
     def _on_global_toggled(self, on: bool) -> None:
         if self._led:
-            self._bus.dispatch(ToggleLEDCommand(on=on))
+            self._led.update_global_on(on)
 
     def _on_segment_clicked(self, idx: int) -> None:
         if self._led and 0 <= idx < len(self._led.state.segment_on):
-            self._bus.dispatch(
-                ToggleSegmentCommand(index=idx, on=not self._led.state.segment_on[idx]))
+            self._led.update_segment(idx, not self._led.state.segment_on[idx])
 
     def _on_zone_selected(self, zone_index: int) -> None:
         if not self._led or not self._led.state.zones:
             return
-        self._bus.dispatch(SelectZoneCommand(zone=zone_index))
+        self._led.update_selected_zone(zone_index)
         zones = self._led.state.zones
         if 0 <= zone_index < len(zones):
             z = zones[zone_index]
@@ -240,39 +211,39 @@ class LEDHandler(BaseHandler):
 
     def _on_zone_toggled(self, zi: int, on: bool) -> None:
         if self._led:
-            self._bus.dispatch(ToggleZoneCommand(zone=zi, on=on))
+            self._led.update_zone_on(zi, on)
 
     def _on_carousel_changed(self, on: bool) -> None:
         if self._led:
-            self._bus.dispatch(SetZoneSyncCommand(enabled=on))
+            self._led.update_zone_sync(on)
 
     def _on_carousel_zone_changed(self, zi: int, sel: Any) -> None:
         if self._led:
-            self._bus.dispatch(SetZoneSyncZoneCommand(zi=zi, sel=sel))
+            self._led.update_zone_sync_zone(zi, sel)
 
     def _on_carousel_interval_changed(self, secs: int) -> None:
         if self._led:
-            self._bus.dispatch(SetZoneSyncIntervalCommand(secs=secs))
+            self._led.update_zone_sync_interval(secs)
 
     def _on_clock_format_changed(self, is_24h: bool) -> None:
         if self._led:
-            self._bus.dispatch(SetClockFormatCommand(is_24h=is_24h))
+            self._led.update_clock_format(is_24h)
 
     def _on_week_start_changed(self, is_sun: bool) -> None:
         if self._led:
-            self._bus.dispatch(SetWeekStartCommand(is_sun=is_sun))
+            self._led.update_week_start(is_sun)
 
     def _on_disk_index_changed(self, idx: int) -> None:
         if self._led:
-            self._bus.dispatch(SetDiskIndexCommand(idx=idx))
+            self._led.update_disk_index(idx)
 
     def _on_memory_ratio_changed(self, ratio: int) -> None:
         if self._led:
-            self._bus.dispatch(SetMemoryRatioCommand(ratio=ratio))
+            self._led.update_memory_ratio(ratio)
 
     def _on_test_mode_changed(self, on: bool) -> None:
         if self._led:
-            self._bus.dispatch(SetTestModeCommand(on=on))
+            self._led.update_test_mode(on)
 
     def _on_tick(self) -> None:
         if not (self._led and self._active):

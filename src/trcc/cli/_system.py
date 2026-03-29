@@ -39,9 +39,7 @@ def setup_udev(dry_run: bool = False) -> int:
     if err is not None:
         return err
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import SetupUdevCommand
-    result = TrccApp.get().os_bus.dispatch(SetupUdevCommand(dry_run=dry_run))
-    return 0 if result.success else 1
+    return TrccApp.get().setup_udev(dry_run=dry_run)
 
 
 def setup_selinux() -> int:
@@ -50,9 +48,7 @@ def setup_selinux() -> int:
     if err is not None:
         return err
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import SetupSelinuxCommand
-    result = TrccApp.get().os_bus.dispatch(SetupSelinuxCommand())
-    return 0 if result.success else 1
+    return TrccApp.get().setup_selinux()
 
 
 def setup_polkit() -> int:
@@ -61,9 +57,7 @@ def setup_polkit() -> int:
     if err is not None:
         return err
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import SetupPolkitCommand
-    result = TrccApp.get().os_bus.dispatch(SetupPolkitCommand())
-    return 0 if result.success else 1
+    return TrccApp.get().setup_polkit()
 
 
 def install_desktop() -> int:
@@ -72,9 +66,7 @@ def install_desktop() -> int:
     if err is not None:
         return err
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import InstallDesktopCommand
-    result = TrccApp.get().os_bus.dispatch(InstallDesktopCommand())
-    return 0 if result.success else 1
+    return TrccApp.get().install_desktop()
 
 
 def _sudo_run(cmd):
@@ -83,14 +75,7 @@ def _sudo_run(cmd):
 
 
 def show_info(builder=None, *, preview: bool = False, metric: str | None = None):
-    """Show system metrics, optionally as ANSI terminal art.
-
-    Args:
-        builder: OS-specific builder (from ctx.obj at CLI boundary).
-            None is accepted for test/direct invocation — skips _ensure_system.
-        preview: Render metrics as ANSI colored dashboard.
-        metric: Filter to a group — cpu, gpu, mem, disk, net, fan, time.
-    """
+    """Show system metrics, optionally as ANSI terminal art."""
     try:
         from trcc.cli import _ensure_system
         from trcc.services.system import format_metric, get_all_metrics
@@ -142,28 +127,15 @@ def show_info(builder=None, *, preview: bool = False, metric: str | None = None)
         return 1
 
 
-# setup_udev, setup_selinux, setup_polkit, install_desktop,
-# _setup_rapl_permissions — all imported from adapters/setup/facade_linux.py
-# (see import block above). CLI entry points in __init__.py call them directly.
-
-
 def setup_winusb() -> int:
-    """Guide WinUSB driver installation for Thermalright USB devices (Windows only).
-
-    SCSI devices (Frozen Warframe, Elite Vision, etc.) use the default
-    USB Mass Storage driver and need no extra setup.
-
-    HID, Bulk, and LY devices need WinUSB — installed via Zadig.
-    """
+    """Guide WinUSB driver installation for Thermalright USB devices (Windows only)."""
     from trcc.core.builder import ControllerBuilder
     if not ControllerBuilder.for_current_os().build_setup().supports_winusb():
         print("This command is for Windows only.")
         print("On Linux, use: trcc setup-udev")
         return 1
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import SetupWinUsbCommand
-    result = TrccApp.get().os_bus.dispatch(SetupWinUsbCommand())
-    return 0 if result.success else 1
+    return TrccApp.get().setup_winusb()
 
 
 # _detect_install_method moved to core/platform.py as detect_install_method()
@@ -172,8 +144,6 @@ _detect_install_method = detect_install_method
 
 def _is_externally_managed() -> bool:
     """Check if the Python environment has PEP 668 EXTERNALLY-MANAGED marker."""
-    # The marker file lives next to the stdlib, e.g.
-    # /usr/lib/python3.12/EXTERNALLY-MANAGED
     stdlib = Path(os.__file__).parent
     return (stdlib / "EXTERNALLY-MANAGED").exists()
 
@@ -194,7 +164,7 @@ def uninstall(*, yes: bool = False):
 
     # User files/dirs to remove
     user_items = [
-        home / ".trcc",                                      # all trcc data + config
+        home / ".trcc",
     ]
     # Glob for any trcc desktop files in applications dir (keeps app menu clean)
     applications = home / ".local" / "share" / "applications"
@@ -217,16 +187,14 @@ def uninstall(*, yes: bool = False):
             os.remove(path_str)
             removed.append(path_str)
 
-    # Disable autostart before shutting down logging — autostart only touches
-    # ~/.config/autostart/, not ~/.trcc/, so order is safe here.
+    # Disable autostart before shutting down logging
     from trcc.core.builder import ControllerBuilder
     autostart = ControllerBuilder.for_current_os().build_autostart()
     if autostart.is_enabled():
         autostart.disable()
         removed.append("autostart entry")
 
-    # Shut down logging before deleting ~/.trcc — on Windows the log file
-    # handle stays open and blocks rmtree with WinError 32.
+    # Shut down logging before deleting ~/.trcc
     import logging as _logging
     _logging.shutdown()
 
@@ -246,7 +214,7 @@ def uninstall(*, yes: bool = False):
     else:
         print("Nothing to remove — TRCC is already clean.")
 
-    # Reload udev if we removed rules (and we're root — non-root already did it above)
+    # Reload udev if we removed rules (and we're root)
     if is_root() and any("udev" in r for r in removed):
         subprocess.run(["udevadm", "control", "--reload-rules"], check=False)
         subprocess.run(["udevadm", "trigger"], check=False)
@@ -256,7 +224,6 @@ def uninstall(*, yes: bool = False):
     method = install_info.get('method', _detect_install_method())
 
     if method in ('pacman', 'dnf', 'apt'):
-        # System package — tell user to remove via their package manager
         pkg_cmds = {
             'pacman': 'sudo pacman -R trcc-linux',
             'dnf': 'sudo dnf remove trcc-linux',
@@ -268,7 +235,6 @@ def uninstall(*, yes: bool = False):
         print("\nUninstalling trcc-linux via pipx...")
         subprocess.run(["pipx", "uninstall", "trcc-linux"], check=False)
     else:
-        # pip install — may need --break-system-packages on PEP 668 distros
         print("\nUninstalling trcc-linux pip package...")
         pip_cmd = [sys.executable, "-m", "pip", "uninstall", "trcc-linux"]
         if yes:
@@ -315,11 +281,8 @@ def download_themes(pack=None, show_list=False, force=False, show_info=False):
             Settings.clear_installed_resolutions()
 
         from trcc.core.app import TrccApp
-        from trcc.core.commands.initialize import DownloadThemesCommand
         dispatch_pack = "" if show_list else (pack or "")
-        result = TrccApp.get().os_bus.dispatch(
-            DownloadThemesCommand(pack=dispatch_pack, force=force))
-        return 0 if result.success else 1
+        return TrccApp.get().download_themes(dispatch_pack, force)
 
     except Exception as e:
         print(f"Error: {e}")
@@ -344,6 +307,4 @@ def _confirm(prompt: str, auto_yes: bool) -> bool:
 def run_setup(auto_yes: bool = False) -> int:
     """Interactive setup wizard — dispatches to platform-specific adapter."""
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import SetupPlatformCommand
-    result = TrccApp.get().os_bus.dispatch(SetupPlatformCommand(auto_yes=auto_yes))
-    return 0 if result.success else 1
+    return TrccApp.get().setup_platform(auto_yes=auto_yes)

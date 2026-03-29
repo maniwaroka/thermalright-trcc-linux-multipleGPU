@@ -4,9 +4,9 @@ Self-contained handler for a single LCD device. Owns an LCDDevice,
 manages theme/video/overlay/slideshow state, renders + sends frames.
 TRCCApp creates one LCDHandler per connected LCD device.
 
-All device mutations go through the CommandBus (same path as CLI/API).
+All device mutations call LCDDevice methods directly.
 Read-only property accesses (connected, playing, auto_send, etc.) are
-direct — they carry no side-effects and don't need bus overhead.
+direct — they carry no side-effects.
 """
 # pyright: reportOptionalMemberAccess=false
 from __future__ import annotations
@@ -21,30 +21,6 @@ from PySide6.QtGui import QIcon, QPixmap
 import trcc.conf as _conf
 from trcc.conf import Settings
 
-from ..core.command_bus import CommandBus
-from ..core.commands.lcd import (
-    EnableOverlayCommand,
-    ExportThemeCommand,
-    ImportThemeCommand,
-    LoadMaskCommand,
-    PauseVideoCommand,
-    RenderAndSendCommand,
-    RestoreLastThemeCommand,
-    SaveThemeCommand,
-    SeekVideoCommand,
-    SelectThemeCommand,
-    SendColorCommand,
-    SendFrameCommand,
-    SetBrightnessCommand,
-    SetFlashIndexCommand,
-    SetMaskPositionCommand,
-    SetOverlayConfigCommand,
-    SetRotationCommand,
-    SetSplitModeCommand,
-    SetVideoFitModeCommand,
-    StopVideoCommand,
-    UpdateVideoCacheTextCommand,
-)
 from ..core.lcd_device import LCDDevice
 from ..core.models import (
     DEFAULT_BRIGHTNESS_LEVEL,
@@ -83,12 +59,8 @@ class LCDHandler(BaseHandler):
         make_timer: Any,
         data_dir: Path,
         is_visible_fn: Any = None,
-        bus: CommandBus | None = None,
     ) -> None:
-        if bus is None:
-            raise ValueError("LCDHandler requires a CommandBus — inject via build_lcd_gui_bus()")
         self._lcd = lcd
-        self._bus: CommandBus = bus
         self._w = widgets  # preview, theme_setting, theme_local, etc.
         self._data_dir = data_dir
         self._is_visible = is_visible_fn or (lambda: True)
@@ -147,8 +119,7 @@ class LCDHandler(BaseHandler):
         Settings.save_device_setting(self._device_key, 'w', w)
         Settings.save_device_setting(self._device_key, 'h', h)
 
-        # InitializeDeviceCommand was already dispatched by TrccApp._wire_bus()
-        # when the device connected — shared path for CLI, GUI, and API.
+        # Device was already initialized by TrccApp._wire_device() when it connected.
         # Here we only update GUI widgets to reflect the device resolution.
         self._w['preview'].set_resolution(w, h)
         self._w['image_cut'].set_resolution(w, h)
@@ -161,23 +132,22 @@ class LCDHandler(BaseHandler):
         # Wire background extraction callback via public method (no internal access)
         self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
 
-        # Restore per-device hardware settings via commands (shared path with CLI/API)
+        # Restore per-device hardware settings
         cfg = Settings.get_device_config(self._device_key)
         self._restore_brightness(cfg)
         self._restore_rotation(cfg)
         self._restore_split_mode(cfg, w, h)
         self._restore_carousel(cfg)
 
-        # Restore theme+mask+overlay via shared command — same command CLI/API dispatch
-        result = self._bus.dispatch(RestoreLastThemeCommand())
-        if result.success:
-            payload = result.payload
-            image = payload.get("image")
-            is_animated = payload.get("is_animated", False)
+        # Restore theme+mask+overlay
+        result = self._lcd.restore_last_theme()
+        if result.get("success"):
+            image = result.get("image")
+            is_animated = result.get("is_animated", False)
             if image:
                 self._w['preview'].set_image(image, fast=is_animated)
-            overlay_config = payload.get("overlay_config")
-            overlay_enabled = payload.get("overlay_enabled", False)
+            overlay_config = result.get("overlay_config")
+            overlay_enabled = result.get("overlay_enabled", False)
             if overlay_config:
                 self._w['theme_setting'].load_from_overlay_config(overlay_config)
             self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
@@ -192,13 +162,13 @@ class LCDHandler(BaseHandler):
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
         log.info("Restoring brightness: %d%%", self._brightness_level)
-        self._bus.dispatch(SetBrightnessCommand(level=self._brightness_level))
+        self._lcd.set_brightness(self._brightness_level)
 
     def _restore_rotation(self, cfg: dict) -> None:
         rotation_index = cfg.get('rotation', 0) // 90
         rotation = rotation_index * 90
         log.debug("_restore_rotation: rotation=%d", rotation)
-        self._bus.dispatch(SetRotationCommand(degrees=rotation))
+        self._lcd.set_rotation(rotation)
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
@@ -211,9 +181,9 @@ class LCDHandler(BaseHandler):
         if self._ldd_is_split:
             if not self._split_mode:
                 self._split_mode = 2
-            self._bus.dispatch(SetSplitModeCommand(mode=self._split_mode))
+            self._lcd.set_split_mode(self._split_mode)
         else:
-            self._bus.dispatch(SetSplitModeCommand(mode=0))
+            self._lcd.set_split_mode(0)
 
     def _restore_carousel(self, cfg: dict) -> None:
         carousel = cfg.get('carousel')
@@ -238,23 +208,17 @@ class LCDHandler(BaseHandler):
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
 
     def _select_theme(self, theme: ThemeInfo, *, send_frame: bool = True) -> None:
-        """Select theme via command bus and handle result.
-
-        Args:
-            send_frame: Send the frame to the device immediately. Pass False
-                when overlay config will follow — _load_theme_overlay_config
-                owns the single send in that case, avoiding a double-send blink.
-        """
+        """Select theme and handle result."""
         log.info("Theme selected: %s (animated=%s)", theme.name, theme.is_animated)
         self._pixmap_cache.clear()
-        payload = self._bus.dispatch(SelectThemeCommand(theme=theme)).payload
+        payload = self._lcd.select(theme)
         image = payload.get('image')
         is_animated = payload.get('is_animated', False)
 
         if image:
             self._w['preview'].set_image(image, fast=is_animated)
             if send_frame and self._lcd.auto_send and not is_animated:
-                self._bus.dispatch(SendFrameCommand(image=image))
+                self._lcd.send(image)
 
         if is_animated and self._lcd.playing:
             self._animation_timer.start(payload.get('interval', 33))
@@ -267,31 +231,23 @@ class LCDHandler(BaseHandler):
 
     def _select_theme_from_path(self, path: Path, persist: bool = True,
                                 overlay_config: bool = True) -> None:
-        """Load a local/mask theme by directory path.
-
-        Args:
-            path: Theme directory.
-            persist: Save theme_path to config (False during carousel fallback).
-            overlay_config: Load overlay config from theme dir. Pass False
-                during apply_device_config restore — _restore_overlay owns
-                the final overlay state and renders once everything is set.
-        """
+        """Load a local/mask theme by directory path."""
         if not path.exists():
             return
         self._slideshow_timer.stop()
-        self._bus.dispatch(EnableOverlayCommand(on=False))
+        self._lcd.enable_overlay(False)
 
         # Reset mode toggles (C# ReadSystemConfiguration override)
         self._background_active = False
         self._animation_timer.stop()
-        self._bus.dispatch(StopVideoCommand())
+        self._lcd.stop()
         self._w['theme_setting'].background_panel.set_enabled(False)
         self._w['theme_setting'].screencast_panel.set_enabled(False)
         self._w['theme_setting'].video_panel.set_enabled(False)
 
         theme = ThemeInfo.from_directory(path)
-        # Suppress SendFrameCommand when overlay config will follow — the
-        # overlay load owns the single send, avoiding a double-send blink.
+        # Suppress send when overlay config will follow — the overlay load
+        # owns the single send, avoiding a double-send blink.
         self._select_theme(theme, send_frame=not overlay_config)
         if overlay_config:
             self._load_theme_overlay_config(path, persist=persist)
@@ -299,7 +255,6 @@ class LCDHandler(BaseHandler):
         if persist and self._device_key:
             log.info("Saving theme_path: %s (key=%s)", path, self._device_key)
             Settings.save_device_setting(self._device_key, 'theme_path', str(path))
-            # Clear mask — selecting a new theme replaces any mask
             Settings.save_device_setting(self._device_key, 'mask_path', '')
 
     def select_cloud_theme(self, theme_info: Any) -> None:
@@ -321,21 +276,14 @@ class LCDHandler(BaseHandler):
                 Settings.save_device_setting(self._device_key, 'mask_path', '')
 
     def apply_mask(self, mask_info: Any) -> None:
-        """Apply mask overlay on top of current content.
-
-        C# ThemeMask case 16: loads 01.png as mask, reads config1.dc
-        via ReadSystemConfiguration, then calls buttonMS_Mode + render.
-        Overlay config from mask is NOT persisted — only theme loads persist.
-        """
+        """Apply mask overlay on top of current content."""
         if mask_info.path:
             mask_dir = Path(mask_info.path)
-            image = self._bus.dispatch(
-                LoadMaskCommand(mask_path=str(mask_dir))).payload.get('image')
+            result = self._lcd.load_mask_standalone(str(mask_dir))
+            image = result.get('image')
             if image:
                 self._w['preview'].set_image(image)
-            # C# reads config1.dc from mask dir (ReadSystemConfiguration)
             self._load_theme_overlay_config(mask_dir, persist=False)
-            # Persist mask path so it survives restart
             if self._device_key:
                 Settings.save_device_setting(
                     self._device_key, 'mask_path', str(mask_dir))
@@ -344,13 +292,13 @@ class LCDHandler(BaseHandler):
 
     def update_mask_position(self, x: int, y: int) -> None:
         """Update mask overlay position and re-render."""
-        self._bus.dispatch(SetMaskPositionCommand(x=x, y=y))
+        self._lcd.set_mask_position(x, y)
         self._render_and_send()
 
     def save_theme(self, name: str) -> None:
-        result = self._bus.dispatch(SaveThemeCommand(name=name, data_dir=str(self._data_dir)))
-        self._w['preview'].set_status(result.payload.get('message', ''))
-        if result.success:
+        result = self._lcd.save(name, str(self._data_dir))
+        self._w['preview'].set_status(result.get('message', ''))
+        if result.get("success"):
             td = _conf.settings.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
@@ -361,14 +309,13 @@ class LCDHandler(BaseHandler):
                     str(self._lcd.current_theme_path))
 
     def export_config(self, path: Path) -> None:
-        result = self._bus.dispatch(ExportThemeCommand(path=str(path)))
-        self._w['preview'].set_status(result.payload.get('message', ''))
+        result = self._lcd.export_config(str(path))
+        self._w['preview'].set_status(result.get('message', ''))
 
     def import_config(self, path: Path) -> None:
-        result = self._bus.dispatch(
-            ImportThemeCommand(path=str(path), data_dir=str(self._data_dir)))
-        self._w['preview'].set_status(result.payload.get('message', ''))
-        if result.success:
+        result = self._lcd.import_config(str(path), str(self._data_dir))
+        self._w['preview'].set_status(result.get('message', ''))
+        if result.get("success"):
             td = _conf.settings.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
@@ -378,33 +325,23 @@ class LCDHandler(BaseHandler):
 
     def _load_theme_overlay_config(self, theme_dir: Path,
                                     *, persist: bool = True) -> None:
-        """Load overlay config from theme's config.json or config1.dc.
-
-        Args:
-            theme_dir: Directory containing config.json or config1.dc.
-            persist: If True, save overlay state to config.json (theme loads).
-                     If False, apply but don't persist (mask loads — temporary).
-        """
+        """Load overlay config from theme's config.json or config1.dc."""
         overlay_config = self._lcd.load_overlay_config_from_dir(str(theme_dir))
 
         if not overlay_config:
-            # Custom themes without overlay — clear any stale saved overlay
-            # so it doesn't reappear on restart (fixes #58).
             self._w['theme_setting'].set_overlay_enabled(False)
             if persist and self._device_key:
                 Settings.save_device_setting(self._device_key, 'overlay', {
                     'enabled': False, 'config': {},
                 })
-            # Send the plain frame — callers may have suppressed SendFrameCommand
-            # to avoid double-send blink, so this is the single authoritative send.
             self._render_and_send()
             return
 
         Settings.apply_format_prefs(overlay_config)
         self._w['theme_setting'].set_overlay_enabled(True)
         self._w['theme_setting'].load_from_overlay_config(overlay_config)
-        self._bus.dispatch(SetOverlayConfigCommand(config=overlay_config))
-        self._bus.dispatch(EnableOverlayCommand(on=True))
+        self._lcd.set_config(overlay_config)
+        self._lcd.enable_overlay(True)
         self._render_and_send()
 
         if persist and self._device_key:
@@ -417,7 +354,7 @@ class LCDHandler(BaseHandler):
 
     def play_pause(self) -> None:
         log.debug("play_pause")
-        result = self._bus.dispatch(PauseVideoCommand()).payload
+        result = self._lcd.pause()
         playing = result.get('state') == 'playing'
         self._w['preview'].set_playing(playing)
         if playing:
@@ -427,16 +364,16 @@ class LCDHandler(BaseHandler):
 
     def stop_video(self) -> None:
         log.debug("stop_video")
-        self._bus.dispatch(StopVideoCommand())
+        self._lcd.stop()
         self._animation_timer.stop()
         self._w['preview'].set_playing(False)
         self._w['preview'].show_video_controls(False)
 
     def seek(self, percent: float) -> None:
-        self._bus.dispatch(SeekVideoCommand(percent=percent))
+        self._lcd.seek(percent)
 
     def set_video_fit_mode(self, mode: str) -> None:
-        result = self._bus.dispatch(SetVideoFitModeCommand(mode=mode)).payload
+        result = self._lcd.set_fit_mode(mode)
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
@@ -494,11 +431,11 @@ class LCDHandler(BaseHandler):
         if not element_data:
             return
         if not self._lcd.enabled:
-            self._bus.dispatch(EnableOverlayCommand(on=True))
-        self._bus.dispatch(SetOverlayConfigCommand(config=element_data))
+            self._lcd.enable_overlay(True)
+        self._lcd.set_config(element_data)
         if self._lcd.playing and self._lcd.last_metrics is not None:
             log.debug("on_overlay_changed: video playing — updating cache text overlay")
-            self._bus.dispatch(UpdateVideoCacheTextCommand(metrics=self._lcd.last_metrics))
+            self._lcd.update_video_cache_text(self._lcd.last_metrics)
         else:
             self._render_and_send()
 
@@ -509,35 +446,24 @@ class LCDHandler(BaseHandler):
             })
 
     def update_preview(self, image: Any) -> None:
-        """Display a frame that was already rendered and sent to the device.
-
-        Called by TRCCApp._on_frame_main_thread (main thread) after the
-        background tick loop renders an overlay frame and sends it to the LCD.
-        Single source of truth — no re-render here.
-        """
+        """Display a frame that was already rendered and sent to the device."""
         self._w['preview'].set_image(image)
 
     def on_overlay_tick(self, metrics: Any) -> None:
-        """Metrics tick: video cache text update only.
-
-        Rendering + LCD send is owned by LCDDevice.tick() in the background
-        loop — it renders and sends whenever overlay metrics change.
-        This method only handles video: compositing updated text into the
-        video cache so the animation timer picks it up next frame.
-        """
+        """Metrics tick: video cache text update only."""
         if not self._lcd.connected or not self._lcd.playing:
             return
         log.debug("overlay_tick: video playing — updating cache text overlay")
-        self._bus.dispatch(UpdateVideoCacheTextCommand(metrics=metrics))
+        self._lcd.update_video_cache_text(metrics)
 
     def flash_element(self, index: int) -> None:
         """Flash/blink selected overlay element on preview."""
-        self._bus.dispatch(SetFlashIndexCommand(index=index))
+        self._lcd.set_flash_index(index)
         self._flash_timer.start(980)
         self._render_and_send()
 
     def _on_flash_timeout(self) -> None:
-        self._bus.dispatch(SetFlashIndexCommand(index=-1))
+        self._lcd.set_flash_index(-1)
         self._render_and_send()
 
     # ── Display Settings ───────────────────────────────────────────
@@ -545,21 +471,21 @@ class LCDHandler(BaseHandler):
     def set_brightness(self, percent: int) -> None:
         log.debug("set_brightness: %d%%", percent)
         self._brightness_level = percent
-        result = self._bus.dispatch(SetBrightnessCommand(level=percent)).payload
+        result = self._lcd.set_brightness(percent)
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
             if self._lcd.auto_send:
-                self._bus.dispatch(SendFrameCommand(image=image))
+                self._lcd.send(image)
 
     def set_rotation(self, degrees: int) -> None:
         log.debug("set_rotation: degrees=%d", degrees)
-        result = self._bus.dispatch(SetRotationCommand(degrees=degrees)).payload
+        result = self._lcd.set_rotation(degrees)
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
             if self._lcd.auto_send:
-                self._bus.dispatch(SendFrameCommand(image=image))
+                self._lcd.send(image)
         if self._device_key:
             Settings.save_device_setting(self._device_key, 'rotation', degrees)
         self._resolve_cloud_dirs(degrees)
@@ -567,29 +493,24 @@ class LCDHandler(BaseHandler):
     def set_split_mode(self, mode: int) -> None:
         log.debug("set_split_mode: mode=%d", mode)
         self._split_mode = mode
-        result = self._bus.dispatch(SetSplitModeCommand(mode=mode)).payload
+        result = self._lcd.set_split_mode(mode)
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
             if self._lcd.auto_send:
-                self._bus.dispatch(SendFrameCommand(image=image))
+                self._lcd.send(image)
         if self._device_key:
             Settings.save_device_setting(self._device_key, 'split_mode', mode)
 
     # ── Background / Screencast Toggles ────────────────────────────
 
     def on_background_toggle(self, enabled: bool) -> None:
-        """Handle background display toggle (C# myBjxs / myMode=0).
-
-        C# ThemeSetting case 1: sets myUIMode=1, myMode=0,
-        calls ClosePlayer() and buttonMS_Mode(). Toggle off just
-        stops drawing the background — doesn't resume video.
-        """
+        """Handle background display toggle."""
         log.debug("on_background_toggle: enabled=%s", enabled)
         self._background_active = enabled
         if enabled:
             self._animation_timer.stop()
-            self._bus.dispatch(StopVideoCommand())
+            self._lcd.stop()
             self._w['preview'].set_playing(False)
             self._w['preview'].show_video_controls(False)
         self._render_and_send()
@@ -600,7 +521,7 @@ class LCDHandler(BaseHandler):
     def on_screencast_frame(self, image: Any) -> None:
         """Handle captured screencast frame — preview + send to LCD."""
         self._w['preview'].set_image(image)
-        self._bus.dispatch(SendFrameCommand(image=image))
+        self._lcd.send(image)
 
     # ── Slideshow / Carousel ───────────────────────────────────────
 
@@ -629,7 +550,7 @@ class LCDHandler(BaseHandler):
     def _on_slideshow_tick(self) -> None:
         """Auto-rotate to next theme in slideshow."""
         if self._lcd.playing:
-            self._bus.dispatch(StopVideoCommand())
+            self._lcd.stop()
             self._animation_timer.stop()
         themes = self._w['theme_local'].get_slideshow_themes()
         if not themes:
@@ -646,8 +567,8 @@ class LCDHandler(BaseHandler):
     # ── Rendering ──────────────────────────────────────────────────
 
     def _render_and_send(self, skip_if_video: bool = False) -> None:
-        """Render overlay + send to LCD via command bus, update preview."""
-        result = self._bus.dispatch(RenderAndSendCommand(skip_if_video=skip_if_video)).payload
+        """Render overlay + send to LCD, update preview."""
+        result = self._lcd.render_and_send(skip_if_video)
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
@@ -663,11 +584,7 @@ class LCDHandler(BaseHandler):
     # ── Helpers ─────────────────────────────────────────────────────
 
     def _update_theme_directories(self) -> None:
-        """Reload theme browser directories for current resolution.
-
-        Also auto-loads the first local theme if nothing is currently showing
-        (first install: data just finished extracting).
-        """
+        """Reload theme browser directories for current resolution."""
         w, h = _conf.settings.width, _conf.settings.height
         td = _conf.settings.theme_dir
         if td and td.exists():
@@ -680,8 +597,6 @@ class LCDHandler(BaseHandler):
         self._w['theme_mask'].set_resolution(f'{w}x{h}')
 
         # First install: themes just extracted — load first one onto LCD + preview
-        # overlay_config=True so the theme's default config1.dc (mask + metrics) applies
-        # Skip if user already has a saved theme (would overwrite their selection on restart)
         if self._lcd.current_image is None and td and td.exists():
             saved_cfg = Settings.get_device_config(self._device_key) if self._device_key else {}
             if not saved_cfg.get('theme_path'):
@@ -692,7 +607,7 @@ class LCDHandler(BaseHandler):
                         break
 
     def _resolve_cloud_dirs(self, rotation: int) -> None:
-        """Re-resolve cloud dirs for portrait rotation (C# GetWebBackgroundImageDirectory)."""
+        """Re-resolve cloud dirs for portrait rotation."""
         _conf.settings.resolve_cloud_dirs(rotation)
         w, h = _conf.settings.width, _conf.settings.height
         if w != h and rotation in (90, 270):
@@ -736,12 +651,11 @@ class LCDHandler(BaseHandler):
         self._animation_timer.stop()
         self._slideshow_timer.stop()
         self._flash_timer.stop()
-        self._bus.dispatch(StopVideoCommand())
-        # Stop async send worker and wait for any in-progress send to finish,
-        # then send a black frame to clear the display before disconnecting.
+        self._lcd.stop()
+        # Stop async send worker and send black frame before disconnecting.
         try:
             self._lcd.device_service.stop_send_worker()
-            self._bus.dispatch(SendColorCommand(r=0, g=0, b=0))
+            self._lcd.send_color(0, 0, 0)
         except Exception:
             pass
         self._lcd.cleanup()

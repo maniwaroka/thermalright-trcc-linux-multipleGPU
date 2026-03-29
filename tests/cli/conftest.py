@@ -100,28 +100,35 @@ def lcd_empty():
 
 @pytest.fixture
 def mock_connect_lcd(lcd):
-    """Patch LCD _connect_or_fail → 0 and wire TrccApp with a real lcd_bus.
+    """Patch LCD _connect_or_fail → 0 and wire TrccApp with mock lcd.
 
-    lcd_bus is a REAL CommandBus wired to the mock lcd so tests can verify
-    bus dispatch reaches the right service methods.
+    TrccApp.lcd returns a MagicMock wrapping the real LCDDevice so CLI
+    tests can set return_value on device methods.
     """
     from trcc.core.app import TrccApp
+    mock_lcd = MagicMock(wraps=lcd)
+    mock_lcd.device_path = "/dev/sg0"
+    mock_lcd.lcd_size = (320, 320)
+    mock_lcd.resolution = (320, 320)
     mock_app = TrccApp._instance
-    mock_app.lcd_device = lcd
-    mock_app.lcd_bus = TrccApp.build_lcd_bus(mock_app, lcd)  # type: ignore[arg-type]
+    mock_app.lcd_device = mock_lcd
+    mock_app.lcd = mock_lcd
+    mock_app.has_lcd = True
     with patch(PATCH_CONNECT_LCD, return_value=0):
-        yield lcd
+        yield mock_lcd
 
 
 @pytest.fixture
 def mock_connect_led(led):
-    """Patch LED _connect_or_fail → 0 and wire TrccApp with a real led_bus."""
+    """Patch LED _connect_or_fail → 0 and wire TrccApp with mock led."""
     from trcc.core.app import TrccApp
+    mock_led = MagicMock(wraps=led)
     mock_app = TrccApp._instance
-    mock_app.led_device = led
-    mock_app.led_bus = TrccApp.build_led_bus(mock_app, led)  # type: ignore[arg-type]
+    mock_app.led_device = mock_led
+    mock_app.led = mock_led
+    mock_app.has_led = True
     with patch(PATCH_CONNECT_LED, return_value=0):
-        yield led
+        yield mock_led
 
 
 @pytest.fixture

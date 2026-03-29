@@ -34,11 +34,10 @@ def set_language(code: str) -> dict:
     from fastapi import HTTPException
 
     from trcc.core.app import TrccApp
-    from trcc.core.commands.initialize import SetLanguageCommand
     from trcc.core.i18n import LANGUAGE_NAMES
 
-    result = TrccApp.get().os_bus.dispatch(SetLanguageCommand(code=code))
-    if not result.success:
+    result = TrccApp.get().set_language(code)
+    if not result["success"]:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown language code '{code}'. Use GET /i18n/languages for valid codes.",

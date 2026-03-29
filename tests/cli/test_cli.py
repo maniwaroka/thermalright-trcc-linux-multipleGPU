@@ -104,23 +104,18 @@ class TestMainEntryPoint(unittest.TestCase):
         setting _qt_app=None from the gui() command doesn't destroy the C++
         object. The only safe fix is to never create it in the first place.
         """
-        from trcc.core.commands.initialize import InitPlatformCommand
-        dispatched: list[InitPlatformCommand] = []
-
-        def capture_dispatch(cmd):
-            dispatched.append(cmd)
+        init_calls = []
 
         with patch('sys.argv', ['trcc', 'gui']), \
              patch('trcc.cli.gui', return_value=0), \
              patch('trcc.core.app.TrccApp.init') as mock_init:
             mock_app = MagicMock()
-            mock_app.os_bus.dispatch.side_effect = capture_dispatch
+            mock_app.init_platform.side_effect = lambda **kw: init_calls.append(kw)
             mock_init.return_value = mock_app
             main()
 
-        assert dispatched, "InitPlatformCommand must be dispatched"
-        cmd = dispatched[0]
-        assert cmd.renderer_factory is None, (
+        assert init_calls, "init_platform must be called"
+        assert init_calls[0].get('renderer_factory') is None, (
             "renderer_factory must be None for 'gui' — creating an offscreen "
             "QApplication before the windowed one crashes on PySide6"
         )
@@ -128,22 +123,18 @@ class TestMainEntryPoint(unittest.TestCase):
     def test_non_gui_command_gets_cli_renderer(self):
         """Non-gui subcommands must receive _make_cli_renderer as renderer_factory."""
         from trcc.cli import _make_cli_renderer
-        from trcc.core.commands.initialize import InitPlatformCommand
-        dispatched: list[InitPlatformCommand] = []
-
-        def capture_dispatch(cmd):
-            dispatched.append(cmd)
+        init_calls = []
 
         with patch('sys.argv', ['trcc', 'detect']), \
              patch('trcc.cli._device.detect', return_value=0), \
              patch('trcc.core.app.TrccApp.init') as mock_init:
             mock_app = MagicMock()
-            mock_app.os_bus.dispatch.side_effect = capture_dispatch
+            mock_app.init_platform.side_effect = lambda **kw: init_calls.append(kw)
             mock_init.return_value = mock_app
             main()
 
-        assert dispatched
-        assert dispatched[0].renderer_factory is _make_cli_renderer
+        assert init_calls
+        assert init_calls[0].get('renderer_factory') is _make_cli_renderer
 
     def test_download_list(self):
         """'download --list' dispatches with show_list=True."""
@@ -391,7 +382,7 @@ class TestTestDisplay(unittest.TestCase):
     """Test test_display() command."""
 
     def test_display_success(self):
-        """Cycles through colors, dispatches 7 SendColorCommands, returns 0."""
+        """Cycles through colors, calls send_color 7 times, returns 0."""
         from trcc.core.app import TrccApp
         mock_app = TrccApp._instance
         mock_app.lcd_device.device_path = "/dev/sg0"
@@ -399,8 +390,8 @@ class TestTestDisplay(unittest.TestCase):
         with patch('time.sleep'):
             result = cli_test_display(device='/dev/sg0', loop=False)
         self.assertEqual(result, 0)
-        # 7 colors × 1 dispatch each
-        self.assertEqual(mock_app.lcd_bus.dispatch.call_count, 7)
+        # 7 colors × 1 send_color each
+        self.assertEqual(mock_app.lcd_device.send_color.call_count, 7)
 
     def test_display_error(self):
         """_connect_or_fail() returning 1 propagates as exit code 1."""
@@ -429,10 +420,9 @@ class TestScreencast(unittest.TestCase):
     def test_no_device(self):
         """No device returns 1."""
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
         mock_app = TrccApp._instance
         mock_app.has_lcd = False
-        mock_app.os_bus.dispatch.return_value = CommandResult.fail("No LCD device found.")
+        mock_app.discover.return_value = {"success": False, "error": "No LCD device found."}
         self.assertEqual(_display.screencast(self._mock_builder()), 1)
 
     def test_keyboard_interrupt(self):
@@ -766,25 +756,22 @@ class TestI18nCommands(unittest.TestCase):
 
     def test_set_language_valid(self):
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
-        from trcc.core.commands.initialize import SetLanguageCommand
 
         mock_app = MagicMock()
-        mock_app.os_bus.dispatch.return_value = CommandResult.ok(message="Language set to de")
+        mock_app.set_language.return_value = {"success": True, "message": "Language set to de"}
         buf = io.StringIO()
         with patch.object(TrccApp, 'get', return_value=mock_app), redirect_stdout(buf):
             from trcc.cli._i18n import set_language
             result = set_language('de')
         self.assertEqual(result, 0)
         self.assertIn("Deutsch", buf.getvalue())
-        mock_app.os_bus.dispatch.assert_called_once_with(SetLanguageCommand(code='de'))
+        mock_app.set_language.assert_called_once_with('de')
 
     def test_set_language_invalid(self):
         from trcc.core.app import TrccApp
-        from trcc.core.command_bus import CommandResult
 
         mock_app = MagicMock()
-        mock_app.os_bus.dispatch.return_value = CommandResult.fail("Unknown language code: zzz")
+        mock_app.set_language.return_value = {"success": False, "error": "Unknown language code: zzz"}
         buf = io.StringIO()
         with patch.object(TrccApp, 'get', return_value=mock_app), redirect_stdout(buf):
             from trcc.cli._i18n import set_language
