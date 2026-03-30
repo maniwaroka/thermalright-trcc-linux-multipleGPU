@@ -283,12 +283,11 @@ class TestUCDeviceBuildButtons:
         assert panel.hint_label.isHidden()
 
     def test_button_text_fallback(self, qapp: object) -> None:
-        """When no image is found, button shows fallback text."""
+        """When no image is found, button shows full device name."""
         dev = _make_device(name='My Custom LCD Device')
         panel = UCDevice(detect_fn=lambda: [dev])
         btn = panel.device_buttons[0]
-        # Fallback text is truncated to 18 chars
-        assert btn.text() == 'My Custom LCD Devi'
+        assert btn.text() == 'My Custom LCD Device'
 
     def test_buttons_are_checkable(self, qapp: object) -> None:
         panel = UCDevice(detect_fn=lambda: [_make_device()])

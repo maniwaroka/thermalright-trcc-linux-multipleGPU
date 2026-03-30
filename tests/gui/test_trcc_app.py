@@ -1562,6 +1562,137 @@ class TestHandshakeDoneGuard:
 
 
 # =========================================================================
+# Device identity resolution — button image from handshake PM/SUB
+# =========================================================================
+
+
+class TestResolveDeviceIdentity:
+    """_resolve_device_identity must map handshake PM/SUB to correct button image.
+
+    SCSI devices: PM=0 from handshake, so _on_handshake_done uses `pm or fbl`
+    which falls through to FBL. FBL is then used as PM in get_button_image().
+    Confirmed by decompiling USBLCD.exe — SCSI devices write FBL to shared
+    memory, TRCC.exe calls ADDUserButton(257, fbl, 0).
+    """
+
+    @staticmethod
+    def _make_device(path: str, protocol: str, vid: int = 0x0402, pid: int = 0x3922):
+        from trcc.core.models import DeviceInfo
+        return DeviceInfo(
+            name='LCD Display', path=path, vendor='Test', product='LCD',
+            model='CZTV', vid=vid, pid=pid, device_index=0,
+            protocol=protocol, device_type=1, implementation='test',
+            button_image='A1CZTV',
+        )
+
+    def test_scsi_uses_fbl_as_pm(self, bare_trcc_app):
+        """SCSI handshake: pm=0 → `pm or fbl` resolves to fbl=100 → FROZEN WARFRAME PRO."""
+        app = bare_trcc_app
+        app._handshake_pending = True
+        app.uc_preview = MagicMock()
+        app.uc_info_module = MagicMock()
+        app._handlers = {}
+
+        device = self._make_device('/dev/sg0', 'scsi')
+
+        app.uc_device = MagicMock()
+        dev_dict = {'path': '/dev/sg0', 'button_image': 'A1CZTV', 'name': 'LCD'}
+        app.uc_device.devices = [dev_dict]
+
+        # SCSI handshake: resolution, fbl=100, pm=0, sub=0
+        app._on_handshake_done(device, ((320, 320), 100, 0, 0))
+
+        # pm=0 → `pm or fbl` = 100 → get_button_image(100, 0) = A1FROZEN WARFRAME PRO
+        assert dev_dict['button_image'] == 'A1FROZEN WARFRAME PRO'
+        app.uc_device.update_device_button.assert_called_once_with(dev_dict)
+
+    def test_hid_uses_pm_sub_directly(self, bare_trcc_app):
+        """HID handshake: pm=7, sub=1 → Stream Vision (not FBL-based)."""
+        app = bare_trcc_app
+        app._handshake_pending = True
+        app.uc_preview = MagicMock()
+        app.uc_info_module = MagicMock()
+        app._handlers = {}
+
+        device = self._make_device('hid:0416:5302', 'hid', vid=0x0416, pid=0x5302)
+
+        app.uc_device = MagicMock()
+        dev_dict = {'path': 'hid:0416:5302', 'button_image': 'A1CZTV', 'name': 'LCD'}
+        app.uc_device.devices = [dev_dict]
+
+        # HID handshake: resolution, fbl=64, pm=7, sub=1
+        app._on_handshake_done(device, ((480, 480), 64, 7, 1))
+
+        # pm=7 is truthy → `pm or fbl` = 7 → get_button_image(7, 1) = A1Stream Vision
+        assert dev_dict['button_image'] == 'A1Stream Vision'
+
+    def test_unknown_pm_keeps_original_button(self, bare_trcc_app):
+        """When PM/SUB doesn't match any entry, button_image stays unchanged."""
+        app = bare_trcc_app
+        app._handshake_pending = True
+        app.uc_preview = MagicMock()
+        app.uc_info_module = MagicMock()
+        app._handlers = {}
+
+        device = self._make_device('/dev/sg0', 'scsi')
+
+        app.uc_device = MagicMock()
+        dev_dict = {'path': '/dev/sg0', 'button_image': 'A1CZTV', 'name': 'LCD'}
+        app.uc_device.devices = [dev_dict]
+
+        # Unknown FBL=255 — no match in DEVICE_BUTTON_IMAGE
+        app._on_handshake_done(device, ((320, 320), 255, 0, 0))
+
+        # Button image unchanged
+        assert dev_dict['button_image'] == 'A1CZTV'
+        app.uc_device.update_device_button.assert_not_called()
+
+
+# =========================================================================
+# Navigation: device button must work after About/SysInfo
+# =========================================================================
+
+
+class TestDeviceButtonAfterViewSwitch:
+    """Clicking a device button after About/SysInfo must return to form view.
+
+    Bug: _activate_device early-returns when path == _active_path.
+    Navigating to About doesn't clear _active_path, so clicking the same
+    device does nothing. Fix: _show_view clears _active_path when leaving form.
+    """
+
+    def test_show_view_clears_active_path(self, bare_trcc_app):
+        """Navigating away from form clears _active_path."""
+        app = bare_trcc_app
+        app._active_path = '/dev/sg0'
+        app.form_container = MagicMock()
+        app.uc_about = MagicMock()
+        app.uc_system_info = MagicMock()
+        app.uc_led_control = MagicMock()
+        app.uc_activity_sidebar = MagicMock()
+        app.form1_close_btn = MagicMock()
+        app.form1_help_btn = MagicMock()
+
+        app._show_view('about')
+        assert app._active_path is None
+
+    def test_show_view_keeps_active_path_for_form(self, bare_trcc_app):
+        """Showing form view does NOT clear _active_path."""
+        app = bare_trcc_app
+        app._active_path = '/dev/sg0'
+        app.form_container = MagicMock()
+        app.uc_about = MagicMock()
+        app.uc_system_info = MagicMock()
+        app.uc_led_control = MagicMock()
+        app.uc_activity_sidebar = MagicMock()
+        app.form1_close_btn = MagicMock()
+        app.form1_help_btn = MagicMock()
+
+        app._show_view('form')
+        assert app._active_path == '/dev/sg0'
+
+
+# =========================================================================
 # View switch must NOT stop LED (#61)
 # =========================================================================
 

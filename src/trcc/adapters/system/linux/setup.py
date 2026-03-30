@@ -163,6 +163,13 @@ def setup_udev(dry_run: bool = False) -> int:
                 f'{attr}{{idProduct}}=="{pid:04x}", '
                 f'MODE="0666"'
             )
+        # Disable USB autosuspend — prevents kernel from resetting idle LCD devices
+        rule_parts.append(
+            f'ACTION=="add", SUBSYSTEM=="usb", '
+            f'ATTR{{idVendor}}=="{vid:04x}", '
+            f'ATTR{{idProduct}}=="{pid:04x}", '
+            f'ATTR{{power/autosuspend}}="-1"'
+        )
         rules_lines.append('\n'.join(rule_parts))
 
     rules_content = "\n\n".join(rules_lines) + "\n"

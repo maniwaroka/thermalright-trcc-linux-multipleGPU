@@ -19,7 +19,7 @@ _log_path = _log_dir / 'trcc.log'
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    format='%(asctime)s [%(levelname)s] %(name)s.%(funcName)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
         logging.handlers.RotatingFileHandler(

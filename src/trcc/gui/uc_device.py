@@ -85,26 +85,33 @@ def _get_device_images(device_info: dict) -> tuple[str | None, str | None]:
     # For HID devices, skip the generic A1CZTV default — show text name
     # until the handshake identifies the actual product.
     if protocol == 'hid' and button_image == 'A1CZTV':
+        log.debug("_get_device_images: HID default A1CZTV, showing text until handshake")
         return None, None
 
     # Try button_image field first (from DetectedDevice)
     if button_image:
         if Assets.exists(button_image):
+            log.debug("_get_device_images: found %s (exact)", button_image)
             return button_image, f"{button_image}a"
 
         spaced = button_image.replace('_', ' ')
         if Assets.exists(spaced):
+            log.debug("_get_device_images: found %s (spaced)", spaced)
             return spaced, f"{spaced}a"
 
         underscored = button_image.replace(' ', '_')
         if Assets.exists(underscored):
+            log.debug("_get_device_images: found %s (underscored)", underscored)
             return underscored, f"{underscored}a"
+
+        log.debug("_get_device_images: button_image=%r not found in assets", button_image)
 
     # Try model field
     model = device_info.get('model', '')
     if model in DEVICE_IMAGE_MAP:
         base = DEVICE_IMAGE_MAP[model]
         if Assets.exists(base):
+            log.debug("_get_device_images: found %s via model=%s", base, model)
             return base, f"{base}a"
 
     # Try name field as fallback
@@ -112,10 +119,12 @@ def _get_device_images(device_info: dict) -> tuple[str | None, str | None]:
     for model_key, img_base in DEVICE_IMAGE_MAP.items():
         if model_key.lower() in name.lower():
             if Assets.exists(img_base):
+                log.debug("_get_device_images: found %s via name match %s", img_base, model_key)
                 return img_base, f"{img_base}a"
 
     # Default to CZTV for non-HID devices
     if protocol != 'hid' and Assets.exists('A1CZTV'):
+        log.debug("_get_device_images: falling back to A1CZTV")
         return 'A1CZTV', 'A1CZTVa'
 
     return None, None
@@ -217,6 +226,9 @@ class UCDevice(BasePanel):
 
         for i, device in enumerate(devices):
             normal_name, active_name = _get_device_images(device)
+            fallback = device.get('name', 'Unknown')
+            log.debug("_build_device_buttons[%d]: image=%s fallback=%r",
+                       i, normal_name, fallback)
             x = Sizes.DEVICE_BTN_X
             y = i * Sizes.DEVICE_BTN_SPACING
             w = Sizes.DEVICE_BTN_W
@@ -226,7 +238,7 @@ class UCDevice(BasePanel):
                 self.device_area, x, y, w, h,
                 normal_name, active_name,
                 checkable=True,
-                fallback_text=device.get('name', 'Unknown')[:18],
+                fallback_text=fallback,
             )
             btn.device_info = device  # type: ignore[attr-defined]
             btn.clicked.connect(lambda _=False, d=device: self._on_device_clicked(d))
@@ -304,11 +316,14 @@ class UCDevice(BasePanel):
         Called from _on_handshake_done() when PM determines the actual product.
         Swaps the button icon from generic to product-specific.
         """
+        log.debug("update_device_button: button_image=%s name=%s",
+                   device_info.get('button_image'), device_info.get('name'))
         for btn in self.device_buttons:
             if getattr(btn, 'device_info', None) is not device_info:
                 continue
             normal_name, active_name = _get_device_images(device_info)
             if not normal_name:
+                log.debug("update_device_button: no image resolved, keeping current")
                 break
             normal_pix = Assets.load_pixmap(normal_name, btn.width(), btn.height())
             active_pix = (Assets.load_pixmap(active_name, btn.width(), btn.height())
@@ -321,6 +336,9 @@ class UCDevice(BasePanel):
                 btn.setIconSize(btn.size())
                 btn._img_refs = [normal_pix, active_pix]  # type: ignore[attr-defined]
                 btn.setText("")  # Clear text fallback
+                log.debug("update_device_button: icon set to %s", normal_name)
+            else:
+                log.warning("update_device_button: pixmap load failed for %s", normal_name)
             break
 
     def update_devices(self, devices: list[dict]) -> None:

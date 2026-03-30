@@ -529,6 +529,21 @@ class TestSetupUdev:
         out = capsys.readouterr().out
         assert "udev rules" in out.lower() or "Would write" in out
 
+    def test_dry_run_includes_autosuspend_rule(self, completed_process, capsys):
+        """udev rules must disable USB autosuspend for all devices."""
+        known = self._mock_known_devices()
+        traits = self._mock_protocol_traits()
+        with patch("trcc.adapters.system.linux.setup.subprocess.run", return_value=completed_process(0)), \
+             patch("trcc.adapters.device.detector.KNOWN_DEVICES", known), \
+             patch("trcc.adapters.device.detector._HID_LCD_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._LED_DEVICES", {}), \
+             patch("trcc.adapters.device.detector._BULK_DEVICES", {}), \
+             patch("trcc.core.models.PROTOCOL_TRAITS", traits):
+            setup_udev(dry_run=True)
+        out = capsys.readouterr().out
+        assert 'power/autosuspend' in out
+        assert '"-1"' in out
+
     def test_dry_run_does_not_write_files(self, completed_process, capsys):
         known = self._mock_known_devices()
         traits = self._mock_protocol_traits()

@@ -607,6 +607,49 @@ class TestGetButtonImage:
         from trcc.core.models import get_button_image
         assert get_button_image(255) is None
 
+    # -- SCSI devices use PM=FBL, SUB=0 (confirmed from USBLCD.exe decompile) --
+
+    def test_scsi_fbl100_frozen_warframe_pro(self):
+        """SCSI FBL=100 → FROZEN WARFRAME PRO (PM=FBL for SCSI devices)."""
+        from trcc.core.models import get_button_image
+        assert get_button_image(100, 0) == 'A1FROZEN WARFRAME PRO'
+
+    def test_scsi_fbl50_frozen_warframe(self):
+        """SCSI FBL=50 → FROZEN WARFRAME."""
+        from trcc.core.models import get_button_image
+        assert get_button_image(50, 0) == 'A1FROZEN WARFRAME'
+
+    def test_scsi_fbl101_elite_vision(self):
+        """SCSI FBL=101 → ELITE VISION."""
+        from trcc.core.models import get_button_image
+        assert get_button_image(101, 0) == 'A1ELITE VISION'
+
+    # -- PM=9 SUB split (C#: sub<5→LC2JD, sub>=5→LF19) --
+
+    def test_pm9_sub0_lc2jd(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(9, 0) == 'A1LC2JD'
+
+    def test_pm9_sub4_lc2jd(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(9, 4) == 'A1LC2JD'
+
+    def test_pm9_sub5_lf19(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(9, 5) == 'A1LF19'
+
+    # -- PM=49 (C# ID=2 case 49) --
+
+    def test_pm49_frozen_warframe(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(49, 0) == 'A1FROZEN WARFRAME'
+
+    # -- PM=65 sub=2 (C#: sub 1 OR 2 → LF14) --
+
+    def test_pm65_sub2_lf14(self):
+        from trcc.core.models import get_button_image
+        assert get_button_image(65, 2) == 'A1LF14'
+
 
 # =============================================================================
 # Overlay config builders (parse_metric_spec, build_overlay_config)

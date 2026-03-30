@@ -388,6 +388,19 @@ class TRCCApp(QMainWindow):
                 if self._ipc_server and lcd_handler.display.device_service:
                     lcd_handler.display.device_service.on_frame_sent = self._ipc_server.capture_frame
 
+        # Resolve button image from handshake FBL/PM before sidebar builds.
+        # For SCSI: pm_byte=0, so fbl_code is used as PM (matches C# USBLCD.exe).
+        if info.fbl_code:
+            from ..core.models import get_button_image
+            pm = info.fbl_code
+            sub = 0
+            btn_img = get_button_image(pm, sub)
+            if btn_img:
+                product = btn_img.replace('A1', '', 1).replace('_', ' ')
+                info.button_image = btn_img
+                log.info("button image resolved at connect: %s -> %s (%s)",
+                          path, btn_img, product)
+
         self._refresh_sidebar()
 
     def _remove_handler(self, path: str) -> None:
@@ -1002,7 +1015,11 @@ class TRCCApp(QMainWindow):
             self.uc_activity_sidebar.setVisible(False)
 
     def _show_view(self, view: str) -> None:
-        log.debug("_show_view: %s", view)
+        active = getattr(self, '_active_path', None)
+        log.debug("view=%s active_path=%s", view, active)
+        if view != 'form':
+            log.debug("clearing active_path (was %s)", active)
+            self._active_path = None  # allow re-selecting same device on return
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_system_info.setVisible(view == 'sysinfo')
@@ -1145,11 +1162,15 @@ class TRCCApp(QMainWindow):
         if not resolution or resolution == (0, 0):
             self.uc_preview.set_status("Handshake failed — no resolution")
             return
-        log.info("Handshake OK: %s -> %s (FBL=%s)", device.path, resolution, fbl)
+        log.info("Handshake OK: %s -> %s (FBL=%s, PM=%s, SUB=%s)",
+                 device.path, resolution, fbl, pm, sub)
         device.resolution = resolution
         if fbl:
             device.fbl_code = fbl
-            self._resolve_device_identity(device, pm or fbl, sub)
+            effective_pm = pm or fbl
+            log.debug("resolving identity: effective_pm=%d sub=%d (raw pm=%d fbl=%d)",
+                       effective_pm, sub, pm, fbl)
+            self._resolve_device_identity(device, effective_pm, sub)
 
         handler = self._handlers.get(device.path)
         if isinstance(handler, LCDHandler):
@@ -1166,15 +1187,19 @@ class TRCCApp(QMainWindow):
     def _resolve_device_identity(self, device: DeviceInfo, pm: int, sub: int = 0) -> None:
         from ..core.models import get_button_image
         btn_img = get_button_image(pm, sub)
+        log.debug("pm=%d sub=%d -> btn_img=%s", pm, sub, btn_img)
         if not btn_img:
+            log.debug("no match for pm=%d sub=%d, keeping original button", pm, sub)
             return
         product = btn_img.replace('A1', '', 1).replace('_', ' ')
+        log.info("%s -> %s (%s)", device.path, btn_img, product)
         for dev in self.uc_device.devices:
             if dev.get('path') == device.path:
                 dev['button_image'] = btn_img
                 dev['product'] = product
                 dev['name'] = f"Thermalright {product}"
                 self.uc_device.update_device_button(dev)
+                log.debug("_resolve_device_identity: updated sidebar button for %s", device.path)
                 break
         active_key = Settings.device_config_key(device.device_index, device.vid, device.pid)
         Settings.save_device_setting(active_key, 'resolved_button_image', btn_img)

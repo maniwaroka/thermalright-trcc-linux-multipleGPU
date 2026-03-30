@@ -1858,7 +1858,8 @@ DEVICE_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
     5:   {None: 'A1Mjolnir VISION'},
     6:   {1: 'FROZEN_WARFRAME_Ultra', 2: 'A1FROZEN VISION V2'},
     7:   {1: 'A1Stream Vision', 2: 'A1Mjolnir VISION PRO'},
-    9:   {None: 'A1LC2JD'},
+    9:   {0: 'A1LC2JD', 1: 'A1LC2JD', 2: 'A1LC2JD', 3: 'A1LC2JD',
+          4: 'A1LC2JD', None: 'A1LF19'},
     10:  {5: 'A1LF16', 6: 'A1LF18', 7: 'A1LD6', None: 'A1LC3'},
     11:  {6: 'A1LD8', None: 'A1LF19'},
     12:  {None: 'A1LF167'},
@@ -1871,6 +1872,7 @@ DEVICE_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
     32:  {0: 'A1ELITE VISION', 1: 'A1FROZEN WARFRAME PRO',
           None: 'A1ELITE VISION'},
     36:  {None: 'A1AS120 VISION'},
+    49:  {None: 'A1FROZEN WARFRAME'},
     50:  {None: 'A1FROZEN WARFRAME'},
     51:  {None: 'A1FROZEN WARFRAME'},
     52:  {None: 'A1BA120 VISION'},
@@ -1881,8 +1883,8 @@ DEVICE_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
           3: 'A1LM30'},
     64:  {0: 'A1FROZEN WARFRAME PRO', 1: 'A1LM22', 2: 'A1LM27',
           3: 'A1LM30'},
-    65:  {0: 'A1ELITE VISION', 1: 'A1LF14', 3: 'A1LD7', 4: 'A1LD10',
-          5: 'A1LD7'},
+    65:  {0: 'A1ELITE VISION', 1: 'A1LF14', 2: 'A1LF14', 3: 'A1LD7',
+          4: 'A1LD10', 5: 'A1LD7'},
     66:  {0: 'A1ELITE VISION', 1: 'A1LF14', 2: 'A1LF14',
           3: 'A1LD7', 4: 'A1LD7'},
     68:  {None: 'A1LM24'},
@@ -1892,11 +1894,6 @@ DEVICE_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
     101: {0: 'A1ELITE VISION', 1: 'A1LF14', None: 'A1ELITE VISION'},
     128: {None: 'A1LM24'},
     129: {None: 'A1GRAND VISION'},
-    # -- SCSI devices (VID → {PID: image}) --
-    0x87CD: {0x70DB: 'A1CZTV', None: 'A1CZTV'},
-    0x87AD: {0x70DB: 'A1GRAND VISION', None: 'A1GRAND VISION'},
-    0x0402: {0x3922: 'A1FROZEN WARFRAME', None: 'A1FROZEN WARFRAME'},
-    0x0416: {0x5406: 'A1CZTV', None: 'A1CZTV'},
 }
 
 # Backward-compat alias
