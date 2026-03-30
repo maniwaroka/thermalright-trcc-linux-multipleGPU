@@ -198,23 +198,27 @@ Non-trivial changes: think through full impact, state plan, wait for confirmatio
 - Do NOT push or bump version
 
 **Release** — validated and ready for users:
-1. Bump version in `src/trcc/__version__.py`, `pyproject.toml`, AND `flake.nix`
-2. Add version history entry in `__version__.py`
-3. Update `doc/CHANGELOG.md`
-4. `ruff check .` + `pyright` — 0 errors
-5. `PYTHONPATH=src pytest tests/ -n 8 -x -q` — all pass
-6. Push to `main`
-7. `git tag v{version} && git push origin v{version}` (triggers CI + PyPI)
-8. `gh release create v{version} --target main --title "v{version}"`
-9. Comment on relevant GitHub issues
+1. `ruff check .` + `pyright` — 0 errors
+2. `PYTHONPATH=src pytest tests/ -n 8 -x -q` — all pass
+3. Commit + push existing changes to `main`
+4. Bump version in `src/trcc/__version__.py`, `pyproject.toml`, AND `flake.nix`
+5. Add version history entry in `__version__.py`
+6. Update `doc/CHANGELOG.md`
+7. Lint + test again
+8. Commit + push version bump to `main`
+9. `git tag v{version} && git push origin v{version}` (triggers CI + PyPI)
+10. `gh release create v{version} --target main --title "v{version}"`
+11. Comment on relevant GitHub issues
 
 ### Trigger Words
 Bare `patch`, `minor`, or `major` → full release workflow:
-1. Bump version in `__version__.py`, `pyproject.toml`, `flake.nix`
-2. Version history + changelog
-3. Update `release.yml` inline package specs + README package URLs
-4. Lint + test
-5. Commit + push + tag + GitHub release
+1. Lint + test uncommitted changes first
+2. Commit + push existing changes to `main`
+3. Bump version in `__version__.py`, `pyproject.toml`, `flake.nix`
+4. Version history + changelog
+5. Update `release.yml` inline package specs + README package URLs
+6. Lint + test again
+7. Commit + push version bump + tag + GitHub release
 
 ## GUI Standards
 - **Overlay enabled**: `_load_theme_overlay_config()` must call `set_overlay_enabled(True)`
