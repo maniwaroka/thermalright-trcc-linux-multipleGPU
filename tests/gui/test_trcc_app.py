@@ -1674,7 +1674,7 @@ class TestDeviceButtonAfterViewSwitch:
         app.form1_help_btn = MagicMock()
 
         app._show_view('about')
-        assert app._active_path is None
+        assert app._active_path == ''
 
     def test_show_view_keeps_active_path_for_form(self, bare_trcc_app):
         """Showing form view does NOT clear _active_path."""

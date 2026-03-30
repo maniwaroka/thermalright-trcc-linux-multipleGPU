@@ -1019,7 +1019,7 @@ class TRCCApp(QMainWindow):
         log.debug("view=%s active_path=%s", view, active)
         if view != 'form':
             log.debug("clearing active_path (was %s)", active)
-            self._active_path = None  # allow re-selecting same device on return
+            self._active_path = ''  # allow re-selecting same device on return
         self.form_container.setVisible(view == 'form')
         self.uc_about.setVisible(view == 'about')
         self.uc_system_info.setVisible(view == 'sysinfo')

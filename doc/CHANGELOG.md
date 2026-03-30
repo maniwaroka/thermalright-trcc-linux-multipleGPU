@@ -1,5 +1,14 @@
 # Changelog
 
+## v9.2.10
+
+### Fixes
+- **Wrong sidebar button image for SCSI devices**: Button image now resolved from FBL at connect time — SCSI devices (PM=FBL, SUB=0) get the correct product PNG immediately. Confirmed by decompiling native USBLCD.exe via Ghidra. Fixed `DEVICE_BUTTON_IMAGE` parity with C# (PM=9 SUB split, PM=49, PM=65 sub=2), removed unreachable VID-keyed entries
+- **LCD overlay blink**: `tick()` now caches the last composited overlay frame and resends it between metric changes — bare background never leaks to the device
+- **Device button doesn't return to preview**: Navigating to About/SysInfo then clicking the device button did nothing because `_active_path` wasn't cleared. `_show_view` now clears it when leaving form view
+- **USB autosuspend resets bulk devices** (issue #98): Linux kernel autosuspend can reset idle USB devices after ~30 seconds, causing the LCD to drop to its splash screen. Now disabled at runtime when the device is opened, and via udev rules (`sudo trcc setup-udev` to update)
+- **Logging gaps**: Identity resolution flow (handshake → button image → sidebar update) now fully logged. Log format includes `%(funcName)s` for easier tracing
+
 ## v9.2.9
 
 ### Fixes
