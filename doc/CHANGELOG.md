@@ -1,5 +1,11 @@
 # Changelog
 
+## v9.2.7
+
+### Fixes
+- **Startup blink on first install**: `apply_device_config` auto-loaded the first theme via `_update_theme_directories()` (which persists `theme_path`), then `restore_last_theme()` loaded the same theme again — sending two frames where the second momentarily disabled the overlay. Now `_update_theme_directories()` returns whether it auto-loaded, and `apply_device_config` skips `restore_last_theme()` when it did
+- **Wrong theme directory after switching devices**: Re-activating an already-initialized LCD device didn't update the global resolution, so theme/web/mask browsers showed content for the previous device's resolution. Now `_activate_device` sets resolution and refreshes theme directories on re-activation
+
 ## v9.2.6
 
 ### Fixes

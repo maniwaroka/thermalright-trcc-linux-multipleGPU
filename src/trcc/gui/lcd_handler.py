@@ -119,15 +119,17 @@ class LCDHandler(BaseHandler):
         Settings.save_device_setting(self._device_key, 'w', w)
         Settings.save_device_setting(self._device_key, 'h', h)
 
-        # Device was already initialized by TrccApp._wire_device() when it connected.
-        # Here we only update GUI widgets to reflect the device resolution.
+        # Switch global resolution so theme/web/mask dirs resolve correctly
+        _conf.settings.set_resolution(w, h)
+
+        # Update GUI widgets to reflect the device resolution.
         self._w['preview'].set_resolution(w, h)
         self._w['image_cut'].set_resolution(w, h)
         self._w['video_cut'].set_resolution(w, h)
         self._w['theme_setting'].set_resolution(w, h)
 
         # Always refresh — first run downloads themes after widget init
-        self._update_theme_directories()
+        auto_loaded = self._update_theme_directories()
 
         # Wire background extraction callback via public method (no internal access)
         self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
@@ -139,7 +141,10 @@ class LCDHandler(BaseHandler):
         self._restore_split_mode(cfg, w, h)
         self._restore_carousel(cfg)
 
-        # Restore theme+mask+overlay
+        # Restore theme+mask+overlay — skip if _update_theme_directories()
+        # already auto-loaded the first theme (avoids double-load blink).
+        if auto_loaded:
+            return
         result = self._lcd.restore_last_theme()
         if result.get("success"):
             image = result.get("image")
@@ -593,8 +598,12 @@ class LCDHandler(BaseHandler):
 
     # ── Helpers ─────────────────────────────────────────────────────
 
-    def _update_theme_directories(self) -> None:
-        """Reload theme browser directories for current resolution."""
+    def _update_theme_directories(self) -> bool:
+        """Reload theme browser directories for current resolution.
+
+        Returns True if a first-install auto-load happened (caller should
+        skip restore_last_theme to avoid a redundant double-load).
+        """
         w, h = _conf.settings.width, _conf.settings.height
         td = _conf.settings.theme_dir
         if td and td.exists():
@@ -614,7 +623,8 @@ class LCDHandler(BaseHandler):
                     if item.is_dir() and (item / '00.png').exists():
                         log.info("Data ready: auto-loading first theme: %s", item)
                         self._select_theme_from_path(item, persist=True, overlay_config=True)
-                        break
+                        return True
+        return False
 
     def _resolve_cloud_dirs(self, rotation: int) -> None:
         """Re-resolve cloud dirs for portrait rotation."""

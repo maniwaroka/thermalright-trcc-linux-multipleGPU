@@ -362,6 +362,18 @@ class TestMask:
         mock_lcd_device.restore_last_theme.assert_called()
 
     @patch('trcc.gui.lcd_handler.Settings')
+    def test_restore_skipped_when_auto_loaded(self, mock_settings, make_lcd_handler, mock_lcd_device):
+        """apply_device_config skips restore_last_theme when first-install auto-load
+        already loaded a theme (_update_theme_directories returned True)."""
+        mock_settings.device_config_key.return_value = 'k'
+        mock_settings.get_device_config.return_value = {}
+        h = make_lcd_handler(lcd=mock_lcd_device)
+        h._update_theme_directories = MagicMock(return_value=True)
+        h.apply_device_config(
+            MagicMock(device_index=0, vid=0x0402, pid=0x3922), 320, 320)
+        mock_lcd_device.restore_last_theme.assert_not_called()
+
+    @patch('trcc.gui.lcd_handler.Settings')
     def test_restore_updates_preview_on_success(self, mock_settings, make_lcd_handler, mock_lcd_device):
         """apply_device_config updates preview widget when restore_last_theme succeeds."""
         mock_settings.device_config_key.return_value = 'k'

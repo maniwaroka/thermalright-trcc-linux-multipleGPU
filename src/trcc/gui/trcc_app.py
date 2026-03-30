@@ -426,6 +426,10 @@ class TRCCApp(QMainWindow):
                     elif not handler.device_key:
                         handler.apply_device_config(info, w, h)
                         self._update_ldd_icon()
+                    else:
+                        # Re-activate: switch global resolution so theme dirs match
+                        _conf.settings.set_resolution(w, h)
+                        handler._update_theme_directories()
         elif isinstance(handler, LEDHandler):
             info = handler.device_info
             if info and not handler.active:
