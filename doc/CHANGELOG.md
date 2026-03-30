@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.2.9
+
+### Fixes
+- **Legacy DEB wrapper scripts broken** (issue #96): `postinst` used `printf` with `"$@"` which expanded dpkg's own args (`configure`) into the wrapper instead of passing them through literally — `/usr/bin/trcc` ran `exec /opt/trcc-linux/bin/configure` instead of forwarding CLI args. Replaced with `echo` + proper escaping
+
 ## v9.2.8
 
 _Version bump to retry PyPI publish (9.2.7 hit project size limit)._
