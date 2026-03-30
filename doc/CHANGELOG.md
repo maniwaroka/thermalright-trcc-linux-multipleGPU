@@ -1,5 +1,9 @@
 # Changelog
 
+## v9.2.8
+
+_Version bump to retry PyPI publish (9.2.7 hit project size limit)._
+
 ## v9.2.7
 
 ### Fixes
