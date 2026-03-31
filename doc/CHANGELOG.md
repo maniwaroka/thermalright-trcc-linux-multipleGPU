@@ -1,5 +1,17 @@
 # Changelog
 
+## v9.3.2
+
+### Fixes
+- **Fedora RPM install fails** (`nothing provides python3-sounddevice`): `sounddevice` not in Fedora/Arch/Ubuntu repos — now bundled via pip in RPM, DEB, and Arch packages. `portaudio` C library added as system dependency.
+- **RPM `python3-prompt_toolkit` wrong name**: Fedora package is `python3-prompt-toolkit` (dash, not underscore)
+- **NixOS flake missing deps**: Added `sounddevice`, `prompt-toolkit`, `python-multipart`, `portaudio`, `libusb1`, `p7zip`, `sg3_utils`, `ffmpeg`
+
+### Improvements
+- **Version-free install URLs**: CI now uploads fixed-name aliases (`trcc-linux-latest.*`) alongside versioned assets — install guide one-liners never need version bumps
+- **README contributors grouped by device**: Flat list → organized by Thermalright product. Stars 43→57, forks 4→5.
+- **Install guide portaudio**: All distro pip sections now include `portaudio`/`libportaudio2` for audio visualizer support
+
 ## v9.3.1
 
 ### Fixes
