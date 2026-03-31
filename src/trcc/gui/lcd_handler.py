@@ -421,6 +421,12 @@ class LCDHandler(BaseHandler):
         if frame_index is not None and frame_index % 30 == 0:
             log.debug("_on_video_tick: frame=%d encoded=%s", frame_index, result.get('encoded') is not None)
 
+        # Update progress bar
+        progress = result.get('progress')
+        if progress is not None:
+            percent, current_time, total_time = progress
+            self._w['preview'].set_progress(percent, current_time, total_time)
+
         # Skip preview update when window is minimized
         if self._is_visible():
             preview = result.get('preview')

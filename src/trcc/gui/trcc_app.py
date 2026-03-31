@@ -69,7 +69,11 @@ log = logging.getLogger(__name__)
 # =============================================================================
 
 class ScreencastHandler:
-    """Mediator for screencast (screen capture → LCD)."""
+    """Mediator for screencast (screen capture → LCD).
+
+    When audio_enabled is True, captures microphone input and draws
+    a spectrum visualizer bar at the bottom of each screencast frame.
+    """
 
     def __init__(self, parent: QWidget, on_frame: Any):
         self._on_frame = on_frame
@@ -80,6 +84,8 @@ class ScreencastHandler:
         self._lcd_w = 0
         self._lcd_h = 0
         self._capture_warn_logged = False
+        self._audio_enabled = False
+        self._audio: Any = None  # AudioCapture instance
 
         self._timer = QTimer(parent)
         self._timer.timeout.connect(self._tick)
@@ -92,16 +98,28 @@ class ScreencastHandler:
         self._lcd_w = w
         self._lcd_h = h
 
+    def set_audio_enabled(self, enabled: bool) -> None:
+        """Enable/disable microphone audio visualization on screencast."""
+        self._audio_enabled = enabled
+        if not enabled and self._audio is not None:
+            self._audio.stop()
+            self._audio = None
+
     def toggle(self, enabled: bool) -> None:
         self._active = enabled
         if enabled:
             from .screen_capture import is_wayland
             if is_wayland() and self._pipewire_cast is None:
                 self._try_start_pipewire()
+            if self._audio_enabled:
+                self._start_audio()
             self._timer.start(150)
         else:
             self._timer.stop()
             self._stop_pipewire()
+            if self._audio is not None:
+                self._audio.stop()
+                self._audio = None
 
     def stop(self) -> None:
         self._timer.stop()
@@ -116,6 +134,42 @@ class ScreencastHandler:
     def cleanup(self) -> None:
         self._timer.stop()
         self._stop_pipewire()
+        if self._audio is not None:
+            self._audio.stop()
+            self._audio = None
+
+    def _start_audio(self) -> None:
+        from trcc.services.audio import AudioCapture
+        self._audio = AudioCapture()
+        if not self._audio.start():
+            self._audio = None
+
+    def _draw_spectrum(self, image: Any) -> None:
+        """Draw spectrum analyzer bars at the bottom of a QImage."""
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QPainter
+        spectrum = self._audio.get_spectrum()  # type: ignore[union-attr]
+        w, h = image.width(), image.height()
+        bar_area_h = int(h * 0.25)  # bottom 25% of frame
+        num_bars = len(spectrum)
+        gap = 2
+        bar_w = max(1, (w - gap * (num_bars + 1)) // num_bars)
+        x_offset = (w - (bar_w + gap) * num_bars) // 2
+
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for i, level in enumerate(spectrum):
+            bar_h = max(1, int(level * bar_area_h))
+            x = x_offset + i * (bar_w + gap)
+            y = h - bar_h
+            # Gradient: green at bottom → yellow → red at top
+            ratio = level
+            if ratio < 0.5:
+                r, g, b = int(ratio * 2 * 255), 255, 0
+            else:
+                r, g, b = 255, int((1 - ratio) * 2 * 255), 0
+            painter.fillRect(QRectF(x, y, bar_w, bar_h), QColor(r, g, b, 200))
+        painter.end()
 
     def _try_start_pipewire(self) -> None:
         from .pipewire_capture import PIPEWIRE_AVAILABLE, PipeWireScreenCast
@@ -167,6 +221,11 @@ class ScreencastHandler:
             self._lcd_w, self._lcd_h,
             QtGui_Qt.AspectRatioMode.IgnoreAspectRatio,
             QtGui_Qt.TransformationMode.SmoothTransformation)
+
+        # Draw audio spectrum bars at the bottom of the frame
+        if self._audio is not None and self._audio.running:
+            self._draw_spectrum(frame_img)
+
         self._on_frame(frame_img)
 
 
@@ -1080,6 +1139,7 @@ class TRCCApp(QMainWindow):
         self.uc_theme_setting.screencast_params_changed.connect(
             lambda x, y, w, h: self._screencast.set_params(x, y, w, h))
         self.uc_theme_setting.screencast_panel.border_toggled.connect(self._screencast.set_border)
+        self.uc_theme_setting.screencast_panel.audio_toggled.connect(self._screencast.set_audio_enabled)
         self.uc_theme_setting.capture_requested.connect(self._on_capture_requested)
         self.uc_theme_setting.eyedropper_requested.connect(self._on_eyedropper_requested)
 

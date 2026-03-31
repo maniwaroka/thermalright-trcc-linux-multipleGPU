@@ -488,6 +488,7 @@ class ScreenCastPanel(DisplayModePanel):
 
     screencast_params_changed = Signal(int, int, int, int)  # x, y, w, h
     border_toggled = Signal(bool)
+    audio_toggled = Signal(bool)
 
     # Positions from Windows UCTouPingXianShi.cs
     _TEXTBOX_X = (110, 40, 56, 16)
@@ -505,6 +506,7 @@ class ScreenCastPanel(DisplayModePanel):
     _BTN_SUB_H = (319, 67, 14, 14)
 
     _BTN_BORDER = (309, 16, 24, 16)
+    _BTN_AUDIO = (280, 16, 24, 16)
 
     _ENTRY_STYLE = (
         "background-color: black; color: #B4964F; border: none;"
@@ -559,6 +561,15 @@ class ScreenCastPanel(DisplayModePanel):
         self.border_btn.setToolTip("Toggle capture border")
         self.border_btn.clicked.connect(self._on_border_toggle)
         self._update_border_icon()
+
+        # Audio visualization toggle button
+        self._audio_on = False
+        self.audio_btn = QPushButton(self)
+        self.audio_btn.setGeometry(*self._BTN_AUDIO)
+        self.audio_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.audio_btn.setToolTip("Toggle mic audio visualization")
+        self.audio_btn.clicked.connect(self._on_audio_toggle)
+        self._update_audio_icon()
 
     def _make_entry(self, x, y, w, h):
         """Create a coordinate entry field."""
@@ -680,3 +691,16 @@ class ScreenCastPanel(DisplayModePanel):
     def set_border_visible(self, visible):
         self._show_border = visible
         self._update_border_icon()
+
+    def _on_audio_toggle(self):
+        self._audio_on = not self._audio_on
+        self._update_audio_icon()
+        self.audio_toggled.emit(self._audio_on)
+
+    def _update_audio_icon(self):
+        self.audio_btn.setText("🎤" if self._audio_on else "🔇")
+        self.audio_btn.setStyleSheet(
+            "QPushButton { background: #00CED1; color: white; border: none; font-size: 10px; }"
+            if self._audio_on else
+            "QPushButton { background: #555; color: white; border: none; font-size: 10px; }"
+        )

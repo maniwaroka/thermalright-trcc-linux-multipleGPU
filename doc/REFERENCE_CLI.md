@@ -432,6 +432,32 @@ Reports status of: Python version, PySide6, PIL/Pillow, numpy, pyusb, sg_raw, ud
 
 ---
 
+### `trcc shell`
+
+Interactive TRCC shell with tab completion. Type commands without the `trcc` prefix.
+
+```bash
+trcc shell
+```
+
+Inside the shell:
+```
+trcc> detect
+  [1] 0402:3922  Frozen Warframe  (SCSI)  path=/dev/sg0
+trcc> brightness 80
+  Brightness: 80%
+trcc> theme-list
+  Theme1  Theme2  Theme3
+trcc> exit
+```
+
+Features:
+- Tab completion for all commands
+- Command history (saved to `~/.trcc/data/shell_history`)
+- No need to type `trcc` before each command
+
+---
+
 ### `trcc serve`
 
 Start the REST API server for remote LCD/LED control.
