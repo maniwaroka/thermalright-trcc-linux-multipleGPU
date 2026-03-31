@@ -89,16 +89,13 @@ class LCDDevice(Device):
             self._display_svc.overlay._invalidate_cache()
         return {"success": True, "message": f"Mask position: ({x}, {y})"}
 
-    def render_and_send(self, skip_if_video: bool = False) -> dict:
+    def render_and_send(self) -> dict:
         """Render the overlay and send to device if auto_send is on.
 
         Returns {'image': rendered_image} so callers can update their preview.
-        skip_if_video suppresses the send (not the render) during video playback.
         """
         if not self._display_svc:
             return {"success": False, "image": None}
-        if skip_if_video and self.playing:
-            return {"success": False, "image": None, "message": "Video playing"}
         image = self._display_svc.render_overlay()
         if image and self.auto_send and self.connected:
             self.send(image)
@@ -727,7 +724,10 @@ class LCDDevice(Device):
 
     def load(self, path: Any) -> dict:
         """Load video/GIF for playback."""
+        self._display_svc._cache = None
         success = self._display_svc.media.load(Path(path))
+        if success:
+            self._display_svc._convert_media_frames()
         if success:
             return {
                 "success": True,

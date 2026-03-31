@@ -606,9 +606,14 @@ class LCDHandler(BaseHandler):
 
     # ── Rendering ──────────────────────────────────────────────────
 
-    def _render_and_send(self, skip_if_video: bool = False) -> None:
-        """Render overlay + send to LCD, update preview."""
-        result = self._lcd.render_and_send(skip_if_video)
+    def _render_and_send(self) -> None:
+        """Render overlay + send to LCD, update preview.
+
+        Skipped when video/screencast is active — those own the device.
+        """
+        if self._lcd.playing:
+            return
+        result = self._lcd.render_and_send()
         image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
