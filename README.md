@@ -15,7 +15,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](https://github.com/Lexonight1/thermalright-trcc-linux)
 
 [![CI](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-5325_passed-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-5577_passed-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-72%25-brightgreen.svg)](https://github.com/Lexonight1/thermalright-trcc-linux/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
 [![Code Style](https://img.shields.io/badge/code_style-ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
@@ -161,7 +161,7 @@ trcc setup                # Interactive setup wizard
 trcc uninstall            # Remove TRCC completely
 ```
 
-60 commands total — see the **[CLI Reference](doc/REFERENCE_CLI.md)** for the full list.
+See the **[CLI Reference](doc/REFERENCE_CLI.md)** for the full command list.
 
 ### REST API
 
@@ -174,7 +174,7 @@ trcc serve --tls              # HTTPS with auto-generated self-signed cert
 trcc serve --host 0.0.0.0     # Listen on all interfaces (LAN access)
 ```
 
-55 endpoints covering devices, display, LED, themes, and system metrics. Use `trcc api` to list all endpoints.
+49 endpoints covering devices, display, LED, themes, and system metrics. Use `trcc api` to list all endpoints.
 
 ```bash
 # Examples with curl
@@ -198,14 +198,14 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | [Install Guide](doc/GUIDE_INSTALL.md) | Installation for all major distros |
 | [CLI Reference](doc/REFERENCE_CLI.md) | All CLI commands with options and examples |
 | [User Guide](doc/GUIDE_USER.md) | How to use everything — GUI, themes, overlays, media, LED |
-| [API Reference](doc/REFERENCE_API.md) | All 55 REST API endpoints with request/response models |
+| [API Reference](doc/REFERENCE_API.md) | All 49 REST API endpoints with request/response models |
 | [Troubleshooting](doc/GUIDE_TROUBLESHOOTING.md) | Common issues and fixes |
 | [New to Linux](doc/GUIDE_NEW_TO_LINUX.md) | Guide for Linux beginners |
 | [Changelog](doc/CHANGELOG.md) | Version history |
 | [Supported Devices](doc/REFERENCE_DEVICES.md) | Full device list with USB IDs and protocols |
 | [Testers Wanted](doc/TESTERS_WANTED.md) | Devices that need hardware validation |
 | [Device Testing Guide](doc/GUIDE_DEVICE_TESTING.md) | How to test and report device compatibility |
-| [Architecture](doc/GUIDE_ARCHITECTURE.md) | Project layout and design |
+| [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
 | [Technical Reference](doc/REFERENCE_TECHNICAL.md) | SCSI protocol and file formats |
 
 ### Protocol documentation (reverse-engineered from Windows TRCC)
@@ -221,8 +221,8 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | Category | What you get |
 |----------|-------------|
 | **GUI** | Full PySide6 desktop app — theme browser, video player, overlay editor, LED control panel, 38 languages |
-| **CLI** | 60 commands — `trcc gui`, `trcc send`, `trcc video`, `trcc led-color`, `trcc screencast`, `trcc shell`, and more |
-| **REST API** | 55 endpoints — control everything remotely, build integrations, automate your setup |
+| **CLI** | `trcc gui`, `trcc send`, `trcc video`, `trcc led-color`, `trcc screencast`, `trcc shell`, and more |
+| **REST API** | 49 endpoints — control everything remotely, build integrations, automate your setup |
 | **Themes** | Local, cloud, and masks — carousel mode, export/import as `.tr` files, custom mask upload with X/Y positioning, 5 starters + 120 masks per resolution |
 | **Media** | Video/GIF playback on LCD, video trimmer, image cropper, screen cast (X11 + Wayland), mic audio visualization |
 | **Overlay Editor** | Text, sensors, date/time overlays — font picker, dynamic scaling, color picker |
@@ -232,12 +232,12 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
 | **Security** | udev rules, polkit policy, SELinux support, no root required after setup |
 
-**Under the hood**: 147 source files, ~49K lines of Python, 5323 tests across 89 test files in 9 directories. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
+**Under the hood**: 147 source files, ~49K lines of Python, 5577 tests across 96 test files in 9 directories. Hexagonal architecture with strict dependency injection — GUI, CLI, and API all talk to the same core services. 6 USB protocols reverse-engineered from the Windows C# app.
 
 ### What we do better than Windows TRCC
 
 - **38 languages** — Windows has 10 (baked into PNGs). We render text at runtime, community can add more
-- **CLI + REST API** — Windows is GUI-only. We have 60 CLI commands and 55 API endpoints for automation
+- **CLI + REST API** — Windows is GUI-only. We have full CLI and 49 API endpoints for automation
 - **Custom mask upload** — upload your own PNG overlay, position with X/Y controls, saved to `~/.trcc-user/`
 - **No admin required** — udev rules handle permissions. Windows needs "Run as Administrator"
 - **Open source** — read the code, fix bugs, add features. Windows TRCC is closed-source .NET
@@ -297,8 +297,8 @@ src/trcc/
 ├── services/       # Business logic — pure Python, no framework deps
 ├── adapters/       # USB device protocols (SCSI, HID, Bulk, LY, LED)
 ├── gui/  # PySide6 GUI (themes, video, overlay, LED, sensors)
-├── cli/            # Typer CLI — 60 commands across 8 modules
-├── api/            # FastAPI REST API — 55 endpoints across 7 modules
+├── cli/            # Typer CLI — 56 commands across 8 modules
+├── api/            # FastAPI REST API — 49 endpoints across 7 modules
 ├── conf.py         # Settings singleton
 └── assets/         # GUI images, desktop entry, polkit policy, systemd service
 ```
