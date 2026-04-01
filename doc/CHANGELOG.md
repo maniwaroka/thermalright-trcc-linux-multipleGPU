@@ -1,5 +1,26 @@
 # Changelog
 
+## v9.3.4
+
+### Refactors
+- **Unified `TrccApp.apply_temp_unit()`**: System-wide temp unit change — persists, updates all devices (LCD overlay + LED segment), fetches fresh converted metrics. CLI/API/GUI all call the same method.
+- **`TrccApp.set_hdd_enabled()`**: Consistent entry point for HDD toggle across all adapters.
+- **`trcc background-list`**: New CLI command matching GUI "Cloud Backgrounds" tab. `theme-list` is now local-only (dropped `--cloud`). Three parallel commands: `theme-list`, `mask-list`, `background-list`.
+- **Screencast API**: `POST /display/screencast/start`, `/stop`, `GET /status`. Auto-detects X11 (ffmpeg) or Wayland (PipeWire).
+- **API hexagonal purity**: `send_image` and `create_theme` route through LCDDevice. All 5 background pump loops use `LCDDevice.send_frame()`.
+- **DI for `download_themes`**: `TrccApp` no longer imports adapters — callables injected via `builder.build_download_fns()`.
+- **Test fixtures**: CLI + core tests use real `DisplayService` + `OverlayService` — behavioral assertions (pixel values) instead of mock call counts.
+- **CLI help panels**: 7 groups (Device, LCD Display, Themes, LED, System, Diagnostics, Interfaces).
+
+### Fixes
+- **C/F toggle not updating LCD**: Overlay `temp_unit` wasn't set on all handlers (gated on `_active_path`). Now updates ALL LCD handlers.
+- **C/F toggle stale metrics**: Render used cached metrics with old conversion. Now fetches fresh metrics before re-render.
+- **Video overlay text not refreshing**: `update_video_cache_text()` was only called from GUI handler gated on `_active_path`. Now called from `TrccApp._loop()` for all playing devices.
+- **System info panel showing 0/1 instead of °C/°F**: `set_temp_unit()` stored int directly as display suffix.
+- **LinuxSetup.get_screencast_capture()** returned `x11grab` on pure Wayland (no `$DISPLAY`). Now returns `None`.
+- **`trcc uninstall` logging crash**: File handlers removed before deleting `~/.trcc/`.
+- **install.sh**: Uninstall removes `~/.trcc-user/`. Setup step fixes sudo PATH.
+
 ## v9.3.3
 
 ### Refactors
