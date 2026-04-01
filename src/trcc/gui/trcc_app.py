@@ -1724,26 +1724,26 @@ class TRCCApp(QMainWindow):
         temp_int = 1 if unit == 'F' else 0
         _conf.settings.set_temp_unit(temp_int)
 
-        # Re-convert current metrics with the new unit so the next render
-        # uses values matching the suffix (avoids stale pre-converted metrics)
-        h = self._active_lcd()
-        if h:
-            h.display.set_overlay_temp_unit(temp_int)
-            # Force fresh metrics into the overlay before rendering
-            from trcc.core.app import TrccApp
-            app = TrccApp.get()
-            if app._current_metrics is not None:
-                from trcc.core.models import HardwareMetrics
-                fresh = app._system_svc.all_metrics  # type: ignore[union-attr]
-                HardwareMetrics.with_temp_unit(fresh, temp_int)
-                h.display.update_metrics(fresh)
-            h._render_and_send()
+        # Update ALL handlers — not just active (active_path may be unset)
+        from trcc.core.app import TrccApp
+        app = TrccApp.get()
+        fresh = None
+        if app._system_svc is not None:
+            from trcc.core.models import HardwareMetrics
+            fresh = app._system_svc.all_metrics  # type: ignore[union-attr]
+            HardwareMetrics.with_temp_unit(fresh, temp_int)
+
+        for handler in self._handlers.values():
+            if isinstance(handler, LCDHandler):
+                handler.display.set_overlay_temp_unit(temp_int)
+                if fresh is not None:
+                    handler.display.update_metrics(fresh)
+                handler._render_and_send()
+            elif isinstance(handler, LEDHandler):
+                handler.set_temp_unit(unit)
 
         self.uc_system_info.set_temp_unit(temp_int)
         self.uc_led_control.set_temp_unit(temp_int)
-        for handler in self._handlers.values():
-            if isinstance(handler, LEDHandler):
-                handler.set_temp_unit(unit)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
     def _on_hdd_toggle_changed(self, on: bool) -> None:
