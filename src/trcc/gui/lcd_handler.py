@@ -522,10 +522,6 @@ class LCDHandler(BaseHandler):
         log.debug("set_rotation: degrees=%d", degrees)
         result = self._lcd.set_rotation(degrees)
         image = result.get('image')
-        if image:
-            self._w['preview'].set_image(image)
-            if self._lcd.auto_send:
-                self._lcd.send(image)
         if self._device_key:
             Settings.save_device_setting(self._device_key, 'rotation', degrees)
         # Non-square devices: swap preview dimensions on 90/270
@@ -534,6 +530,11 @@ class LCDHandler(BaseHandler):
             self._w['preview'].set_resolution(h, w)
         else:
             self._w['preview'].set_resolution(w, h)
+        # Set image AFTER preview resize so it scales correctly
+        if image:
+            self._w['preview'].set_image(image)
+            if self._lcd.auto_send:
+                self._lcd.send(image)
         self._resolve_cloud_dirs(degrees)
 
     def set_split_mode(self, mode: int) -> None:
