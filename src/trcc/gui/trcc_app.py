@@ -1723,10 +1723,22 @@ class TRCCApp(QMainWindow):
         log.debug("_on_temp_unit_changed: unit=%s", unit)
         temp_int = 1 if unit == 'F' else 0
         _conf.settings.set_temp_unit(temp_int)
+
+        # Re-convert current metrics with the new unit so the next render
+        # uses values matching the suffix (avoids stale pre-converted metrics)
         h = self._active_lcd()
         if h:
             h.display.set_overlay_temp_unit(temp_int)
+            # Force fresh metrics into the overlay before rendering
+            from trcc.core.app import TrccApp
+            app = TrccApp.get()
+            if app._current_metrics is not None:
+                from trcc.core.models import HardwareMetrics
+                fresh = app._system_svc.all_metrics  # type: ignore[union-attr]
+                HardwareMetrics.with_temp_unit(fresh, temp_int)
+                h.display.update_metrics(fresh)
             h._render_and_send()
+
         self.uc_system_info.set_temp_unit(temp_int)
         self.uc_led_control.set_temp_unit(temp_int)
         for handler in self._handlers.values():
