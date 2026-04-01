@@ -129,14 +129,16 @@ def start_video_playback(
     _video_stop_event = threading.Event()
     stop_event = _video_stop_event  # Local ref for closure
 
+    lcd = _display_dispatcher  # capture for closure
+
     def _pump() -> None:
         interval = media.frame_interval_ms / 1000.0
         while not stop_event.is_set() and media.is_playing:
             frame, should_send, _ = media.tick()
             if frame is None:
                 break
-            if should_send:
-                _device_svc.send_frame(frame, width, height)
+            if should_send and lcd is not None:
+                lcd.send_frame(frame)
             stop_event.wait(interval)
 
     _video_thread = threading.Thread(target=_pump, daemon=True, name="api-video")
@@ -199,6 +201,7 @@ def start_overlay_loop(
     _overlay_svc = overlay
     _overlay_stop_event = threading.Event()
     stop_event = _overlay_stop_event
+    lcd = _display_dispatcher  # capture for closure
 
     def _loop() -> None:
         while not stop_event.is_set():
@@ -209,8 +212,8 @@ def start_overlay_loop(
             if overlay.would_change(metrics):
                 overlay.update_metrics(metrics)
                 frame = overlay.render(metrics=metrics)
-                if frame is not None:
-                    _device_svc.send_frame(frame, width, height)
+                if frame is not None and lcd is not None:
+                    lcd.send_frame(frame)
             stop_event.wait(2.0)
 
     _overlay_thread = threading.Thread(target=_loop, daemon=True, name="api-overlay")
@@ -246,10 +249,12 @@ def start_keepalive_loop(image, width: int, height: int) -> bool:
 
     _keepalive_stop_event = threading.Event()
     stop_event = _keepalive_stop_event
+    lcd = _display_dispatcher  # capture for closure
 
     def _loop() -> None:
         while not stop_event.is_set():
-            _device_svc.send_frame(image, width, height)
+            if lcd is not None:
+                lcd.send_frame(image)
             stop_event.wait(0.150)
 
     _keepalive_thread = threading.Thread(target=_loop, daemon=True, name="api-keepalive")
@@ -304,7 +309,8 @@ def start_screencast(
     if not _display_dispatcher or not _display_dispatcher.connected:
         return {"success": False, "error": "No LCD device connected"}
 
-    lcd_w, lcd_h = _display_dispatcher.resolution  # type: ignore[union-attr]
+    lcd = _display_dispatcher  # capture for closures
+    lcd_w, lcd_h = lcd.resolution  # type: ignore[union-attr]
     _screencast_stop_event = threading.Event()
     stop_event = _screencast_stop_event
     _screencast_frames = 0
@@ -353,7 +359,7 @@ def start_screencast(
                 qimg = QImage(
                     raw, lcd_w, lcd_h, lcd_w * 3,
                     QImage.Format.Format_RGB888).copy()
-                _device_svc.send_frame(qimg, lcd_w, lcd_h)
+                lcd.send_frame(qimg)
                 set_current_image(qimg)
                 _screencast_frames += 1
 
@@ -391,7 +397,7 @@ def start_screencast(
                     if w and h:
                         qimg = qimg.copy(x, y, min(w, fw - x), min(h, fh - y))
                     qimg = qimg.scaled(lcd_w, lcd_h)
-                    _device_svc.send_frame(qimg, lcd_w, lcd_h)
+                    lcd.send_frame(qimg)
                     set_current_image(qimg)
                     _screencast_frames += 1
                 stop_event.wait(interval)

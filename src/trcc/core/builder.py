@@ -218,6 +218,14 @@ class ControllerBuilder:
         from ..adapters.infra.data_repository import DataManager
         return DataManager.ensure_all
 
+    def build_download_fns(self):
+        """Return (download_pack, list_available) callables for theme downloads.
+
+        Isolated here so core/app.py never imports infra adapters directly.
+        """
+        from ..adapters.infra.theme_downloader import download_pack, list_available
+        return download_pack, list_available
+
     def build_autostart(self) -> AutostartManager:
         """Return the platform-specific autostart manager."""
         return self._platform.create_autostart_manager()

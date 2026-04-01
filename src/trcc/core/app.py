@@ -91,6 +91,9 @@ class TrccApp:
         # Data extraction callable — injected via init() from builder (DIP)
         from .ports import EnsureDataFn
         self._ensure_data_fn: EnsureDataFn | None = None
+        # Theme download callables — injected via init() from builder (DIP)
+        self._download_pack_fn: Any = None
+        self._list_available_fn: Any = None
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -103,6 +106,9 @@ class TrccApp:
             builder = ControllerBuilder.for_current_os()
             cls._instance = cls(builder)
             cls._instance._ensure_data_fn = builder.build_ensure_data_fn()
+            dl_pack, dl_list = builder.build_download_fns()
+            cls._instance._download_pack_fn = dl_pack
+            cls._instance._list_available_fn = dl_list
             log.debug("TrccApp initialized")
         return cls._instance
 
@@ -397,11 +403,13 @@ class TrccApp:
 
     def download_themes(self, pack: str = "", force: bool = False) -> int:
         """Download theme packs. Empty pack = list available. Returns exit code."""
-        from trcc.adapters.infra.theme_downloader import download_pack, list_available
         if not pack:
-            list_available()
+            if self._list_available_fn:
+                self._list_available_fn()
             return 0
-        return download_pack(pack, force)
+        if self._download_pack_fn:
+            return self._download_pack_fn(pack, force)
+        return 1
 
     # ── System service + metrics loop ────────────────────────────────────────
 

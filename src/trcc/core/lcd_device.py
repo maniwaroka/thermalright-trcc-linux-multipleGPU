@@ -463,6 +463,16 @@ class LCDDevice(Device):
         self._device_svc.send_frame_async(image, w, h)
         return {"success": True}
 
+    def send_frame(self, image: Any) -> bool:
+        """Encode and synchronously send image to LCD device.
+
+        Unlike send() which queues asynchronously, this blocks until
+        the USB write completes. Used by frame pump loops that need
+        backpressure (video, overlay, keepalive, screencast).
+        """
+        w, h = self.lcd_size
+        return self._device_svc.send_frame(image, w, h)
+
     def send_async(self, image: Any, width: int, height: int) -> None:
         if self._device_svc.is_busy:
             return
