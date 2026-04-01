@@ -139,3 +139,19 @@ class ThemeLoadRequest(BaseModel):
 
 class ThemeSaveRequest(BaseModel):
     name: str
+
+
+class ScreencastRequest(BaseModel):
+    x: int = 0
+    y: int = 0
+    w: int = 0
+    h: int = 0
+    fps: int = 10
+
+
+class ScreencastStatusResponse(BaseModel):
+    running: bool = False
+    backend: str = ""
+    fps: int = 0
+    region: dict = {}  # noqa: RUF012
+    frames: int = 0

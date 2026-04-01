@@ -520,7 +520,9 @@ class LinuxSetup(PlatformSetup):
     def get_screencast_capture(
         self, x: int, y: int, w: int, h: int,
     ) -> tuple[str, str, list[str]] | None:
-        display = os.environ.get('DISPLAY', ':0.0')
+        display = os.environ.get('DISPLAY')
+        if not display:
+            return None  # No X11 display (pure Wayland or headless)
         inp = f'{display}+{x},{y}' if (w and h) else display
         region_args = ['-video_size', f'{w}x{h}'] if (w and h) else []
         return 'x11grab', inp, region_args

@@ -2,6 +2,7 @@
 
 import io
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -2934,6 +2935,92 @@ class TestDisplayTestEndpoint(unittest.TestCase):
 
         api_module._display_dispatcher = None
         TrccApp.reset()
+
+
+# ── Screencast endpoints ──────────────────────────────────────────────
+
+
+class TestScreencast(unittest.TestCase):
+    """POST /display/screencast/start, /stop, GET /status."""
+
+    def setUp(self):
+        configure_auth(None)
+        self.client = TestClient(app)
+
+    def test_start_no_device_returns_409(self):
+        api_module._display_dispatcher = None
+        resp = self.client.post(
+            "/display/screencast/start",
+            json={"x": 0, "y": 0, "w": 0, "h": 0, "fps": 10},
+        )
+        self.assertEqual(resp.status_code, 409)
+
+    @patch('trcc.api.start_screencast', return_value={"success": True, "backend": "x11"})
+    def test_start_success(self, mock_start):
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        mock_lcd.resolution = (320, 320)
+        api_module._display_dispatcher = mock_lcd
+
+        resp = self.client.post(
+            "/display/screencast/start",
+            json={"fps": 15},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+        mock_start.assert_called_once_with(0, 0, 0, 0, 15)
+
+        api_module._display_dispatcher = None
+
+    @patch('trcc.api.start_screencast',
+           return_value={"success": False, "error": "ffmpeg not found"})
+    def test_start_failure_returns_400(self, mock_start):
+        mock_lcd = MagicMock()
+        mock_lcd.connected = True
+        api_module._display_dispatcher = mock_lcd
+
+        resp = self.client.post(
+            "/display/screencast/start", json={},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("ffmpeg", resp.json()["detail"])
+
+        api_module._display_dispatcher = None
+
+    def test_stop_returns_200(self):
+        with patch('trcc.api.stop_screencast') as mock_stop:
+            resp = self.client.post("/display/screencast/stop")
+        self.assertEqual(resp.status_code, 200)
+        mock_stop.assert_called_once()
+
+    def test_status_not_running(self):
+        api_module._screencast_stop_event = None
+        api_module._screencast_params = None
+        api_module._screencast_frames = 0
+        resp = self.client.get("/display/screencast/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data["running"])
+        self.assertEqual(data["frames"], 0)
+
+    def test_status_running(self):
+        evt = threading.Event()
+        api_module._screencast_stop_event = evt
+        api_module._screencast_params = {
+            "x": 0, "y": 0, "w": 640, "h": 480, "fps": 10, "backend": "x11"}
+        api_module._screencast_frames = 42
+
+        resp = self.client.get("/display/screencast/status")
+        data = resp.json()
+        self.assertTrue(data["running"])
+        self.assertEqual(data["backend"], "x11")
+        self.assertEqual(data["fps"], 10)
+        self.assertEqual(data["frames"], 42)
+
+        # Cleanup
+        api_module._screencast_stop_event = None
+        api_module._screencast_params = None
+        api_module._screencast_frames = 0
 
 
 # ── LED test endpoint ─────────────────────────────────────────────────

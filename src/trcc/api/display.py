@@ -22,6 +22,8 @@ from trcc.api.models import (
     BrightnessRequest,
     HexColorRequest,
     RotationRequest,
+    ScreencastRequest,
+    ScreencastStatusResponse,
     SplitRequest,
     VideoStatusResponse,
     dispatch_result,
@@ -414,6 +416,51 @@ async def create_theme(
         api.set_current_image(img)
 
     return {"success": True, "animated": False, "resolution": f"{w}x{h}"}
+
+
+# ── Screencast endpoints ──────────────────────────────────────────────
+
+
+@router.post("/screencast/start")
+def screencast_start(body: ScreencastRequest) -> dict:
+    """Start streaming screen capture to LCD device.
+
+    Auto-detects backend: ffmpeg x11grab on X11, PipeWire on Wayland.
+    Mutually exclusive with video playback and overlay loops.
+    """
+    import trcc.api as api
+
+    _get_display()
+    result = api.start_screencast(body.x, body.y, body.w, body.h, body.fps)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Screencast failed"))
+    return result
+
+
+@router.post("/screencast/stop")
+def screencast_stop() -> dict:
+    """Stop screen capture streaming."""
+    from trcc.api import stop_screencast
+
+    stop_screencast()
+    return {"success": True, "message": "Screencast stopped"}
+
+
+@router.get("/screencast/status")
+def screencast_status() -> ScreencastStatusResponse:
+    """Check current screencast state."""
+    from trcc.api import _screencast_frames, _screencast_params, _screencast_stop_event
+
+    running = (_screencast_stop_event is not None
+               and not _screencast_stop_event.is_set())
+    params = _screencast_params or {}
+    return ScreencastStatusResponse(
+        running=running,
+        backend=params.get("backend", ""),
+        fps=params.get("fps", 0),
+        region={k: params[k] for k in ("x", "y", "w", "h") if k in params},
+        frames=_screencast_frames,
+    )
 
 
 # ── Preview helpers ───────────────────────────────────────────────────

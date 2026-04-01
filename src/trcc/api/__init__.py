@@ -110,7 +110,8 @@ def start_video_playback(
     """
     global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
 
-    stop_video_playback()  # Stop any existing playback
+    stop_video_playback()
+    stop_screencast()
 
     from trcc.adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
     media = MediaService(
@@ -183,6 +184,7 @@ def start_overlay_loop(
     global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
 
     stop_overlay_loop()
+    stop_screencast()
 
     from trcc.services.image import ImageService
     overlay = OverlayService(
@@ -266,6 +268,180 @@ def stop_keepalive_loop() -> None:
         _keepalive_thread.join(timeout=2)
     _keepalive_thread = None
     _keepalive_stop_event = None
+
+
+# ── Screencast (background thread — X11 or PipeWire) ──────────────────
+
+_screencast_thread: threading.Thread | None = None
+_screencast_stop_event: threading.Event | None = None
+_screencast_proc: object | None = None  # subprocess.Popen (X11)
+_screencast_cast: object | None = None  # PipeWireScreenCast (Wayland)
+_screencast_frames: int = 0
+_screencast_params: dict | None = None
+
+
+def _is_wayland() -> bool:
+    return (os.environ.get('XDG_SESSION_TYPE', '').lower() == 'wayland'
+            or bool(os.environ.get('WAYLAND_DISPLAY')))
+
+
+def start_screencast(
+    x: int = 0, y: int = 0, w: int = 0, h: int = 0, fps: int = 10,
+) -> dict:
+    """Start background screen capture — pumps frames to LCD and preview.
+
+    Auto-detects backend: ffmpeg x11grab on X11, PipeWire on Wayland.
+    """
+    global _screencast_thread, _screencast_stop_event  # noqa: PLW0603
+    global _screencast_proc, _screencast_cast  # noqa: PLW0603
+    global _screencast_frames, _screencast_params  # noqa: PLW0603
+
+    stop_screencast()
+    stop_video_playback()
+    stop_overlay_loop()
+    stop_keepalive_loop()
+
+    if not _display_dispatcher or not _display_dispatcher.connected:
+        return {"success": False, "error": "No LCD device connected"}
+
+    lcd_w, lcd_h = _display_dispatcher.resolution  # type: ignore[union-attr]
+    _screencast_stop_event = threading.Event()
+    stop_event = _screencast_stop_event
+    _screencast_frames = 0
+    _screencast_params = {"x": x, "y": y, "w": w, "h": h, "fps": fps}
+
+    # Try X11 (ffmpeg x11grab) — works on X11 and XWayland
+    display = os.environ.get('DISPLAY')
+    if display:
+        import shutil
+        if not shutil.which('ffmpeg'):
+            return {"success": False, "error": "ffmpeg not found"}
+
+        from trcc.core.app import TrccApp
+        capture = TrccApp.get().build_setup().get_screencast_capture(x, y, w, h)
+        if capture is None:
+            return {"success": False, "error": "Screencast not supported on this platform"}
+        fmt, inp, region_args = capture
+
+        import subprocess
+        cmd = [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error',
+            '-f', fmt, '-framerate', str(fps),
+            *region_args,
+            '-i', inp,
+            '-vf', f'scale={lcd_w}:{lcd_h}',
+            '-f', 'rawvideo', '-pix_fmt', 'rgb24',
+            'pipe:1',
+        ]
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            return {"success": False, "error": "ffmpeg not found"}
+
+        _screencast_proc = proc
+
+        def _x11_pump() -> None:
+            global _screencast_frames  # noqa: PLW0603
+            from PySide6.QtGui import QImage
+            frame_size = lcd_w * lcd_h * 3
+            assert proc.stdout is not None
+            while not stop_event.is_set():
+                raw = proc.stdout.read(frame_size)
+                if len(raw) < frame_size:
+                    break
+                qimg = QImage(
+                    raw, lcd_w, lcd_h, lcd_w * 3,
+                    QImage.Format.Format_RGB888).copy()
+                _device_svc.send_frame(qimg, lcd_w, lcd_h)
+                set_current_image(qimg)
+                _screencast_frames += 1
+
+        _screencast_thread = threading.Thread(
+            target=_x11_pump, daemon=True, name="api-screencast")
+        _screencast_thread.start()
+        _screencast_params["backend"] = "x11"
+        log.info("Screencast started (x11grab): %dx%d @ %dfps", lcd_w, lcd_h, fps)
+        return {"success": True, "backend": "x11"}
+
+    # Fallback: PipeWire (pure Wayland, no $DISPLAY)
+    if _is_wayland():
+        from trcc.gui.pipewire_capture import PIPEWIRE_AVAILABLE, PipeWireScreenCast
+        if not PIPEWIRE_AVAILABLE:
+            return {"success": False,
+                    "error": "Wayland detected but PipeWire deps missing (dbus, PyGObject, GStreamer)"}
+
+        cast = PipeWireScreenCast()
+        _screencast_cast = cast
+
+        def _pipewire_pump() -> None:
+            global _screencast_frames  # noqa: PLW0603
+            from PySide6.QtGui import QImage
+            if not cast.start(timeout=30):
+                log.error("PipeWire screencast failed to start")
+                return
+            interval = 1.0 / fps
+            while not stop_event.is_set():
+                frame = cast.grab_frame()
+                if frame is not None:
+                    fw, fh, rgb_bytes = frame
+                    qimg = QImage(
+                        rgb_bytes, fw, fh, fw * 3,
+                        QImage.Format.Format_RGB888).copy()
+                    if w and h:
+                        qimg = qimg.copy(x, y, min(w, fw - x), min(h, fh - y))
+                    qimg = qimg.scaled(lcd_w, lcd_h)
+                    _device_svc.send_frame(qimg, lcd_w, lcd_h)
+                    set_current_image(qimg)
+                    _screencast_frames += 1
+                stop_event.wait(interval)
+            cast.stop()
+
+        _screencast_thread = threading.Thread(
+            target=_pipewire_pump, daemon=True, name="api-screencast")
+        _screencast_thread.start()
+        _screencast_params["backend"] = "pipewire"
+        log.info("Screencast started (PipeWire): %dx%d @ %dfps", lcd_w, lcd_h, fps)
+        return {"success": True, "backend": "pipewire"}
+
+    return {"success": False,
+            "error": "No display server detected (no DISPLAY or WAYLAND_DISPLAY set)"}
+
+
+def stop_screencast() -> None:
+    """Stop background screencast if running."""
+    global _screencast_thread, _screencast_stop_event  # noqa: PLW0603
+    global _screencast_proc, _screencast_cast  # noqa: PLW0603
+    global _screencast_frames, _screencast_params  # noqa: PLW0603
+
+    if _screencast_stop_event:
+        _screencast_stop_event.set()
+
+    if _screencast_proc is not None:
+        import subprocess
+        proc = _screencast_proc
+        if isinstance(proc, subprocess.Popen):
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    if _screencast_cast is not None:
+        try:
+            _screencast_cast.stop()  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    if _screencast_thread and _screencast_thread.is_alive():
+        _screencast_thread.join(timeout=2)
+
+    _screencast_thread = None
+    _screencast_stop_event = None
+    _screencast_proc = None
+    _screencast_cast = None
+    _screencast_frames = 0
+    _screencast_params = None
 
 
 # ── LED keepalive loop (background thread for animated modes) ─────────
