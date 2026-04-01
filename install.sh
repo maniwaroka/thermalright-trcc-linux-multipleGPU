@@ -25,6 +25,7 @@ REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
 DESKTOP_FILE="$REAL_HOME/.local/share/applications/trcc.desktop"
 AUTOSTART_FILE="$REAL_HOME/.config/autostart/trcc.desktop"
 CONFIG_DIR="$REAL_HOME/.trcc"
+USER_CONTENT_DIR="$REAL_HOME/.trcc-user"
 LEGACY_CONFIG_DIR="$REAL_HOME/.config/trcc"
 VENV_DIR="$REAL_HOME/trcc-env"
 
@@ -272,10 +273,11 @@ do_install() {
     trcc_cmd="$(find_trcc_cmd)"
     info "Running: $trcc_cmd setup --yes"
     # trcc setup handles: system deps, GPU drivers, udev, SELinux, desktop entry
+    # Use env PATH to ensure ~/.local/bin is visible under sudo
     if [[ "$trcc_cmd" == PYTHONPATH=* ]]; then
         eval "$trcc_cmd setup --yes"
     else
-        sudo -u "$REAL_USER" "$trcc_cmd" setup --yes
+        PATH="$REAL_HOME/.local/bin:$VENV_DIR/bin:$PATH" "$trcc_cmd" setup --yes
     fi
 
     print_success
@@ -350,7 +352,7 @@ do_uninstall() {
     fi
 
     # 3. User files
-    for dir in "$CONFIG_DIR" "$LEGACY_CONFIG_DIR"; do
+    for dir in "$CONFIG_DIR" "$USER_CONTENT_DIR" "$LEGACY_CONFIG_DIR"; do
         if [ -d "$dir" ]; then
             rm -rf "$dir"
             info "Removed $dir"
