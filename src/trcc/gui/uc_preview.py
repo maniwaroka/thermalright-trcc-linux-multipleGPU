@@ -275,6 +275,8 @@ class UCPreview(BasePanel):
 
         left, top, w, h, frame_name = self._offset_info
         self.preview_label.setFixedSize(w, h)
+        self.preview_label._width = w
+        self.preview_label._height = h
         self.preview_label.move(left, top)
         self.set_frame_image(frame_name)
 
