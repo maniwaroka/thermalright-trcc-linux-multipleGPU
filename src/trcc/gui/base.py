@@ -228,6 +228,11 @@ class ImageLabel(QLabel):
             return
 
         if isinstance(image, QPixmap):
+            if (image.width(), image.height()) != (self._width, self._height):
+                mode = (Qt.TransformationMode.FastTransformation if fast
+                        else Qt.TransformationMode.SmoothTransformation)
+                image = image.scaled(self._width, self._height,
+                                     Qt.AspectRatioMode.IgnoreAspectRatio, mode)
             self.setPixmap(image)
             return
 
