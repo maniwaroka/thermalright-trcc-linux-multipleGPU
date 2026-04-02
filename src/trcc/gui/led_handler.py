@@ -106,8 +106,7 @@ class LEDHandler(BaseHandler):
         self._panel.set_memory_ratio(self._led.state.memory_ratio)
         self._sync_ui_from_state()
 
-        seg_unit = "F" if _conf.settings.temp_unit == 1 else "C"
-        self._led.set_seg_temp_unit(seg_unit)
+        self._led.set_seg_temp_unit(_conf.settings.temp_unit)
 
         self._active = True
         self._timer.start(150)
