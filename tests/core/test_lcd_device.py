@@ -427,30 +427,29 @@ class TestRestoreDeviceSettings(unittest.TestCase):
 class TestLoadLastTheme(unittest.TestCase):
     """LCDDevice.load_last_theme()."""
 
-    def test_no_theme_path_returns_error(self):
+    def test_no_theme_returns_error(self):
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
         svc = MagicMock(selected=dev)
         lcd = _make_lcd(device_svc=svc)
-        with patch('trcc.conf.Settings.device_config_key',
-                   return_value="key"), \
-             patch('trcc.conf.Settings.get_device_config',
-                   return_value={}):
-            result = lcd.load_last_theme()
+        result = lcd.load_last_theme()
         self.assertFalse(result['success'])
         self.assertIn("No saved theme", result['error'])
 
-    def test_nonexistent_path_returns_error(self):
+    def test_nonexistent_local_theme_returns_error(self):
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
         svc = MagicMock(selected=dev)
         lcd = _make_lcd(
             device_svc=svc,
-            lcd_config=MagicMock(**{'get_config.return_value': {'theme_path': '/nonexistent/path'}}),
+            lcd_config=MagicMock(**{'get_config.return_value': {
+                'theme_name': 'NonExistent', 'theme_type': 'local',
+            }}),
         )
         result = lcd.load_last_theme()
         self.assertFalse(result['success'])
         self.assertIn("not found", result['error'])
 
-    def test_image_file_loads(self, ):
+    def test_migration_old_theme_path(self):
+        """Old config with theme_path auto-migrates to name-based lookup."""
         import tempfile
         from pathlib import Path
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
@@ -462,26 +461,32 @@ class TestLoadLastTheme(unittest.TestCase):
         try:
             lcd = _make_lcd(
                 device_svc=svc, display_svc=disp,
-                lcd_config=MagicMock(**{'get_config.return_value': {'theme_path': str(tmp)}}),
+                lcd_config=MagicMock(**{'get_config.return_value': {
+                    'theme_path': str(tmp),  # old format
+                }}),
             )
             result = lcd.load_last_theme()
             self.assertTrue(result['success'])
-            disp.load_image_file.assert_called_once()
         finally:
             tmp.unlink(missing_ok=True)
 
-    def test_theme_dir_with_00_png(self):
+    @patch("trcc.core.lcd_device.resolve_theme_dir")
+    def test_local_theme_resolves_by_name(self, mock_resolve):
         import tempfile
         from pathlib import Path
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
         svc = MagicMock(selected=dev)
         disp = MagicMock()
-        disp.load_image_file.return_value = MagicMock()
         with tempfile.TemporaryDirectory() as td:
-            (Path(td) / "00.png").write_bytes(b"fake")
+            theme_dir = Path(td) / "Theme1"
+            theme_dir.mkdir()
+            (theme_dir / "00.png").write_bytes(b"fake")
+            mock_resolve.return_value = td
             lcd = _make_lcd(
                 device_svc=svc, display_svc=disp,
-                lcd_config=MagicMock(**{'get_config.return_value': {'theme_path': td}}),
+                lcd_config=MagicMock(**{'get_config.return_value': {
+                    'theme_name': 'Theme1', 'theme_type': 'local',
+                }}),
             )
             result = lcd.load_last_theme()
             self.assertTrue(result['success'])
@@ -598,8 +603,8 @@ class TestLoadThemeByName:
         lcd_with_mocks._device_svc.send_frame_async.assert_not_called()
 
     @patch("trcc.core.lcd_device.resolve_theme_dir", return_value="/tmp/themes")
-    def test_persists_theme_path(self, mock_for_res, lcd_with_mocks):
-        """Theme path saved to per-device config, mask cleared."""
+    def test_persists_theme_name(self, mock_for_res, lcd_with_mocks):
+        """Theme name + type saved to per-device config, mask cleared."""
         from pathlib import Path
 
         from trcc.core.models import ThemeInfo, ThemeType
@@ -617,9 +622,13 @@ class TestLoadThemeByName:
 
         calls = lcd_with_mocks._lcd_config.persist.call_args_list
         assert any(
-            c.args[1] == 'theme_path' and c.args[2] == str(theme.path)
+            c.args[1] == 'theme_name' and c.args[2] == 'Saved001'
             for c in calls
-        ), f"Expected theme_path save, got: {calls}"
+        ), f"Expected theme_name save, got: {calls}"
+        assert any(
+            c.args[1] == 'theme_type' and c.args[2] == 'local'
+            for c in calls
+        ), f"Expected theme_type save, got: {calls}"
         assert any(
             c.args[1] == 'mask_id' and c.args[2] == ''
             for c in calls

@@ -279,8 +279,9 @@ class LCDHandler(BaseHandler):
             self._load_theme_overlay_config(path, persist=persist)
 
         if persist and self._device_key:
-            log.info("Saving theme_path: %s (key=%s)", path, self._device_key)
-            Settings.save_device_setting(self._device_key, 'theme_path', str(path))
+            log.info("Saving theme_name: %s (key=%s)", path.name, self._device_key)
+            Settings.save_device_setting(self._device_key, 'theme_name', path.name)
+            Settings.save_device_setting(self._device_key, 'theme_type', 'local')
             Settings.save_device_setting(self._device_key, 'mask_id', '')
 
     def select_cloud_theme(self, theme_info: Any) -> None:
@@ -298,7 +299,9 @@ class LCDHandler(BaseHandler):
             self._select_theme(theme)
             if self._device_key:
                 Settings.save_device_setting(
-                    self._device_key, 'theme_path', str(video_path))
+                    self._device_key, 'theme_name', video_path.stem)
+                Settings.save_device_setting(
+                    self._device_key, 'theme_type', 'cloud')
                 Settings.save_device_setting(self._device_key, 'mask_id', '')
 
     def apply_mask(self, mask_info: Any) -> None:

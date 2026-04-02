@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .models import DEFAULT_BRIGHTNESS_LEVEL, ThemeInfo, ThemeType
+from .models import DEFAULT_BRIGHTNESS_LEVEL, ThemeDir, ThemeInfo, ThemeType
 from .paths import resolve_theme_dir
 from .ports import Device
 
@@ -631,25 +631,53 @@ class LCDDevice(Device):
         cfg = self._lcd_config.get_config(dev)
 
         # ── Theme ──────────────────────────────────────────────────────────
-        theme_path = cfg.get("theme_path")
-        if not theme_path:
-            return {"success": False, "error": "No saved theme"}
+        theme_name = cfg.get("theme_name")
+        theme_type = cfg.get("theme_type", "local")
 
-        path = Path(theme_path)
-        if not path.exists():
-            return {"success": False, "error": f"Theme not found: {theme_path}"}
+        # Migration: old config stored full path as theme_path
+        if not theme_name:
+            old_path = cfg.get("theme_path")
+            if not old_path:
+                return {"success": False, "error": "No saved theme"}
+            video_exts = {'.mp4', '.avi', '.mkv', '.webm'}
+            image_exts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif'}
+            suffix = Path(old_path).suffix.lower()
+            if suffix in video_exts:
+                theme_name = Path(old_path).stem
+                theme_type = "cloud"
+            elif suffix in image_exts:
+                theme_name = Path(old_path).name
+                theme_type = "image"
+            else:
+                theme_name = Path(old_path).name
+                theme_type = "local"
 
-        video_exts = {'.mp4', '.avi', '.mkv', '.webm'}
-        if path.is_dir():
-            w, h = self.lcd_size
-            theme = self._theme_info_from_dir_fn(path, (w, h))
-        elif path.suffix.lower() in video_exts:
-            preview = path.parent / f"{path.stem}.png"
+        # Resolve path from name + device resolution
+        w, h = self.lcd_size
+        svc = self._display_svc
+        if theme_type == "cloud":
+            if not svc or not svc.web_dir:
+                return {"success": False, "error": "No cloud theme directory"}
+            path = svc.web_dir / f"{theme_name}.mp4"
+            if not path.exists():
+                return {"success": False, "error": f"Cloud theme not found: {theme_name}"}
+            preview = path.parent / f"{theme_name}.png"
             theme = ThemeInfo.from_video(path, preview if preview.exists() else None)
-        else:
-            result = self.load_image(str(path))
+        elif theme_type == "image":
+            # Single image file — keep full path from old config
+            old_path = cfg.get("theme_path", "")
+            if not old_path or not Path(old_path).exists():
+                return {"success": False, "error": "Image not found"}
+            result = self.load_image(old_path)
             return {**result, "overlay_config": None,
                     "overlay_enabled": False, "is_animated": False}
+        else:
+            # Local theme — resolve against device's resolution directory
+            td = ThemeDir(resolve_theme_dir(w, h))
+            path = td.path / theme_name
+            if not path.exists():
+                return {"success": False, "error": f"Theme not found: {theme_name}"}
+            theme = self._theme_info_from_dir_fn(path, (w, h))
 
         result = self.select(theme)
         if not result.get("success"):
@@ -781,7 +809,8 @@ class LCDDevice(Device):
         # Persist as last-used theme
         dev = self._device_svc.selected if self._device_svc else None
         if dev and match.path and self._lcd_config:
-            self._lcd_config.persist(dev, 'theme_path', str(match.path))
+            self._lcd_config.persist(dev, 'theme_name', match.name)
+            self._lcd_config.persist(dev, 'theme_type', 'local')
             self._lcd_config.persist(dev, 'mask_id', '')
 
         return result

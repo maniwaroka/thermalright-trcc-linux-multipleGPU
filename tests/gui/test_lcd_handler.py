@@ -355,7 +355,9 @@ class TestThemeSelection:
 
         lcd_handler.select_theme_from_path(path, persist=True)
         mock_settings.save_device_setting.assert_any_call(
-            'dev0', 'theme_path', '/themes/TestTheme')
+            'dev0', 'theme_name', path.name)
+        mock_settings.save_device_setting.assert_any_call(
+            'dev0', 'theme_type', 'local')
 
     @patch('trcc.gui.lcd_handler.Settings')
     @patch('trcc.gui.lcd_handler.ThemeInfo')
