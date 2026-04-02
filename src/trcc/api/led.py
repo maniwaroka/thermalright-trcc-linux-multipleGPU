@@ -153,8 +153,9 @@ def set_clock(body: ClockFormatRequest) -> dict:
 
 @router.post("/temp-unit")
 def set_temp_unit(body: TempUnitRequest) -> dict:
-    """Set LED segment display temperature unit (C/F)."""
+    """Set LED segment display temperature unit (0=Celsius, 1=Fahrenheit)."""
     return dispatch_result(_led().set_temp_unit(body.unit))
+
 
 
 # ── Test endpoint ─────────────────────────────────────────────────────

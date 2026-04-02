@@ -77,6 +77,16 @@ class LCDDevice(Device):
         if self._display_svc is not None and self._display_svc.on_data_ready is not None:
             self._display_svc.on_data_ready()
 
+    def initialize_pipeline(self, settings: Any) -> None:
+        """Post-connect initialization — set resolution + data dir from settings."""
+        info = self.device_info
+        res = getattr(info, 'resolution', (0, 0))
+        if res and res != (0, 0):
+            w, h = res
+            settings.set_resolution(w, h)
+            self.set_resolution(w, h)
+            self.initialize(settings.user_data_dir)
+
     def set_data_ready_callback(self, fn: Any) -> None:
         """Register a callback invoked when background data extraction completes."""
         if self._display_svc is not None:

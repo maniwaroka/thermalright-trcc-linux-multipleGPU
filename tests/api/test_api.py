@@ -473,11 +473,9 @@ class TestLEDEndpoints(unittest.TestCase):
         resp = self.client.post("/led/sensor", json={"source": "ram"})
         self.assertEqual(resp.status_code, 400)
 
-    def test_set_temp_unit_invalid(self):
-        self.mock_led.set_temp_unit.return_value = {
-            "success": False, "error": "Unit must be 'C' or 'F'"}
+    def test_set_temp_unit_invalid_type(self):
         resp = self.client.post("/led/temp-unit", json={"unit": "K"})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 422)  # Pydantic rejects non-int
 
     def test_led_no_device_returns_409(self):
         api_module._led_dispatcher = None
@@ -1848,7 +1846,7 @@ class TestLEDErrorPaths(unittest.TestCase):
 
     def test_temp_unit_no_device_returns_409(self) -> None:
         api_module._led_dispatcher = None
-        resp = self.client.post("/led/temp-unit", json={"unit": "C"})
+        resp = self.client.post("/led/temp-unit", json={"unit": 0})
         self.assertEqual(resp.status_code, 409)
 
     def test_segment_toggle_no_device_returns_409(self) -> None:
@@ -2669,17 +2667,17 @@ class TestLEDHappyPaths(unittest.TestCase):
     def test_temp_unit_celsius(self) -> None:
         self.mock_led.set_temp_unit.return_value = {
             "success": True, "message": "Temperature unit set to C"}
-        resp = self.client.post("/led/temp-unit", json={"unit": "C"})
+        resp = self.client.post("/led/temp-unit", json={"unit": 0})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["success"])
-        self.mock_led.set_temp_unit.assert_called_once_with("C")
+        self.mock_led.set_temp_unit.assert_called_once_with(0)
 
     def test_temp_unit_fahrenheit(self) -> None:
         self.mock_led.set_temp_unit.return_value = {
             "success": True, "message": "Temperature unit set to F"}
-        resp = self.client.post("/led/temp-unit", json={"unit": "F"})
+        resp = self.client.post("/led/temp-unit", json={"unit": 1})
         self.assertEqual(resp.status_code, 200)
-        self.mock_led.set_temp_unit.assert_called_once_with("F")
+        self.mock_led.set_temp_unit.assert_called_once_with(1)
 
     # ── Dispatch failure paths ─────────────────────────────────────────
 

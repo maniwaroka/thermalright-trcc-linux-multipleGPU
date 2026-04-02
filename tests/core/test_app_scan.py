@@ -449,20 +449,10 @@ class TestHotPlug:
 # ── IPC handler injection via _wire_bus ───────────────────────────────────────
 
 class TestWireBusIpcInjection:
-    def test_find_active_fn_injected_into_lcd_device(self, app):
+    def test_ipc_handlers_injected_via_wire_ipc(self, app):
         find_fn = MagicMock()
-        app._find_active_fn = find_fn
-
-        detected = _detected("2-1")
-        lcd_dev = _mock_lcd_device("2-1")
-        app._builder.build_device.return_value = lcd_dev
-
-        app.device_connected(detected)
-
-        assert lcd_dev._find_active_fn is find_fn
-
-    def test_proxy_factory_fn_injected_into_lcd_device(self, app):
         proxy_fn = MagicMock()
+        app._find_active_fn = find_fn
         app._proxy_factory_fn = proxy_fn
 
         detected = _detected("2-1")
@@ -471,4 +461,4 @@ class TestWireBusIpcInjection:
 
         app.device_connected(detected)
 
-        assert lcd_dev._proxy_factory_fn is proxy_fn
+        lcd_dev.wire_ipc.assert_called_once_with(find_fn, proxy_fn)

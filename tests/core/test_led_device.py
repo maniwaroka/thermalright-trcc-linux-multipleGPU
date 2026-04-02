@@ -356,18 +356,14 @@ class TestSegmentOperations(unittest.TestCase):
         self.assertTrue(result['success'])
         self.assertIn('12h', result['message'])
 
-    def test_set_temp_unit_celsius(self):
-        result = self.led.set_temp_unit('C')
-        self.assertTrue(result['success'])
-
-    def test_set_temp_unit_fahrenheit(self):
-        result = self.led.set_temp_unit('f')
+    def test_set_temp_unit(self):
+        for unit, expected in [(0, "C"), (1, "F")]:
+            result = self.led.set_temp_unit(unit)
+            self.assertTrue(result['success'])
+            self.assertEqual(result['message'], f"Temperature unit set to {expected}")
         self.assertTrue(result['success'])
         self.led._svc.set_seg_temp_unit.assert_called_with('F')
 
-    def test_set_temp_unit_invalid(self):
-        result = self.led.set_temp_unit('K')
-        self.assertFalse(result['success'])
 
     def test_set_seg_temp_unit_alias(self):
         """set_seg_temp_unit is an alias for set_temp_unit."""

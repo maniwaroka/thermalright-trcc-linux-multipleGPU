@@ -127,7 +127,7 @@ class ClockFormatRequest(BaseModel):
 
 
 class TempUnitRequest(BaseModel):
-    unit: str
+    unit: int  # 0=Celsius, 1=Fahrenheit
 
 
 # ── Theme request models ───────────────────────────────────────────────

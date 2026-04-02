@@ -213,6 +213,21 @@ class Device(ABC):
     def device_info(self) -> Any:
         """DeviceInfo — models hold all device state."""
 
+    def wire_ipc(self, find_active_fn: Any, proxy_factory_fn: Any) -> None:
+        """Inject IPC routing functions for proxy delegation."""
+        self._find_active_fn = find_active_fn
+        self._proxy_factory_fn = proxy_factory_fn
+
+    def initialize_pipeline(self, settings: Any) -> None:
+        """Post-connect initialization. Override in LCD to set resolution + data dir."""
+
+    def notify_data_ready(self) -> None:
+        """Data extraction completed. Override in LCD to refresh theme dirs."""
+
+    @abstractmethod
+    def set_temp_unit(self, unit: int) -> dict:
+        """Set temperature unit (0=Celsius, 1=Fahrenheit)."""
+
     @abstractmethod
     def update_metrics(self, metrics: Any) -> dict:
         """Push polled hardware metrics into the device (overlay/LED effects).

@@ -725,12 +725,12 @@ class TestLEDHandler:
     # ── set_temp_unit ────────────────────────────────────────────
 
     def test_set_temp_unit_no_led(self, handler):
-        handler.set_temp_unit("C")  # Should not raise
+        handler.set_temp_unit(0)  # Should not raise
 
     def test_set_temp_unit_with_led(self, handler):
         mock_led = self._wire_led(handler)
-        handler.set_temp_unit("F")
-        mock_led.set_seg_temp_unit.assert_called_once_with("F")
+        handler.set_temp_unit(1)
+        mock_led.set_seg_temp_unit.assert_called_once_with(1)
 
     # ── _sync_ui_from_state ──────────────────────────────────────
 

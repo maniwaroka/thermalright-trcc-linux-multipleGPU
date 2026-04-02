@@ -214,28 +214,28 @@ class TrccApp:
         Called at the end of bootstrap() so the UI starts with data present.
         Hotplug uses _ensure_data_background() instead.
         """
-        from .lcd_device import LCDDevice as _LCD
         ensure_fn = self._ensure_data_fn
         if ensure_fn is None:
             return
         seen: set[tuple[int, int]] = set()
         for device in self._devices.values():
-            if not (device.is_lcd and isinstance(device, _LCD)):
+            if not device.is_lcd:
                 continue
-            w, h = device.device_info.resolution
+            info = device.device_info
+            w, h = getattr(info, 'resolution', (0, 0))
             if w and h and (w, h) not in seen:
                 seen.add((w, h))
                 ensure_fn(w, h, progress_fn=lambda msg: self._notify(AppEvent.BOOTSTRAP_PROGRESS, msg))
                 device.notify_data_ready()
 
-    def _ensure_data_background(self, lcd: LCDDevice, w: int, h: int) -> None:
+    def _ensure_data_background(self, device: Device, w: int, h: int) -> None:
         """Ensure theme data in a background thread (hotplug path)."""
         ensure_fn = self._ensure_data_fn
 
         def _bg() -> None:
             if ensure_fn is not None:
                 ensure_fn(w, h)
-            lcd.notify_data_ready()
+            device.notify_data_ready()
 
         threading.Thread(target=_bg, daemon=True, name="data-extract").start()
 
@@ -250,9 +250,9 @@ class TrccApp:
         self._devices[detected.path] = device
         self._wire_device(device)
         # Hotplug: ensure data in background (UI already running, can't block).
-        from .lcd_device import LCDDevice as _LCD
-        if device.is_lcd and isinstance(device, _LCD):
-            w, h = device.device_info.resolution
+        if device.is_lcd:
+            info = device.device_info
+            w, h = getattr(info, 'resolution', (0, 0))
             if w and h:
                 self._ensure_data_background(device, w, h)
         self._notify(AppEvent.DEVICE_CONNECTED, device)
@@ -268,36 +268,19 @@ class TrccApp:
             self._notify(AppEvent.DEVICE_LOST, device)
 
     def _wire_device(self, device: Device) -> None:
-        """Store device reference and initialize if LCD.
+        """Store device reference and initialize pipeline.
 
         IPC handlers (set via set_ipc_handlers) are injected here so that
         devices built by scan() can proxy to a running GUI/API instance.
         """
-        from .lcd_device import LCDDevice as _LCD
-        from .led_device import LEDDevice as _LED
-        if device.is_lcd and isinstance(device, _LCD):
-            if self._find_active_fn is not None:
-                device._find_active_fn = self._find_active_fn
-            if self._proxy_factory_fn is not None:
-                device._proxy_factory_fn = self._proxy_factory_fn
+        device.wire_ipc(self._find_active_fn, self._proxy_factory_fn)
+        if device.is_lcd:
             self._lcd_device = device
             log.debug("LCD device ready: %s", getattr(device, 'device_path', '?'))
-            # Initialize display pipeline with the resolution from USB handshake.
-            info = device.device_info
-            res = getattr(info, 'resolution', (0, 0))
-            if res and res != (0, 0):
-                self._initialize_lcd(device, res[0], res[1])
-        elif device.is_led and isinstance(device, _LED):
+            device.initialize_pipeline(self._settings)
+        elif device.is_led:
             self._led_device = device
             log.debug("LED device ready: %s", getattr(device, 'device_path', '?'))
-
-    def _initialize_lcd(self, lcd: LCDDevice, w: int, h: int) -> None:
-        """Initialize LCD device pipeline: settings, data dir, ensure data."""
-        log.debug("_initialize_lcd: width=%d height=%d", w, h)
-        self._settings.set_resolution(w, h)
-        lcd.set_resolution(w, h)
-        lcd.initialize(self._settings.user_data_dir)
-        self._ensure_data_background(lcd, w, h)
 
     @property
     def devices(self) -> list[Device]:
@@ -393,15 +376,10 @@ class TrccApp:
 
         # Push to all connected devices
         unit_str = 'F' if unit else 'C'
-        from .lcd_device import LCDDevice as _LCD
-        from .led_device import LEDDevice as _LED
         for device in self._devices.values():
-            if isinstance(device, _LCD):
-                device.set_temp_unit(unit)
-                if fresh is not None:
-                    device.update_metrics(fresh)
-            elif isinstance(device, _LED):
-                device.set_temp_unit(unit_str)
+            device.set_temp_unit(unit)
+            if fresh is not None:
+                device.update_metrics(fresh)
 
         self.wake_metrics_loop()
         return {"success": True, "message": f"Temperature unit set to °{unit_str}"}

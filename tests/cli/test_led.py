@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from trcc.core.led_device import LEDDevice
 from trcc.core.models import LEDMode
 
@@ -526,28 +528,11 @@ class TestLEDDeviceSegmentOps:
         led.set_clock_format(True)
         mock_led_svc.set_clock_format.assert_called_once_with(True)
 
-    def test_set_temp_unit_celsius(self, led, mock_led_svc):
-        result = led.set_temp_unit('C')
-        assert result["success"] is True
-        assert "C" in result["message"]
-
-    def test_set_temp_unit_fahrenheit(self, led, mock_led_svc):
-        result = led.set_temp_unit('F')
-        assert result["success"] is True
-        assert "F" in result["message"]
-
-    def test_set_temp_unit_lowercase(self, led, mock_led_svc):
-        result = led.set_temp_unit('f')
-        assert result["success"] is True
-
-    def test_set_temp_unit_invalid(self, led):
-        result = led.set_temp_unit('K')
-        assert result["success"] is False
-        assert "C" in result["error"] and "F" in result["error"]
-
-    def test_set_temp_unit_calls_svc(self, led, mock_led_svc):
-        led.set_temp_unit('C')
-        mock_led_svc.set_seg_temp_unit.assert_called_once_with('C')
+    @pytest.mark.parametrize("unit,expected_str", [(0, "C"), (1, "F")])
+    def test_set_temp_unit(self, led, mock_led_svc, unit, expected_str):
+        result = led.set_temp_unit(unit)
+        assert result == {"success": True, "message": f"Temperature unit set to {expected_str}"}
+        mock_led_svc.set_seg_temp_unit.assert_called_with(expected_str)
 
 
 # =========================================================================
@@ -1017,9 +1002,3 @@ class TestCLICommands:
         result = CliRunner().invoke(app, ['led-temp-unit', 'F'], standalone_mode=False, catch_exceptions=False)
         assert result.return_value == 0
 
-    def test_set_temp_unit_invalid(self, mock_connect_led):
-        from typer.testing import CliRunner
-
-        from trcc.cli import app
-        result = CliRunner().invoke(app, ['led-temp-unit', 'X'], standalone_mode=False, catch_exceptions=False)
-        assert result.return_value == 1

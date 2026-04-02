@@ -438,17 +438,16 @@ class LEDDevice(Device):
         return {"success": True}
 
     @_forward_to_proxy
-    def set_temp_unit(self, unit: str) -> dict:
-        unit = unit.upper()
-        if unit not in ('C', 'F'):
-            return {"success": False, "error": "Unit must be 'C' or 'F'"}
-        self._svc.set_seg_temp_unit(unit)
+    def set_temp_unit(self, unit: int) -> dict:
+        """Set temperature unit (0=Celsius, 1=Fahrenheit)."""
+        unit_str = 'F' if unit else 'C'
+        self._svc.set_seg_temp_unit(unit_str)
         self._send_and_save()
         return {"success": True,
-                "message": f"Temperature unit set to {unit}"}
+                "message": f"Temperature unit set to {unit_str}"}
 
     # Alias — GUI calls this name directly
-    def set_seg_temp_unit(self, unit: str) -> dict:
+    def set_seg_temp_unit(self, unit: int) -> dict:
         return self.set_temp_unit(unit)
 
     def set_disk_index(self, index: int) -> dict:

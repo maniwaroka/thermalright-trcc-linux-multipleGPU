@@ -1743,10 +1743,10 @@ class TRCCApp(QMainWindow):
 
     def _on_temp_unit_changed(self, unit: str) -> None:
         log.debug("_on_temp_unit_changed: unit=%s", unit)
-        temp_int = 1 if unit == 'F' else 0
+        temp_unit = 1 if unit == 'F' else 0
 
         from trcc.core.app import TrccApp
-        TrccApp.get().apply_temp_unit(temp_int)
+        TrccApp.get().apply_temp_unit(temp_unit)
 
         # GUI-only: re-render each LCD handler's preview
         for handler in self._handlers.values():
@@ -1754,8 +1754,8 @@ class TRCCApp(QMainWindow):
                 handler._render_and_send()
 
         # GUI-only widget updates
-        self.uc_system_info.set_temp_unit(temp_int)
-        self.uc_led_control.set_temp_unit(temp_int)
+        self.uc_system_info.set_temp_unit(temp_unit)
+        self.uc_led_control.set_temp_unit(temp_unit)
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
     def _on_hdd_toggle_changed(self, on: bool) -> None:

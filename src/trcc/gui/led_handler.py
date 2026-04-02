@@ -118,9 +118,9 @@ class LEDHandler(BaseHandler):
             self._led.save_config()
             self._led.cleanup()
 
-    def set_temp_unit(self, unit: str) -> None:
+    def set_temp_unit(self, unit: int) -> None:
         if self._led:
-            log.debug("LED: temp_unit=%s", unit)
+            log.debug("LED: temp_unit=%d", unit)
             self._led.set_seg_temp_unit(unit)
 
     def restart_if_needed(self) -> None:
