@@ -24,16 +24,8 @@ def _connect_or_fail(device: str | None = None) -> int:
 
 def _print_result(result: dict, *, preview: bool = False) -> int:
     """Print result message + optional ANSI preview. Returns exit code."""
-    if not result["success"]:
-        print(f"Error: {result.get('error', 'Unknown error')}")
-        return 1
-    if result.get("warning"):
-        print(f"Warning: {result['warning']}")
-    print(result["message"])
-    if preview and result.get("image"):
-        from trcc.services import ImageService
-        print(ImageService.to_ansi(result["image"]))
-    return 0
+    from trcc.cli._connect import print_result
+    return print_result(result, preview=preview)
 
 
 # =========================================================================

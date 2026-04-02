@@ -250,24 +250,38 @@ class Device(ABC):
         """Release resources on shutdown."""
 
 
-class DeviceConfigService(ABC):
-    """Port: per-device config persistence.
+class DeviceConfigService:
+    """Per-device config persistence — shared base for LCD and LED.
 
-    Shared interface for LCD and LED config services.
-    Concrete: LCDConfigService, LEDConfigService.
+    Concrete implementation of device_key, persist, get_config.
+    Subclasses add device-specific methods (apply_format_prefs for LCD,
+    save_state/load_state for LED).
     """
 
-    @abstractmethod
+    def __init__(
+        self,
+        config_key_fn: Callable[..., str],
+        save_setting_fn: Callable[..., None],
+        get_config_fn: Callable[..., dict],
+    ) -> None:
+        self._config_key_fn = config_key_fn
+        self._save_fn = save_setting_fn
+        self._get_fn = get_config_fn
+
     def device_key(self, dev: Any) -> str:
         """Compute per-device config key from device info."""
+        return self._config_key_fn(dev.device_index, dev.vid, dev.pid)
 
-    @abstractmethod
     def persist(self, dev: Any, field: str, value: Any) -> None:
         """Save a single setting for a device."""
+        if dev:
+            self._save_fn(self.device_key(dev), field, value)
 
-    @abstractmethod
     def get_config(self, dev: Any) -> dict:
         """Read full per-device config dict."""
+        if not dev:
+            return {}
+        return self._get_fn(self.device_key(dev))
 
 
 # =========================================================================

@@ -36,3 +36,24 @@ def connect_device(
         return 1
     log.debug("%s connected successfully", device_type.upper())
     return 0
+
+
+def print_result(result: dict, *, preview: bool = False) -> int:
+    """Print result message + optional ANSI preview. Returns exit code.
+
+    Shared by LCD and LED CLI commands. Handles both image and color previews.
+    """
+    if not result["success"]:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        return 1
+    if result.get("warning"):
+        print(f"Warning: {result['warning']}")
+    print(result["message"])
+    if preview:
+        if result.get("image"):
+            from trcc.services import ImageService
+            print(ImageService.to_ansi(result["image"]))
+        elif result.get("colors"):
+            from trcc.services import LEDService
+            print(LEDService.zones_to_ansi(result["colors"]))
+    return 0

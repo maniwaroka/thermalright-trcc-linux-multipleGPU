@@ -123,31 +123,9 @@ def load_led_config(
 class LEDConfigService(DeviceConfigService):
     """LED per-device config persistence — injected into LEDDevice/LEDService.
 
-    Same interface as LCDConfigService. Adds save_state/load_state for
-    bulk LEDState serialization (LED-specific).
+    Inherits device_key, persist, get_config from DeviceConfigService.
+    Adds save_state/load_state for bulk LEDState serialization (LED-specific).
     """
-
-    def __init__(
-        self,
-        config_key_fn: Callable[..., str],
-        save_setting_fn: Callable[..., None],
-        get_config_fn: Callable[..., dict],
-    ) -> None:
-        self._config_key_fn = config_key_fn
-        self._save_fn = save_setting_fn
-        self._get_fn = get_config_fn
-
-    def device_key(self, dev: Any) -> str:
-        return self._config_key_fn(dev.device_index, dev.vid, dev.pid)
-
-    def persist(self, dev: Any, field: str, value: Any) -> None:
-        if dev:
-            self._save_fn(self.device_key(dev), field, value)
-
-    def get_config(self, dev: Any) -> dict:
-        if not dev:
-            return {}
-        return self._get_fn(self.device_key(dev))
 
     def save_state(self, dev: Any, state: LEDState) -> None:
         """Bulk serialize LEDState. LED-specific."""

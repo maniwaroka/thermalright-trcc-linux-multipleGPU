@@ -23,14 +23,8 @@ def _connect_or_fail() -> int:
 
 def _print_result(result: dict, *, preview: bool = False) -> int:
     """Print result message + optional ANSI preview. Returns exit code."""
-    if not result["success"]:
-        print(f"Error: {result.get('error', 'Unknown error')}")
-        return 1
-    print(result["message"])
-    if preview and result.get("colors"):
-        from trcc.services import LEDService
-        print(LEDService.zones_to_ansi(result["colors"]))
-    return 0
+    from trcc.cli._connect import print_result
+    return print_result(result, preview=preview)
 
 
 def _led_call(method_name: str, preview: bool = False, **kwargs) -> int:
