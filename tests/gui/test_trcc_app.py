@@ -1132,13 +1132,13 @@ class TestLEDHandler:
 
     # ── Metrics ──────────────────────────────────────────────────
 
-    def test_update_from_metrics_no_led(self, handler):
-        handler.update_from_metrics(MagicMock())  # Should not raise
+    def test_update_metrics_no_led(self, handler):
+        handler.update_metrics(MagicMock())  # Should not raise
 
-    def test_update_from_metrics_forwards_to_led_and_panel(self, handler):
+    def test_update_metrics_forwards_to_led_and_panel(self, handler):
         mock_led = self._wire_led(handler)
         metrics = MagicMock()
-        handler.update_from_metrics(metrics)
+        handler.update_metrics(metrics)
         mock_led.update_metrics.assert_called_once_with(metrics)
         handler._panel.update_metrics.assert_called_once_with(metrics)
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
     from ..core.models import DeviceInfo
@@ -61,12 +61,21 @@ class BaseHandler(ABC):
         """Current DeviceInfo for sidebar display, or None if unavailable."""
 
     @abstractmethod
+    def update_metrics(self, metrics: Any) -> None:
+        """Push hardware metrics into device + UI. Called by TRCCApp tick loop."""
+
     def cleanup(self) -> None:
-        """Stop all timers and release device resources."""
+        """Stop all timers and release device resources. Template method."""
+        self.stop_timers()
+        self._cleanup_device()
 
     @abstractmethod
     def stop_timers(self) -> None:
         """Pause all timers (e.g. on system sleep)."""
+
+    @abstractmethod
+    def _cleanup_device(self) -> None:
+        """Release device-specific resources. Called by cleanup()."""
 
 
 class BasePanel(QFrame):

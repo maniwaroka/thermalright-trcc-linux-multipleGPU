@@ -484,7 +484,7 @@ class LCDHandler(BaseHandler):
         """Display a frame that was already rendered and sent to the device."""
         self._w['preview'].set_image(image)
 
-    def on_overlay_tick(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: Any) -> None:
         """Metrics tick: video cache text update only."""
         if not self._lcd.connected or not self._lcd.playing:
             return
@@ -692,14 +692,11 @@ class LCDHandler(BaseHandler):
         """Stop all timers (called when switching away from this device)."""
         self._animation_timer.stop()
         self._slideshow_timer.stop()
-
-    def cleanup(self) -> None:
-        """Full cleanup on shutdown."""
-        self._animation_timer.stop()
-        self._slideshow_timer.stop()
         self._flash_timer.stop()
+
+    def _cleanup_device(self) -> None:
+        """Release LCD resources — stop playback, send black, disconnect."""
         self._lcd.stop()
-        # Stop async send worker and send black frame before disconnecting.
         try:
             self._lcd.device_service.stop_send_worker()
             self._lcd.send_color(0, 0, 0)

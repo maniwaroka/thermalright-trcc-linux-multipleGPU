@@ -423,7 +423,8 @@ class TRCCApp(QMainWindow):
         if isinstance(device, LEDDevice):
             if path not in self._handlers:
                 handler: BaseHandler = LEDHandler(
-                    device, self.uc_led_control, self._on_temp_unit_changed)
+                    device, self.uc_led_control, self._on_temp_unit_changed,
+                    make_timer=self._make_timer)
                 self._handlers[path] = handler
                 log.info("LED handler added: %s", path)
         elif isinstance(device, LCDDevice):
@@ -535,10 +536,10 @@ class TRCCApp(QMainWindow):
         if self.is_app_visible() and self.uc_activity_sidebar.isVisible():
             self.uc_activity_sidebar.update_from_metrics(metrics)
 
-        # Notify active LCD handler for video debounce (overlay tick without render)
+        # Notify active handler for metrics-driven updates
         handler = self._handlers.get(self._active_path)
-        if isinstance(handler, LCDHandler):
-            handler.on_overlay_tick(metrics)
+        if handler is not None:
+            handler.update_metrics(metrics)
 
     def _on_frame_main_thread(self, payload: Any) -> None:
         """Receive a rendered frame from the background tick loop and push to preview.

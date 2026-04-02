@@ -40,6 +40,7 @@ class LEDHandler(BaseHandler):
         led: LEDDevice,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
+        make_timer: Any = None,
     ) -> None:
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
@@ -48,8 +49,11 @@ class LEDHandler(BaseHandler):
         self._style_id = 0
         self._save_counter = 0
 
-        self._timer = QTimer(panel)
-        self._timer.timeout.connect(self._on_tick)
+        if make_timer:
+            self._timer = make_timer(self._on_tick)
+        else:
+            self._timer = QTimer(panel)
+            self._timer.timeout.connect(self._on_tick)
         self._connect_signals()
 
     # ── BaseHandler interface ────────────────────────────────────────
@@ -62,15 +66,14 @@ class LEDHandler(BaseHandler):
     def device_info(self) -> DeviceInfo | None:
         return self._led.device_info if self._led else None
 
-    def cleanup(self) -> None:
-        log.info("LED: cleanup")
+    def stop_timers(self) -> None:
         self._timer.stop()
+
+    def _cleanup_device(self) -> None:
+        log.info("LED: cleanup")
         if self._led:
             self._led.save_config()
             self._led.cleanup()
-
-    def stop_timers(self) -> None:
-        self._timer.stop()
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -129,7 +132,7 @@ class LEDHandler(BaseHandler):
             log.warning("LED tick timer was stopped — restarting")
             self._timer.start(150)
 
-    def update_from_metrics(self, metrics: Any) -> None:
+    def update_metrics(self, metrics: Any) -> None:
         if not self._led:
             return
         self._led.update_metrics(metrics)

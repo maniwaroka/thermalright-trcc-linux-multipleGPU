@@ -6,7 +6,7 @@ Covers:
 - Theme selection: path-based, cloud, animated, persist flag
 - Mask application: apply_mask, persist mask_path (mask restore logic tested in test_lcd_device.py)
 - Video: play_pause, stop, seek, tick routing
-- Overlay: on_overlay_changed, on_overlay_tick, flash_element
+- Overlay: on_overlay_changed, update_metrics, flash_element
 - Display settings: set_brightness, set_rotation, set_split_mode
 - Background toggle, screencast frame routing
 - Slideshow: update state, tick, timer management
@@ -547,7 +547,7 @@ class TestVideo:
 
 
 class TestOverlay:
-    """on_overlay_changed, on_overlay_tick, flash_element."""
+    """on_overlay_changed, update_metrics, flash_element."""
 
     @patch('trcc.gui.lcd_handler.Settings')
     def test_overlay_changed_dispatches_enable_and_config(self, mock_settings, lcd_handler, mock_lcd_device):
@@ -583,31 +583,31 @@ class TestOverlay:
         assert saved[1] == 'overlay'
 
     def test_overlay_tick_no_overlay_no_send(self, lcd_handler, mock_lcd_device):
-        """on_overlay_tick must NOT send for static no-overlay themes."""
+        """update_metrics must NOT send for static no-overlay themes."""
         lcd_handler._lcd.playing = False
         lcd_handler._lcd.enabled = False
         lcd_handler._lcd.connected = True
-        lcd_handler.on_overlay_tick(MagicMock())
+        lcd_handler.update_metrics(MagicMock())
         mock_lcd_device.render_and_send.assert_not_called()
         mock_lcd_device.rebuild_video_cache.assert_not_called()
 
     def test_overlay_tick_overlay_enabled_no_send(self, lcd_handler, mock_lcd_device):
-        """on_overlay_tick must NOT send when overlay is enabled."""
+        """update_metrics must NOT send when overlay is enabled."""
         lcd_handler._lcd.playing = False
         lcd_handler._lcd.enabled = True
         lcd_handler._lcd.connected = True
-        lcd_handler.on_overlay_tick(MagicMock())
+        lcd_handler.update_metrics(MagicMock())
         mock_lcd_device.render_and_send.assert_not_called(), (
-            "on_overlay_tick must not send when overlay is enabled — "
+            "update_metrics must not send when overlay is enabled — "
             "tick() owns the send to avoid double-send blink"
         )
         mock_lcd_device.rebuild_video_cache.assert_not_called()
 
     def test_overlay_tick_noop_when_disconnected(self, lcd_handler, mock_lcd_device):
-        """on_overlay_tick does nothing when device is not connected."""
+        """update_metrics does nothing when device is not connected."""
         lcd_handler._lcd.playing = False
         lcd_handler._lcd.connected = False
-        lcd_handler.on_overlay_tick(MagicMock())
+        lcd_handler.update_metrics(MagicMock())
         mock_lcd_device.render_and_send.assert_not_called()
         mock_lcd_device.rebuild_video_cache.assert_not_called()
 
@@ -618,18 +618,18 @@ class TestOverlay:
         lcd_handler._w['preview'].set_image.assert_called_once_with(image)
 
     def test_overlay_tick_during_video_dispatches_update_cache_text(self, lcd_handler, mock_lcd_device):
-        """on_overlay_tick while video plays calls rebuild_video_cache directly."""
+        """update_metrics while video plays calls rebuild_video_cache directly."""
         lcd_handler._lcd.enabled = True
         lcd_handler._lcd.playing = True
         metrics = MagicMock()
-        lcd_handler.on_overlay_tick(metrics)
+        lcd_handler.update_metrics(metrics)
         mock_lcd_device.update_video_cache_text.assert_called_with(metrics)
 
     def test_overlay_tick_video_no_render_and_send(self, lcd_handler, mock_lcd_device):
-        """on_overlay_tick while video plays must not call render_and_send."""
+        """update_metrics while video plays must not call render_and_send."""
         lcd_handler._lcd.enabled = True
         lcd_handler._lcd.playing = True
-        lcd_handler.on_overlay_tick(MagicMock())
+        lcd_handler.update_metrics(MagicMock())
         mock_lcd_device.render_and_send.assert_not_called()
 
     def test_flash_element_calls_set_flash_index(self, lcd_handler, mock_lcd_device):
