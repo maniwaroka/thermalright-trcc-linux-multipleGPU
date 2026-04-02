@@ -68,8 +68,20 @@ def mask_dir(tmp_path: Path, renderer: Any) -> Path:
 
 
 @pytest.fixture()
-def display_svc(renderer: Any) -> DisplayService:
-    """DisplayService with real OverlayService, mocked device/media."""
+def mock_path_resolver(tmp_path: Path) -> MagicMock:
+    """Mock PlatformSetup path resolver — returns dirs under tmp_path."""
+    resolver = MagicMock()
+    resolver.data_dir.return_value = str(tmp_path / 'data')
+    resolver.user_content_dir.return_value = str(tmp_path / 'user')
+    resolver.web_dir = lambda w, h: str(tmp_path / 'data' / 'web' / f'{w}{h}')
+    resolver.web_masks_dir = lambda w, h: str(tmp_path / 'data' / 'web' / f'zt{w}{h}')
+    resolver.user_masks_dir = lambda w, h: str(tmp_path / 'user' / 'data' / 'web' / f'zt{w}{h}')
+    return resolver
+
+
+@pytest.fixture()
+def display_svc(renderer: Any, mock_path_resolver: MagicMock) -> DisplayService:
+    """DisplayService with real OverlayService, mocked device/media, injected path_resolver."""
     devices = MagicMock()
     overlay = OverlayService(320, 320, renderer=renderer)
     media = MagicMock()
@@ -79,7 +91,8 @@ def display_svc(renderer: Any) -> DisplayService:
     media.source_path = None
     media.get_frame.return_value = None
 
-    svc = DisplayService(devices, overlay, media)
+    svc = DisplayService(devices, overlay, media, path_resolver=mock_path_resolver)
+    svc.set_resolution(320, 320)
     svc.current_image = renderer.create_surface(320, 320, (0, 0, 255))
     svc._clean_background = svc.current_image
     return svc
@@ -95,13 +108,6 @@ def lcd(display_svc: DisplayService, renderer: Any) -> LCDDevice:
     )
 
 
-@pytest.fixture()
-def mock_settings():
-    """Patch settings for 320x320."""
-    with patch('trcc.conf.settings') as s:
-        s.width = 320
-        s.height = 320
-        yield s
 
 
 # ── ThemePersistence.save() ───────────────────────────────────────────────────
@@ -193,8 +199,7 @@ class TestThemePersistenceSave:
 class TestDisplayServiceSaveTheme:
 
     def test_passes_clean_background(
-        self, display_svc: DisplayService, tmp_path: Path,
-        mock_settings: Any, renderer: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """save_theme must pass _clean_background, not current_image."""
         clean = renderer.create_surface(320, 320, (0, 0, 255))
@@ -202,7 +207,6 @@ class TestDisplayServiceSaveTheme:
         display_svc._clean_background = clean
         display_svc.current_image = dirty
 
-        mock_settings.user_content_dir = tmp_path
         with patch.object(ThemePersistence, 'save', return_value=(True, 'ok')) as mock_save:
             display_svc.save_theme('Test')
 
@@ -210,15 +214,13 @@ class TestDisplayServiceSaveTheme:
         assert passed is clean
 
     def test_falls_back_to_current_image(
-        self, display_svc: DisplayService, tmp_path: Path,
-        mock_settings: Any, renderer: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """When _clean_background is None, falls back to current_image."""
         current = renderer.create_surface(320, 320, (255, 0, 0))
         display_svc._clean_background = None
         display_svc.current_image = current
 
-        mock_settings.user_content_dir = tmp_path
         with patch.object(ThemePersistence, 'save', return_value=(True, 'ok')) as mock_save:
             display_svc.save_theme('Fallback')
 
@@ -244,17 +246,17 @@ class TestLoadMaskStandaloneWiring:
 
     def test_save_after_mask_has_mask_in_config(
         self, lcd: LCDDevice, display_svc: DisplayService,
-        mask_dir: Path, tmp_path: Path, mock_settings: Any,
+        mask_dir: Path, tmp_path: Path,
     ) -> None:
         """Full flow: load_mask_standalone → save → config.json has mask."""
         lcd.load_mask_standalone(str(mask_dir))
 
-        mock_settings.user_content_dir = tmp_path
         ok, msg = display_svc.save_theme('MaskTest')
         assert ok is True
 
+        user_dir = Path(display_svc._path_resolver.user_content_dir())
         config = json.loads(
-            (tmp_path / 'theme320320' / 'Custom_MaskTest' / 'config.json').read_text())
+            (user_dir / 'theme320320' / 'Custom_MaskTest' / 'config.json').read_text())
         assert config['mask'] == str(mask_dir), \
             f"Expected mask={mask_dir}, got {config['mask']}"
 
@@ -265,7 +267,7 @@ class TestLoadMaskStandaloneWiring:
 class TestCloudThemeStateWiring:
 
     def test_preserves_mask_source_dir_on_cloud_load(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """Cloud load (video-only) must preserve existing mask source dir."""
         mask_dir = Path('/applied/mask')
@@ -283,7 +285,7 @@ class TestCloudThemeStateWiring:
         assert display_svc._mask_source_dir == mask_dir
 
     def test_wires_theme_path(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """load_cloud_theme must set current_theme_path."""
         fake_path = Path('/fake/theme')
@@ -299,7 +301,7 @@ class TestCloudThemeStateWiring:
         assert display_svc.current_theme_path is fake_path
 
     def test_sets_clean_background_from_first_frame(
-        self, display_svc: DisplayService, mock_settings: Any, renderer: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """load_cloud_theme must set _clean_background from first video frame."""
         frame = renderer.create_surface(320, 320, (50, 50, 50))
@@ -317,7 +319,7 @@ class TestCloudThemeStateWiring:
         assert display_svc._clean_background is frame
 
     def test_save_after_cloud_load_preserves_mask(
-        self, display_svc: DisplayService, tmp_path: Path, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """Save after cloud load must preserve applied mask source dir."""
         mask_dir = Path('/applied/mask')
@@ -333,7 +335,6 @@ class TestCloudThemeStateWiring:
         with patch.object(display_svc._loader, 'load_cloud_theme', return_value=cloud_result):
             display_svc.load_cloud_theme(MagicMock())
 
-        mock_settings.user_content_dir = tmp_path
         with patch.object(ThemePersistence, 'save', return_value=(True, 'ok')) as mock_save:
             display_svc.save_theme('CloudSave')
 

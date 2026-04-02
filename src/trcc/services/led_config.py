@@ -1,13 +1,16 @@
-"""LED config persistence — save/load LEDState to conf.py.
+"""LED config persistence — save/load LEDState to per-device config.
 
 Extracted from LEDService (SRP). Memento pattern — _PERSIST_FIELDS and
 _ALIASES define the serialization schema. All functions operate on provided
 state; no mutable service state.
+
+Config callables (save_setting_fn, get_config_fn) are passed in by the
+caller — no lazy imports from conf.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from ..core.models import LEDMode, LEDState
 
@@ -48,11 +51,13 @@ def _serialize(val: Any) -> Any:
     return val
 
 
-def save_led_config(state: LEDState, device_key: str) -> None:
+def save_led_config(
+    state: LEDState,
+    device_key: str,
+    save_setting_fn: Callable[..., None],
+) -> None:
     """Serialize LEDState to config file."""
     try:
-        from ..conf import Settings
-
         config: Dict[str, Any] = {
             ck: _serialize(getattr(state, sa))
             for ck, sa in _PERSIST_FIELDS.items()
@@ -63,17 +68,19 @@ def save_led_config(state: LEDState, device_key: str) -> None:
              'brightness': z.brightness, 'on': z.on}
             for z in state.zones
         ]
-        Settings.save_device_setting(device_key, 'led_config', config)
+        save_setting_fn(device_key, 'led_config', config)
     except Exception as e:
         log.error("Failed to save LED config: %s", e)
 
 
-def load_led_config(state: LEDState, device_key: str) -> None:
+def load_led_config(
+    state: LEDState,
+    device_key: str,
+    get_config_fn: Callable[..., dict],
+) -> None:
     """Deserialize LEDState from config file."""
     try:
-        from ..conf import Settings
-
-        dev_config = Settings.get_device_config(device_key)
+        dev_config = get_config_fn(device_key)
         led_config = dev_config.get('led_config', {})
         if not led_config:
             return

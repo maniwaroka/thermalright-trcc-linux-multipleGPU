@@ -34,12 +34,8 @@ def _has_any_content(d: str) -> bool:
     return os.path.isdir(d) and bool(os.listdir(d))
 
 
-def _has_themes(theme_dir: str) -> bool:
-    """Check if a directory contains valid theme subdirectories with PNGs.
-
-    Mirrors ThemeDir.has_themes — duplicated here to avoid circular import
-    with core/models.py (ThemeDir.for_resolution imports from this module).
-    """
+def has_themes(theme_dir: str) -> bool:
+    """Check if a directory contains valid theme subdirectories with PNGs."""
     if not os.path.isdir(theme_dir):
         return False
     for item in os.listdir(theme_dir):
@@ -50,6 +46,22 @@ def _has_themes(theme_dir: str) -> bool:
             if any(f.endswith('.png') for f in os.listdir(item_path)):
                 return True
     return False
+
+
+def resolve_theme_dir(width: int, height: int) -> str:
+    """Resolve the best theme directory path for a resolution.
+
+    Tries user dir first, falls back to package dir. Returns a path string
+    (not ThemeDir — paths.py cannot import from models.py).
+    """
+    name = f'theme{width}{height}'
+    user_dir = os.path.join(USER_DATA_DIR, name)
+    if has_themes(user_dir):
+        return user_dir
+    pkg_dir = os.path.join(DATA_DIR, name)
+    if has_themes(pkg_dir):
+        return pkg_dir
+    return user_dir
 
 
 def _resolve_web_subdir(
@@ -75,7 +87,7 @@ def get_web_dir(width: int, height: int) -> str:
 
 def get_web_masks_dir(width: int, height: int) -> str:
     """Get cloud masks directory for a resolution."""
-    return _resolve_web_subdir(f'zt{width}{height}', check_fn=_has_themes)
+    return _resolve_web_subdir(f'zt{width}{height}', check_fn=has_themes)
 
 
 def is_safe_archive_member(name: str) -> bool:

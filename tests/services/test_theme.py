@@ -12,7 +12,7 @@ from PySide6.QtGui import QImage
 
 from trcc.adapters.infra.data_repository import ThemeDir
 from trcc.core.models import ThemeData, ThemeInfo, ThemeType
-from trcc.services.theme import ThemeService, _copy_flat_files
+from trcc.services.theme import ThemeService, _copy_flat_files, theme_info_from_directory
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -622,7 +622,7 @@ class TestLoadCopyBased:
     ) -> None:
         td = _make_theme_dir(tmp_path, 'Static', has_bg=True)
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options', return_value={},
@@ -641,7 +641,7 @@ class TestLoadCopyBased:
             tmp_path, 'Animated', has_bg=False, has_zt=True, has_preview=True
         )
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options', return_value={},
@@ -659,7 +659,7 @@ class TestLoadCopyBased:
             tmp_path, 'Mp4Theme', has_bg=True, has_mp4=True
         )
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options', return_value={},
@@ -678,7 +678,7 @@ class TestLoadCopyBased:
             has_bg=False, has_mask=True, has_preview=True
         )
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options', return_value={},
@@ -696,7 +696,7 @@ class TestLoadCopyBased:
         # Create the animation file that the DC references
         (td / 'clip.mp4').write_bytes(b'\x00' * 16)
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options',
@@ -715,7 +715,7 @@ class TestLoadCopyBased:
         but theme.animation_path has a fallback."""
         td = _make_theme_dir(tmp_path, 'DcFallback', has_bg=True, has_zt=True)
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
         # theme.is_animated=True, theme.animation_path=Theme.zt from from_directory
 
         with patch.object(
@@ -732,7 +732,7 @@ class TestLoadCopyBased:
         """No animation_file in DC, but theme.is_animated=True with animation_path."""
         td = _make_theme_dir(tmp_path, 'ThemeAnim', has_bg=True, has_zt=True)
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
         # theme.is_animated=True, theme.animation_path from the .zt file
 
         with patch.object(
@@ -749,7 +749,7 @@ class TestLoadCopyBased:
             tmp_path, 'WithMask', has_bg=True, has_mask=True
         )
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options', return_value={},
@@ -767,7 +767,7 @@ class TestLoadCopyBased:
             tmp_path, 'MaskDc', has_bg=True, has_mask=True, has_dc=True
         )
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
 
         with patch.object(
             ThemeService, '_load_dc_display_options', return_value={},
@@ -816,7 +816,7 @@ class TestLoadCopyBased:
         -> anim_file block matched but both inner branches fail, no bg set."""
         td = _make_theme_dir(tmp_path, 'NoAnim', has_bg=True)
         work = tmp_path / 'work'
-        theme = ThemeInfo.from_directory(td)
+        theme = theme_info_from_directory(td)
         # theme.is_animated=False because no .zt or .mp4
 
         with patch.object(
@@ -1149,8 +1149,8 @@ class TestExportImport:
 
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
-        with patch.object(
-            ThemeInfo, 'from_directory', return_value=fake_theme,
+        with patch(
+            'trcc.services.theme.theme_info_from_directory', return_value=fake_theme,
         ):
             ok, result = svc.import_tr(import_file, tmp_path, lcd_size)
 
@@ -1181,8 +1181,8 @@ class TestExportImport:
 
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
-        with patch.object(
-            ThemeInfo, 'from_directory', return_value=mismatched_theme,
+        with patch(
+            'trcc.services.theme.theme_info_from_directory', return_value=mismatched_theme,
         ), patch('trcc.services.theme.log') as mock_log:
             ok, result = svc.import_tr(import_file, tmp_path, lcd_size)
 
@@ -1201,8 +1201,8 @@ class TestExportImport:
 
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
-        with patch.object(
-            ThemeInfo, 'from_directory', return_value=zero_theme,
+        with patch(
+            'trcc.services.theme.theme_info_from_directory', return_value=zero_theme,
         ), patch('trcc.services.theme.log') as mock_log:
             ok, result = svc.import_tr(import_file, tmp_path, lcd_size)
 
@@ -1219,8 +1219,8 @@ class TestExportImport:
 
         mock_import = MagicMock()
         svc = ThemeService(import_theme_fn=mock_import)
-        with patch.object(
-            ThemeInfo, 'from_directory', return_value=matching_theme,
+        with patch(
+            'trcc.services.theme.theme_info_from_directory', return_value=matching_theme,
         ), patch('trcc.services.theme.log') as mock_log:
             ok, _ = svc.import_tr(import_file, tmp_path, lcd_size)
 

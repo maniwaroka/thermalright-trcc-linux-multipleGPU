@@ -73,10 +73,9 @@ def list_themes(resolution: str) -> list[ThemeResponse]:
 
     from pathlib import Path
 
-    from trcc.adapters.infra.data_repository import ThemeDir
     from trcc.conf import settings as _settings
-    td = ThemeDir.for_resolution(w, h)
-    theme_dir = Path(str(td))
+    from trcc.core.paths import resolve_theme_dir
+    theme_dir = Path(resolve_theme_dir(w, h))
     user_content_dir = getattr(_settings, 'user_content_dir', None)
     themes = ThemeService.discover_local_merged(
         theme_dir, user_content_dir, (w, h))
@@ -86,7 +85,7 @@ def list_themes(resolution: str) -> list[ThemeResponse]:
             category=t.category or "",
             is_animated=t.is_animated,
             has_config=t.config_path is not None,
-            preview_url=_preview_url(t.name, str(td.path)),
+            preview_url=_preview_url(t.name, str(theme_dir)),
         )
         for t in themes
     ]
@@ -341,10 +340,9 @@ def export_theme(theme_name: str, resolution: str | None = None) -> Response:
             detail="resolution required — no device connected and no resolution specified",
         )
 
-    from trcc.adapters.infra.data_repository import ThemeDir
     from trcc.conf import settings as _settings
-    td = ThemeDir.for_resolution(w, h)
-    theme_dir = Path(str(td))
+    from trcc.core.paths import resolve_theme_dir
+    theme_dir = Path(resolve_theme_dir(w, h))
     user_content_dir = getattr(_settings, 'user_content_dir', None)
 
     themes = ThemeService.discover_local_merged(
@@ -400,15 +398,15 @@ async def import_theme(file: UploadFile) -> dict:
         tmp_path = tmp.name
 
     try:
-        from trcc.adapters.infra.data_repository import ThemeDir
         from trcc.api import _display_dispatcher
+        from trcc.core.paths import resolve_theme_dir
         if not _display_dispatcher or not _display_dispatcher.connected:
             raise HTTPException(
                 status_code=409,
                 detail="No device connected. POST /devices/{id}/select first.",
             )
         w, h = _display_dispatcher.resolution  # type: ignore[union-attr]
-        data_dir = Path(str(ThemeDir.for_resolution(w, h)))
+        data_dir = Path(resolve_theme_dir(w, h))
         from trcc.adapters.infra.dc_config import DcConfig
         from trcc.adapters.infra.dc_parser import load_config_json
         from trcc.adapters.infra.dc_writer import import_theme as _import_fn

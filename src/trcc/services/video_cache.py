@@ -54,6 +54,7 @@ class VideoFrameCache:
         self._resolution: tuple[int, int] | None = None
         self._fbl: int | None = None
         self._use_jpeg: bool = False
+        self._encode_angle: int = 0
 
         # L3: per-frame brightness+rotation-adjusted native surfaces.
         # None = not yet adjusted for this frame index.
@@ -80,9 +81,9 @@ class VideoFrameCache:
         return self._text_overlay is not None
 
     @property
-    def encoding_params(self) -> tuple[str, tuple[int, int] | None, int | None, bool]:
-        """(protocol, resolution, fbl, use_jpeg) for encode_for_device."""
-        return self._protocol, self._resolution, self._fbl, self._use_jpeg
+    def encoding_params(self) -> tuple[str, tuple[int, int] | None, int | None, bool, int]:
+        """(protocol, resolution, fbl, use_jpeg, encode_angle) for encode_for_device."""
+        return self._protocol, self._resolution, self._fbl, self._use_jpeg, self._encode_angle
 
     # -- Full build (video load) -------------------------------------------
 
@@ -97,6 +98,7 @@ class VideoFrameCache:
         resolution: tuple[int, int],
         fbl: int | None,
         use_jpeg: bool,
+        encode_angle: int = 0,
     ) -> None:
         """Build L2 cache. Safe to call from a background thread."""
         if not frames:
@@ -117,6 +119,7 @@ class VideoFrameCache:
         self._resolution = resolution
         self._fbl = fbl
         self._use_jpeg = use_jpeg
+        self._encode_angle = encode_angle
 
         self._build_layer2(frames, mask, mask_position)
         self._reset_l3()

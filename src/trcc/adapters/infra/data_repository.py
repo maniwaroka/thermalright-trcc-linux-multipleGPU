@@ -26,6 +26,7 @@ from ...core.paths import (
     ASSETS_DIR,  # noqa: F401 — re-export (package resource dir)
     RESOURCES_DIR,  # noqa: F401 — re-export (package resource dir)
     USER_CONFIG_DIR,  # noqa: F401 — re-export (universal config dir)
+    has_themes,
 )
 from ...core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 
@@ -367,7 +368,7 @@ class DataManager:
             pkg_dir=os.path.join(DataManager._data_dir(), name),
             user_dir=os.path.join(DataManager._data_dir(), name),
             archive_name=f'{name}.7z',
-            check_fn=ThemeDir.has_themes,
+            check_fn=has_themes,
             fetch_fn=lambda a: DataManager._fetch_archive(a),
         )
 
@@ -393,7 +394,7 @@ class DataManager:
             pkg_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
             user_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
             archive_name=f'{res_key}.7z',
-            check_fn=ThemeDir.has_themes,
+            check_fn=has_themes,
             fetch_fn=lambda a: DataManager._fetch_archive(a, 'web'),
         )
 
@@ -452,10 +453,10 @@ class DataManager:
         name = f"theme{width}{height}"
         pkg = os.path.join(DataManager._data_dir(), name)
         user = os.path.join(DataManager._data_dir(), name)
-        if ThemeDir.has_themes(pkg):
+        if has_themes(pkg):
             log.debug("Resolution %s: verified at %s", key, pkg)
             return True
-        if ThemeDir.has_themes(user):
+        if has_themes(user):
             log.debug("Resolution %s: verified at %s", key, user)
             return True
         log.warning(

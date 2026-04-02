@@ -12,10 +12,10 @@ from trcc.core.paths import (
     USER_DATA_DIR,
     USER_MASKS_WEB_DIR,
     _has_any_content,
-    _has_themes,
     get_user_masks_dir,
     get_web_dir,
     get_web_masks_dir,
+    has_themes,
 )
 
 # =============================================================================
@@ -81,20 +81,20 @@ class TestHasAnyContent(unittest.TestCase):
 
 
 # =============================================================================
-# _has_themes
+# has_themes
 # =============================================================================
 
 
 class TestHasThemes(unittest.TestCase):
-    """_has_themes() — checks for valid theme subdirectories with PNGs."""
+    """has_themes() — checks for valid theme subdirectories with PNGs."""
 
     def test_nonexistent_dir(self):
-        self.assertFalse(_has_themes('/nonexistent/path/xyzzy'))
+        self.assertFalse(has_themes('/nonexistent/path/xyzzy'))
 
     def test_empty_dir(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
-            self.assertFalse(_has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_dir_with_theme_subdir_and_png(self):
         """Subdirectory with a .png file → True."""
@@ -103,7 +103,7 @@ class TestHasThemes(unittest.TestCase):
             theme_dir = os.path.join(d, 'MyTheme')
             os.mkdir(theme_dir)
             open(os.path.join(theme_dir, '00.png'), 'w').close()
-            self.assertTrue(_has_themes(d))
+            self.assertTrue(has_themes(d))
 
     def test_dir_with_subdir_but_no_png(self):
         """Subdirectory with no .png files → False."""
@@ -112,7 +112,7 @@ class TestHasThemes(unittest.TestCase):
             theme_dir = os.path.join(d, 'EmptyTheme')
             os.mkdir(theme_dir)
             open(os.path.join(theme_dir, 'config.dc'), 'w').close()
-            self.assertFalse(_has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_dotdir_excluded(self):
         """Hidden directories (starting with .) are excluded."""
@@ -121,7 +121,7 @@ class TestHasThemes(unittest.TestCase):
             hidden = os.path.join(d, '.hidden')
             os.mkdir(hidden)
             open(os.path.join(hidden, '00.png'), 'w').close()
-            self.assertFalse(_has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_custom_prefix_excluded(self):
         """Custom_ prefix directories are excluded."""
@@ -130,14 +130,14 @@ class TestHasThemes(unittest.TestCase):
             custom = os.path.join(d, 'Custom_MyTheme')
             os.mkdir(custom)
             open(os.path.join(custom, '00.png'), 'w').close()
-            self.assertFalse(_has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_files_at_top_level_ignored(self):
         """Files (not dirs) at top level don't count as themes."""
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             open(os.path.join(d, 'readme.png'), 'w').close()
-            self.assertFalse(_has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_multiple_themes_one_valid(self):
         """Multiple subdirs, only one needs a .png."""
@@ -148,7 +148,7 @@ class TestHasThemes(unittest.TestCase):
             valid = os.path.join(d, 'HasPng')
             os.mkdir(valid)
             open(os.path.join(valid, 'bg.png'), 'w').close()
-            self.assertTrue(_has_themes(d))
+            self.assertTrue(has_themes(d))
 
 
 # =============================================================================

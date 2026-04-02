@@ -492,6 +492,12 @@ class TRCCApp(QMainWindow):
         """Switch panel stack to show the given device."""
         if path == self._active_path:
             return
+        # Stop previous device's timers before switching — prevents
+        # stale video frames writing to the shared preview widget.
+        if self._active_path:
+            prev = self._handlers.get(self._active_path)
+            if isinstance(prev, LCDHandler):
+                prev.stop_timers()
         self._active_path = path
         handler = self._handlers.get(path)
         if handler is None:
@@ -865,17 +871,28 @@ class TRCCApp(QMainWindow):
             self._set_panel_bg(panel, bg_name)
 
     def _init_theme_directories(self) -> None:
+        from ..core.models import ThemeDir
+        from ..core.orientation import effective_resolution
+        from ..core.paths import has_themes, resolve_theme_dir
+
         w, h = _conf.settings.width, _conf.settings.height
-        td = _conf.settings.theme_dir
-        if td:
-            self.uc_theme_local.set_theme_directory(td.path)
-            if td.exists():
-                self._load_carousel_config(td.path)
-        if _conf.settings.web_dir:
-            self.uc_theme_web.set_web_directory(_conf.settings.web_dir)
+        if not w or not h:
+            return
+        ew, eh = effective_resolution(w, h, _conf.settings.rotation)
+        td = ThemeDir(resolve_theme_dir(ew, eh))
+        if not has_themes(str(td.path)):
+            td = ThemeDir(resolve_theme_dir(w, h))
+        self.uc_theme_local.set_theme_directory(td.path)
+        if td.path.exists():
+            self._load_carousel_config(td.path)
+        pr = _conf.settings._path_resolver
+        web_dir = Path(pr.web_dir(ew, eh))
+        if web_dir.exists():
+            self.uc_theme_web.set_web_directory(web_dir)
         self.uc_theme_web.set_resolution(f'{w}x{h}')
-        if _conf.settings.masks_dir:
-            self.uc_theme_mask.set_mask_directory(_conf.settings.masks_dir)
+        masks_dir = Path(pr.web_masks_dir(ew, eh))
+        if masks_dir.exists():
+            self.uc_theme_mask.set_mask_directory(masks_dir)
         self.uc_theme_mask.set_resolution(f'{w}x{h}')
 
     # ── i18n overlays ───────────────────────────────────────────────
@@ -1225,6 +1242,7 @@ class TRCCApp(QMainWindow):
         log.info("Handshake OK: %s -> %s (FBL=%s, PM=%s, SUB=%s)",
                  device.path, resolution, fbl, pm, sub)
         device.resolution = resolution
+        device.sub_byte = sub
         if fbl:
             device.fbl_code = fbl
             effective_pm = pm or fbl
@@ -1407,7 +1425,9 @@ class TRCCApp(QMainWindow):
     # ── File Dialogs ────────────────────────────────────────────────
 
     def _on_load_video_clicked(self) -> None:
-        web_dir = str(_conf.settings.web_dir) if _conf.settings.web_dir else ""
+        h = self._active_lcd()
+        svc = h.display._display_svc if h else None
+        web_dir = str(svc.web_dir) if svc and svc.web_dir else ""
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Video", web_dir,
             "Video Files (*.mp4 *.avi *.mov *.gif);;All Files (*)")
@@ -1419,7 +1439,9 @@ class TRCCApp(QMainWindow):
             self._show_cutter('video')
 
     def _on_media_player_load_clicked(self) -> None:
-        web_dir = str(_conf.settings.web_dir) if _conf.settings.web_dir else ""
+        h = self._active_lcd()
+        svc = h.display._display_svc if h else None
+        web_dir = str(svc.web_dir) if svc and svc.web_dir else ""
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Video", web_dir,
             "Video Files (*.mp4 *.avi *.mkv *.mov *.gif);;All Files (*)")

@@ -515,7 +515,8 @@ def mount_static_dirs(width: int, height: int) -> None:
     Called after device select when resolution is known. Remounts if resolution
     changes (e.g., user switches device).
     """
-    from trcc.adapters.infra.data_repository import DataManager, ThemeDir
+    from trcc.adapters.infra.data_repository import DataManager
+    from trcc.core.paths import resolve_theme_dir
 
     # Remove previous mounts
     for path in _mounted_routes:
@@ -523,7 +524,7 @@ def mount_static_dirs(width: int, height: int) -> None:
     _mounted_routes.clear()
 
     # Theme directory (local themes)
-    theme_dir = str(ThemeDir.for_resolution(width, height).path)
+    theme_dir = resolve_theme_dir(width, height)
     if os.path.isdir(theme_dir):
         app.mount("/static/themes", StaticFiles(directory=theme_dir), name="themes")
         _mounted_routes.append("/static/themes")

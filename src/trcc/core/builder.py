@@ -94,34 +94,54 @@ class ControllerBuilder:
         self._data_dir = data_dir
         return self
 
-    # ── Build methods ──────────────────────────────────────────────
+    # ── Shared wiring helpers ─────────────────────────────────────
 
-    def build_lcd(self) -> LCDDevice:
-        """Build and return an LCDDevice."""
+    def _build_device_svc(self) -> Any:
+        """Create DeviceService with platform-injected callables."""
         from ..adapters.device.factory import DeviceProtocolFactory
         from ..adapters.device.led import probe_led_model
         from ..services import DeviceService
-        from ..services.image import ImageService
-        from .lcd_device import LCDDevice
-
-        renderer = self._renderer
-        if renderer is None:
-            raise RuntimeError(
-                "ControllerBuilder.with_renderer() must be called before build_lcd().")
-
         self._platform.configure_scsi_protocol(DeviceProtocolFactory)
-        ImageService.set_renderer(renderer)
-
-        device_svc = DeviceService(
+        return DeviceService(
             detect_fn=self._platform.create_detect_fn(),
             probe_led_fn=probe_led_model,
             get_protocol=DeviceProtocolFactory.get_protocol,
             get_protocol_info=DeviceProtocolFactory.get_protocol_info,
         )
 
+    def _build_config_callables(self) -> dict:
+        """Return Settings config callables for device persistence."""
+        from ..conf import Settings
+        return {
+            'config_key_fn': Settings.device_config_key,
+            'save_setting_fn': Settings.save_device_setting,
+            'get_config_fn': Settings.get_device_config,
+        }
+
+    # ── Build methods ──────────────────────────────────────────────
+
+    def build_lcd(self) -> LCDDevice:
+        """Build and return an LCDDevice."""
+        from ..conf import Settings
+        from ..services.image import ImageService
+        from ..services.lcd_config import LCDConfigService
+        from ..services.theme import theme_info_from_directory
+        from .lcd_device import LCDDevice
+
+        renderer = self._renderer
+        if renderer is None:
+            raise RuntimeError(
+                "ControllerBuilder.with_renderer() must be called before build_lcd().")
+        ImageService.set_renderer(renderer)
+
+        device_svc = self._build_device_svc()
         build_services_fn = self._make_build_services_fn()
         result = build_services_fn(device_svc, renderer)
 
+        lcd_config = LCDConfigService(
+            **self._build_config_callables(),
+            apply_format_prefs_fn=Settings.apply_format_prefs,
+        )
         lcd = LCDDevice(
             device_svc=device_svc,
             display_svc=result['display_svc'],
@@ -129,6 +149,8 @@ class ControllerBuilder:
             renderer=renderer,
             dc_config_cls=result['dc_config_cls'],
             load_config_json_fn=result['load_config_json_fn'],
+            theme_info_from_dir_fn=theme_info_from_directory,
+            lcd_config=lcd_config,
             build_services_fn=build_services_fn,
         )
 
@@ -140,19 +162,14 @@ class ControllerBuilder:
     def build_led(self) -> LEDDevice:
         """Build and return a LEDDevice."""
         from ..adapters.device.factory import DeviceProtocolFactory
-        from ..adapters.device.led import probe_led_model
-        from ..services import DeviceService
+        from ..services import LEDService
         from .led_device import LEDDevice
 
-        device_svc = DeviceService(
-            detect_fn=self._platform.create_detect_fn(),
-            probe_led_fn=probe_led_model,
-            get_protocol=DeviceProtocolFactory.get_protocol,
-            get_protocol_info=DeviceProtocolFactory.get_protocol_info,
-        )
         return LEDDevice(
-            device_svc=device_svc,
+            device_svc=self._build_device_svc(),
             get_protocol=DeviceProtocolFactory.get_protocol,
+            led_svc_factory=LEDService,
+            **self._build_config_callables(),
         )
 
     def build_device(self, detected: Any = None) -> 'Device':
@@ -163,16 +180,10 @@ class ControllerBuilder:
         Adapters depend only on Device — never on LCDDevice or LEDDevice.
         """
         from ..adapters.device.factory import DeviceProtocolFactory
-        from ..adapters.device.led import probe_led_model
-        from ..services import DeviceService
         from .models import PROTOCOL_TRAITS
 
-        device_svc = DeviceService(
-            detect_fn=self._platform.create_detect_fn(),
-            probe_led_fn=probe_led_model,
-            get_protocol=DeviceProtocolFactory.get_protocol,
-            get_protocol_info=DeviceProtocolFactory.get_protocol_info,
-        )
+        device_svc = self._build_device_svc()
+        cfg = self._build_config_callables()
 
         is_led = (
             detected is not None
@@ -180,13 +191,19 @@ class ControllerBuilder:
         )
 
         if is_led:
+            from ..services import LEDService
             from .led_device import LEDDevice
             return LEDDevice(
                 device_svc=device_svc,
                 get_protocol=DeviceProtocolFactory.get_protocol,
+                led_svc_factory=LEDService,
+                **cfg,
             )
 
+        from ..conf import Settings
         from ..services.image import ImageService
+        from ..services.lcd_config import LCDConfigService
+        from ..services.theme import theme_info_from_directory
         from .lcd_device import LCDDevice
         build_fn = self._make_build_services_fn()
         renderer = self._renderer
@@ -195,10 +212,16 @@ class ControllerBuilder:
                 "ControllerBuilder: renderer not set. "
                 "Dispatch InitPlatformCommand with renderer_factory before building devices.")
         ImageService.set_renderer(renderer)
+        lcd_config = LCDConfigService(
+            **cfg,
+            apply_format_prefs_fn=Settings.apply_format_prefs,
+        )
         return LCDDevice(
             device_svc=device_svc,
             build_services_fn=build_fn,
             renderer=renderer,
+            theme_info_from_dir_fn=theme_info_from_directory,
+            lcd_config=lcd_config,
         )
 
     def build_system(self) -> SystemService:
@@ -236,16 +259,7 @@ class ControllerBuilder:
 
     def build_device_svc(self):
         """Build a DeviceService wired with platform-appropriate adapters."""
-        from ..adapters.device.factory import DeviceProtocolFactory
-        from ..adapters.device.led import probe_led_model
-        from ..services import DeviceService
-        self._platform.configure_scsi_protocol(DeviceProtocolFactory)
-        return DeviceService(
-            detect_fn=self._platform.create_detect_fn(),
-            probe_led_fn=probe_led_model,
-            get_protocol=DeviceProtocolFactory.get_protocol,
-            get_protocol_info=DeviceProtocolFactory.get_protocol_info,
-        )
+        return self._build_device_svc()
 
     def build_hardware_fns(self) -> tuple[GetMemoryInfoFn, GetDiskInfoFn]:
         """Return platform-specific (get_memory_info, get_disk_info) callables."""
@@ -271,6 +285,8 @@ class ControllerBuilder:
         from ..adapters.infra.media_player import ThemeZtDecoder, VideoDecoder
         from ..services import DisplayService, MediaService, OverlayService, ThemeService
         from ..services.image import ImageService
+
+        setup = self.build_setup()
 
         def _build(device_svc, renderer=None):
             r = renderer or ImageService._r()
@@ -301,6 +317,7 @@ class ControllerBuilder:
                 device_svc, overlay_svc, media_svc,
                 theme_svc=theme_svc,
                 cpu_percent_fn=_cpu_percent,
+                path_resolver=setup,
             )
             return {
                 'display_svc': display_svc,

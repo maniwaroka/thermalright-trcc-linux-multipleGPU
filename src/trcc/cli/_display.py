@@ -18,21 +18,8 @@ log = logging.getLogger(__name__)
 
 def _connect_or_fail(device: str | None = None) -> int:
     """Connect LCD via discover(). Returns exit code (0 = success)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.instance import find_active
-    from trcc.ipc import create_lcd_proxy
-    log.debug("connecting LCD device=%s", device)
-    app = TrccApp.get()
-    app.set_ipc_handlers(find_active, create_lcd_proxy)
-    result = app.discover(path=device)
-    if not result["success"] or not app.has_lcd:
-        error = result.get("error", "No LCD device found.")
-        log.warning("LCD connect failed: %s", error)
-        print(error)
-        print("Run 'trcc report' to diagnose.")
-        return 1
-    log.debug("LCD connected successfully")
-    return 0
+    from trcc.cli._connect import connect_device
+    return connect_device('lcd', device)
 
 
 def _print_result(result: dict, *, preview: bool = False) -> int:

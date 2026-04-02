@@ -210,7 +210,8 @@ class DeviceService:
             with self._send_lock:
                 self._send_busy = False
 
-    def send_frame(self, image: Any, width: int, height: int) -> bool:
+    def send_frame(self, image: Any, width: int, height: int,
+                   encode_angle: int = 0) -> bool:
         """Encode image for device and send.
 
         Delegates encoding strategy to ImageService.encode_for_device() —
@@ -230,7 +231,9 @@ class DeviceService:
                 raise RuntimeError("Cannot encode for device — no device selected")
             protocol, resolution, fbl, use_jpeg = self._selected.encoding_params
 
-            data = ImageService.encode_for_device(image, protocol, resolution, fbl, use_jpeg)
+            data = ImageService.encode_for_device(
+                image, protocol, resolution, fbl, use_jpeg,
+                encode_angle=encode_angle)
             self._last_encode_id = img_id
             self._last_encode_data = data
         ok = self.send_rgb565(data, width, height)
@@ -248,7 +251,8 @@ class DeviceService:
         self._send_queue.append((data, width, height))
         self._send_event.set()
 
-    def send_frame_async(self, image: Any, width: int, height: int) -> None:
+    def send_frame_async(self, image: Any, width: int, height: int,
+                         encode_angle: int = 0) -> None:
         """Encode image and queue for the persistent send worker.
 
         Encoding runs inline (~0.5ms), then routes through the same
@@ -267,7 +271,8 @@ class DeviceService:
             protocol, resolution, fbl, use_jpeg = self._selected.encoding_params
 
             data = ImageService.encode_for_device(
-                image, protocol, resolution, fbl, use_jpeg)
+                image, protocol, resolution, fbl, use_jpeg,
+                encode_angle=encode_angle)
             self._last_encode_id = img_id
             self._last_encode_data = data
 

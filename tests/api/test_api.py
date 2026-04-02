@@ -255,14 +255,14 @@ class TestThemesEndpoint(unittest.TestCase):
         self.client = TestClient(app)
 
     @patch('trcc.api.themes.ThemeService.discover_local_merged', return_value=[])
-    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution', return_value=MagicMock(__str__=lambda s: '/tmp/themes'))
+    @patch('trcc.core.paths.resolve_theme_dir', return_value='/tmp/themes')
     def test_list_themes_empty(self, mock_dir, mock_discover):
         resp = self.client.get("/themes?resolution=320x320")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), [])
 
     @patch('trcc.api.themes.ThemeService.discover_local_merged')
-    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution')
+    @patch('trcc.core.paths.resolve_theme_dir')
     def test_list_themes_with_results(self, mock_dir, mock_discover):
         mock_td = MagicMock(__str__=lambda s: '/tmp/themes')
         mock_td.path = '/tmp/themes'
@@ -1260,7 +1260,7 @@ class TestStandaloneThemeInit(unittest.TestCase):
         mock_ensure.assert_not_called()
 
     @patch('trcc.api.themes.ThemeService.discover_local_merged', return_value=[])
-    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution',
+    @patch('trcc.core.paths.resolve_theme_dir',
            return_value=MagicMock(__str__=lambda s: '/tmp/themes', path='/tmp/themes'))
     def test_list_themes_no_auto_download(self, _td, _discover):
         """GET /themes reads disk state only — data download happens via /themes/init or device select."""
@@ -1902,7 +1902,7 @@ class TestThemeEdgeCases(unittest.TestCase):
 
     def test_list_themes_resolution_boundary_min(self) -> None:
         with patch("trcc.api.themes.ThemeService.discover_local_merged", return_value=[]), \
-             patch("trcc.adapters.infra.data_repository.ThemeDir.for_resolution") as mock_td:
+             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = MagicMock(path="/tmp/none", __str__=lambda s: "/tmp/none")
             resp = self.client.get("/themes?resolution=100x100")
         self.assertEqual(resp.status_code, 200)
@@ -1934,7 +1934,7 @@ class TestThemeEdgeCases(unittest.TestCase):
         mock_dispatcher.resolution = (320, 320)
         api_module._display_dispatcher = mock_dispatcher
         with patch("trcc.api.themes.ThemeService.import_tr", return_value=(True, "ok")), \
-             patch("trcc.adapters.infra.data_repository.ThemeDir.for_resolution") as mock_td:
+             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = MagicMock(path="/tmp", __str__=lambda s: "/tmp")
             resp = self.client.post(
                 "/themes/import",
@@ -1956,7 +1956,7 @@ class TestThemeEdgeCases(unittest.TestCase):
         mock_dispatcher.resolution = (320, 320)
         api_module._display_dispatcher = mock_dispatcher
         with patch("trcc.api.themes.ThemeService.import_tr", return_value=(False, "bad archive")), \
-             patch("trcc.adapters.infra.data_repository.ThemeDir.for_resolution") as mock_td:
+             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = MagicMock(path="/tmp", __str__=lambda s: "/tmp")
             resp = self.client.post(
                 "/themes/import",
@@ -1974,7 +1974,7 @@ class TestThemeEdgeCases(unittest.TestCase):
         api_module._display_dispatcher = mock_dispatcher
         with patch("trcc.api.themes.ThemeService.import_tr",
                    side_effect=RuntimeError("/home/user/.trcc/data/secret")), \
-             patch("trcc.adapters.infra.data_repository.ThemeDir.for_resolution") as mock_td:
+             patch("trcc.core.paths.resolve_theme_dir") as mock_td:
             mock_td.return_value = MagicMock(path="/tmp", __str__=lambda s: "/tmp")
             resp = self.client.post(
                 "/themes/import",
@@ -2197,7 +2197,7 @@ class TestStaticMountEdgeCases(unittest.TestCase):
     def test_mount_static_dirs_nonexistent_web_dir_skipped(self) -> None:
         from trcc.api import _mounted_routes, mount_static_dirs
 
-        with patch("trcc.adapters.infra.data_repository.ThemeDir.for_resolution") as mock_td, \
+        with patch("trcc.core.paths.resolve_theme_dir") as mock_td, \
              patch("trcc.adapters.infra.data_repository.DataManager.get_web_dir",
                    return_value="/nonexistent/web"), \
              patch("trcc.adapters.infra.data_repository.DataManager.get_web_masks_dir",
@@ -2213,7 +2213,7 @@ class TestStaticMountEdgeCases(unittest.TestCase):
     def test_mount_static_dirs_clears_old_routes(self) -> None:
         from trcc.api import _mounted_routes, mount_static_dirs
 
-        with patch("trcc.adapters.infra.data_repository.ThemeDir.for_resolution") as mock_td, \
+        with patch("trcc.core.paths.resolve_theme_dir") as mock_td, \
              patch("trcc.adapters.infra.data_repository.DataManager.get_web_dir",
                    return_value="/nonexistent"), \
              patch("trcc.adapters.infra.data_repository.DataManager.get_web_masks_dir",
@@ -2854,7 +2854,7 @@ class TestThemeExportEndpoint(unittest.TestCase):
 
     @patch('trcc.services.ThemeService.discover_local_merged', return_value=[])
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_themes')
-    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution')
+    @patch('trcc.core.paths.resolve_theme_dir')
     def test_export_theme_not_found(self, mock_td, mock_ensure, mock_discover):
         mock_td.return_value = MagicMock(__str__=lambda s: '/tmp/themes')
         resp = self.client.post("/themes/export?theme_name=NonExistent")
@@ -2862,7 +2862,7 @@ class TestThemeExportEndpoint(unittest.TestCase):
 
     @patch('trcc.services.ThemeService.discover_local_merged')
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_themes')
-    @patch('trcc.adapters.infra.data_repository.ThemeDir.for_resolution')
+    @patch('trcc.core.paths.resolve_theme_dir')
     @patch('trcc.services.ThemeService.export_tr')
     def test_export_theme_success(self, mock_export, mock_td, mock_ensure, mock_discover):
         from trcc.core.models import ThemeInfo

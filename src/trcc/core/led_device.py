@@ -43,11 +43,19 @@ class LEDDevice(Device):
     def __init__(self, svc: Any = None,
                  get_protocol: Any = None,
                  device_svc: Any = None,
+                 led_svc_factory: Any = None,
+                 config_key_fn: Any = None,
+                 save_setting_fn: Any = None,
+                 get_config_fn: Any = None,
                  find_active_fn: Any = None,
                  proxy_factory_fn: Any = None) -> None:
         self._svc = svc
         self._get_protocol = get_protocol
         self._device_svc = device_svc
+        self._led_svc_factory = led_svc_factory
+        self._config_key_fn = config_key_fn
+        self._save_setting_fn = save_setting_fn
+        self._get_config_fn = get_config_fn
         self._find_active_fn = find_active_fn
         self._proxy_factory_fn = proxy_factory_fn
         self._proxy: Any = None
@@ -76,19 +84,10 @@ class LEDDevice(Device):
         if self._svc:
             return {"success": True, "status": self._init_status or ""}
 
-        # Check if another instance already owns the device
-        if detected is None and self._find_active_fn and self._proxy_factory_fn:
-            active = self._find_active_fn()
-            if active is not None:
-                self._proxy = self._proxy_factory_fn(active)
-                log.info("LED routing through %s instance", active.value)
-                return {
-                    "success": True,
-                    "proxy": active,
-                    "status": f"Connected (via {active.value})",
-                }
-
-        from ..services import LEDService
+        proxy_result = self._try_proxy_route(detected)
+        if proxy_result is not None:
+            proxy_result["status"] = f"Connected (via {proxy_result['proxy'].value})"
+            return proxy_result
 
         if self._device_svc is None:
             raise RuntimeError(
@@ -103,7 +102,12 @@ class LEDDevice(Device):
             return {"success": False, "error": "No LED device found"}
 
         self._device = led_dev
-        self._svc = LEDService(get_protocol=self._get_protocol)
+        self._svc = self._led_svc_factory(
+            get_protocol=self._get_protocol,
+            config_key_fn=self._config_key_fn,
+            save_setting_fn=self._save_setting_fn,
+            get_config_fn=self._get_config_fn,
+        )
         style_id = led_dev.led_style_id or 1
         self._init_status = self._svc.initialize(led_dev, style_id)
         return {"success": True, "status": self._init_status or ""}
@@ -147,8 +151,12 @@ class LEDDevice(Device):
         and style_id directly from the sidebar.
         """
         if not self._svc:
-            from ..services import LEDService
-            self._svc = LEDService(get_protocol=self._get_protocol)
+            self._svc = self._led_svc_factory(
+                get_protocol=self._get_protocol,
+                config_key_fn=self._config_key_fn,
+                save_setting_fn=self._save_setting_fn,
+                get_config_fn=self._get_config_fn,
+            )
         self._device = device
         self._init_status = self._svc.initialize(device, led_style)
         return {"success": True, "status": self._init_status or "",

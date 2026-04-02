@@ -18,7 +18,6 @@ from typing import Any
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QIcon, QPixmap
 
-import trcc.conf as _conf
 from trcc.conf import Settings
 
 from ..core.lcd_device import LCDDevice
@@ -28,6 +27,7 @@ from ..core.models import (
     DeviceInfo,
     ThemeInfo,
 )
+from ..services.theme import theme_info_from_directory
 from .base import BaseHandler
 
 log = logging.getLogger(__name__)
@@ -109,85 +109,44 @@ class LCDHandler(BaseHandler):
     # ── Device Config (C# ReadSystemConfiguration) ─────────────────
 
     def apply_device_config(self, device: DeviceInfo, w: int, h: int) -> None:
-        """Apply device resolution, restore brightness/rotation/theme/overlay."""
-        log.debug("apply_device_config called (device_key=%r)", self._device_key,
-                  stack_info=True)
+        """First-time device setup + full widget refresh."""
         self._device_key = Settings.device_config_key(
             device.device_index, device.vid, device.pid)
-
-        # Persist resolution per device — each device remembers its own w/h
         Settings.save_device_setting(self._device_key, 'w', w)
         Settings.save_device_setting(self._device_key, 'h', h)
+        self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
+        self._refresh(w, h)
 
-        self._switch_resolution(w, h)
+    def reactivate(self, w: int, h: int) -> None:
+        """Return to known device — full widget refresh."""
+        self._refresh(w, h)
 
-        # Always refresh — first run downloads themes after widget init
+    def _refresh(self, w: int, h: int) -> None:
+        """Refresh all shared widgets for this device's state.
+
+        Single code path for both first activation and device switch.
+        Resets rotation before resolution so dirs resolve correctly,
+        then restores the real rotation from per-device config.
+        """
+        self._lcd._display_svc.rotation = 0
+        self._lcd._display_svc.set_resolution(w, h)
+        self._w['preview'].set_resolution(w, h)
+        self._w['preview'].set_image(None)
+        self._w['image_cut'].set_resolution(w, h)
+        self._w['video_cut'].set_resolution(w, h)
+        self._w['theme_setting'].set_resolution(w, h)
+
         auto_loaded = self._update_theme_directories()
 
-        # Wire background extraction callback via public method (no internal access)
-        self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
-
-        # Restore per-device hardware settings
-        cfg = Settings.get_device_config(self._device_key)
+        cfg = Settings.get_device_config(self._device_key) if self._device_key else {}
         self._restore_brightness(cfg)
         self._restore_rotation(cfg)
         self._restore_split_mode(cfg, w, h)
         self._restore_carousel(cfg)
 
-        # Restore theme+mask+overlay — skip if _update_theme_directories()
-        # already auto-loaded the first theme (avoids double-load blink).
         if auto_loaded:
             return
-        result = self._lcd.restore_last_theme()
-        if result.get("success"):
-            image = result.get("image")
-            is_animated = result.get("is_animated", False)
-            if image:
-                self._w['preview'].set_image(image, fast=is_animated)
-            overlay_config = result.get("overlay_config")
-            overlay_enabled = result.get("overlay_enabled", False)
-            if overlay_config:
-                self._w['theme_setting'].load_from_overlay_config(overlay_config)
-            self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
-            if is_animated and self._lcd.playing:
-                log.info("_restore_overlay: video theme restored — starting animation timer")
-                self._animation_timer.start(self._lcd.interval)
-                self._w['preview'].set_playing(True)
-                self._w['preview'].show_video_controls(True)
-            elif overlay_enabled:
-                self._render_and_send()
-
-    def _switch_resolution(self, w: int, h: int) -> None:
-        """Switch active resolution and update all resolution-aware widgets."""
-        _conf.settings.set_resolution(w, h)
-        self._w['preview'].set_resolution(w, h)
-        self._w['image_cut'].set_resolution(w, h)
-        self._w['video_cut'].set_resolution(w, h)
-        self._w['theme_setting'].set_resolution(w, h)
-
-    def reactivate(self, w: int, h: int) -> None:
-        """Refresh shared widgets when switching back to this device."""
-        self._switch_resolution(w, h)
-        self._update_theme_directories()
-
-        # Preview image — device's current image is ground truth
-        image = self._lcd.current_image
-        if image:
-            self._w['preview'].set_image(image)
-
-        # Overlay — reload from per-device config (defensive: missing = disabled)
-        if self._device_key:
-            cfg = Settings.get_device_config(self._device_key)
-            overlay_cfg = cfg.get('overlay', {})
-            overlay_config = overlay_cfg.get('config')
-            overlay_enabled = overlay_cfg.get('enabled', False)
-            if overlay_config:
-                self._w['theme_setting'].load_from_overlay_config(overlay_config)
-            self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
-            if overlay_enabled and image:
-                self._render_and_send()
-        else:
-            self._w['theme_setting'].set_overlay_enabled(False)
+        self._restore_theme_and_preview(cfg)
 
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
@@ -202,11 +161,9 @@ class LCDHandler(BaseHandler):
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
-        # Non-square devices: swap preview dimensions on 90/270
-        w, h = _conf.settings.width, _conf.settings.height
-        if w != h and rotation in (90, 270):
-            self._w['preview'].set_resolution(h, w)
-        self._resolve_cloud_dirs(rotation)
+        ew, eh = self._lcd._display_svc.canvas_size
+        self._w['preview'].set_resolution(ew, eh)
+        self._update_cloud_widgets()
 
     def _restore_split_mode(self, cfg: dict, w: int, h: int) -> None:
         self._split_mode = cfg.get('split_mode', 2)
@@ -238,6 +195,41 @@ class LCDHandler(BaseHandler):
             local._lunbo_array = []
             local._slideshow = False
             local._apply_decorations()
+
+    def _restore_theme_and_preview(self, cfg: dict) -> None:
+        """Restore last theme + overlay, or clear preview if none."""
+        result = self._lcd.restore_last_theme()
+        if result.get("success"):
+            image = result.get("image")
+            is_animated = result.get("is_animated", False)
+            if image:
+                self._w['preview'].set_image(image, fast=is_animated)
+            overlay_config = result.get("overlay_config")
+            overlay_enabled = result.get("overlay_enabled", False)
+            if overlay_config:
+                self._w['theme_setting'].load_from_overlay_config(overlay_config)
+            self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
+            if is_animated and self._lcd.playing:
+                self._animation_timer.start(self._lcd.interval)
+                self._w['preview'].set_playing(True)
+                self._w['preview'].show_video_controls(True)
+            elif overlay_enabled:
+                self._render_and_send()
+            return
+
+        # No saved theme — show device's current image or clear preview
+        image = self._lcd.current_image
+        if image:
+            self._w['preview'].set_image(image)
+        else:
+            self._w['preview'].set_image(None)
+        # Restore overlay from config even without a saved theme
+        overlay_cfg = cfg.get('overlay', {})
+        overlay_config = overlay_cfg.get('config')
+        overlay_enabled = overlay_cfg.get('enabled', False)
+        if overlay_config:
+            self._w['theme_setting'].load_from_overlay_config(overlay_config)
+        self._w['theme_setting'].set_overlay_enabled(overlay_enabled)
 
     # ── Theme (C# Theme_Click_Event) ───────────────────────────────
 
@@ -279,7 +271,7 @@ class LCDHandler(BaseHandler):
         self._w['theme_setting'].screencast_panel.set_enabled(False)
         self._w['theme_setting'].video_panel.set_enabled(False)
 
-        theme = ThemeInfo.from_directory(path)
+        theme = theme_info_from_directory(path)
         # Suppress send when overlay config will follow — the overlay load
         # owns the single send, avoiding a double-send blink.
         self._select_theme(theme, send_frame=not overlay_config)
@@ -289,7 +281,7 @@ class LCDHandler(BaseHandler):
         if persist and self._device_key:
             log.info("Saving theme_path: %s (key=%s)", path, self._device_key)
             Settings.save_device_setting(self._device_key, 'theme_path', str(path))
-            Settings.save_device_setting(self._device_key, 'mask_path', '')
+            Settings.save_device_setting(self._device_key, 'mask_id', '')
 
     def select_cloud_theme(self, theme_info: Any) -> None:
         """Handle cloud theme selection (video backgrounds)."""
@@ -307,7 +299,7 @@ class LCDHandler(BaseHandler):
             if self._device_key:
                 Settings.save_device_setting(
                     self._device_key, 'theme_path', str(video_path))
-                Settings.save_device_setting(self._device_key, 'mask_path', '')
+                Settings.save_device_setting(self._device_key, 'mask_id', '')
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""
@@ -319,8 +311,11 @@ class LCDHandler(BaseHandler):
                 self._w['preview'].set_image(image)
             self._load_theme_overlay_config(mask_dir, persist=False)
             if self._device_key:
+                is_custom = getattr(mask_info, 'is_custom', False)
                 Settings.save_device_setting(
-                    self._device_key, 'mask_path', str(mask_dir))
+                    self._device_key, 'mask_id', mask_dir.name)
+                Settings.save_device_setting(
+                    self._device_key, 'mask_custom', is_custom)
         else:
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
 
@@ -333,7 +328,7 @@ class LCDHandler(BaseHandler):
         result = self._lcd.save(name)
         self._w['preview'].set_status(result.get('message', ''))
         if result.get("success"):
-            td = _conf.settings.theme_dir
+            td = self._lcd._display_svc.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
             self._w['theme_local'].load_themes()
@@ -350,7 +345,7 @@ class LCDHandler(BaseHandler):
         result = self._lcd.import_config(str(path), str(self._data_dir))
         self._w['preview'].set_status(result.get('message', ''))
         if result.get("success"):
-            td = _conf.settings.theme_dir
+            td = self._lcd._display_svc.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
             self._w['theme_local'].load_themes()
@@ -520,22 +515,18 @@ class LCDHandler(BaseHandler):
 
     def set_rotation(self, degrees: int) -> None:
         log.debug("set_rotation: degrees=%d", degrees)
-        result = self._lcd.set_rotation(degrees)
+        result = self._lcd.set_rotation(degrees)  # Handles dir switch + theme reload
         image = result.get('image')
-        if self._device_key:
-            Settings.save_device_setting(self._device_key, 'rotation', degrees)
-        # Non-square devices: swap preview dimensions on 90/270
-        w, h = _conf.settings.width, _conf.settings.height
-        if w != h and degrees in (90, 270):
-            self._w['preview'].set_resolution(h, w)
-        else:
-            self._w['preview'].set_resolution(w, h)
-        # Set image AFTER preview resize so it scales correctly
         if image:
             self._w['preview'].set_image(image)
-            if self._lcd.auto_send:
-                self._lcd.send(image)
-        self._resolve_cloud_dirs(degrees)
+        if self._device_key:
+            Settings.save_device_setting(self._device_key, 'rotation', degrees)
+        svc = self._lcd._display_svc
+        ew, eh = svc.canvas_size
+        self._w['preview'].set_resolution(ew, eh)
+        self._update_cloud_widgets()
+        if svc.lcd_width != svc.lcd_height:
+            self._update_theme_directories()
 
     def set_split_mode(self, mode: int) -> None:
         log.debug("set_split_mode: mode=%d", mode)
@@ -607,7 +598,7 @@ class LCDHandler(BaseHandler):
         theme_info = themes[self._slideshow_index]
         path = Path(theme_info.path)
         if path.exists():
-            theme = ThemeInfo.from_directory(path)
+            theme = theme_info_from_directory(path)
             self._select_theme(theme, send_frame=False)
             self._load_theme_overlay_config(path)
 
@@ -641,19 +632,20 @@ class LCDHandler(BaseHandler):
         Returns True if a first-install auto-load happened (caller should
         skip restore_last_theme to avoid a redundant double-load).
         """
-        w, h = _conf.settings.width, _conf.settings.height
-        td = _conf.settings.theme_dir
-        if td and td.exists():
+        svc = self._lcd._display_svc
+        w, h = svc.lcd_width, svc.lcd_height
+        td = svc.theme_dir
+        if td and td.path.exists():
             self._w['theme_local'].set_theme_directory(td.path)
-        if _conf.settings.web_dir:
-            self._w['theme_web'].set_web_directory(_conf.settings.web_dir)
+        if svc.web_dir:
+            self._w['theme_web'].set_web_directory(svc.web_dir)
         self._w['theme_web'].set_resolution(f'{w}x{h}')
-        if _conf.settings.masks_dir:
-            self._w['theme_mask'].set_mask_directory(_conf.settings.masks_dir)
+        if svc.masks_dir:
+            self._w['theme_mask'].set_mask_directory(svc.masks_dir)
         self._w['theme_mask'].set_resolution(f'{w}x{h}')
 
         # First install: themes just extracted — load first one onto LCD + preview
-        if self._lcd.current_image is None and td and td.exists():
+        if self._lcd.current_image is None and td and td.path.exists():
             saved_cfg = Settings.get_device_config(self._device_key) if self._device_key else {}
             if not saved_cfg.get('theme_path'):
                 for item in sorted(td.path.iterdir()):
@@ -663,18 +655,16 @@ class LCDHandler(BaseHandler):
                         return True
         return False
 
-    def _resolve_cloud_dirs(self, rotation: int) -> None:
-        """Re-resolve cloud dirs for portrait rotation."""
-        _conf.settings.resolve_cloud_dirs(rotation)
-        w, h = _conf.settings.width, _conf.settings.height
-        if w != h and rotation in (90, 270):
-            w, h = h, w
-        if _conf.settings.web_dir:
-            self._w['theme_web'].set_web_directory(_conf.settings.web_dir)
-        self._w['theme_web'].set_resolution(f'{w}x{h}')
-        if _conf.settings.masks_dir:
-            self._w['theme_mask'].set_mask_directory(_conf.settings.masks_dir)
-        self._w['theme_mask'].set_resolution(f'{w}x{h}')
+    def _update_cloud_widgets(self) -> None:
+        """Push current cloud dirs and effective resolution to theme browsers."""
+        svc = self._lcd._display_svc
+        ew, eh = svc.canvas_size
+        if svc.web_dir:
+            self._w['theme_web'].set_web_directory(svc.web_dir)
+        self._w['theme_web'].set_resolution(f'{ew}x{eh}')
+        if svc.masks_dir:
+            self._w['theme_mask'].set_mask_directory(svc.masks_dir)
+        self._w['theme_mask'].set_resolution(f'{ew}x{eh}')
 
     @property
     def is_background_active(self) -> bool:

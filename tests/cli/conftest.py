@@ -93,12 +93,11 @@ def mock_media():
 def display_svc(renderer, mock_media, mock_device_svc) -> DisplayService:
     """Real DisplayService with real OverlayService, mocked device/media.
 
-    Sets resolution to 320x320 via conf.settings so lcd_size returns (320, 320).
+    Resolution set directly on DisplayService (per-device state, not Settings).
     """
-    import trcc.conf as _conf
-    _conf.settings.set_resolution(320, 320, persist=False)
     overlay = OverlayService(320, 320, renderer=renderer)
     svc = DisplayService(mock_device_svc, overlay, mock_media)
+    svc.set_resolution(320, 320)
     return svc
 
 
@@ -108,11 +107,20 @@ def lcd(mock_device_svc, display_svc, renderer) -> LCDDevice:
 
     Only DeviceService (USB I/O) and MediaService (video decode) are mocked.
     """
+    from trcc.conf import Settings
+    from trcc.services.lcd_config import LCDConfigService
+    lcd_config = LCDConfigService(
+        config_key_fn=Settings.device_config_key,
+        save_setting_fn=Settings.save_device_setting,
+        get_config_fn=Settings.get_device_config,
+        apply_format_prefs_fn=Settings.apply_format_prefs,
+    )
     return LCDDevice(
         device_svc=mock_device_svc,
         display_svc=display_svc,
         theme_svc=MagicMock(),
         renderer=renderer,
+        lcd_config=lcd_config,
     )
 
 
@@ -243,20 +251,13 @@ def make_cloud_theme():
 
 
 @pytest.fixture
-def mock_theme_dir():
-    """Mock settings.theme_dir that exists with a valid path."""
+def mock_theme_dir(tmp_path):
+    """ThemeDir-like object with a real temp path that exists on disk."""
+    td_path = tmp_path / "themes" / "320x320"
+    td_path.mkdir(parents=True)
     td = MagicMock()
-    td.exists.return_value = True
-    td.path = Path("/themes/320x320")
+    td.path = td_path
     return td
-
-
-@pytest.fixture
-def mock_web_dir():
-    """Mock settings.web_dir that exists."""
-    wd = MagicMock()
-    wd.exists.return_value = True
-    return wd
 
 
 # ── Detection factory ─────────────────────────────────────────────────────────

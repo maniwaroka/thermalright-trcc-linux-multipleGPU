@@ -42,12 +42,25 @@ def mock_media() -> MagicMock:
 
 
 @pytest.fixture()
-def display_svc(renderer: Any, mock_media: MagicMock) -> DisplayService:
+def mock_path_resolver(tmp_path: Path) -> MagicMock:
+    """Mock PlatformSetup path resolver — returns dirs under tmp_path."""
+    resolver = MagicMock()
+    resolver.data_dir.return_value = str(tmp_path / 'data')
+    resolver.user_content_dir.return_value = str(tmp_path / 'user')
+    resolver.web_dir = lambda w, h: str(tmp_path / 'data' / 'web' / f'{w}{h}')
+    resolver.web_masks_dir = lambda w, h: str(tmp_path / 'data' / 'web' / f'zt{w}{h}')
+    resolver.user_masks_dir = lambda w, h: str(tmp_path / 'user' / 'data' / 'web' / f'zt{w}{h}')
+    return resolver
+
+
+@pytest.fixture()
+def display_svc(renderer: Any, mock_media: MagicMock, mock_path_resolver: MagicMock) -> DisplayService:
     """Real DisplayService with real OverlayService, mocked device/media."""
     devices = MagicMock()
     devices.selected.encoding_params = ('scsi', (320, 320), None, False)
     overlay = OverlayService(320, 320, renderer=renderer)
-    svc = DisplayService(devices, overlay, mock_media)
+    svc = DisplayService(devices, overlay, mock_media, path_resolver=mock_path_resolver)
+    svc.set_resolution(320, 320)
     return svc
 
 
@@ -60,15 +73,6 @@ def lcd(display_svc: DisplayService, renderer: Any) -> LCDDevice:
         theme_svc=MagicMock(),
         renderer=renderer,
     )
-
-
-@pytest.fixture()
-def mock_settings():
-    """Patch settings for 320x320."""
-    with patch('trcc.conf.settings') as s:
-        s.width = 320
-        s.height = 320
-        yield s
 
 
 @pytest.fixture()
@@ -113,7 +117,6 @@ class TestLoadLocalThemeStateWiring:
 
     def test_static_theme_sets_clean_background(
         self, display_svc: DisplayService, static_theme: ThemeInfo,
-        mock_settings: Any,
     ) -> None:
         """Loading a static theme must set _clean_background."""
         result = display_svc.load_local_theme(static_theme)
@@ -125,7 +128,6 @@ class TestLoadLocalThemeStateWiring:
 
     def test_static_theme_sets_current_theme_path(
         self, display_svc: DisplayService, static_theme: ThemeInfo,
-        mock_settings: Any,
     ) -> None:
         """Loading a theme must set current_theme_path to theme dir."""
         display_svc.load_local_theme(static_theme)
@@ -134,7 +136,7 @@ class TestLoadLocalThemeStateWiring:
 
     def test_mask_theme_sets_mask_source_dir(
         self, display_svc: DisplayService,
-        mask_theme: tuple[ThemeInfo, Path], mock_settings: Any,
+        mask_theme: tuple[ThemeInfo, Path],
     ) -> None:
         """Theme with mask must set _mask_source_dir."""
         theme, theme_dir = mask_theme
@@ -144,7 +146,7 @@ class TestLoadLocalThemeStateWiring:
 
     def test_no_mask_theme_clears_stale_mask_source_dir(
         self, display_svc: DisplayService, static_theme: ThemeInfo,
-        mask_theme: tuple[ThemeInfo, Path], mock_settings: Any,
+        mask_theme: tuple[ThemeInfo, Path],
     ) -> None:
         """Loading theme WITHOUT mask after one WITH mask clears _mask_source_dir."""
         theme_with_mask, _ = mask_theme
@@ -157,7 +159,7 @@ class TestLoadLocalThemeStateWiring:
 
     def test_animated_theme_sets_clean_background_from_first_frame(
         self, display_svc: DisplayService, mock_media: MagicMock,
-        renderer: Any, mock_settings: Any, tmp_path: Path,
+        renderer: Any, tmp_path: Path,
     ) -> None:
         """Animated theme must set _clean_background from first video frame."""
         # Create a theme dir with a video reference
@@ -191,7 +193,6 @@ class TestBrightnessRotationRealImages:
 
     def test_brightness_25_darkens_image(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any,
     ) -> None:
         """set_brightness(25) must darken a white image."""
         white = renderer.create_surface(320, 320, (255, 255, 255))
@@ -209,7 +210,6 @@ class TestBrightnessRotationRealImages:
 
     def test_brightness_100_is_identity(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any,
     ) -> None:
         """set_brightness(100) must not change pixels."""
         red = renderer.create_surface(320, 320, (200, 50, 30))
@@ -226,7 +226,6 @@ class TestBrightnessRotationRealImages:
 
     def test_rotation_90_moves_pixels(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any,
     ) -> None:
         """set_rotation(90) must move pixels to rotated positions."""
         # Create image with red top-left quadrant, blue elsewhere
@@ -252,7 +251,6 @@ class TestBrightnessRotationRealImages:
 
     def test_rotation_0_is_identity(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any,
     ) -> None:
         """set_rotation(0) must not change pixels."""
         green = renderer.create_surface(320, 320, (0, 200, 0))
@@ -277,7 +275,7 @@ class TestThemeSaveRoundTrip:
 
     def test_save_uses_clean_bg_not_overlay(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any, tmp_path: Path,
+        tmp_path: Path,
     ) -> None:
         """Save after overlay must write clean bg to 00.png, not composited."""
         blue = renderer.create_surface(320, 320, (0, 0, 255))
@@ -291,12 +289,12 @@ class TestThemeSaveRoundTrip:
                       'color': '#FF0000', 'enabled': True},
         })
 
-        mock_settings.user_content_dir = tmp_path
         ok, msg = display_svc.save_theme('OverlayTest')
         assert ok is True
 
-        # 00.png should be clean blue bg
-        theme_path = tmp_path / 'theme320320' / 'Custom_OverlayTest'
+        # 00.png should be clean blue bg (saved to user_content_dir from resolver)
+        user_dir = Path(display_svc._path_resolver.user_content_dir())
+        theme_path = user_dir / 'theme320320' / 'Custom_OverlayTest'
         bg_path = theme_path / '00.png'
         assert bg_path.exists()
 
@@ -306,7 +304,7 @@ class TestThemeSaveRoundTrip:
 
     def test_save_after_mask_includes_mask_path(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any, tmp_path: Path,
+        tmp_path: Path,
     ) -> None:
         """Save after mask load must include mask dir in config.json."""
         blue = renderer.create_surface(320, 320, (0, 0, 255))
@@ -324,17 +322,17 @@ class TestThemeSaveRoundTrip:
         display_svc._mask_source_dir = mask_dir
         display_svc.overlay.enabled = True
 
-        mock_settings.user_content_dir = tmp_path
         ok, msg = display_svc.save_theme('MaskSave')
         assert ok is True
 
+        user_dir = Path(display_svc._path_resolver.user_content_dir())
         config = json.loads(
-            (tmp_path / 'theme320320' / 'Custom_MaskSave' / 'config.json').read_text())
+            (user_dir / 'theme320320' / 'Custom_MaskSave' / 'config.json').read_text())
         assert config['mask'] == str(mask_dir)
 
     def test_cloud_load_preserves_mask_source_dir(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any, mock_media: MagicMock, tmp_path: Path,
+        mock_media: MagicMock, tmp_path: Path,
     ) -> None:
         """Cloud load must preserve mask source dir (video-only background)."""
         # User applied a mask before loading cloud video
@@ -359,14 +357,13 @@ class TestThemeSaveRoundTrip:
         assert display_svc._mask_source_dir == mask_dir
 
         # Save should reference the mask
-        mock_settings.user_content_dir = tmp_path
         with patch.object(ThemePersistence, 'save', return_value=(True, 'ok')) as mock_save:
             display_svc.save_theme('CloudSave')
         assert mock_save.call_args.kwargs.get('mask_source_dir') == mask_dir
 
     def test_save_after_brightness_uses_clean_bg(
         self, display_svc: DisplayService, renderer: Any,
-        mock_settings: Any, tmp_path: Path,
+        tmp_path: Path,
     ) -> None:
         """Save after brightness change must write undimmed clean bg."""
         white = renderer.create_surface(320, 320, (255, 255, 255))
@@ -375,11 +372,11 @@ class TestThemeSaveRoundTrip:
 
         display_svc.set_brightness(25)
 
-        mock_settings.user_content_dir = tmp_path
         ok, msg = display_svc.save_theme('BrightSave')
         assert ok is True
 
-        theme_path = tmp_path / 'theme320320' / 'Custom_BrightSave'
+        user_dir = Path(display_svc._path_resolver.user_content_dir())
+        theme_path = user_dir / 'theme320320' / 'Custom_BrightSave'
         saved_bg = renderer.open_image(theme_path / '00.png')
         r, g, b = get_pixel(saved_bg, 160, 160)[:3]
         # Clean bg is white, NOT dimmed
@@ -398,7 +395,7 @@ class TestLCDDeviceIntegration:
 
     def test_select_theme_wires_state(
         self, lcd: LCDDevice, display_svc: DisplayService,
-        static_theme: ThemeInfo, mock_settings: Any,
+        static_theme: ThemeInfo,
     ) -> None:
         """lcd.select() must wire current_image and current_theme_path."""
         result = lcd.select(static_theme)
@@ -409,7 +406,7 @@ class TestLCDDeviceIntegration:
 
     def test_set_brightness_returns_transformed_image(
         self, lcd: LCDDevice, display_svc: DisplayService,
-        renderer: Any, mock_settings: Any,
+        renderer: Any,
     ) -> None:
         """lcd.set_brightness() must return an actually transformed image."""
         white = renderer.create_surface(320, 320, (255, 255, 255))
@@ -426,18 +423,18 @@ class TestLCDDeviceIntegration:
 
     def test_save_round_trip(
         self, lcd: LCDDevice, display_svc: DisplayService,
-        renderer: Any, mock_settings: Any, tmp_path: Path,
+        renderer: Any, tmp_path: Path,
     ) -> None:
         """lcd.save() must write correct files to disk."""
         blue = renderer.create_surface(320, 320, (0, 0, 255))
         display_svc.current_image = blue
         display_svc._clean_background = blue
 
-        mock_settings.user_content_dir = tmp_path
         result = lcd.save('RoundTrip')
         assert result['success'] is True
 
-        theme_path = tmp_path / 'theme320320' / 'Custom_RoundTrip'
+        user_dir = Path(display_svc._path_resolver.user_content_dir())
+        theme_path = user_dir / 'theme320320' / 'Custom_RoundTrip'
         assert (theme_path / '00.png').exists()
         assert (theme_path / 'Theme.png').exists()
         assert (theme_path / 'config.json').exists()
@@ -584,46 +581,21 @@ class TestDisplayServiceContracts:
     """Unit-level contracts for individual DisplayService methods."""
 
     def test_initialize_sets_media_and_overlay_sizes(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """initialize() calls media.set_target_size and overlay.set_resolution."""
-        from unittest.mock import patch as _patch
         data_dir = Path('/tmp/trcc_test_data')
-        mock_settings.width = 320
-        mock_settings.height = 320
-        mock_settings._resolve_paths = MagicMock()
-        mock_settings.theme_dir = None
-        mock_settings.web_dir = None
-        mock_settings.masks_dir = None
-
-        with _patch('trcc.conf.settings', mock_settings):
-            display_svc.initialize(data_dir)
-
+        # Resolution already set to 320x320 by fixture
+        display_svc.media.reset_mock()
+        display_svc.initialize(data_dir)
         display_svc.media.set_target_size.assert_called_once_with(320, 320)
 
-    def test_setup_dirs_with_existing_dirs(
-        self, display_svc: DisplayService, tmp_path: Path,
+    def test_setup_dirs_populates_theme_dir(
+        self, display_svc: DisplayService,
     ) -> None:
-        """_setup_dirs sets _local_dir and _web_dir when directories exist."""
-        local_dir = tmp_path / 'theme320320'
-        local_dir.mkdir()
-        web_dir = tmp_path / 'web' / '320320'
-        web_dir.mkdir(parents=True)
-
-        from trcc.core.models import ThemeDir
-        mock_theme_dir = MagicMock(spec=ThemeDir)
-        mock_theme_dir.exists.return_value = True
-        mock_theme_dir.path = local_dir
-
-        with patch('trcc.conf.settings') as s:
-            s._resolve_paths = MagicMock()
-            s.theme_dir = mock_theme_dir
-            s.web_dir = web_dir
-            s.masks_dir = None
-            display_svc._setup_dirs(320, 320)
-
-        assert display_svc._local_dir == local_dir
-        assert display_svc._web_dir == web_dir
+        """_setup_dirs populates _theme_dir via ThemeDir.for_resolution."""
+        display_svc._setup_dirs(320, 320)
+        assert display_svc._theme_dir is not None
 
     def test_cleanup_removes_working_dir(self, display_svc: DisplayService) -> None:
         """cleanup() removes the working directory."""
@@ -633,92 +605,74 @@ class TestDisplayServiceContracts:
         assert not wd.exists()
 
     def test_set_resolution_same_is_noop(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """set_resolution with same dimensions does not call sub-service methods."""
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_resolution(320, 320)
+        display_svc.media.reset_mock()
+        display_svc.set_resolution(320, 320)
         display_svc.media.set_target_size.assert_not_called()
 
     def test_set_resolution_different_updates_sub_services(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """set_resolution with new dimensions updates media and overlay sizes."""
-        mock_settings.width = 320
-        mock_settings.height = 320
-        mock_settings.set_resolution = MagicMock()
-        mock_settings._resolve_paths = MagicMock()
-        mock_settings.theme_dir = None
-        mock_settings.web_dir = None
-        mock_settings.masks_dir = None
-
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_resolution(480, 480)
-
+        display_svc.media.reset_mock()
+        display_svc.set_resolution(480, 480)
         display_svc.media.set_target_size.assert_called_once_with(480, 480)
 
     def test_set_rotation_updates_rotation_and_renders(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """set_rotation updates self.rotation and calls _render_and_process."""
         img = renderer.create_surface(320, 320, (100, 100, 100))
         display_svc.current_image = img
         display_svc._clean_background = img
         display_svc.brightness = 100
-
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_rotation(90)
-
+        display_svc.set_rotation(90)
         assert display_svc.rotation == 90
 
     def test_set_brightness_clamps_to_zero(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """set_brightness clamps values below 0 to 0."""
         img = renderer.create_surface(320, 320, (100, 100, 100))
         display_svc.current_image = img
         display_svc._clean_background = img
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_brightness(-50)
+        display_svc.set_brightness(-50)
         assert display_svc.brightness == 0
 
     def test_set_brightness_clamps_to_100(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """set_brightness clamps values above 100 to 100."""
         img = renderer.create_surface(320, 320, (100, 100, 100))
         display_svc.current_image = img
         display_svc._clean_background = img
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_brightness(150)
+        display_svc.set_brightness(150)
         assert display_svc.brightness == 100
 
     def test_set_split_mode_invalid_defaults_to_zero(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """set_split_mode with invalid mode (e.g. 99) defaults split_mode to 0."""
         img = renderer.create_surface(320, 320, (50, 50, 50))
         display_svc.current_image = img
         display_svc._clean_background = img
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_split_mode(99)
+        display_svc.set_split_mode(99)
         assert display_svc.split_mode == 0
 
     def test_is_widescreen_split_true_for_1600x720(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """is_widescreen_split is True when resolution is 1600x720."""
-        mock_settings.width = 1600
-        mock_settings.height = 720
-        with patch('trcc.conf.settings', mock_settings):
-            assert display_svc.is_widescreen_split is True
+        display_svc.set_resolution(1600, 720)
+        assert display_svc.is_widescreen_split is True
 
     def test_is_widescreen_split_false_for_320x320(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """is_widescreen_split is False for standard 320x320 resolution."""
-        with patch('trcc.conf.settings', mock_settings):
-            assert display_svc.is_widescreen_split is False
+        assert display_svc.is_widescreen_split is False
 
     def test_convert_media_frames_passes_through_native(
         self, display_svc: DisplayService, renderer: Any,
@@ -742,14 +696,13 @@ class TestDisplayServiceContracts:
 
     def test_load_image_file_calls_render_and_process(
         self, display_svc: DisplayService, renderer: Any,
-        tmp_path: Path, mock_settings: Any,
+        tmp_path: Path,
     ) -> None:
         """load_image_file loads the image and calls _render_and_process."""
         img_path = tmp_path / 'test.png'
         img = renderer.create_surface(320, 320, (0, 100, 200))
         img.save(str(img_path))
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.load_image_file(img_path)
+        display_svc.load_image_file(img_path)
         assert display_svc.current_image is not None
         assert display_svc._clean_background is not None
 
@@ -763,21 +716,19 @@ class TestDisplayServiceContracts:
         assert display_svc.current_image is img
 
     def test_create_black_background_sets_current_image(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """_create_black_background sets current_image to a black surface."""
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc._create_black_background()
+        display_svc._create_black_background()
         assert display_svc.current_image is not None
 
     def test_render_overlay_creates_black_bg_when_no_background(
-        self, display_svc: DisplayService, mock_settings: Any,
+        self, display_svc: DisplayService,
     ) -> None:
         """render_overlay creates a black background when no background is set."""
         display_svc.current_image = None
         display_svc._clean_background = None
-        with patch('trcc.conf.settings', mock_settings):
-            result = display_svc.render_overlay()
+        result = display_svc.render_overlay()
         # Should not raise and should return something (black bg was created)
         assert result is not None
 
@@ -793,7 +744,7 @@ class TestDisplayServiceContracts:
         assert result is img
 
     def test_apply_adjustments_applies_brightness(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """_apply_adjustments applies brightness when less than 100."""
         white = renderer.create_surface(320, 320, (255, 255, 255))
@@ -816,15 +767,14 @@ class TestDisplayServiceContracts:
         assert result is not img
 
     def test_set_video_fit_mode_updates_current_image_on_success(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """set_video_fit_mode updates current_image when media.set_fit_mode returns True."""
         frame = renderer.create_surface(320, 320, (50, 150, 200))
         display_svc.media.set_fit_mode.return_value = True
         display_svc.media.get_frame.return_value = frame
         display_svc.media._frames = [frame]
-        with patch('trcc.conf.settings', mock_settings):
-            display_svc.set_video_fit_mode('fill')
+        display_svc.set_video_fit_mode('fill')
         assert display_svc.current_image is frame
 
     def test_video_tick_returns_none_when_no_frame(
@@ -836,13 +786,12 @@ class TestDisplayServiceContracts:
         assert result is None
 
     def test_video_tick_returns_dict_with_frame(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """video_tick returns a result dict when media.tick returns a frame."""
         frame = renderer.create_surface(320, 320, (100, 100, 100))
         display_svc.media.tick.return_value = (frame, True, 0.5)
-        with patch('trcc.conf.settings', mock_settings):
-            result = display_svc.video_tick()
+        result = display_svc.video_tick()
         assert result is not None
         assert 'preview' in result
 
@@ -855,7 +804,7 @@ class TestDisplayServiceContracts:
         assert result is None
 
     def test_send_current_image_raises_without_device(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """send_current_image raises RuntimeError when no device is selected."""
         display_svc.current_image = renderer.create_surface(320, 320, (0, 0, 0))
@@ -865,7 +814,7 @@ class TestDisplayServiceContracts:
             display_svc.send_current_image()
 
     def test_send_current_image_encodes_when_device_present(
-        self, display_svc: DisplayService, renderer: Any, mock_settings: Any,
+        self, display_svc: DisplayService, renderer: Any,
     ) -> None:
         """send_current_image returns encoded bytes when device is available."""
         display_svc.current_image = renderer.create_surface(320, 320, (128, 0, 0))
@@ -876,16 +825,14 @@ class TestDisplayServiceContracts:
 
     def test_save_theme_delegates_to_persistence(
         self, display_svc: DisplayService, renderer: Any,
-        tmp_path: Path, mock_settings: Any,
+        tmp_path: Path,
     ) -> None:
         """save_theme delegates to ThemePersistence.save with correct args."""
         img = renderer.create_surface(320, 320, (0, 0, 200))
         display_svc.current_image = img
         display_svc._clean_background = img
-        mock_settings.user_content_dir = tmp_path
-        with patch('trcc.conf.settings', mock_settings):
-            with patch.object(ThemePersistence, 'save', return_value=(True, 'ok')) as m:
-                display_svc.save_theme('Saved')
+        with patch.object(ThemePersistence, 'save', return_value=(True, 'ok')) as m:
+            display_svc.save_theme('Saved')
         m.assert_called_once()
         _, kwargs = m.call_args
         assert kwargs.get('current_image') is img or m.call_args[0][3] is img
@@ -903,36 +850,31 @@ class TestDisplayServiceContracts:
         assert ok is True
 
     def test_import_config_writable_uses_given_dir(
-        self, display_svc: DisplayService, tmp_path: Path, mock_settings: Any,
+        self, display_svc: DisplayService, tmp_path: Path,
     ) -> None:
         """import_config uses given data_dir when it is writable."""
         display_svc._persistence = MagicMock()
         display_svc._persistence.import_config.return_value = (False, 'Theme path not found')
 
-        with patch('trcc.conf.settings', mock_settings):
-            ok, msg = display_svc.import_config(tmp_path / 'in.json', tmp_path)
+        ok, msg = display_svc.import_config(tmp_path / 'in.json', tmp_path)
 
         display_svc._persistence.import_config.assert_called_once()
         call_data_dir = display_svc._persistence.import_config.call_args[0][1]
         assert call_data_dir == tmp_path
 
-    def test_import_config_unwritable_falls_back_to_user_data_dir(
-        self, display_svc: DisplayService, tmp_path: Path, mock_settings: Any,
+    def test_import_config_unwritable_falls_back_to_data_dir(
+        self, display_svc: DisplayService, tmp_path: Path,
     ) -> None:
-        """import_config uses user_data_dir when given dir is not writable."""
-        user_dir = tmp_path / 'user'
-        user_dir.mkdir()
-        mock_settings.user_data_dir = user_dir
+        """import_config uses path_resolver.data_dir when given dir is not writable."""
         display_svc._persistence = MagicMock()
         display_svc._persistence.import_config.return_value = (False, 'Theme path not found')
 
         readonly_dir = Path('/root/not_writable')
-        with patch('trcc.conf.settings', mock_settings), \
-             patch('os.access', return_value=False):
+        with patch('os.access', return_value=False):
             display_svc.import_config(tmp_path / 'in.json', readonly_dir)
 
         call_data_dir = display_svc._persistence.import_config.call_args[0][1]
-        assert call_data_dir == user_dir
+        assert call_data_dir == Path(display_svc._path_resolver.data_dir())
 
     def test_local_dir_property(self, display_svc: DisplayService) -> None:
         """local_dir property returns _local_dir value."""

@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .models import DEFAULT_BRIGHTNESS_LEVEL, ThemeInfo, ThemeType
+from .paths import resolve_theme_dir
 from .ports import Device
 
 log = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ class LCDDevice(Device):
         renderer: Any = None,
         dc_config_cls: Any = None,
         load_config_json_fn: Any = None,
+        theme_info_from_dir_fn: Any = None,
+        lcd_config: Any = None,
         find_active_fn: Any = None,
         proxy_factory_fn: Any = None,
         build_services_fn: Any = None,
@@ -50,6 +54,8 @@ class LCDDevice(Device):
         self._renderer = renderer
         self._dc_config_cls = dc_config_cls
         self._load_config_json_fn = load_config_json_fn
+        self._theme_info_from_dir_fn = theme_info_from_dir_fn
+        self._lcd_config = lcd_config
         self._find_active_fn = find_active_fn
         self._proxy_factory_fn = proxy_factory_fn
         self._build_services_fn = build_services_fn
@@ -151,19 +157,12 @@ class LCDDevice(Device):
             {"success": bool, "resolution": (w, h), "device_path": str,
              "proxy": InstanceKind | None}
         """
-        # Check if another instance already owns the device
-        if detected is None and self._find_active_fn and self._proxy_factory_fn:
-            active = self._find_active_fn()
-            if active is not None:
-                proxy = self._proxy_factory_fn(active)
-                self._set_proxy(proxy)
-                log.info("Routing through %s instance", active.value)
-                return {
-                    "success": True,
-                    "proxy": active,
-                    "resolution": getattr(self._proxy, 'resolution', (0, 0)),
-                    "device_path": getattr(self._proxy, 'device_path', ''),
-                }
+        proxy_result = self._try_proxy_route(detected)
+        if proxy_result is not None:
+            self._set_proxy(self._proxy)
+            proxy_result["resolution"] = getattr(self._proxy, 'resolution', (0, 0))
+            proxy_result["device_path"] = getattr(self._proxy, 'device_path', '')
+            return proxy_result
 
         if self._device_svc is None:
             raise RuntimeError(
@@ -184,6 +183,9 @@ class LCDDevice(Device):
 
         self._build_services(svc)
         dev = svc.selected
+        w, h = dev.resolution
+        if w and h and self._display_svc:
+            self._display_svc.set_resolution(w, h)
         return {
             "success": True,
             "resolution": dev.resolution,
@@ -299,7 +301,9 @@ class LCDDevice(Device):
 
         if not self.connected:
             return {"success": False, "error": "Device not connected"}
-        w, h = self.resolution
+        if not self._display_svc:
+            return {"success": False, "error": "Display service not initialized"}
+        w, h = self._display_svc.canvas_size
         overlay = OverlayService(
             w, h, renderer=self._renderer,
             load_config_json_fn=self._load_config_json_fn,
@@ -346,8 +350,10 @@ class LCDDevice(Device):
 
         if not os.path.exists(mask_path):
             return {"success": False, "error": f"Path not found: {mask_path}"}
+        if not self._display_svc:
+            return {"success": False, "error": "Display service not initialized"}
 
-        w, h = self.resolution
+        w, h = self._display_svc.canvas_size
         p = Path(mask_path)
         if p.is_dir():
             mask_file = p / "01.png"
@@ -495,11 +501,9 @@ class LCDDevice(Device):
     # ── Display settings (brightness/rotation/split) ─────────────
 
     def _persist(self, field: str, value: object) -> None:
-        from ..conf import Settings
         dev = self._device_svc.selected if self._device_svc else None
-        if dev:
-            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-            Settings.save_device_setting(key, field, value)
+        if dev and self._lcd_config:
+            self._lcd_config.persist(dev, field, value)
 
     def restore_device_settings(self) -> None:
         """Restore brightness + rotation from per-device config.
@@ -507,13 +511,10 @@ class LCDDevice(Device):
         Called by adapters (CLI, API, GUI) after device selection so they
         don't need to read config or convert brightness levels themselves.
         """
-        from ..conf import Settings
-        from .models import DEFAULT_BRIGHTNESS_LEVEL
         dev = self._device_svc.selected if self._device_svc else None
-        if not dev:
+        if not dev or not self._lcd_config:
             return
-        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-        cfg = Settings.get_device_config(key)
+        cfg = self._lcd_config.get_config(dev)
         raw = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
         percent = raw if 0 <= raw <= 100 else 100
         self.set_brightness(percent)
@@ -535,10 +536,55 @@ class LCDDevice(Device):
         if degrees not in (0, 90, 180, 270):
             return {"success": False,
                     "error": "Rotation must be 0, 90, 180, or 270"}
-        image = self._display_svc.set_rotation(degrees)
+        svc = self._display_svc
+        old_canvas = svc.canvas_size
+        image = svc.set_rotation(degrees)
         self._persist('rotation', degrees)
+
+        # Non-square canvas change: reload theme from new directory
+        # C# UpDateUCComboBox1: ReadFileTheme() + Theme_Click_Event()
+        if old_canvas != svc.canvas_size:
+            reloaded = self._reload_theme_for_rotation()
+            if reloaded is not None:
+                image = reloaded
+
         return {"success": True, "image": image,
                 "message": f"Rotation set to {degrees}°"}
+
+    def _reload_theme_for_rotation(self) -> Any | None:
+        """Find current theme in the new rotation directory and reload it.
+
+        After DisplayService.set_rotation() switches dirs, find the same
+        theme name in the new directory and reload with overlay config.
+        All UIs (CLI, API, GUI) get this via LCDDevice.set_rotation().
+        """
+        current = self.current_theme_path
+        if not current:
+            return None
+        theme_name = current.name
+        svc = self._display_svc
+        for base in (svc.local_dir, svc.web_dir):
+            if not base:
+                continue
+            candidate = Path(base) / theme_name
+            if candidate.exists():
+                log.info("Rotation reload: %s → %s", theme_name, candidate)
+                theme = self._theme_info_from_dir_fn(candidate)
+                result = self.select(theme)
+                # Reload overlay config from new dir
+                overlay_cfg = self.load_overlay_config_from_dir(str(candidate))
+                if overlay_cfg:
+                    if self._lcd_config:
+                        self._lcd_config.apply_format_prefs(overlay_cfg)
+                    self.set_config(overlay_cfg)
+                    self.enable_overlay(True)
+                    rendered = svc._render_and_process()
+                    return rendered
+                else:
+                    self.enable_overlay(False)
+                return result.get('image')
+        log.debug("Rotation: theme '%s' not in new dirs", theme_name)
+        return None
 
     def set_split_mode(self, mode: int) -> dict:
         if mode not in (0, 1, 2, 3):
@@ -569,30 +615,24 @@ class LCDDevice(Device):
         overlay_enabled, and is_animated so each adapter can update its
         own presentation layer.
         """
-        from pathlib import Path as _Path
-
-        from ..conf import Settings
-        from .models import ThemeInfo
-
         dev = self._device_svc.selected if self._device_svc else None
-        if not dev:
+        if not dev or not self._lcd_config:
             return {"success": False, "error": "No device selected"}
-        key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-        cfg = Settings.get_device_config(key)
+        cfg = self._lcd_config.get_config(dev)
 
         # ── Theme ──────────────────────────────────────────────────────────
         theme_path = cfg.get("theme_path")
         if not theme_path:
             return {"success": False, "error": "No saved theme"}
 
-        path = _Path(theme_path)
+        path = Path(theme_path)
         if not path.exists():
             return {"success": False, "error": f"Theme not found: {theme_path}"}
 
         video_exts = {'.mp4', '.avi', '.mkv', '.webm'}
         if path.is_dir():
             w, h = self.lcd_size
-            theme = ThemeInfo.from_directory(path, (w, h))
+            theme = self._theme_info_from_dir_fn(path, (w, h))
         elif path.suffix.lower() in video_exts:
             preview = path.parent / f"{path.stem}.png"
             theme = ThemeInfo.from_video(path, preview if preview.exists() else None)
@@ -607,14 +647,22 @@ class LCDDevice(Device):
                     "overlay_enabled": False, "is_animated": False}
 
         # ── Mask ───────────────────────────────────────────────────────────
-        mask_path = cfg.get("mask_path")
-        if mask_path:
-            mask_dir = _Path(mask_path)
-            if mask_dir.exists():
+        mask_id = cfg.get("mask_id") or ""
+        if not mask_id:
+            # Migration: old config stored full path as mask_path
+            old_path = cfg.get("mask_path")
+            if old_path:
+                mask_id = Path(old_path).name
+        if mask_id:
+            is_custom = cfg.get("mask_custom", False)
+            svc = self._display_svc
+            base = svc.user_masks_dir() if is_custom and svc else (svc.masks_dir if svc else None)
+            mask_dir = Path(base) / mask_id if base else None
+            if mask_dir and mask_dir.exists():
                 svc = self._display_svc
                 already_loaded = (svc and svc._mask_source_dir == mask_dir)
                 if not already_loaded:
-                    self.load_mask_standalone(mask_path)
+                    self.load_mask_standalone(str(mask_dir))
 
         # ── Overlay ────────────────────────────────────────────────────────
         overlay_cfg = cfg.get("overlay", {})
@@ -644,8 +692,6 @@ class LCDDevice(Device):
 
     def select(self, theme: Any) -> dict:
         """Select and load a theme (local or cloud)."""
-        from .models import ThemeType
-
         self._theme_svc.select(theme)
         if not theme:
             return {"success": False, "error": "No theme provided"}
@@ -679,14 +725,12 @@ class LCDDevice(Device):
         Returns dict with: success, image, is_animated, interval,
         theme_path (Path), config_path (Path|None for overlay dc).
         """
-        from ..conf import Settings, settings
-        from ..services import ThemeService
-        from .models import ThemeDir as CoreThemeDir
-
         w, h = (width, height) if width and height else self.lcd_size
-        theme_dir = Path(str(CoreThemeDir.for_resolution(w, h)))
-        user_content_dir = getattr(settings, 'user_content_dir', None)
-        themes = ThemeService.discover_local_merged(
+        theme_dir = Path(resolve_theme_dir(w, h))
+        svc = self._display_svc
+        pr = svc._path_resolver if svc else None
+        user_content_dir = Path(pr.user_content_dir()) if pr else None
+        themes = self._theme_svc.discover_local_merged(
             theme_dir, user_content_dir, (w, h))
         match = next((t for t in themes if t.name == name), None)
         if not match:
@@ -704,7 +748,8 @@ class LCDDevice(Device):
         if match.path:
             overlay_config = self.load_overlay_config_from_dir(str(match.path))
             if overlay_config:
-                Settings.apply_format_prefs(overlay_config)
+                if self._lcd_config:
+                    self._lcd_config.apply_format_prefs(overlay_config)
                 self.set_config(overlay_config)
                 self.enable_overlay(True)
                 if not is_animated:
@@ -725,10 +770,9 @@ class LCDDevice(Device):
 
         # Persist as last-used theme
         dev = self._device_svc.selected if self._device_svc else None
-        if dev and match.path:
-            key = Settings.device_config_key(dev.device_index, dev.vid, dev.pid)
-            Settings.save_device_setting(key, 'theme_path', str(match.path))
-            Settings.save_device_setting(key, 'mask_path', '')
+        if dev and match.path and self._lcd_config:
+            self._lcd_config.persist(dev, 'theme_path', str(match.path))
+            self._lcd_config.persist(dev, 'mask_id', '')
 
         return result
 

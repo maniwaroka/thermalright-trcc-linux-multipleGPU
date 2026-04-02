@@ -168,6 +168,24 @@ class Device(ABC):
         - LEDDevice (core/led_device.py) — LED segment display devices
     """
 
+    # Proxy routing state — shared by all device types
+    _find_active_fn: Any = None
+    _proxy_factory_fn: Any = None
+    _proxy: Any = None
+
+    def _try_proxy_route(self, detected: Any) -> dict | None:
+        """Check for active instance and route through proxy if found.
+
+        Returns result dict if proxied, None if caller should connect directly.
+        Both LCDDevice and LEDDevice call this at the start of connect().
+        """
+        if detected is None and self._find_active_fn and self._proxy_factory_fn:
+            active = self._find_active_fn()
+            if active is not None:
+                self._proxy = self._proxy_factory_fn(active)
+                return {"success": True, "proxy": active}
+        return None
+
     @property
     @abstractmethod
     def is_lcd(self) -> bool:
@@ -384,11 +402,52 @@ class SensorEnumerator(ABC):
 # =========================================================================
 
 
-class PlatformSetup(ABC):
+class PathResolver(ABC):
+    """Port: platform path resolution.
+
+    Segregated from PlatformSetup (ISP) — callers that only need paths
+    (Settings, DisplayService, LCDDevice) depend on this narrow interface.
+    """
+
+    @abstractmethod
+    def config_dir(self) -> str:
+        """User config directory (e.g. ~/.trcc/)."""
+
+    @abstractmethod
+    def data_dir(self) -> str:
+        """User data directory (e.g. ~/.trcc/data/)."""
+
+    @abstractmethod
+    def user_content_dir(self) -> str:
+        """User-created content directory (e.g. ~/.trcc-user/)."""
+
+    @abstractmethod
+    def web_dir(self, width: int, height: int) -> str:
+        """Cloud theme web directory for a resolution."""
+
+    @abstractmethod
+    def web_masks_dir(self, width: int, height: int) -> str:
+        """Cloud masks directory for a resolution."""
+
+    @abstractmethod
+    def user_masks_dir(self, width: int, height: int) -> str:
+        """User-created masks directory for a resolution."""
+
+    @abstractmethod
+    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
+        """Resolve the GUI assets directory for this platform.
+
+        Linux: use package dir directly.
+        Others: copy to ~/.trcc/assets/gui/ to avoid sandboxed paths.
+        Returns the resolved Path.
+        """
+
+
+class PlatformSetup(PathResolver):
     """Port: platform-specific setup wizard.
 
-    Each platform adapter (Linux, Windows, macOS, BSD) implements this ABC
-    to provide its own dependency checks and install steps.
+    Inherits PathResolver for path methods. Adds setup ops, GUI integration,
+    diagnostics, and instance management.
 
     Concrete implementations:
         - LinuxSetup (adapters/system/setup.py)
@@ -418,45 +477,8 @@ class PlatformSetup(ABC):
         """Platform-specific instructions for installing 7z/p7zip."""
 
     @abstractmethod
-    def config_dir(self) -> str:
-        """User config directory (e.g. ~/.trcc/)."""
-
-    @abstractmethod
-    def data_dir(self) -> str:
-        """User data directory (e.g. ~/.trcc/data/)."""
-
-    @abstractmethod
-    def user_content_dir(self) -> str:
-        """User-created content directory (e.g. ~/.trcc-user/)."""
-
-    @abstractmethod
-    def theme_dir(self, width: int, height: int) -> str:
-        """Local theme directory for a resolution."""
-
-    @abstractmethod
-    def web_dir(self, width: int, height: int) -> str:
-        """Cloud theme web directory for a resolution."""
-
-    @abstractmethod
-    def web_masks_dir(self, width: int, height: int) -> str:
-        """Cloud masks directory for a resolution."""
-
-    @abstractmethod
-    def user_masks_dir(self, width: int, height: int) -> str:
-        """User-created masks directory for a resolution."""
-
-    @abstractmethod
     def ffmpeg_install_help(self) -> str:
         """Platform-specific instructions for installing ffmpeg."""
-
-    @abstractmethod
-    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
-        """Resolve the GUI assets directory for this platform.
-
-        Linux: use package dir directly.
-        Others: copy to ~/.trcc/assets/gui/ to avoid sandboxed paths.
-        Returns the resolved Path.
-        """
 
     def configure_dpi(self) -> None:
         """Apply platform DPI configuration before QApplication is created.

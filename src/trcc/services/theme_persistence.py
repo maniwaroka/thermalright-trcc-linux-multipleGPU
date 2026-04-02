@@ -111,8 +111,8 @@ class ThemePersistence:
                 config = json.load(f)
             tp = config.get('theme_path')
             if tp and Path(tp).exists():
-                from ..core.models import ThemeInfo
-                theme = ThemeInfo.from_directory(Path(tp))
+                from .theme import theme_info_from_directory
+                theme = theme_info_from_directory(Path(tp))
                 return True, theme
             return False, "Theme path in config not found"
         except Exception as e:

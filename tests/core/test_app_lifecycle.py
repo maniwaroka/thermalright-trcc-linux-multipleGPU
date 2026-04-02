@@ -24,6 +24,7 @@ def app():
     builder = MagicMock()
     builder.build_detect_fn.return_value = lambda: []
     inst = TrccApp(builder)
+    inst._settings = MagicMock()
     TrccApp._instance = inst
     yield inst
     TrccApp.reset()
@@ -101,9 +102,8 @@ class TestDiscover:
 
 class TestSetLanguage:
     def test_valid_code_updates_settings(self, app):
-        with patch('trcc.conf.settings') as mock_settings:
-            app.set_language('en')
-        assert mock_settings.lang == 'en'
+        app.set_language('en')
+        assert app._settings.lang == 'en'
 
     def test_unknown_code_returns_fail(self, app):
         result = app.set_language('xx_unknown')

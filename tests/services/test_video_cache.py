@@ -61,11 +61,12 @@ class TestBuild:
     def test_encoding_params_stored(self):
         cache = _build(_make_frames(2), protocol='hid', resolution=(320, 320),
                        fbl=100, use_jpeg=True)
-        protocol, resolution, fbl, use_jpeg = cache.encoding_params
+        protocol, resolution, fbl, use_jpeg, encode_angle = cache.encoding_params
         assert protocol == 'hid'
         assert resolution == (320, 320)
         assert fbl == 100
         assert use_jpeg is True
+        assert encode_angle == 0
 
 
 class TestAccess:

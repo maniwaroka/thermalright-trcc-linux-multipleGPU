@@ -9,9 +9,6 @@ Usage:
     settings.width          # LCD width
     settings.height         # LCD height
     settings.resolution     # (width, height) tuple
-    settings.theme_dir      # ThemeDir for current resolution
-    settings.web_dir        # Cloud theme preview dir
-    settings.masks_dir      # Cloud mask overlay dir
     settings.temp_unit      # 0=Celsius, 1=Fahrenheit
     settings.lang           # ISO 639-1 language code ('en', 'de', 'ru', 'fr', 'zh', etc.)
 
@@ -30,11 +27,14 @@ import locale
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from .__version__ import __version__
-from .core.models import LEGACY_TO_ISO, LOCALE_TO_LANG, ThemeDir
+from .core.models import LEGACY_TO_ISO, LOCALE_TO_LANG
 from .core.paths import USER_CONFIG_DIR
+
+if TYPE_CHECKING:
+    from .core.ports import PathResolver
 
 log = logging.getLogger(__name__)
 
@@ -450,7 +450,7 @@ class Settings:
 
     # --- Instance methods and properties ---
 
-    def __init__(self, path_resolver: Any) -> None:
+    def __init__(self, path_resolver: 'PathResolver') -> None:
         if path_resolver is None:
             raise RuntimeError(
                 "Settings requires a path_resolver. "
@@ -460,10 +460,8 @@ class Settings:
         res = Settings._get_saved_resolution()
         self._width, self._height = res if res else (0, 0)
 
-        # Derived paths (resolved for current resolution)
-        self.theme_dir: Optional[ThemeDir] = None
-        self.web_dir: Optional[Path] = None
-        self.masks_dir: Optional[Path] = None
+        # Rotation (live state — persisted per-device via save_device_setting)
+        self._rotation: int = 0
 
         # User preferences
         self.temp_unit: int = Settings._get_saved_temp_unit()
@@ -475,10 +473,6 @@ class Settings:
         self.user_data_dir = Path(path_resolver.data_dir())
         self.user_content_dir = Path(path_resolver.user_content_dir())
 
-        # Resolve paths if a saved resolution exists
-        if self._width and self._height:
-            self._resolve_paths()
-
     @property
     def width(self) -> int:
         return self._width
@@ -488,11 +482,15 @@ class Settings:
         return self._height
 
     @property
+    def rotation(self) -> int:
+        return self._rotation
+
+    @property
     def resolution(self) -> tuple[int, int]:
         return (self._width, self._height)
 
     def set_resolution(self, width: int, height: int, persist: bool = True) -> None:
-        """Update active resolution in-memory and re-resolve derived paths.
+        """Update active resolution in-memory.
 
         Resolution is persisted per device via save_device_setting('w'/'h'),
         called by lcd_handler after handshake. The 'persist' parameter is
@@ -504,7 +502,10 @@ class Settings:
                  self._width, self._height, width, height)
         self._width = width
         self._height = height
-        self._resolve_paths()
+
+    def set_rotation(self, degrees: int) -> None:
+        """Update saved rotation."""
+        self._rotation = degrees
 
     def set_temp_unit(self, unit: int) -> None:
         """Set temperature unit (0=Celsius, 1=Fahrenheit) and persist."""
@@ -547,13 +548,6 @@ class Settings:
             return migrated
         return _detect_language()
 
-    def _resolve_paths(self) -> None:
-        """Resolve theme/web/mask directories for current resolution."""
-        w, h = self._width, self._height
-        self.theme_dir = ThemeDir.for_resolution(w, h)
-        self.web_dir = Path(self._path_resolver.web_dir(w, h))
-        self.masks_dir = Path(self._path_resolver.web_masks_dir(w, h))
-
     def user_masks_dir(self, width: int = 0, height: int = 0) -> Path:
         """User-created masks directory for a resolution.
 
@@ -562,19 +556,6 @@ class Settings:
         w = width or self._width
         h = height or self._height
         return Path(self._path_resolver.user_masks_dir(w, h))
-
-    def resolve_cloud_dirs(self, rotation: int = 0) -> None:
-        """Re-resolve cloud background/mask dirs for rotation.
-
-        C# GetWebBackgroundImageDirectory / GetFileListMBDir:
-        non-square displays swap width/height when directionB is 90 or 270.
-        Local themes (theme_dir) stay landscape — only cloud dirs switch.
-        """
-        w, h = self._width, self._height
-        if w != h and rotation in (90, 270):
-            w, h = h, w
-        self.web_dir = Path(self._path_resolver.web_dir(w, h))
-        self.masks_dir = Path(self._path_resolver.web_masks_dir(w, h))
 
 
 # Module-level singleton — initialized by composition roots via init_settings()
@@ -595,7 +576,7 @@ def _get_settings() -> Settings:
 settings: Settings = None  # type: ignore[assignment]
 
 
-def init_settings(path_resolver: Any) -> Settings:
+def init_settings(path_resolver: 'PathResolver') -> Settings:
     """Initialize the Settings singleton with a platform path resolver.
 
     Called by composition roots (CLI, GUI, API) after building the

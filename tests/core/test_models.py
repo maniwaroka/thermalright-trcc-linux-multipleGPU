@@ -18,13 +18,14 @@ from trcc.core.models import (
     parse_hex_color,
     pm_to_fbl,
 )
+from trcc.services.theme import theme_info_from_directory
 
 # =============================================================================
 # ThemeInfo
 # =============================================================================
 
 class TestThemeInfoFromDirectory(unittest.TestCase):
-    """ThemeInfo.from_directory() filesystem scanning."""
+    """theme_info_from_directory() filesystem scanning."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -42,38 +43,38 @@ class TestThemeInfoFromDirectory(unittest.TestCase):
 
     def test_basic_theme(self):
         d = self._make_theme('001a', ['00.png'])
-        info = ThemeInfo.from_directory(d)
+        info = theme_info_from_directory(d)
         self.assertEqual(info.name, '001a')
         self.assertEqual(info.theme_type, ThemeType.LOCAL)
         self.assertIsNotNone(info.background_path)
 
     def test_animated_theme(self):
         d = self._make_theme('002a', ['00.png', 'Theme.zt'])
-        info = ThemeInfo.from_directory(d)
+        info = theme_info_from_directory(d)
         self.assertTrue(info.is_animated)
         self.assertIsNotNone(info.animation_path)
 
     def test_mask_only_theme(self):
         d = self._make_theme('mask', ['01.png'])
-        info = ThemeInfo.from_directory(d)
+        info = theme_info_from_directory(d)
         self.assertTrue(info.is_mask_only)
         self.assertIsNone(info.background_path)
 
     def test_resolution_passed_through(self):
         d = self._make_theme('003a', ['00.png'])
-        info = ThemeInfo.from_directory(d, resolution=(480, 480))
+        info = theme_info_from_directory(d, resolution=(480, 480))
         self.assertEqual(info.resolution, (480, 480))
 
     def test_thumbnail_fallback_to_background(self):
         """When Theme.png missing, thumbnail falls back to 00.png."""
         d = self._make_theme('004a', ['00.png'])
-        info = ThemeInfo.from_directory(d)
+        info = theme_info_from_directory(d)
         self.assertIsNotNone(info.thumbnail_path)
         self.assertEqual(info.thumbnail_path.name, '00.png')
 
     def test_with_config_dc(self):
         d = self._make_theme('005a', ['00.png', 'config1.dc'])
-        info = ThemeInfo.from_directory(d)
+        info = theme_info_from_directory(d)
         self.assertIsNotNone(info.config_path)
 
 

@@ -108,17 +108,17 @@ class ThemeData:
 
 
 class ThemeDir:
-    """Standard theme directory layout — domain value object.
+    """Standard theme directory layout — pure domain value object.
 
-    Encapsulates theme file naming conventions and path properties.
-    Pure domain knowledge — no infrastructure deps.
+    Path-construction properties only. Zero I/O, zero logic.
+    Filesystem operations (resolve_theme_dir, has_themes) live in core/paths.py.
 
     Usage::
 
         td = ThemeDir(some_path)
-        td.bg.exists()       # 00.png
-        td.mask.exists()     # 01.png
-        td.dc.exists()       # config1.dc
+        td.bg          # Path to 00.png
+        td.mask        # Path to 01.png
+        td.dc          # Path to config1.dc
     """
 
     __slots__ = ('path',)
@@ -156,50 +156,12 @@ class ThemeDir:
         """Theme.zt animation file."""
         return self.path / 'Theme.zt'
 
-    def is_valid(self) -> bool:
-        """Check if directory contains valid theme files."""
-        return self.preview.exists() or self.dc.exists() or self.bg.exists()
-
-    def exists(self) -> bool:
-        """Check if directory exists."""
-        return self.path.exists()
-
     def __truediv__(self, other: str) -> Path:
         """Allow ThemeDir / 'subpath' to return a Path."""
         return self.path / other
 
     def __str__(self) -> str:
         return str(self.path)
-
-    @staticmethod
-    def has_themes(theme_dir: str) -> bool:
-        """Check if a Theme* directory has actual theme subfolders with image content."""
-        if not os.path.isdir(theme_dir):
-            return False
-        for item in os.listdir(theme_dir):
-            item_path = os.path.join(theme_dir, item)
-            if (os.path.isdir(item_path)
-                    and not item.startswith('.')
-                    and not item.startswith('Custom_')):
-                if any(f.endswith('.png') for f in os.listdir(item_path)):
-                    return True
-        return False
-
-    @classmethod
-    def for_resolution(cls, width: int, height: int) -> 'ThemeDir':
-        """Resolve the best theme directory for a resolution.
-
-        Lazy-imports infrastructure constants from data_repository.
-        """
-        from .paths import DATA_DIR, USER_DATA_DIR
-        name = f'theme{width}{height}'
-        user_dir = os.path.join(USER_DATA_DIR, name)
-        if cls.has_themes(user_dir):
-            return cls(user_dir)
-        pkg_dir = os.path.join(DATA_DIR, name)
-        if cls.has_themes(pkg_dir):
-            return cls(pkg_dir)
-        return cls(user_dir)
 
 
 class ThemeType(Enum):
@@ -237,38 +199,6 @@ class ThemeInfo:
     video_url: Optional[str] = None
     preview_url: Optional[str] = None
     category: Optional[str] = None  # a=Gallery, b=Tech, c=HUD, etc.
-
-    @classmethod
-    def from_directory(cls, path: Path, resolution: Tuple[int, int] = (320, 320)) -> 'ThemeInfo':
-        """Create ThemeInfo from a theme directory."""
-        td = ThemeDir(path)
-
-        # Determine if animated — check Theme.zt first, then .mp4 files
-        if td.zt.exists():
-            is_animated = True
-            animation_path = td.zt
-        else:
-            mp4_files = list(path.glob('*.mp4'))
-            if mp4_files:
-                is_animated = True
-                animation_path = mp4_files[0]
-            else:
-                is_animated = False
-                animation_path = None
-
-        return cls(
-            name=path.name,
-            path=path,
-            theme_type=ThemeType.LOCAL,
-            background_path=td.bg if td.bg.exists() else None,
-            mask_path=td.mask if td.mask.exists() else None,
-            thumbnail_path=td.preview if td.preview.exists() else (td.bg if td.bg.exists() else None),
-            animation_path=animation_path,
-            config_path=td.dc if td.dc.exists() else None,
-            resolution=resolution,
-            is_animated=is_animated,
-            is_mask_only=not td.bg.exists() and td.mask.exists(),
-        )
 
     @classmethod
     def from_video(cls, video_path: Path, preview_path: Optional[Path] = None) -> 'ThemeInfo':
@@ -415,6 +345,7 @@ class DeviceInfo:
     device_type: int = 1  # 1=SCSI, 2=HID Type 2 ("H"), 3=HID Type 3 ("ALi")
     implementation: str = "generic"  # e.g. "thermalright_lcd_v1", "hid_type2", "hid_led"
     button_image: str = "A1CZTV"    # Sidebar image prefix (resolved from detection or handshake PM+SUB)
+    sub_byte: int = 0               # Raw SUB from handshake (for encode rotation lookup)
     led_style_id: Optional[int] = None  # LED style from probe (avoids name-based lookup)
     led_style_sub: int = 0              # LED style sub-variant (C# nowLedStyleSub)
 
@@ -1688,6 +1619,12 @@ class DeviceProfile:
     jpeg: bool = False           # JPEG encoding (vs RGB565)
     big_endian: bool = False     # RGB565 byte order (> vs <)
     rotate: bool = False         # Pre-rotate 90° CW for non-square portrait panels
+    # Device encode rotation (C# RotateImg in ImageToJpg).
+    # Formula: angle = (base + direction * sign) % 360
+    # sign = -1 if encode_invert else +1. sub_byte overrides base.
+    encode_base: int = 0
+    encode_invert: bool = True   # True = (base - dir), most devices
+    encode_sub_bases: tuple[tuple[int, int], ...] = ()  # ((sub, base), ...)
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -1700,7 +1637,7 @@ class DeviceProfile:
 
 # fmt: off
 FBL_PROFILES: dict[int, DeviceProfile] = {
-    #          W      H     jpeg    BE      rotate
+    #          W      H     jpeg    BE      rotate  enc_base  enc_inv  enc_sub
     36:  DeviceProfile(240,  240),
     37:  DeviceProfile(240,  240),
     50:  DeviceProfile(320,  240,  rotate=True),
@@ -1713,15 +1650,36 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     100: DeviceProfile(320,  320,  big_endian=True),
     101: DeviceProfile(320,  320,  big_endian=True),
     102: DeviceProfile(320,  320,  big_endian=True),
-    114: DeviceProfile(1600, 720,  jpeg=True, rotate=True),
-    128: DeviceProfile(1280, 480,  jpeg=True, rotate=True),
+    114: DeviceProfile(1600, 720,  jpeg=True, rotate=True,
+                       encode_base=180, encode_sub_bases=((3, 0),)),
+    128: DeviceProfile(1280, 480,  jpeg=True, rotate=True,
+                       encode_sub_bases=((2, 90),)),
     129: DeviceProfile(480,  480),                              # alias for 72
-    192: DeviceProfile(1920, 462,  jpeg=True, rotate=True),
-    224: DeviceProfile(854,  480,  jpeg=True, rotate=True),
+    192: DeviceProfile(1920, 462,  jpeg=True, rotate=True,
+                       encode_base=180, encode_sub_bases=((2, 0), (3, 0), (4, 0))),
+    224: DeviceProfile(854,  480,  jpeg=True, rotate=True,
+                       encode_invert=False, encode_sub_bases=((2, 180),)),
 }
 # fmt: on
 
 _DEFAULT_PROFILE = DeviceProfile(320, 320, big_endian=True)
+
+
+def get_encode_rotation(profile: DeviceProfile, sub_byte: int,
+                        direction: int) -> int:
+    """Compute device encode rotation angle (C# RotateImg in ImageToJpg).
+
+    Every C# angle table follows: angle = (base + direction * sign) % 360.
+    sign is per-resolution (-1 if encode_invert, +1 otherwise).
+    sub_byte overrides base for specific device variants.
+    """
+    base = profile.encode_base
+    for sub, sub_base in profile.encode_sub_bases:
+        if sub_byte == sub:
+            base = sub_base
+            break
+    sign = -1 if profile.encode_invert else 1
+    return (base + direction * sign) % 360
 
 
 def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
@@ -1733,11 +1691,17 @@ def get_profile(fbl: int, pm: int = 0) -> DeviceProfile:
     if fbl == 224:
         w, h = _FBL_224_BY_PM.get(pm, (854, 480))
         return DeviceProfile(w, h, jpeg=profile.jpeg,
-                             big_endian=profile.big_endian, rotate=profile.rotate)
+                             big_endian=profile.big_endian, rotate=profile.rotate,
+                             encode_base=profile.encode_base,
+                             encode_invert=profile.encode_invert,
+                             encode_sub_bases=profile.encode_sub_bases)
     if fbl == 192:
         w, h = _FBL_192_BY_PM.get(pm, (1920, 462))
         return DeviceProfile(w, h, jpeg=profile.jpeg,
-                             big_endian=profile.big_endian, rotate=profile.rotate)
+                             big_endian=profile.big_endian, rotate=profile.rotate,
+                             encode_base=profile.encode_base,
+                             encode_invert=profile.encode_invert,
+                             encode_sub_bases=profile.encode_sub_bases)
     return profile
 
 

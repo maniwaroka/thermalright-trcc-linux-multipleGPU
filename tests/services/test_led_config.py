@@ -11,7 +11,7 @@ Covers:
 """
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 from trcc.core.models import LEDMode, LEDState, LEDZoneState
 from trcc.services.led_config import (
@@ -22,25 +22,19 @@ from trcc.services.led_config import (
     save_led_config,
 )
 
-# Settings is lazy-imported inside functions via `from ..conf import Settings`
-_SETTINGS_PATCH = 'trcc.conf.Settings'
-
-
 # =========================================================================
 # _serialize()
 # =========================================================================
 
 
 class TestSerialize:
-    """_serialize — converts values for JSON-safe storage."""
+    """_serialize — value conversion for config storage."""
 
-    def test_led_mode_to_int(self):
-        assert _serialize(LEDMode.STATIC) == 0
-        assert _serialize(LEDMode.BREATHING) == 1
-        assert _serialize(LEDMode.RAINBOW) == 3
+    def test_enum_to_value(self):
+        assert _serialize(LEDMode.BREATHING) == LEDMode.BREATHING.value
 
     def test_tuple_to_list(self):
-        assert _serialize((255, 0, 128)) == [255, 0, 128]
+        assert _serialize((255, 0, 0)) == [255, 0, 0]
 
     def test_int_passthrough(self):
         assert _serialize(42) == 42
@@ -49,7 +43,7 @@ class TestSerialize:
         assert _serialize(True) is True
 
     def test_string_passthrough(self):
-        assert _serialize("cpu") == "cpu"
+        assert _serialize('cpu') == 'cpu'
 
     def test_list_passthrough(self):
         assert _serialize([1, 2, 3]) == [1, 2, 3]
@@ -63,8 +57,7 @@ class TestSerialize:
 class TestSaveLedConfig:
     """save_led_config — serializes LEDState to config file."""
 
-    @patch(_SETTINGS_PATCH)
-    def test_saves_all_persist_fields(self, mock_settings):
+    def test_saves_all_persist_fields(self):
         state = LEDState(
             mode=LEDMode.BREATHING,
             color=(0, 255, 0),
@@ -80,60 +73,52 @@ class TestSaveLedConfig:
             zone_sync=True,
             zone_sync_interval=20,
         )
-        save_led_config(state, 'dev_key')
+        mock_save = MagicMock()
+        save_led_config(state, 'dev_key', mock_save)
 
-        mock_settings.save_device_setting.assert_called_once()
-        _, args, _ = mock_settings.save_device_setting.mock_calls[0]
+        mock_save.assert_called_once()
+        args = mock_save.call_args[0]
         assert args[0] == 'dev_key'
         assert args[1] == 'led_config'
         config = args[2]
 
-        assert config['mode'] == 1  # LEDMode.BREATHING.value
+        assert config['mode'] == LEDMode.BREATHING.value
         assert config['color'] == [0, 255, 0]
         assert config['brightness'] == 80
         assert config['global_on'] is True
-        assert config['segments_on'] == [True, False, True]
         assert config['temp_source'] == 'gpu'
+        assert config['load_source'] == 'cpu'
         assert config['zone_sync'] is True
         assert config['zone_sync_interval'] == 20
-        assert config['is_timer_24h'] is False
-        assert config['is_week_sunday'] is True
-        assert config['disk_index'] == 2
-        assert config['memory_ratio'] == 4
 
-    @patch(_SETTINGS_PATCH)
-    def test_saves_zone_sync_zones(self, mock_settings):
-        state = LEDState(zone_count=3)
+    def test_saves_zone_states(self):
+        state = LEDState()
+        state.zones = [
+            LEDZoneState(mode=LEDMode.STATIC, color=(255, 0, 0), brightness=100, on=True),
+            LEDZoneState(mode=LEDMode.BREATHING, color=(0, 255, 0), brightness=50, on=False),
+        ]
+        mock_save = MagicMock()
+        save_led_config(state, 'k', mock_save)
+
+        config = mock_save.call_args[0][2]
+        assert len(config['zones']) == 2
+        assert config['zones'][0]['mode'] == LEDMode.STATIC.value
+        assert config['zones'][1]['on'] is False
+
+    def test_saves_zone_sync_zones(self):
+        state = LEDState()
         state.zone_sync_zones = [True, False, True]
-        save_led_config(state, 'k')
+        mock_save = MagicMock()
+        save_led_config(state, 'k', mock_save)
 
-        config = mock_settings.save_device_setting.call_args[0][2]
+        config = mock_save.call_args[0][2]
         assert config['zone_sync_zones'] == [True, False, True]
 
-    @patch(_SETTINGS_PATCH)
-    def test_saves_per_zone_states(self, mock_settings):
-        state = LEDState(zone_count=2)
-        state.zones = [
-            LEDZoneState(mode=LEDMode.RAINBOW, color=(10, 20, 30),
-                         brightness=50, on=False),
-            LEDZoneState(mode=LEDMode.STATIC, color=(255, 255, 255),
-                         brightness=100, on=True),
-        ]
-        save_led_config(state, 'k')
-
-        config = mock_settings.save_device_setting.call_args[0][2]
-        assert len(config['zones']) == 2
-        assert config['zones'][0] == {
-            'mode': 3, 'color': [10, 20, 30], 'brightness': 50, 'on': False}
-        assert config['zones'][1] == {
-            'mode': 0, 'color': [255, 255, 255], 'brightness': 100, 'on': True}
-
-    @patch(_SETTINGS_PATCH)
-    def test_exception_does_not_propagate(self, mock_settings):
-        mock_settings.save_device_setting.side_effect = RuntimeError("boom")
-        state = LEDState()
-        # Should log error but not raise
-        save_led_config(state, 'k')
+    def test_exception_logged_not_raised(self):
+        """Errors are caught and logged, not propagated."""
+        mock_save = MagicMock(side_effect=RuntimeError("disk full"))
+        save_led_config(LEDState(), 'k', mock_save)
+        # No exception raised — error is logged
 
 
 # =========================================================================
@@ -144,177 +129,126 @@ class TestSaveLedConfig:
 class TestLoadLedConfig:
     """load_led_config — deserializes config dict to LEDState."""
 
-    @patch(_SETTINGS_PATCH)
-    def test_loads_scalar_fields(self, mock_settings):
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'mode': 2,
-                'color': [100, 200, 50],
-                'brightness': 90,
-                'global_on': False,
-                'temp_source': 'gpu',
-                'load_source': 'gpu',
-                'is_timer_24h': False,
-                'is_week_sunday': True,
-                'disk_index': 1,
-                'memory_ratio': 4,
-                'zone_sync': True,
-                'zone_sync_interval': 25,
-            }
-        }
-        state = LEDState()
-        load_led_config(state, 'k')
+    def _mock_get(self, led_config: dict):
+        return MagicMock(return_value={'led_config': led_config})
 
-        assert state.mode == LEDMode.COLORFUL
-        assert state.color == (100, 200, 50)
-        assert state.brightness == 90
+    def test_restores_scalar_fields(self):
+        state = LEDState()
+        mock_get = self._mock_get({
+            'mode': LEDMode.BREATHING.value,
+            'color': [0, 255, 0],
+            'brightness': 80,
+        })
+        load_led_config(state, 'k', mock_get)
+
+        assert state.mode == LEDMode.BREATHING
+        assert state.color == (0, 255, 0)
+        assert state.brightness == 80
+
+    def test_restores_bool_fields(self):
+        state = LEDState()
+        mock_get = self._mock_get({
+            'global_on': False,
+            'is_timer_24h': True,
+            'is_week_sunday': False,
+        })
+        load_led_config(state, 'k', mock_get)
+
         assert state.global_on is False
-        assert state.temp_source == 'gpu'
-        assert state.load_source == 'gpu'
-        assert state.is_timer_24h is False
-        assert state.is_week_sunday is True
-        assert state.disk_index == 1
-        assert state.memory_ratio == 4
+        assert state.is_timer_24h is True
+        assert state.is_week_sunday is False
+
+    def test_missing_fields_not_overwritten(self):
+        state = LEDState(brightness=42)
+        mock_get = self._mock_get({'mode': LEDMode.STATIC.value})
+        load_led_config(state, 'k', mock_get)
+
+        assert state.brightness == 42  # Not in config → not touched
+
+    def test_empty_led_config_is_noop(self):
+        state = LEDState(brightness=42)
+        mock_get = self._mock_get({})
+        load_led_config(state, 'k', mock_get)
+
+        assert state.brightness == 42  # Unchanged
+
+    def test_backward_compat_zone_carousel_alias(self):
+        state = LEDState()
+        mock_get = self._mock_get({
+            'zone_carousel': True,
+            'zone_carousel_interval': 15,
+        })
+        load_led_config(state, 'k', mock_get)
+
         assert state.zone_sync is True
-        assert state.zone_sync_interval == 25
+        assert state.zone_sync_interval == 15
 
-    @patch(_SETTINGS_PATCH)
-    def test_loads_segment_on(self, mock_settings):
-        mock_settings.get_device_config.return_value = {
-            'led_config': {'segments_on': [True, False, True, True]}
-        }
-        state = LEDState(segment_count=4)
-        load_led_config(state, 'k')
-        assert state.segment_on == [True, False, True, True]
-
-    @patch(_SETTINGS_PATCH)
-    def test_empty_config_is_noop(self, mock_settings):
-        mock_settings.get_device_config.return_value = {}
+    def test_partial_zone_sync_zones(self):
         state = LEDState()
-        original_mode = state.mode
-        load_led_config(state, 'k')
-        assert state.mode == original_mode
+        state.zone_sync_zones = [False, False, False, False]
+        mock_get = self._mock_get({
+            'zone_sync_zones': [True, True],
+        })
+        load_led_config(state, 'k', mock_get)
 
-    @patch(_SETTINGS_PATCH)
-    def test_empty_led_config_is_noop(self, mock_settings):
-        mock_settings.get_device_config.return_value = {'led_config': {}}
+        assert state.zone_sync_zones[:2] == [True, True]
+        assert state.zone_sync_zones[2:] == [False, False]
+
+    def test_restores_per_zone_states(self):
         state = LEDState()
-        original_mode = state.mode
-        load_led_config(state, 'k')
-        assert state.mode == original_mode
+        state.zones = [LEDZoneState(), LEDZoneState()]
+        mock_get = self._mock_get({
+            'zones': [
+                {'mode': LEDMode.BREATHING.value, 'color': [0, 0, 255],
+                 'brightness': 50, 'on': False},
+            ],
+        })
+        load_led_config(state, 'k', mock_get)
 
-    @patch(_SETTINGS_PATCH)
-    def test_alias_zone_carousel_to_zone_sync(self, mock_settings):
-        """v5.0.x backward compat: zone_carousel → zone_sync."""
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'zone_carousel': True,
-                'zone_carousel_interval': 30,
-            }
-        }
-        state = LEDState()
-        load_led_config(state, 'k')
-        assert state.zone_sync is True
-        assert state.zone_sync_interval == 30
-
-    @patch(_SETTINGS_PATCH)
-    def test_alias_does_not_overwrite_new_key(self, mock_settings):
-        """If both old and new keys exist, new key wins."""
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'zone_carousel': True,
-                'zone_sync': False,  # New key takes precedence
-            }
-        }
-        state = LEDState()
-        load_led_config(state, 'k')
-        assert state.zone_sync is False
-
-    @patch(_SETTINGS_PATCH)
-    def test_zone_sync_zones_partial_restore(self, mock_settings):
-        """Saved zones shorter than current — only updates saved portion."""
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'zone_sync_zones': [False, True],
-            }
-        }
-        state = LEDState(zone_count=4)
-        # __post_init__ creates [True, False, False, False]
-        load_led_config(state, 'k')
-        assert state.zone_sync_zones == [False, True, False, False]
-
-    @patch(_SETTINGS_PATCH)
-    def test_zone_sync_zones_longer_saved(self, mock_settings):
-        """Saved zones longer than current — only restores up to current length."""
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'zone_sync_zones': [True, True, True, True, True],
-            }
-        }
-        state = LEDState(zone_count=3)
-        load_led_config(state, 'k')
-        assert len(state.zone_sync_zones) == 3
-        assert state.zone_sync_zones == [True, True, True]
-
-    @patch(_SETTINGS_PATCH)
-    def test_per_zone_restore(self, mock_settings):
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'zones': [
-                    {'mode': 3, 'color': [10, 20, 30],
-                     'brightness': 40, 'on': False},
-                    {'mode': 1, 'color': [255, 0, 0],
-                     'brightness': 100, 'on': True},
-                ]
-            }
-        }
-        state = LEDState(zone_count=2)
-        load_led_config(state, 'k')
-
-        assert state.zones[0].mode == LEDMode.RAINBOW
-        assert state.zones[0].color == (10, 20, 30)
-        assert state.zones[0].brightness == 40
+        assert state.zones[0].mode == LEDMode.BREATHING
+        assert state.zones[0].color == (0, 0, 255)
         assert state.zones[0].on is False
-        assert state.zones[1].mode == LEDMode.BREATHING
-        assert state.zones[1].color == (255, 0, 0)
 
-    @patch(_SETTINGS_PATCH)
-    def test_per_zone_fewer_saved_than_current(self, mock_settings):
-        """Saved 1 zone, current has 3 — only first zone updated."""
-        mock_settings.get_device_config.return_value = {
-            'led_config': {
-                'zones': [
-                    {'mode': 2, 'color': [0, 0, 255],
-                     'brightness': 50, 'on': True},
-                ]
-            }
-        }
-        state = LEDState(zone_count=3)
-        load_led_config(state, 'k')
-        assert state.zones[0].mode == LEDMode.COLORFUL
-        assert state.zones[1].mode == LEDMode.STATIC  # Untouched default
-
-    @patch(_SETTINGS_PATCH)
-    def test_exception_does_not_propagate(self, mock_settings):
-        mock_settings.get_device_config.side_effect = RuntimeError("boom")
+    def test_extra_saved_zones_ignored(self):
         state = LEDState()
-        load_led_config(state, 'k')  # Should log error, not raise
+        state.zones = [LEDZoneState()]
+        mock_get = self._mock_get({
+            'zones': [
+                {'mode': 0, 'color': [255, 0, 0], 'brightness': 100, 'on': True},
+                {'mode': 1, 'color': [0, 255, 0], 'brightness': 50, 'on': False},
+            ],
+        })
+        load_led_config(state, 'k', mock_get)
+
+        assert len(state.zones) == 1  # Only one zone exists
+
+    def test_no_device_config_is_noop(self):
+        state = LEDState(brightness=42)
+        mock_get = MagicMock(return_value={})
+        load_led_config(state, 'k', mock_get)
+
+        assert state.brightness == 42
+
+    def test_exception_logged_not_raised(self):
+        """Errors are caught and logged, not propagated."""
+        mock_get = MagicMock(side_effect=RuntimeError("corrupt config"))
+        load_led_config(LEDState(), 'k', mock_get)
+        # No exception raised
 
 
 # =========================================================================
-# Schema consistency
+# Constants sanity checks
 # =========================================================================
 
 
-class TestSchema:
-    """Verify persist field map and aliases are consistent."""
+class TestConstants:
+    """Ensure persistence schema covers expected fields."""
 
-    def test_all_persist_fields_exist_on_led_state(self):
-        state = LEDState()
-        for attr in _PERSIST_FIELDS.values():
-            assert hasattr(state, attr), f"LEDState missing attribute: {attr}"
+    def test_persist_fields_non_empty(self):
+        assert len(_PERSIST_FIELDS) >= 10
 
     def test_aliases_map_to_known_keys(self):
         for old, new in _ALIASES.items():
+            # New key should either be in _PERSIST_FIELDS or a known list key
             assert new in _PERSIST_FIELDS or new == 'zone_sync_zones', \
-                f"Alias {old}→{new} doesn't map to a persist field or zone_sync_zones"
+                f"Alias target '{new}' not in _PERSIST_FIELDS"

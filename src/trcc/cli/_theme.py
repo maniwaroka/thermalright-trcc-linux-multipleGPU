@@ -12,6 +12,9 @@ log = logging.getLogger(__name__)
 def list_themes():
     """List local themes for the current device resolution."""
     from trcc.conf import settings
+    from trcc.core.models import ThemeDir
+    from trcc.core.orientation import effective_resolution
+    from trcc.core.paths import has_themes, resolve_theme_dir
     from trcc.services import ThemeService
 
     log.debug("list_themes")
@@ -20,10 +23,12 @@ def list_themes():
         print("No device resolution saved. Connect your device first.")
         return 1
 
-    settings._resolve_paths()
+    ew, eh = effective_resolution(w, h, settings.rotation)
+    td = ThemeDir(resolve_theme_dir(ew, eh))
+    if not has_themes(str(td.path)):
+        td = ThemeDir(resolve_theme_dir(w, h))
 
-    td = settings.theme_dir
-    if not td or not td.exists():
+    if not td.path.exists():
         print(f"No local themes for {w}x{h}.")
         return 0
     themes = ThemeService.discover_local_merged(
@@ -40,23 +45,25 @@ def list_themes():
 @_cli_handler
 def list_backgrounds(category=None):
     """List cloud backgrounds for the current device resolution."""
+    from pathlib import Path
+
     from trcc.conf import settings
+    from trcc.core.orientation import effective_resolution
     from trcc.services import ThemeService
 
     log.debug("list_backgrounds category=%s", category)
-    w, h = settings.width, settings.height
-    if not w or not h:
+    if not settings.width or not settings.height:
         print("No device resolution saved. Connect your device first.")
         return 1
 
-    settings._resolve_paths()
+    ew, eh = effective_resolution(settings.width, settings.height, settings.rotation)
+    web_dir = Path(settings._path_resolver.web_dir(ew, eh))
 
-    web_dir = settings.web_dir
-    if not web_dir or not web_dir.exists():
-        print(f"No cloud backgrounds for {w}x{h}.")
+    if not web_dir.exists():
+        print(f"No cloud backgrounds for {ew}x{eh}.")
         return 0
     themes = ThemeService.discover_cloud(web_dir, category)
-    print(f"Cloud backgrounds ({w}x{h}): {len(themes)}")
+    print(f"Cloud backgrounds ({ew}x{eh}): {len(themes)}")
     for t in themes:
         cat = f" [{t.category}]" if t.category else ""
         print(f"  {t.name}{cat}")
@@ -67,25 +74,28 @@ def list_backgrounds(category=None):
 @_cli_handler
 def list_masks():
     """List available mask overlays for the current device resolution."""
+    from pathlib import Path
+
     from trcc.conf import settings
+    from trcc.core.orientation import effective_resolution
     from trcc.services import ThemeService
 
-    w, h = settings.width, settings.height
-    if not w or not h:
+    if not settings.width or not settings.height:
         print("No device resolution saved. Connect your device first.")
         return 1
 
-    settings._resolve_paths()
+    ew, eh = effective_resolution(settings.width, settings.height, settings.rotation)
+    cloud_masks_dir = Path(settings._path_resolver.web_masks_dir(ew, eh))
 
     masks = ThemeService.discover_masks(
-        cloud_masks_dir=settings.masks_dir,
+        cloud_masks_dir=cloud_masks_dir,
         user_masks_dir=settings.user_masks_dir(),
     )
     if not masks:
-        print(f"No masks for {w}x{h}.")
+        print(f"No masks for {ew}x{eh}.")
         return 0
 
-    print(f"Masks ({w}x{h}): {len(masks)}")
+    print(f"Masks ({ew}x{eh}): {len(masks)}")
     for m in masks:
         tag = " [custom]" if m.is_custom else ""
         print(f"  {m.name}{tag}")
@@ -280,6 +290,9 @@ def export_theme(theme_name, output_path):
     from pathlib import Path
 
     from trcc.conf import settings
+    from trcc.core.models import ThemeDir
+    from trcc.core.orientation import effective_resolution
+    from trcc.core.paths import has_themes, resolve_theme_dir
     from trcc.services import ThemeService
 
     log.debug("export_theme name=%s output=%s", theme_name, output_path)
@@ -288,10 +301,12 @@ def export_theme(theme_name, output_path):
         print("No device resolution saved. Connect your device first.")
         return 1
 
-    settings._resolve_paths()
+    ew, eh = effective_resolution(w, h, settings.rotation)
+    td = ThemeDir(resolve_theme_dir(ew, eh))
+    if not has_themes(str(td.path)):
+        td = ThemeDir(resolve_theme_dir(w, h))
 
-    td = settings.theme_dir
-    if not td or not td.exists():
+    if not td.path.exists():
         print(f"No themes for {w}x{h}.")
         return 1
 

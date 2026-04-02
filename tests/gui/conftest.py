@@ -111,6 +111,28 @@ def mock_lcd_device():
     lcd.load_mask_standalone.return_value = {'success': True, 'image': None}
     lcd.restore_last_theme.return_value = {'success': False, 'error': 'No saved theme'}
     lcd.device_service = MagicMock()
+    # DisplayService mock — tracks resolution so LCDHandler reads correct state
+    display_svc = MagicMock()
+    display_svc.lcd_width = 320
+    display_svc.lcd_height = 320
+    display_svc.lcd_size = (320, 320)
+    display_svc.canvas_size = (320, 320)
+    display_svc.effective_resolution = (320, 320)
+    display_svc.rotation = 0
+    display_svc.theme_dir = None
+    display_svc.local_dir = None
+    display_svc.web_dir = None
+    display_svc.masks_dir = None
+
+    def _track_resolution(w, h):
+        display_svc.lcd_width = w
+        display_svc.lcd_height = h
+        display_svc.lcd_size = (w, h)
+        display_svc.canvas_size = (w, h)
+        display_svc.effective_resolution = (w, h)
+    display_svc.set_resolution.side_effect = _track_resolution
+
+    lcd._display_svc = display_svc
     return lcd
 
 

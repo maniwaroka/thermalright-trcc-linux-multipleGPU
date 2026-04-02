@@ -88,6 +88,8 @@ class TrccApp:
         # IPC handlers — injected by composition roots (CLI/API/GUI entry points)
         self._find_active_fn: FindActiveFn | None = None
         self._proxy_factory_fn: ProxyFactoryFn | None = None
+        # Settings — injected after bootstrap (DIP, no lazy conf imports)
+        self._settings: Any = None
         # Data extraction callable — injected via init() from builder (DIP)
         from .ports import EnsureDataFn
         self._ensure_data_fn: EnsureDataFn | None = None
@@ -185,6 +187,8 @@ class TrccApp:
     ) -> None:
         """Bootstrap OS platform: logging, OS setup, settings, renderer."""
         self._builder.bootstrap(verbosity)
+        import trcc.conf as _conf
+        self._settings = _conf.settings
         if renderer_factory is not None:
             self.set_renderer(renderer_factory())
 
@@ -289,10 +293,10 @@ class TrccApp:
 
     def _initialize_lcd(self, lcd: LCDDevice, w: int, h: int) -> None:
         """Initialize LCD device pipeline: settings, data dir, ensure data."""
-        import trcc.conf as _conf
         log.debug("_initialize_lcd: width=%d height=%d", w, h)
-        _conf.settings.set_resolution(w, h)
-        lcd.initialize(_conf.settings.user_data_dir)
+        self._settings.set_resolution(w, h)
+        lcd.set_resolution(w, h)
+        lcd.initialize(self._settings.user_data_dir)
         self._ensure_data_background(lcd, w, h)
 
     @property
@@ -357,19 +361,16 @@ class TrccApp:
 
     def set_language(self, code: str) -> dict[str, Any]:
         """Set app language by ISO 639-1 code."""
-        import trcc.conf as _conf
-
         from .i18n import LANGUAGE_NAMES
         if code not in LANGUAGE_NAMES:
             return {"success": False, "error": f"Unknown language code: {code}"}
-        _conf.settings.lang = code
+        self._settings.lang = code
         return {"success": True, "message": f"Language set to {code}"}
 
     def set_metrics_refresh(self, interval: int) -> dict[str, Any]:
         """Set metrics polling interval (seconds)."""
-        import trcc.conf as _conf
         clamped = max(1, min(100, interval))
-        _conf.settings.set_refresh_interval(clamped)
+        self._settings.set_refresh_interval(clamped)
         self.wake_metrics_loop()
         return {"success": True, "message": f"Refresh interval set to {clamped}s"}
 
@@ -379,11 +380,9 @@ class TrccApp:
         Args:
             unit: 0 = Celsius, 1 = Fahrenheit.
         """
-        import trcc.conf as _conf
-
         from .models import HardwareMetrics
 
-        _conf.settings.set_temp_unit(unit)
+        self._settings.set_temp_unit(unit)
 
         # Fetch fresh metrics with new unit applied
         fresh = None
@@ -409,8 +408,7 @@ class TrccApp:
 
     def set_hdd_enabled(self, enabled: bool) -> dict[str, Any]:
         """Set HDD info toggle and persist."""
-        import trcc.conf as _conf
-        _conf.settings.set_hdd_enabled(enabled)
+        self._settings.set_hdd_enabled(enabled)
         return {"success": True,
                 "message": f"HDD info {'enabled' if enabled else 'disabled'}"}
 
@@ -468,14 +466,12 @@ class TrccApp:
         self._metrics_stop.clear()
 
         def _loop() -> None:
-            import trcc.conf as _conf
-
             from .models import HardwareMetrics
             while not self._metrics_stop.is_set():
                 try:
                     raw = self._system_svc.all_metrics  # type: ignore[union-attr]
                     metrics = HardwareMetrics.with_temp_unit(
-                        raw, _conf.settings.temp_unit)
+                        raw, self._settings.temp_unit)
                     self._current_metrics = metrics
                     for path, device in list(self._devices.items()):
                         try:
@@ -491,7 +487,7 @@ class TrccApp:
                     self._notify(AppEvent.METRICS_UPDATED, metrics)
                 except Exception:
                     log.exception("Metrics poll error")
-                sleep = interval if interval is not None else max(1, _conf.settings.refresh_interval)
+                sleep = interval if interval is not None else max(1, self._settings.refresh_interval)
                 self._metrics_wake.wait(sleep)
                 self._metrics_wake.clear()
 

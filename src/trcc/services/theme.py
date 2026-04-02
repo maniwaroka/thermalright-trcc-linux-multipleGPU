@@ -17,6 +17,42 @@ from .image import ImageService
 log = logging.getLogger(__name__)
 
 
+def theme_info_from_directory(
+    path: Path, resolution: tuple[int, int] = (320, 320),
+) -> ThemeInfo:
+    """Create ThemeInfo from a theme directory by scanning filesystem.
+
+    Moved from theme_info_from_directory() — models.py must be zero I/O.
+    """
+    td = ThemeDir(path)
+    if td.zt.exists():
+        is_animated = True
+        animation_path = td.zt
+    else:
+        mp4_files = list(path.glob('*.mp4'))
+        if mp4_files:
+            is_animated = True
+            animation_path = mp4_files[0]
+        else:
+            is_animated = False
+            animation_path = None
+
+    return ThemeInfo(
+        name=path.name,
+        path=path,
+        theme_type=ThemeType.LOCAL,
+        background_path=td.bg if td.bg.exists() else None,
+        mask_path=td.mask if td.mask.exists() else None,
+        thumbnail_path=td.preview if td.preview.exists() else (
+            td.bg if td.bg.exists() else None),
+        animation_path=animation_path,
+        config_path=td.dc if td.dc.exists() else None,
+        resolution=resolution,
+        is_animated=is_animated,
+        is_mask_only=not td.bg.exists() and td.mask.exists(),
+    )
+
+
 def _copy_flat_files(src: Path, dest: Path) -> None:
     """Copy all files (not subdirs) from src to dest."""
     for f in src.iterdir():
@@ -144,8 +180,12 @@ class ThemeService:
             return themes
 
         for item in sorted(theme_dir.iterdir()):
-            if item.is_dir() and ThemeDir(item).is_valid():
-                theme = ThemeInfo.from_directory(item, resolution)
+            if item.is_dir() and (
+                (item / 'Theme.png').exists()
+                or (item / 'config1.dc').exists()
+                or (item / '00.png').exists()
+            ):
+                theme = theme_info_from_directory(item, resolution)
                 if ThemeService._passes_filter(theme, filter_mode):
                     themes.append(theme)
 
@@ -206,9 +246,10 @@ class ThemeService:
         for scan_dir in dirs_to_scan:
             for item in sorted(scan_dir.iterdir()):
                 if item.is_dir() and item.name not in seen_names:
-                    td = ThemeDir(item)
-                    if td.is_valid():
-                        theme = ThemeInfo.from_directory(item, resolution)
+                    if ((item / 'Theme.png').exists()
+                            or (item / 'config1.dc').exists()
+                            or (item / '00.png').exists()):
+                        theme = theme_info_from_directory(item, resolution)
                         if ThemeService._passes_filter(theme, filter_mode):
                             seen_names.add(item.name)
                             themes.append(theme)
@@ -502,7 +543,7 @@ class ThemeService:
             name = import_path.stem
             theme_path = data_dir / f'theme{w}{h}' / name
             self._import_theme_fn(str(import_path), str(theme_path))
-            theme = ThemeInfo.from_directory(theme_path)
+            theme = theme_info_from_directory(theme_path)
 
             # Warn if imported theme resolution doesn't match device
             if (isinstance(theme, ThemeInfo)

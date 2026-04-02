@@ -12,21 +12,21 @@ from unittest.mock import MagicMock, patch
 from trcc.adapters.infra.data_repository import (
     DataManager,
     Resources,
-    ThemeDir,
     _find_pkg_data_dir,
 )
 from trcc.conf import Settings, load_config, save_config
+from trcc.core.paths import has_themes, resolve_theme_dir
 
 
 class TestPathHelpers(unittest.TestCase):
     """Test path construction helpers."""
 
     def test_get_theme_dir(self):
-        path = str(ThemeDir.for_resolution(320, 320))
+        path = resolve_theme_dir(320, 320)
         self.assertTrue(path.endswith('theme320320'))
 
     def test_get_theme_dir_other_resolution(self):
-        path = str(ThemeDir.for_resolution(480, 480))
+        path = resolve_theme_dir(480, 480)
         self.assertTrue(path.endswith('theme480480'))
 
     def test_get_web_dir(self):
@@ -39,26 +39,26 @@ class TestPathHelpers(unittest.TestCase):
 
 
 class TestHasActualThemes(unittest.TestCase):
-    """Test ThemeDir.has_themes helper."""
+    """Test has_themes() from core/paths.py."""
 
     def test_nonexistent_dir(self):
-        self.assertFalse(ThemeDir.has_themes('/nonexistent/path'))
+        self.assertFalse(has_themes('/nonexistent/path'))
 
     def test_empty_dir(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertFalse(ThemeDir.has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_dir_with_only_gitkeep(self):
         with tempfile.TemporaryDirectory() as d:
             Path(d, '.gitkeep').touch()
-            self.assertFalse(ThemeDir.has_themes(d))
+            self.assertFalse(has_themes(d))
 
     def test_dir_with_subdirs_and_pngs(self):
         with tempfile.TemporaryDirectory() as d:
             subdir = os.path.join(d, '000a')
             os.mkdir(subdir)
             Path(subdir, '01.png').touch()
-            self.assertTrue(ThemeDir.has_themes(d))
+            self.assertTrue(has_themes(d))
 
     def test_dir_with_subdirs_no_pngs(self):
         """Subdirs without PNGs (e.g. leftover config1.dc) are not valid themes."""
@@ -66,7 +66,7 @@ class TestHasActualThemes(unittest.TestCase):
             subdir = os.path.join(d, '000a')
             os.mkdir(subdir)
             Path(subdir, 'config1.dc').touch()
-            self.assertFalse(ThemeDir.has_themes(d))
+            self.assertFalse(has_themes(d))
 
 
 class TestFindResource(unittest.TestCase):
@@ -854,72 +854,38 @@ class TestFindResourceDefault(unittest.TestCase):
             self.assertIsNone(result)
 
 
-class TestResolveCloudDirs(unittest.TestCase):
-    """Test Settings.resolve_cloud_dirs() portrait directory switching.
+class TestPortraitDirectorySwitching(unittest.TestCase):
+    """Test effective_resolution portrait directory switching.
 
     C# GetWebBackgroundImageDirectory / GetFileListMBDir: non-square displays
     swap width/height when directionB is 90 or 270.
+    Orientation logic moved to core/orientation.py — tested here with real
+    resolution pairs from the device catalog.
     """
 
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.tmp, 'config.json')
-        _patcher = patch('trcc.conf.CONFIG_PATH', self.config_path)
-        _patcher.start()
-        self.addCleanup(_patcher.stop)
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self.tmp, ignore_errors=True)
-
-    def test_landscape_rotation_keeps_landscape_dirs(self):
-        """Rotation 0 or 180 keeps original w×h for cloud dirs."""
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        s = Settings(LinuxSetup())
-        s._width, s._height = 1280, 480
-        s.resolve_cloud_dirs(0)
-        self.assertIn('1280480', str(s.web_dir))
-        self.assertIn('zt1280480', str(s.masks_dir))
-
-        s.resolve_cloud_dirs(180)
-        self.assertIn('1280480', str(s.web_dir))
-        self.assertIn('zt1280480', str(s.masks_dir))
+    def test_landscape_rotation_keeps_landscape(self):
+        """Rotation 0 or 180 keeps original w×h."""
+        from trcc.core.orientation import effective_resolution
+        self.assertEqual(effective_resolution(1280, 480, 0), (1280, 480))
+        self.assertEqual(effective_resolution(1280, 480, 180), (1280, 480))
 
     def test_portrait_rotation_swaps_dims(self):
-        """Rotation 90 or 270 swaps to h×w for cloud dirs."""
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        s = Settings(LinuxSetup())
-        s._width, s._height = 1280, 480
-        s.resolve_cloud_dirs(90)
-        self.assertIn('4801280', str(s.web_dir))
-        self.assertIn('zt4801280', str(s.masks_dir))
-
-        s.resolve_cloud_dirs(270)
-        self.assertIn('4801280', str(s.web_dir))
-        self.assertIn('zt4801280', str(s.masks_dir))
+        """Rotation 90 or 270 swaps to h×w."""
+        from trcc.core.orientation import effective_resolution
+        self.assertEqual(effective_resolution(1280, 480, 90), (480, 1280))
+        self.assertEqual(effective_resolution(1280, 480, 270), (480, 1280))
 
     def test_square_display_no_swap(self):
         """Square displays never swap, regardless of rotation."""
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        s = Settings(LinuxSetup())
-        s._width, s._height = 320, 320
-        s.resolve_cloud_dirs(90)
-        self.assertIn('320320', str(s.web_dir))
-        self.assertIn('zt320320', str(s.masks_dir))
+        from trcc.core.orientation import effective_resolution
+        self.assertEqual(effective_resolution(320, 320, 90), (320, 320))
 
     def test_1600x720_portrait(self):
-        """1600x720 swaps to 7201600 on portrait rotation."""
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        s = Settings(LinuxSetup())
-        s._width, s._height = 1600, 720
-        s.resolve_cloud_dirs(90)
-        self.assertIn('7201600', str(s.web_dir))
-        self.assertIn('zt7201600', str(s.masks_dir))
+        """1600x720 swaps to 720x1600 on portrait rotation."""
+        from trcc.core.orientation import effective_resolution
+        self.assertEqual(effective_resolution(1600, 720, 90), (720, 1600))
 
     def test_640x480_portrait(self):
-        """640x480 swaps to 480640 on portrait rotation."""
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        s = Settings(LinuxSetup())
-        s._width, s._height = 640, 480
-        s.resolve_cloud_dirs(270)
-        self.assertIn('480640', str(s.web_dir))
+        """640x480 swaps to 480x640 on portrait rotation."""
+        from trcc.core.orientation import effective_resolution
+        self.assertEqual(effective_resolution(640, 480, 270), (480, 640))

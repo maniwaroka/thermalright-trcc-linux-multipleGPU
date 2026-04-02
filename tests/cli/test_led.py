@@ -136,9 +136,11 @@ class TestLEDDeviceConnect:
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = [led_dev]
 
-        dev = LEDDevice(device_svc=mock_dev_svc)
-        with patch('trcc.services.LEDService', return_value=fake_svc):
-            result = dev.connect()
+        dev = LEDDevice(
+            device_svc=mock_dev_svc,
+            led_svc_factory=lambda **kw: fake_svc,
+        )
+        result = dev.connect()
 
         assert result["success"] is True
         assert dev._svc is fake_svc

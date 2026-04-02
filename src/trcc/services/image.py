@@ -95,22 +95,31 @@ class ImageService:
     def encode_for_device(img: Any, protocol: str,
                           resolution: tuple[int, int],
                           fbl: int | None,
-                          use_jpeg: bool) -> bytes:
+                          use_jpeg: bool,
+                          encode_angle: int = 0) -> bytes:
         """Encode surface for LCD device — JPEG or RGB565.
 
-        For non-square displays, user rotation (90/270) changes image
-        dimensions (640x480 -> 480x640). Device firmware expects native
-        dims — resize back before encoding. C# does the same: composes
-        at swapped dims, rotates back, sends native. Preview shows
-        portrait; device always gets landscape.
+        encode_angle: device-level rotation (C# RotateImg) computed by
+        DisplayService._encode_angle(). Applied before encoding so the
+        device firmware receives the correct physical orientation.
+        For non-square rotated displays, this converts the portrait
+        canvas back to the device's expected orientation.
         """
         from ..core.models import get_profile
 
         rnd = ImageService._r()
         profile = get_profile(fbl) if fbl is not None else None
 
-        # Ensure image matches device native resolution before encoding.
-        # User rotation may have swapped dimensions (640x480 -> 480x640).
+        # Device encode rotation — converts canvas to device orientation.
+        # For non-square 90/270, this also handles the dimension swap
+        # (480x1280 → 1280x480) so the separate resize is only needed
+        # when encode_angle doesn't produce native dims.
+        if encode_angle:
+            img = rnd.apply_rotation(img, encode_angle)
+
+        # Ensure image matches device native resolution after rotation.
+        # Only needed for non-square displays where rotation or canvas_size
+        # may have changed dimensions.
         native_w, native_h = resolution
         if native_w and native_h and native_w != native_h:
             img_w, img_h = rnd.surface_size(img)

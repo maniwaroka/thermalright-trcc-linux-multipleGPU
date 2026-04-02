@@ -64,6 +64,7 @@ def app():
     builder = MagicMock()
     builder.build_detect_fn.return_value = lambda: []  # empty by default
     inst = TrccApp(builder)
+    inst._settings = MagicMock()
     TrccApp._instance = inst
     yield inst
     TrccApp.reset()

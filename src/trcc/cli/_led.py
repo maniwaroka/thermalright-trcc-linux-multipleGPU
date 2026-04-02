@@ -17,20 +17,8 @@ log = logging.getLogger(__name__)
 
 def _connect_or_fail() -> int:
     """Connect LED via discover(). Returns exit code (0 = success)."""
-    from trcc.core.app import TrccApp
-    from trcc.core.instance import find_active
-    from trcc.ipc import create_led_proxy
-
-    log.debug("connecting LED device")
-    app = TrccApp.get()
-    app.set_ipc_handlers(find_active, create_led_proxy)
-    result = app.discover()
-    if not result["success"] or not app.has_led:
-        log.warning("LED connect failed: no LED device found")
-        print("No LED device found.")
-        return 1
-    log.debug("LED connected successfully")
-    return 0
+    from trcc.cli._connect import connect_device
+    return connect_device('led')
 
 
 def _print_result(result: dict, *, preview: bool = False) -> int:

@@ -1225,23 +1225,25 @@ class TestLEDServiceProtocolAndConfig:
 
     def test_save_config_delegates_when_device_key_set(self):
         """save_config calls save_led_config when _device_key is set."""
-        svc = LEDService()
+        mock_save = MagicMock()
+        svc = LEDService(save_setting_fn=mock_save)
         svc._device_key = '0:1234:5678'
         with patch('trcc.services.led.save_led_config') as m:
             svc.save_config()
-        m.assert_called_once_with(svc.state, '0:1234:5678')
+        m.assert_called_once_with(svc.state, '0:1234:5678', mock_save)
 
     def test_load_config_delegates_when_device_key_set(self):
         """load_config calls load_led_config when _device_key is set."""
-        svc = LEDService()
+        mock_get = MagicMock()
+        svc = LEDService(get_config_fn=mock_get)
         svc._device_key = '0:1234:5678'
         with patch('trcc.services.led.load_led_config') as m:
             svc.load_config()
-        m.assert_called_once_with(svc.state, '0:1234:5678')
+        m.assert_called_once_with(svc.state, '0:1234:5678', mock_get)
 
     def test_cleanup_saves_config_and_clears_protocol(self):
         """cleanup saves config and sets protocol to None."""
-        svc = LEDService()
+        svc = LEDService(save_setting_fn=MagicMock())
         svc._device_key = '0:1234:5678'
         proto = MagicMock()
         svc.set_protocol(proto)
