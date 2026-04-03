@@ -566,6 +566,8 @@ class LCDDevice(Device):
 
         After DisplayService.set_rotation() switches dirs, find the same
         theme name in the new directory and reload with overlay config.
+        Also reloads mask from the new rotation-aware masks directory
+        (C# GetFileListMBDir switches zt1280480 ↔ zt4801280 on rotation).
         All UIs (CLI, API, GUI) get this via LCDDevice.set_rotation().
         """
         current = self.current_theme_path
@@ -581,6 +583,10 @@ class LCDDevice(Device):
                 log.info("Rotation reload: %s → %s", theme_name, candidate)
                 theme = self._theme_info_from_dir_fn(candidate)
                 result = self.select(theme)
+
+                # Reload mask from new rotation directory
+                self._reload_mask_for_rotation(svc)
+
                 # Reload overlay config from new dir
                 overlay_cfg = self.load_overlay_config_from_dir(str(candidate))
                 if overlay_cfg:
@@ -595,6 +601,26 @@ class LCDDevice(Device):
                 return result.get('image')
         log.debug("Rotation: theme '%s' not in new dirs", theme_name)
         return None
+
+    def _reload_mask_for_rotation(self, svc: Any) -> None:
+        """Reload mask from the new rotation-aware masks directory.
+
+        C# GetFileListMBDir() returns zt{EW}{EH} based on rotation.
+        After _setup_dirs() updates masks_dir, find the same mask name
+        in the new directory and reload it at the new canvas dimensions.
+        """
+        old_mask_dir = svc._mask_source_dir
+        if not old_mask_dir or not svc.masks_dir:
+            return
+        mask_name = old_mask_dir.name
+        new_mask_dir = Path(svc.masks_dir) / mask_name
+        if new_mask_dir.exists():
+            log.info("Rotation mask reload: %s → %s", old_mask_dir, new_mask_dir)
+            self.load_mask_standalone(str(new_mask_dir))
+        else:
+            log.debug("Rotation: mask '%s' not in new masks dir", mask_name)
+            svc.overlay.set_theme_mask(None)
+            svc._mask_source_dir = None
 
     def set_split_mode(self, mode: int) -> dict:
         if mode not in (0, 1, 2, 3):

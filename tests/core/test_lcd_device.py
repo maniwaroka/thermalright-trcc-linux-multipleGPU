@@ -385,6 +385,51 @@ class TestLCDDeviceSettings(unittest.TestCase):
         self.assertEqual(lcd._display_svc.effective_resolution, (480, 800))
 
     @patch.object(LCDDevice, '_persist')
+    def test_rotation_reloads_mask_from_new_dir(self, _):
+        """Non-square rotation reloads mask from new zt directory."""
+        import tempfile
+        from pathlib import Path
+        lcd, _ = _make_real_lcd()
+        lcd._display_svc.set_resolution(1280, 480)
+
+        with tempfile.TemporaryDirectory() as td:
+            old_mask = Path(td) / 'zt1280480' / 'Mask01'
+            old_mask.mkdir(parents=True)
+            (old_mask / '01.png').write_bytes(b'fake')
+            lcd._display_svc._mask_source_dir = old_mask
+
+            new_mask = Path(td) / 'zt4801280' / 'Mask01'
+            new_mask.mkdir(parents=True)
+            (new_mask / '01.png').write_bytes(b'fake')
+            lcd._display_svc._masks_dir = Path(td) / 'zt4801280'
+
+            with patch.object(lcd, 'load_mask_standalone',
+                              return_value={'success': True}) as mock_load:
+                lcd._reload_mask_for_rotation(lcd._display_svc)
+                mock_load.assert_called_once_with(str(new_mask))
+
+    @patch.object(LCDDevice, '_persist')
+    def test_rotation_clears_mask_when_no_rotated_variant(self, _):
+        """Non-square rotation clears mask if new zt dir has no match."""
+        import tempfile
+        from pathlib import Path
+        lcd, _ = _make_real_lcd()
+        lcd._display_svc.set_resolution(1280, 480)
+
+        with tempfile.TemporaryDirectory() as td:
+            old_mask = Path(td) / 'zt1280480' / 'Mask01'
+            old_mask.mkdir(parents=True)
+            lcd._display_svc._mask_source_dir = old_mask
+
+            new_masks = Path(td) / 'zt4801280'
+            new_masks.mkdir()
+            lcd._display_svc._masks_dir = new_masks
+
+            lcd._reload_mask_for_rotation(lcd._display_svc)
+            self.assertIsNone(lcd._display_svc.overlay.theme_mask)
+            self.assertIsNone(lcd._display_svc._mask_source_dir)
+
+    @patch.object(LCDDevice, '_persist')
     def test_set_split_mode_valid(self, _):
         lcd, _ = _make_real_lcd()
         for mode in (0, 1, 2, 3):
