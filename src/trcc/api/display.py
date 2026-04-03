@@ -473,10 +473,10 @@ def _fetch_ipc_frame():
     """
     import base64
 
-    from trcc.ipc import IPCClient
+    from trcc.ipc import IPCTransport
 
     try:
-        result = IPCClient.send("display.get_frame")
+        result = IPCTransport().send("display.get_frame")
         if result.get("success") and result.get("frame"):
             return base64.b64decode(result["frame"])
     except Exception as e:
@@ -507,9 +507,8 @@ def _get_lcd_frame():
     Returns the raw frame object (QImage or pre-encoded bytes).
     """
     from trcc.api import _current_image, _display_dispatcher
-    from trcc.ipc import IPCDisplayProxy
 
-    if isinstance(_display_dispatcher, IPCDisplayProxy):
+    if getattr(_display_dispatcher, 'is_ipc', False):
         return _fetch_ipc_frame()
     return _current_image
 
@@ -546,7 +545,6 @@ async def preview_stream(websocket: WebSocket):
     Client control: send JSON ``{"fps": N}``, ``{"quality": N}``, ``{"pause": bool}``.
     """
     from trcc.api import _api_token, _display_dispatcher
-    from trcc.ipc import IPCDisplayProxy
 
     # ── Auth ──────────────────────────────────────────────────────────
     if _api_token:
@@ -557,7 +555,7 @@ async def preview_stream(websocket: WebSocket):
 
     await websocket.accept()
 
-    use_ipc = isinstance(_display_dispatcher, IPCDisplayProxy)
+    use_ipc = getattr(_display_dispatcher, 'is_ipc', False)
     fps = 10
     quality = 85
     paused = False

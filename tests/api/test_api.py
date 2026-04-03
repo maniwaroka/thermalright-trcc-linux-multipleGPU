@@ -17,6 +17,7 @@ import trcc.api as api_module
 from trcc.api import _device_svc, app, configure_auth
 from trcc.api.models import dispatch_result, parse_hex_or_400
 from trcc.core.models import FBL_PROFILES, SCSI_DEVICES, DeviceInfo
+from trcc.ipc import DisplayProxy, IPCTransport, LEDProxy
 
 
 class TestHealthEndpoint(unittest.TestCase):
@@ -1121,13 +1122,14 @@ class TestIPCFrameSharing(unittest.TestCase):
         self.assertFalse(result["success"])
 
     @patch('trcc.core.instance.find_active')
-    @patch('trcc.ipc.IPCClient')
-    def test_select_device_uses_ipc_when_daemon_available(self, mock_ipc, mock_find):
+    @patch.object(IPCTransport, 'send')
+    def test_select_device_uses_ipc_when_daemon_available(self, mock_send, mock_find):
         """select_device() uses IPC proxies when GUI daemon is running."""
         from trcc.core.instance import InstanceKind
         mock_find.return_value = InstanceKind.GUI
-        mock_ipc.send.return_value = {
-            "lcd": {"resolution": [320, 320], "path": "/dev/sg0"},
+        mock_send.return_value = {
+            "success": True, "connected": True,
+            "resolution": [320, 320], "path": "/dev/sg0",
         }
 
         dev = DeviceInfo(name="LCD1", path="/dev/sg0", vid=0x0402, pid=0x3922,
@@ -1136,21 +1138,21 @@ class TestIPCFrameSharing(unittest.TestCase):
 
         resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)
-        # Should have IPC proxies, not direct dispatchers
-        from trcc.ipc import IPCDisplayProxy
-        self.assertIsInstance(api_module._display_dispatcher, IPCDisplayProxy)
+        # Should have IPC proxy, not direct dispatcher
+        self.assertTrue(getattr(api_module._display_dispatcher, 'is_ipc', False))
 
         api_module._display_dispatcher = None
         api_module._led_dispatcher = None
 
     @patch('trcc.core.instance.find_active')
-    @patch('trcc.ipc.IPCClient')
-    def test_select_device_ipc_syncs_resolution_from_daemon(self, mock_ipc, mock_find):
+    @patch.object(IPCTransport, 'send')
+    def test_select_device_ipc_syncs_resolution_from_daemon(self, mock_send, mock_find):
         """select_device() syncs real resolution from daemon when device has (0,0)."""
         from trcc.core.instance import InstanceKind
         mock_find.return_value = InstanceKind.GUI
-        mock_ipc.send.return_value = {
-            "lcd": {"resolution": [320, 320], "path": "/dev/sg0"},
+        mock_send.return_value = {
+            "success": True, "connected": True,
+            "resolution": [320, 320], "path": "/dev/sg0",
         }
 
         # Device starts with (0, 0) — resolution not yet discovered
@@ -1170,17 +1172,15 @@ class TestIPCFrameSharing(unittest.TestCase):
         api_module._led_dispatcher = None
 
     def test_led_status_returns_string_in_ipc_mode(self):
-        """IPCLEDProxy.status returns a string, not a proxy function."""
-        from trcc.ipc import IPCLEDProxy
-
-        with patch('trcc.ipc.IPCClient') as mock_ipc:
-            mock_ipc.send.return_value = {"led": {"connected": True}}
-            proxy = IPCLEDProxy()
+        """LEDProxy.status returns a string, not a proxy function."""
+        with patch.object(IPCTransport, 'send') as mock_send:
+            mock_send.return_value = {"success": True, "connected": True}
+            proxy = LEDProxy(IPCTransport())
             self.assertIsInstance(proxy.status, str)
 
-        api_module._led_dispatcher = IPCLEDProxy()
-        with patch('trcc.ipc.IPCClient') as mock_ipc:
-            mock_ipc.send.return_value = {"led": {"connected": True}}
+        api_module._led_dispatcher = LEDProxy(IPCTransport())
+        with patch.object(IPCTransport, 'send') as mock_send:
+            mock_send.return_value = {"success": True, "connected": True}
             resp = self.client.get("/led/status")
             self.assertEqual(resp.status_code, 200)
             data = resp.json()
@@ -1188,27 +1188,22 @@ class TestIPCFrameSharing(unittest.TestCase):
             self.assertIsInstance(data["status"], str)
         api_module._led_dispatcher = None
 
-    @patch('trcc.ipc.IPCClient')
-    def test_select_device_standalone_when_no_daemon(self, mock_ipc):
+    @patch('trcc.core.instance.find_active', return_value=None)
+    def test_select_device_standalone_when_no_daemon(self, mock_find):
         """select_device() uses direct USB when no GUI daemon."""
-        mock_ipc.available.return_value = False
-
         dev = _scsi_dev(name="LCD1")
         _device_svc._devices = [dev]
 
         resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)
         # Standalone mode — not using IPC proxies
-        from trcc.ipc import IPCDisplayProxy
-        self.assertNotIsInstance(api_module._display_dispatcher, IPCDisplayProxy)
+        self.assertFalse(getattr(api_module._display_dispatcher, 'is_ipc', False))
 
         api_module._display_dispatcher = None
 
     def test_preview_fetches_from_ipc_when_daemon_active(self):
         """GET /preview reads frame from IPC daemon when proxy is active."""
-        from trcc.ipc import IPCDisplayProxy
-
-        api_module._display_dispatcher = IPCDisplayProxy()
+        api_module._display_dispatcher = DisplayProxy(IPCTransport())
 
         with patch('trcc.api.display._fetch_ipc_frame') as mock_fetch:
             mock_fetch.return_value = make_test_surface(320, 320, (255, 0, 0))

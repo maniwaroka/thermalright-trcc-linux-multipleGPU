@@ -288,8 +288,8 @@ def _ipc_pause() -> bool:
     try:
         from ..core.instance import InstanceKind, find_active
         if find_active() == InstanceKind.GUI:
-            from ..ipc import IPCClient
-            IPCClient.send("display.pause")
+            from ..ipc import IPCTransport
+            IPCTransport().send("display.pause")
             return True
     except Exception:
         pass
@@ -301,8 +301,8 @@ def _ipc_resume() -> None:
     try:
         from ..core.instance import InstanceKind, find_active
         if find_active() == InstanceKind.GUI:
-            from ..ipc import IPCClient
-            IPCClient.send("display.resume")
+            from ..ipc import IPCTransport
+            IPCTransport().send("display.resume")
     except Exception:
         pass
 

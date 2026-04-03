@@ -175,10 +175,10 @@ def _no_ipc():
 
     When the GUI or API is running, find_active() returns an InstanceKind
     and core routes through proxies, bypassing mocked services.
-    Patch both the core detection and legacy IPCClient.available().
+    Patch core detection and IPCTransport.available().
     """
     with patch("trcc.core.instance.find_active", return_value=None), \
-         patch("trcc.ipc.IPCClient.available", return_value=False):
+         patch("trcc.ipc.IPCTransport.available", return_value=False):
         yield
 
 # =========================================================================
