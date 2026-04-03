@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from ..core.ports import PathResolver
 
 from ..core.models import SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP, ThemeDir
-from ..core.orientation import effective_resolution as _eff_res
-from ..core.orientation import image_rotation as _img_rot
 from ..core.paths import RESOURCES_DIR, has_themes, resolve_theme_dir
 from .device import DeviceService
 from .image import ImageService
@@ -106,8 +104,10 @@ class DisplayService:
 
     @property
     def effective_resolution(self) -> tuple[int, int]:
-        """Resolution after rotation — swaps w,h for non-square at 90/270."""
-        return _eff_res(self._width, self._height, self.rotation)
+        """Resolution after rotation — swaps w,h only when rotated dirs exist."""
+        if self._has_rotated_dirs and self.rotation in (90, 270):
+            return (self._height, self._width)
+        return (self._width, self._height)
 
     @property
     def canvas_size(self) -> tuple[int, int]:
@@ -121,8 +121,10 @@ class DisplayService:
 
     @property
     def _image_rotation(self) -> int:
-        """Rotation to apply to images. 0 when canvas is already portrait."""
-        return _img_rot(self._width, self._height, self.rotation)
+        """Rotation to apply to images. 0 when rotated dirs handle orientation."""
+        if self._has_rotated_dirs and self.rotation in (90, 270):
+            return 0
+        return self.rotation
 
     def _encode_angle(self) -> int:
         """Device encode rotation angle (C# RotateImg in ImageToJpg)."""
@@ -146,6 +148,17 @@ class DisplayService:
             self.overlay.set_resolution(cw, ch)
             self._setup_dirs(self._width, self._height)
 
+    def _detect_rotated_dirs(self, width: int, height: int) -> None:
+        """Check if both orientation theme directories exist on disk.
+
+        Called once on resolution set — not re-evaluated during rotation.
+        """
+        if width != height:
+            swapped = ThemeDir(resolve_theme_dir(height, width))
+            self._has_rotated_dirs = has_themes(str(swapped.path))
+        else:
+            self._has_rotated_dirs = False
+
     def _setup_dirs(self, width: int, height: int) -> None:
         """Resolve theme/web/mask directories from own resolution + path_resolver.
 
@@ -154,17 +167,8 @@ class DisplayService:
         (theme800480) when portrait dir doesn't exist — local themes get
         rotated by _apply_adjustments in that case.
         Cloud/mask dirs always use effective_resolution.
-
-        Sets has_rotated_dirs: True when both orientations have theme
-        directories on disk (non-square devices only).
         """
         ew, eh = self.effective_resolution
-        if width != height:
-            swapped = ThemeDir(resolve_theme_dir(height, width))
-            self._has_rotated_dirs = has_themes(str(swapped.path))
-        else:
-            self._has_rotated_dirs = False
-
         td = ThemeDir(resolve_theme_dir(ew, eh))
         if not has_themes(str(td.path)):
             td = ThemeDir(resolve_theme_dir(self._width, self._height))
@@ -191,12 +195,14 @@ class DisplayService:
                  self._width, self._height, width, height)
         self._width = width
         self._height = height
+
+        if width and height:
+            self._detect_rotated_dirs(width, height)
+            self._setup_dirs(width, height)
+
         cw, ch = self.canvas_size
         self.media.set_target_size(cw, ch)
         self.overlay.set_resolution(cw, ch)
-
-        if width and height:
-            self._setup_dirs(width, height)
 
     # -- Display adjustments -----------------------------------------------
 

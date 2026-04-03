@@ -375,14 +375,26 @@ class TestLCDDeviceSettings(unittest.TestCase):
 
     @patch.object(LCDDevice, '_persist')
     def test_set_rotation_reloads_theme_on_canvas_change(self, _):
-        """Non-square device rotation triggers _reload_theme_for_rotation."""
+        """Non-square device with rotated dirs → canvas swaps on rotation."""
         lcd, _ = _make_real_lcd()
         lcd._display_svc.set_resolution(800, 480)
+        lcd._display_svc._has_rotated_dirs = True
         lcd._display_svc.current_theme_path = None  # No theme loaded
         result = lcd.set_rotation(90)
         self.assertTrue(result['success'])
-        # Canvas changed from (800,480) to (480,800) but no theme to reload
         self.assertEqual(lcd._display_svc.effective_resolution, (480, 800))
+
+    @patch.object(LCDDevice, '_persist')
+    def test_set_rotation_nonsquare_without_rotated_dirs_pixel_rotates(self, _):
+        """Non-square without rotated dirs → pixel rotation, no canvas swap."""
+        lcd, _ = _make_real_lcd()
+        lcd._display_svc.set_resolution(800, 480)
+        lcd._display_svc._has_rotated_dirs = False
+        result = lcd.set_rotation(90)
+        self.assertTrue(result['success'])
+        # Canvas stays the same — pixel rotation handles it
+        self.assertEqual(lcd._display_svc.effective_resolution, (800, 480))
+        self.assertEqual(lcd._display_svc._image_rotation, 90)
 
     @patch.object(LCDDevice, '_persist')
     def test_rotation_reloads_mask_from_new_dir(self, _):

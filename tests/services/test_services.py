@@ -882,17 +882,15 @@ class TestHasRotatedDirs(unittest.TestCase):
     def test_square_device_is_false(self):
         """Square devices (320x320) never have rotated dirs."""
         svc = DisplayService(MagicMock(), MagicMock(), MagicMock())
-        svc.set_resolution(320, 320)
         with tempfile.TemporaryDirectory() as td:
             with patch('trcc.services.display.resolve_theme_dir',
                        return_value=td):
-                svc._setup_dirs(320, 320)
+                svc.set_resolution(320, 320)
         self.assertFalse(svc.has_rotated_dirs)
 
     def test_nonsquare_with_both_dirs_is_true(self):
         """Non-square with themes in swapped dir → has_rotated_dirs True."""
         svc = DisplayService(MagicMock(), MagicMock(), MagicMock())
-        svc.set_resolution(1280, 480)
         with tempfile.TemporaryDirectory() as td:
             swapped = Path(td) / 'theme4801280'
             swapped.mkdir()
@@ -904,15 +902,14 @@ class TestHasRotatedDirs(unittest.TestCase):
 
             with patch('trcc.services.display.resolve_theme_dir',
                        side_effect=_resolve):
-                svc._setup_dirs(1280, 480)
+                svc.set_resolution(1280, 480)
         self.assertTrue(svc.has_rotated_dirs)
 
     def test_nonsquare_without_swapped_dir_is_false(self):
         """Non-square but no themes in swapped dir → has_rotated_dirs False."""
         svc = DisplayService(MagicMock(), MagicMock(), MagicMock())
-        svc.set_resolution(800, 480)
         with tempfile.TemporaryDirectory() as td:
             with patch('trcc.services.display.resolve_theme_dir',
                        return_value=td):
-                svc._setup_dirs(800, 480)
+                svc.set_resolution(800, 480)
         self.assertFalse(svc.has_rotated_dirs)
