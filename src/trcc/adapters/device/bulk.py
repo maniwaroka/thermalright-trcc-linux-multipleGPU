@@ -117,7 +117,11 @@ class BulkDevice(BulkFrameDevice, FrameDevice):
         if resolution:
             self.width, self.height = resolution
 
-        fbl = pm_to_fbl(self.pm, self.sub_type)
+        # FBL must match actual resolution — unknown PMs default to FBL=72 (480x480)
+        if self.pm in _BULK_KNOWN_PMS or (self.pm == 1 and self.sub_type in (48, 49)):
+            fbl = pm_to_fbl(self.pm, self.sub_type)
+        else:
+            fbl = 72  # bulk default: 480x480 JPEG
         log.info("Bulk handshake OK: PM=%d, SUB=%d, FBL=%d, resolution=%s, jpeg=%s",
                  self.pm, self.sub_type, fbl, resolution, self.use_jpeg)
 

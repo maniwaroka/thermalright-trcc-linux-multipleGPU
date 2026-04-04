@@ -326,11 +326,23 @@ class TestBulkDeviceHandshake(unittest.TestCase):
         bd._ep_in.read.assert_called_once_with(_HANDSHAKE_READ_SIZE, timeout=_HANDSHAKE_TIMEOUT_MS)
         self.assertIsInstance(result, HandshakeResult)
         self.assertEqual(result.resolution, (480, 480))
-        self.assertEqual(result.model_id, 1)
+        self.assertEqual(result.model_id, 72)  # bulk default FBL, not PM=FBL
         self.assertEqual(bd.pm, 1)
         self.assertEqual(bd.sub_type, 0)
         self.assertEqual(bd.width, 480)
         self.assertEqual(bd.height, 480)
+
+    def test_handshake_pm1_sub1_grandvision_fbl72(self):
+        """PM=1 SUB=1 (GrandVision 360, issue #78) → FBL=72, 480x480."""
+        bd = self._setup_device()
+        resp = _make_handshake_response(pm=1, sub=1)
+        bd._ep_in.read.return_value = resp
+
+        result = bd.handshake()
+
+        self.assertEqual(result.resolution, (480, 480))
+        self.assertEqual(result.model_id, 72)
+        self.assertTrue(bd.use_jpeg)
 
     def test_handshake_pm5_mjolnir_320x240(self):
         """PM=5 (Mjolnir Vision) → FBL=50 → 320x240."""
