@@ -194,8 +194,8 @@ class TestButtonIdentity:
         got_w, got_h = fbl_to_resolution(got_fbl, pm)
         assert (got_w, got_h) == (w, h)
 
-    def test_36_handshakes(self):
-        assert len(_ALL_HANDSHAKES) == 36
+    def test_37_handshakes(self):
+        assert len(_ALL_HANDSHAKES) == 37
 
 
 # =========================================================================

@@ -289,8 +289,8 @@ class TestDeviceProfileCompleteness(unittest.TestCase):
     """Every FBL in FBL_PROFILES has correct encoding properties."""
 
     def test_all_fbls_accounted_for(self):
-        """FBL_PROFILES contains exactly the expected 17 device entries."""
-        expected_fbls = {36, 37, 50, 51, 53, 54, 58, 64, 72,
+        """FBL_PROFILES contains exactly the expected 18 device entries."""
+        expected_fbls = {36, 37, 50, 51, 52, 53, 54, 58, 64, 72,
                          100, 101, 102, 114, 128, 129, 192, 224}
         self.assertEqual(set(FBL_PROFILES.keys()), expected_fbls)
 
@@ -307,7 +307,7 @@ class TestDeviceProfileCompleteness(unittest.TestCase):
     def test_rotate_fbls(self):
         """Only portrait/landscape-rotated FBLs are flagged."""
         rot_fbls = {fbl for fbl, p in FBL_PROFILES.items() if p.rotate}
-        self.assertEqual(rot_fbls, {50, 51, 53, 58, 64, 114, 128, 192, 224})
+        self.assertEqual(rot_fbls, {50, 51, 52, 53, 58, 64, 114, 128, 192, 224})
 
     def test_byte_order_property(self):
         """byte_order returns '>' for big-endian, '<' for little-endian."""

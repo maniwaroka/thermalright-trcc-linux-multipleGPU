@@ -1659,6 +1659,7 @@ FBL_PROFILES: dict[int, DeviceProfile] = {
     37:  DeviceProfile(240,  240),
     50:  DeviceProfile(320,  240,  rotate=True),
     51:  DeviceProfile(320,  240,  rotate=True),                     # HID Type 2 → SPIMode=1
+    52:  DeviceProfile(320,  240,  rotate=True),                     # BA120 Vision (#100)
     53:  DeviceProfile(320,  240,  rotate=True),                     # HID Type 2 → SPIMode=1
     54:  DeviceProfile(360,  360,  jpeg=True),
     58:  DeviceProfile(320,  240,  rotate=True),
