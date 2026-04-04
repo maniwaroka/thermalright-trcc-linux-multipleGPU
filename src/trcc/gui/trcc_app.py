@@ -373,12 +373,13 @@ class TRCCApp(QMainWindow):
     # ── Device event handlers (main thread) ─────────────────────────
 
     def _on_device_added_main_thread(self, payload: Any) -> None:
-        kind, data = payload
-        log.debug("_on_device_added_main_thread: kind=%s", kind)
-        if kind == 'changed':
-            self._rebuild_all_handlers(data)
-        else:
-            self._add_handler(data)
+        match payload:
+            case ('changed', devices):
+                log.debug("_on_device_added_main_thread: kind=changed")
+                self._rebuild_all_handlers(devices)
+            case (kind, device):
+                log.debug("_on_device_added_main_thread: kind=%s", kind)
+                self._add_handler(device)
 
     def _on_device_removed_main_thread(self, device: Any) -> None:
         path = device.device_info.path if device.device_info else ''
@@ -420,15 +421,14 @@ class TRCCApp(QMainWindow):
             return
         path = info.path
 
-        if isinstance(device, LEDDevice):
-            if path not in self._handlers:
+        match device:
+            case LEDDevice() if path not in self._handlers:
                 handler: BaseHandler = LEDHandler(
                     device, self.uc_led_control, self._on_temp_unit_changed,
                     make_timer=self._make_timer)
                 self._handlers[path] = handler
                 log.info("LED handler added: %s", path)
-        elif isinstance(device, LCDDevice):
-            if path not in self._handlers:
+            case LCDDevice() if path not in self._handlers:
                 widgets = {
                     'preview': self.uc_preview,
                     'theme_setting': self.uc_theme_setting,

@@ -264,44 +264,58 @@ def _detect_pkg_manager() -> str | None:
     return None
 
 
+def _re_pkg_name(pattern: str, text: str) -> str | None:
+    """Extract package name from first regex group, or None."""
+    m = re.search(pattern, text)
+    return m.group(1) if m else None
+
+
+def _parse_dnf(output: str) -> str | None:
+    return _re_pkg_name(r'([\w][\w.+-]*)-\d', output.split('\n')[0])
+
+
+def _parse_pacman(output: str) -> str | None:
+    return output.split('\n')[0].split('/')[-1].strip() or None
+
+
+def _parse_zypper(output: str) -> str | None:
+    for line in output.strip().split('\n'):
+        parts = [p.strip() for p in line.split('|')]
+        if len(parts) >= 2 and parts[1] and parts[1] != 'Name':
+            return parts[1]
+    return None
+
+
+def _parse_xbps(output: str) -> str | None:
+    return _re_pkg_name(r'[\]\s]+([\w][\w.+-]*)-\d', output.split('\n')[0])
+
+
 def _provides_search(dep: str, pm: str) -> str | None:
     """Use PM's native 'provides' to find which package owns a file."""
-    if pm == 'dnf':
-        cmd = ['dnf', 'provides', '--quiet', f'*/{dep}*']
-    elif pm == 'pacman':
-        cmd = ['pacman', '-Fq', dep]
-    elif pm == 'zypper':
-        cmd = ['zypper', '--non-interactive', 'search', '--provides', dep]
-    elif pm == 'apk':
-        cmd = ['apk', 'search', dep]
-    elif pm == 'xbps':
-        cmd = ['xbps-query', '-Rs', dep]
-    else:
-        return None
+    match pm:
+        case 'dnf':
+            cmd = ['dnf', 'provides', '--quiet', f'*/{dep}*']
+            parse = _parse_dnf
+        case 'pacman':
+            cmd = ['pacman', '-Fq', dep]
+            parse = _parse_pacman
+        case 'zypper':
+            cmd = ['zypper', '--non-interactive', 'search', '--provides', dep]
+            parse = _parse_zypper
+        case 'apk':
+            cmd = ['apk', 'search', dep]
+            parse = _parse_dnf  # Same format as dnf
+        case 'xbps':
+            cmd = ['xbps-query', '-Rs', dep]
+            parse = _parse_xbps
+        case _:
+            return None
 
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if r.returncode != 0 or not r.stdout.strip():
             return None
-        first = r.stdout.strip().split('\n')[0]
-        if pm == 'dnf':
-            m = re.match(r'([\w][\w.+-]*)-\d', first)
-            return m.group(1) if m else None
-        if pm == 'pacman':
-            return first.split('/')[-1].strip() or None
-        if pm == 'zypper':
-            for line in r.stdout.strip().split('\n'):
-                parts = [p.strip() for p in line.split('|')]
-                if len(parts) >= 2 and parts[1] and parts[1] != 'Name':
-                    return parts[1]
-            return None
-        if pm == 'apk':
-            m = re.match(r'([\w][\w.+-]*)-\d', first)
-            return m.group(1) if m else None
-        if pm == 'xbps':
-            m = re.search(r'[\]\\s]+([\w][\w.+-]*)-\d', first)
-            return m.group(1) if m else None
-        return None
+        return parse(r.stdout.strip())
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
 
@@ -1059,7 +1073,7 @@ def _debug_hid_led_interactive(dev: Any) -> None:
         print(f"  Segments   = {style.segment_count}")
         print(f"  Zones      = {style.zone_count}")
 
-    if info.pm in PmRegistry.PM_TO_STYLE:
+    if info.pm in PmRegistry:
         print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
     else:
         print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
@@ -1235,7 +1249,7 @@ def led_debug_interactive(test_colors: bool = False) -> int:
         print(f"  Segments:   {style.segment_count}")
         print(f"  Zones:      {style.zone_count}")
 
-        if info.pm in PmRegistry.PM_TO_STYLE:
+        if info.pm in PmRegistry:
             print(f"\n  Status: KNOWN device (PM {info.pm} in tables)")
         else:
             print(f"\n  Status: UNKNOWN PM byte ({info.pm})")
@@ -1644,7 +1658,7 @@ class DebugReport:
                 return
 
             assert isinstance(info, LedHandshakeInfo)
-            known = "KNOWN" if info.pm in PmRegistry.PM_TO_STYLE else "UNKNOWN"
+            known = "KNOWN" if info.pm in PmRegistry else "UNKNOWN"
             style_info = ""
             if info.style:
                 style_info = (f", LEDs={info.style.led_count}, "

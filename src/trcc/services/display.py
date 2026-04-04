@@ -135,7 +135,9 @@ class DisplayService:
 
     @property
     def _image_rotation(self) -> int:
-        """Pixel rotation angle. 0 when portrait dirs handle orientation."""
+        """Pixel rotation angle. 0 when content is already portrait."""
+        if self._orientation.is_portrait and self.overlay.height > self.overlay.width:
+            return 0
         return self._orientation.image_rotation
 
     def _encode_angle(self) -> int:
@@ -347,6 +349,8 @@ class DisplayService:
     def load_cloud_theme(self, theme) -> dict:
         """Load a cloud video theme as background."""
         self._cache = None  # Invalidate previous video cache
+        # Decode video frames at overlay's current dimensions — mask/DC stay
+        self.media.set_target_size(self.overlay.width, self.overlay.height)
         result = self._loader.load_cloud_theme(theme, self.working_dir)
         self.log.debug("load_cloud_theme: loader result keys=%s", list(result.keys()))
 
@@ -452,9 +456,8 @@ class DisplayService:
     def _apply_adjustments(self, image: Any) -> Any:
         """Apply brightness, rotation, and split overlay to image.
 
-        Non-square 90/270: canvas is already portrait (effective_resolution),
-        so _image_rotation is 0 — no rotation applied. Square devices and
-        180° still rotate normally. encode_for_device() resizes to native.
+        Pixel rotation comes from Orientation.image_rotation — returns 0
+        when any portrait dir handles orientation (dir switch, not pixel rotate).
         """
         rot = self._image_rotation
         self.log.debug("_apply_adjustments: brightness=%d rotation=%d split_mode=%d",

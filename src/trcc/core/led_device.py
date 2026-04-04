@@ -158,19 +158,15 @@ class LEDDevice(Device):
 
     def _resolve_mode(self, mode: LEDMode | str | int) -> LEDMode | None:
         """Resolve mode from LEDMode enum, string name, or int value."""
-        if isinstance(mode, LEDMode):
-            return mode
-        if isinstance(mode, int):
-            try:
+        match mode:
+            case LEDMode():
+                return mode
+            case int() if mode in LEDMode._value2member_map_:
                 return LEDMode(mode)
-            except ValueError:
-                return None
-        if isinstance(mode, str):
-            try:
+            case str() if mode.upper() in LEDMode._member_map_:
                 return LEDMode[mode.upper()]
-            except KeyError:
+            case _:
                 return None
-        return None
 
     def _apply_and_send(self) -> list:
         """Toggle global on, tick, send colors, save config."""

@@ -297,6 +297,95 @@ class TestRotationWebOnlyNoCanvasSwap:
         # image_rotation returns actual degrees for pixel-rotate
         assert svc._image_rotation == 90
 
+    def test_image_rotation_zero_when_overlay_portrait(
+        self, renderer: Any, mock_media: MagicMock, mock_path_resolver: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Portrait zt mask sets overlay to portrait dims → pixel rotation = 0."""
+        devices = MagicMock()
+        devices.selected.encoding_params = ('scsi', (1280, 480), None, False)
+        overlay = OverlayService(1280, 480, renderer=renderer)
+        svc = DisplayService(devices, overlay, mock_media, path_resolver=mock_path_resolver)
+        svc.set_resolution(1280, 480)
+        # Portrait mask dir exists but no portrait theme dir
+        masks_dir = tmp_path / 'data' / 'web' / 'zt4801280'
+        masks_dir.mkdir(parents=True)
+        svc.orientation.portrait_masks_dir = masks_dir
+
+        bg = renderer.create_surface(1280, 480, (100, 50, 200))
+        svc._clean_background = bg
+        svc.current_image = bg
+
+        svc.set_rotation(90)
+
+        # Canvas stays landscape — no portrait theme dir
+        assert svc.canvas_size == (1280, 480)
+        # Default: pixel-rotate needed (overlay still at landscape)
+        assert svc._image_rotation == 90
+
+        # Simulate load_mask_standalone setting overlay to portrait dims
+        overlay.set_resolution(480, 1280)
+
+        # Now overlay is portrait — dir switch handled orientation, no pixel rotate
+        assert svc._image_rotation == 0
+
+    def test_image_rotation_restored_on_landscape_overlay(
+        self, renderer: Any, mock_media: MagicMock, mock_path_resolver: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Overlay back to landscape dims → pixel rotation restored."""
+        devices = MagicMock()
+        devices.selected.encoding_params = ('scsi', (1280, 480), None, False)
+        overlay = OverlayService(1280, 480, renderer=renderer)
+        svc = DisplayService(devices, overlay, mock_media, path_resolver=mock_path_resolver)
+        svc.set_resolution(1280, 480)
+
+        bg = renderer.create_surface(1280, 480, (100, 50, 200))
+        svc._clean_background = bg
+        svc.current_image = bg
+
+        svc.set_rotation(90)
+
+        # Portrait overlay → no pixel rotate
+        overlay.set_resolution(480, 1280)
+        assert svc._image_rotation == 0
+
+        # Back to landscape overlay → pixel rotate needed
+        overlay.set_resolution(1280, 480)
+        assert svc._image_rotation == 90
+
+    def test_cloud_theme_decodes_at_overlay_dims(
+        self, renderer: Any, mock_media: MagicMock, mock_path_resolver: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Cloud theme video frames decode at overlay's current dims, not canvas."""
+        devices = MagicMock()
+        devices.selected.encoding_params = ('scsi', (640, 480), None, False)
+        overlay = OverlayService(640, 480, renderer=renderer)
+        svc = DisplayService(devices, overlay, mock_media, path_resolver=mock_path_resolver)
+        svc.set_resolution(640, 480)
+
+        bg = renderer.create_surface(640, 480, (0, 0, 0))
+        svc._clean_background = bg
+        svc.current_image = bg
+
+        svc.set_rotation(90)
+
+        # Simulate mask apply setting overlay to portrait
+        overlay.set_resolution(480, 640)
+
+        # Load cloud theme — should decode at overlay dims (480x640), not canvas (640x480)
+        theme = MagicMock()
+        theme.name = "test_cloud"
+        theme.theme_type = MagicMock()
+        theme.animation_path = str(tmp_path / "test.mp4")
+        (tmp_path / "test.mp4").touch()
+
+        svc.load_cloud_theme(theme)
+
+        # Media target must match overlay (portrait), not canvas (landscape)
+        mock_media.set_target_size.assert_called_with(480, 640)
+
 
 # ═════════════════════════════════════════════════════════════════════════
 # Group 3: Theme load -> save round-trip

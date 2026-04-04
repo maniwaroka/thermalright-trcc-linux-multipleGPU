@@ -389,19 +389,20 @@ class OverlayService:
             if not isinstance(cfg, dict) or 'metric' not in cfg:
                 continue
             metric_name = cfg['metric']
-            if metric_name == 'time':
-                has_time = True
-            elif metric_name in ('date', 'weekday'):
-                has_date = True
-            else:
-                val = getattr(metrics, metric_name, None)
-                if val is not None:
-                    time_fmt = cfg.get('time_format', self.time_format)
-                    date_fmt = cfg.get('date_format', self.date_format)
-                    vals.append(SystemService.format_metric(
-                        metric_name, val, time_fmt, date_fmt, self.temp_unit))
-                else:
-                    vals.append(None)
+            match metric_name:
+                case 'time':
+                    has_time = True
+                case 'date' | 'weekday':
+                    has_date = True
+                case _:
+                    val = getattr(metrics, metric_name, None)
+                    if val is not None:
+                        time_fmt = cfg.get('time_format', self.time_format)
+                        date_fmt = cfg.get('date_format', self.date_format)
+                        vals.append(SystemService.format_metric(
+                            metric_name, val, time_fmt, date_fmt, self.temp_unit))
+                    else:
+                        vals.append(None)
         # Time/date use datetime.now() in render — include in hash
         if has_time or has_date:
             from datetime import datetime

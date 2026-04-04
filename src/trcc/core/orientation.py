@@ -96,7 +96,7 @@ class Orientation:
     def image_rotation(self) -> int:
         """Degrees to pixel-rotate the composited output.
 
-        0 when portrait dirs handle orientation (content is already portrait).
+        0 when portrait theme dirs handle orientation (content already portrait).
         Actual degrees when pixel rotation is needed (no portrait dirs, or square).
         """
         if self.swaps_dirs:

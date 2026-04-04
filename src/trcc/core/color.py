@@ -50,18 +50,19 @@ class ColorEngine:
             offset = i % phase_len
             t = int(255 * offset / (phase_len - 1)) if phase_len > 1 else 0
 
-            if phase == 0:    # Red → Yellow
-                r, g, b = 255, t, 0
-            elif phase == 1:  # Yellow → Green
-                r, g, b = 255 - t, 255, 0
-            elif phase == 2:  # Green → Cyan
-                r, g, b = 0, 255, t
-            elif phase == 3:  # Cyan → Blue
-                r, g, b = 0, 255 - t, 255
-            elif phase == 4:  # Blue → Magenta
-                r, g, b = t, 0, 255
-            else:             # Magenta → Red
-                r, g, b = 255, 0, 255 - t
+            match phase:
+                case 0:  # Red → Yellow
+                    r, g, b = 255, t, 0
+                case 1:  # Yellow → Green
+                    r, g, b = 255 - t, 255, 0
+                case 2:  # Green → Cyan
+                    r, g, b = 0, 255, t
+                case 3:  # Cyan → Blue
+                    r, g, b = 0, 255 - t, 255
+                case 4:  # Blue → Magenta
+                    r, g, b = t, 0, 255
+                case _:  # Magenta → Red
+                    r, g, b = 255, 0, 255 - t
 
             table.append((r, g, b))
 

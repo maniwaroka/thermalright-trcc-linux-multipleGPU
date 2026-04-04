@@ -42,20 +42,21 @@ class LEDEffectEngine:
         each ring LED a per-position phase offset (C# CHMS_Timer5 for
         ledVal5_1); all other modes fill the ring uniformly.
         """
-        if mode == LEDMode.STATIC:
-            colors = [color] * seg_count
-        elif mode == LEDMode.BREATHING:
-            colors = self._tick_breathing_for(color, seg_count)
-        elif mode == LEDMode.COLORFUL:
-            colors = self._tick_colorful_for(seg_count)
-        elif mode == LEDMode.RAINBOW:
-            colors = self._tick_rainbow_for(seg_count)
-        elif mode == LEDMode.TEMP_LINKED:
-            colors = self._tick_temp_linked_for(seg_count)
-        elif mode == LEDMode.LOAD_LINKED:
-            colors = self._tick_load_linked_for(seg_count)
-        else:
-            colors = [(0, 0, 0)] * seg_count
+        match mode:
+            case LEDMode.STATIC:
+                colors = [color] * seg_count
+            case LEDMode.BREATHING:
+                colors = self._tick_breathing_for(color, seg_count)
+            case LEDMode.COLORFUL:
+                colors = self._tick_colorful_for(seg_count)
+            case LEDMode.RAINBOW:
+                colors = self._tick_rainbow_for(seg_count)
+            case LEDMode.TEMP_LINKED:
+                colors = self._tick_temp_linked_for(seg_count)
+            case LEDMode.LOAD_LINKED:
+                colors = self._tick_load_linked_for(seg_count)
+            case _:
+                colors = [(0, 0, 0)] * seg_count
 
         # Decoration ring LEDs (e.g. LF25: 77 ring LEDs after 93 segments)
         ring_count = self._state.ring_count

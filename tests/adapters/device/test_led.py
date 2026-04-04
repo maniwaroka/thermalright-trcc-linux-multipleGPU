@@ -38,6 +38,7 @@ from trcc.adapters.device.led import (
     LedHandshakeInfo,
     LedHidSender,
     LedPacketBuilder,
+    PmEntry,
     PmRegistry,
     remap_led_colors,
     send_led_colors,
@@ -292,6 +293,56 @@ class TestPmMapping:
         style = PmRegistry.get_style(23)
         assert style.style_id == 2
         assert style.led_count == 84
+
+    # -- Dunder protocol tests (__getitem__, __contains__, __iter__, __str__) --
+
+    def test_getitem_known_pm(self):
+        """PmRegistry[pm, sub] returns PmEntry for known PM."""
+        entry = PmRegistry[1, 0]
+        assert entry is not None
+        assert entry.model_name == "FROZEN_HORIZON_PRO"
+        assert entry.style_id == 1
+
+    def test_getitem_unknown_pm(self):
+        """PmRegistry[unknown, 0] returns None."""
+        assert PmRegistry[255, 0] is None
+
+    def test_getitem_sub_default(self):
+        """PmRegistry[pm, 0] matches resolve(pm, 0)."""
+        assert PmRegistry[32, 0] == PmRegistry.resolve(32, 0)
+
+    def test_contains_known_pm(self):
+        """Known PM is in PmRegistry."""
+        assert 1 in PmRegistry
+        assert 208 in PmRegistry
+
+    def test_contains_tuple(self):
+        """(pm, sub) tuple works with 'in'."""
+        assert (1, 0) in PmRegistry
+        assert (32, 0) in PmRegistry
+
+    def test_contains_unknown(self):
+        """Unknown PM is not in PmRegistry."""
+        assert 255 not in PmRegistry
+        assert (255, 0) not in PmRegistry
+
+    def test_iter_yields_all_entries(self):
+        """Iterating PmRegistry yields (pm, PmEntry) tuples."""
+        items = list(PmRegistry)
+        assert len(items) >= 30  # 16 primary + 14 PA120 variants
+        for pm, entry in items:
+            assert isinstance(pm, int)
+            assert isinstance(entry, PmEntry)
+
+    def test_str_returns_model_name(self):
+        """str(PmEntry) returns model_name."""
+        entry = PmRegistry[1, 0]
+        assert str(entry) == "FROZEN_HORIZON_PRO"
+
+    def test_str_cz1(self):
+        """str() on CZ1 entry."""
+        entry = PmRegistry[208, 0]
+        assert str(entry) == "CZ1"
 
 
 # =========================================================================

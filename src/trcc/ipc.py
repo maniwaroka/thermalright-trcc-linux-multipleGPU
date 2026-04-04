@@ -176,43 +176,49 @@ class IPCServer:
         args = request.get("args", [])
         kwargs = request.get("kwargs", {})
 
-        if cmd == "status":
-            return self._status()
+        match cmd.split(".", 1):
+            case ["status"]:
+                return self._status()
+            case ["display", method]:
+                return self._dispatch_display(method, cmd, args, kwargs)
+            case ["led", method]:
+                return self._dispatch_led(method, cmd, args, kwargs)
+            case _:
+                return {"success": False, "error": f"Invalid command: {cmd}"}
 
-        parts = cmd.split(".", 1)
-        if len(parts) != 2:
-            return {"success": False, "error": f"Invalid command: {cmd}"}
-
-        domain, method = parts
-
-        if domain == "display":
-            if method == "status":
+    def _dispatch_display(self, method: str, cmd: str,
+                          args: list, kwargs: dict) -> dict:
+        """Route display sub-commands."""
+        match method:
+            case "status":
                 return self._display_status()
-            if method == "get_frame":
+            case "get_frame":
                 return self._get_frame()
-            if method == "pause":
+            case "pause":
                 return self._pause_display()
-            if method == "resume":
+            case "resume":
                 return self._resume_display()
-            route = _DISPLAY_ROUTES.get(method)
-            if not route:
+            case _ if (route := _DISPLAY_ROUTES.get(method)):
+                if not self._display or not self._display.connected:
+                    return {"success": False, "error": "No LCD device connected"}
+                cap_name, cap_method = route
+                cap = getattr(self._display, cap_name)
+                return _sanitize(getattr(cap, cap_method)(*args, **kwargs))
+            case _:
                 return {"success": False, "error": f"Unknown command: {cmd}"}
-            if not self._display or not self._display.connected:
-                return {"success": False, "error": "No LCD device connected"}
-            cap_name, cap_method = route
-            cap = getattr(self._display, cap_name)
-            return _sanitize(getattr(cap, cap_method)(*args, **kwargs))
 
-        if domain == "led":
-            if method == "status":
+    def _dispatch_led(self, method: str, cmd: str,
+                      args: list, kwargs: dict) -> dict:
+        """Route LED sub-commands."""
+        match method:
+            case "status":
                 return self._led_status()
-            if method not in _LED_METHODS:
+            case _ if method not in _LED_METHODS:
                 return {"success": False, "error": f"Unknown command: {cmd}"}
-            if not self._led or not self._led.connected:
-                return {"success": False, "error": "No LED device connected"}
-            return _sanitize(getattr(self._led, method)(*args, **kwargs))
-
-        return {"success": False, "error": f"Unknown domain: {domain}"}
+            case _:
+                if not self._led or not self._led.connected:
+                    return {"success": False, "error": "No LED device connected"}
+                return _sanitize(getattr(self._led, method)(*args, **kwargs))
 
     def _display_status(self) -> dict:
         """Return flat LCD device status."""

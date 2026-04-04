@@ -138,21 +138,22 @@ class DataTablePanel(QFrame):
         self._mode_sub = mode_sub
         self._hide_all()
 
-        if mode == OverlayMode.HARDWARE:
-            self._update_unit_image()
-            self.unit_btn.setVisible(True)
-        elif mode == OverlayMode.TIME:
-            self._update_time_image()
-            self.time_btn.setVisible(True)
-        elif mode == OverlayMode.WEEKDAY:
-            pass  # No controls
-        elif mode == OverlayMode.DATE:
-            if self._mode_sub == 0:
-                self._mode_sub = 1  # Default to PYMD
-            self._update_date_image()
-            self.date_btn.setVisible(True)
-        elif mode == OverlayMode.CUSTOM:
-            self.text_input.setVisible(True)
+        match mode:
+            case OverlayMode.HARDWARE:
+                self._update_unit_image()
+                self.unit_btn.setVisible(True)
+            case OverlayMode.TIME:
+                self._update_time_image()
+                self.time_btn.setVisible(True)
+            case OverlayMode.WEEKDAY:
+                pass  # No controls
+            case OverlayMode.DATE:
+                if self._mode_sub == 0:
+                    self._mode_sub = 1  # Default to PYMD
+                self._update_date_image()
+                self.date_btn.setVisible(True)
+            case OverlayMode.CUSTOM:
+                self.text_input.setVisible(True)
 
     def _on_unit_clicked(self):
         """Toggle C/F: mode_sub 0↔1."""

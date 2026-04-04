@@ -729,13 +729,23 @@ class PmEntry(NamedTuple):
     preview_image: str = ""  # PM-specific preview; empty = use style default
     style_sub: int = 0       # C# nowLedStyleSub — variant within same style
 
+    def __str__(self) -> str:
+        return self.model_name
 
-class PmRegistry:
-    """Encapsulates all PM-to-device metadata lookups.
+
+class _PmRegistryType:
+    """PM byte → device metadata registry with Pythonic access.
 
     Maps firmware PM bytes (from HID handshake) to device style, model name,
     and button image.  Handles sub-type overrides and PA120 variant range
     (PMs 17-31).
+
+    Usage::
+
+        entry = PmRegistry[pm, sub]       # __getitem__
+        if (pm, sub) in PmRegistry: ...   # __contains__
+        for pm_val, entry in PmRegistry:  # __iter__
+            ...
     """
 
     # (pm, sub_type) → PmEntry override for devices that share a PM byte.
@@ -768,37 +778,51 @@ class PmRegistry:
     # PM → style_id convenience mapping (used by cli.py, debug_report.py).
     PM_TO_STYLE: dict[int, int] = {pm: e.style_id for pm, e in _REGISTRY.items()}
 
-    @classmethod
-    def resolve(cls, pm: int, sub_type: int = 0) -> Optional[PmEntry]:
-        """Resolve PM + SUB to a PmEntry, checking overrides first."""
-        return cls._OVERRIDES.get((pm, sub_type)) or cls._REGISTRY.get(pm)
+    def __getitem__(self, key: tuple[int, int]) -> PmEntry | None:
+        pm, sub = key
+        return self._OVERRIDES.get((pm, sub)) or self._REGISTRY.get(pm)
 
-    @classmethod
-    def get_button_image(cls, pm: int, sub: int = 0) -> Optional[str]:
+    def __contains__(self, key: object) -> bool:
+        match key:
+            case (int() as pm, int() as sub):
+                return (pm, sub) in self._OVERRIDES or pm in self._REGISTRY
+            case int() as pm:
+                return pm in self._REGISTRY
+            case _:
+                return False
+
+    def __iter__(self):
+        return iter(self._REGISTRY.items())
+
+    def resolve(self, pm: int, sub_type: int = 0) -> PmEntry | None:
+        """Resolve PM + SUB to a PmEntry, checking overrides first."""
+        return self[pm, sub_type]
+
+    def get_button_image(self, pm: int, sub: int = 0) -> str | None:
         """Resolve LED device button image from PM byte."""
-        entry = cls.resolve(pm, sub)
+        entry = self[pm, sub]
         return entry.button_image if entry else None
 
-    @classmethod
-    def get_model_name(cls, pm: int, sub_type: int = 0) -> str:
+    def get_model_name(self, pm: int, sub_type: int = 0) -> str:
         """Get human-readable model name for a PM + SUB byte combo."""
-        entry = cls.resolve(pm, sub_type)
-        return entry.model_name if entry else f"Unknown (pm={pm})"
+        entry = self[pm, sub_type]
+        return str(entry) if entry else f"Unknown (pm={pm})"
 
-    @classmethod
-    def get_style(cls, pm: int, sub_type: int = 0) -> LedDeviceStyle:
+    def get_style(self, pm: int, sub_type: int = 0) -> LedDeviceStyle:
         """Get LED device style from firmware PM byte."""
-        entry = cls.resolve(pm, sub_type)
+        entry = self[pm, sub_type]
         return LED_STYLES[entry.style_id if entry else 1]
 
-    @classmethod
-    def get_preview_image(cls, pm: int, sub_type: int = 0) -> str:
+    def get_preview_image(self, pm: int, sub_type: int = 0) -> str:
         """Get device preview image name, PM-specific or style default."""
-        entry = cls.resolve(pm, sub_type)
+        entry = self[pm, sub_type]
         if entry and entry.preview_image:
             return entry.preview_image
-        style = cls.get_style(pm, sub_type)
+        style = self.get_style(pm, sub_type)
         return style.preview_image
+
+
+PmRegistry = _PmRegistryType()
 
 
 # Preset colors from FormLED.cs ucColor1_ChangeColor handlers
@@ -1909,14 +1933,15 @@ DEVICE_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
 
 
 
-def get_button_image(key: int, sub: int = 0) -> Optional[str]:
+def get_button_image(key: int, sub: int = 0) -> str | None:
     """Resolve device button image from PM+SUB (HID) or VID+PID (SCSI)."""
-    sub_map = DEVICE_BUTTON_IMAGE.get(key)
-    if sub_map is None:
-        return None
-    if sub in sub_map:
-        return sub_map[sub]
-    return sub_map.get(None)
+    match DEVICE_BUTTON_IMAGE.get(key):
+        case None:
+            return None
+        case sub_map if sub in sub_map:
+            return sub_map[sub]
+        case sub_map:
+            return sub_map.get(None)
 
 
 # =============================================================================
