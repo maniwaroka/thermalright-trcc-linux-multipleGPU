@@ -1,5 +1,17 @@
 # Changelog
 
+## v9.3.5
+
+### Refactors
+- **match/case dispatch**: LED effects, IPC command router, rainbow phase, overlay metrics, display mode panels, handler type dispatch, package manager — replaces if/elif chains with structural pattern matching.
+- **PmRegistry dunders**: Singleton with `__getitem__`, `__contains__`, `__iter__`. `PmRegistry[pm, sub]`, `pm in PmRegistry`, `str(entry)` — objects behave like the language.
+- **PmEntry `__str__`**: Returns model name directly.
+
+### Fixes
+- **Portrait zt masks double-rotated at 90/270**: `_image_rotation` now checks overlay dimensions — when content is already portrait from dir switch, pixel rotation is 0. Was reading only portrait theme dir, ignoring mask/web dirs.
+- **Cloud theme landscape after mask at 90**: Video frames decoded at `canvas_size` (landscape) instead of overlay dimensions (portrait). Now decodes at overlay's current resolution — mask/DC stay, background swaps.
+- **Package manager dispatch duplicated**: `_provides_search()` checked `pm` string twice (command + parser). Now paired in single match block.
+
 ## v9.3.4
 
 ### Refactors
