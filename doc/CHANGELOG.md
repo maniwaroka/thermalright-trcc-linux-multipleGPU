@@ -1,5 +1,14 @@
 # Changelog
 
+## v9.3.7
+
+### Fixes
+- **Comprehensive diagnostic logging**: Every silent decision point in the bootstrap, device connect, data download, theme load, overlay config, and LED send paths now has a log line. Multi-device issues (like #101) are now diagnosable from `~/.trcc/trcc.log` alone.
+- **Pre-existing test warnings**: `_wire_device()` now guards against `settings=None` when `init_platform()` hasn't been called — eliminates `AttributeError` in integration test threads.
+- **`ensure_all()` silently swallowed exceptions**: Individual `ensure_*()` failures now caught and logged per-step instead of crashing the entire data download.
+- **Overlay config parse errors swallowed**: `load_overlay_config_from_dir()` `except: pass` blocks now log the parse error.
+- **LED `send_led_data()` failures swallowed**: Exception now logged instead of returning `False` silently.
+
 ## v9.3.6
 
 ### Fixes
