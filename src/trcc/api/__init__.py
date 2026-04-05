@@ -301,6 +301,14 @@ def start_screencast(
     global _screencast_proc, _screencast_cast  # noqa: PLW0603
     global _screencast_frames, _screencast_params  # noqa: PLW0603
 
+    # Boundary validation — all values are integers from Pydantic,
+    # but clamp explicitly so static analysis can verify safety.
+    x = max(0, int(x))
+    y = max(0, int(y))
+    w = max(0, min(int(w), 7680))
+    h = max(0, min(int(h), 4320))
+    fps = max(1, min(int(fps), 60))
+
     stop_screencast()
     stop_video_playback()
     stop_overlay_loop()
