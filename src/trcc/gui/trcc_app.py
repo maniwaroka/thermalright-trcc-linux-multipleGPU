@@ -39,6 +39,7 @@ from ..core.ports import AutostartManager, GetDiskInfoFn, GetMemoryInfoFn, Platf
 from ..services.system import SystemService
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
+from .base_handler import BaseHandler
 from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
@@ -238,7 +239,7 @@ class TRCCApp(QMainWindow):
     Knows nothing about builders, detectors, or OS internals.
 
     One handler per device keyed by USB path:
-      _handlers: dict[str, LCDHandler | LEDHandler]  # keyed by USB path
+      _handlers: dict[str, BaseHandler]  # keyed by USB path
 
     Panel stack shows the active device; all devices tick in background.
     """
@@ -295,7 +296,7 @@ class TRCCApp(QMainWindow):
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
 
         # Per-device handlers keyed by USB path
-        self._handlers: dict[str, LCDHandler | LEDHandler] = {}
+        self._handlers: dict[str, BaseHandler] = {}
         self._active_path = ''       # path of device currently shown in panel stack
 
         self._handshake_pending = False

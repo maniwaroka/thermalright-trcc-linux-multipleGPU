@@ -28,6 +28,7 @@ from ..core.models import (
     ThemeInfo,
 )
 from ..services.theme import theme_info_from_directory
+from .base_handler import BaseHandler
 
 log = logging.getLogger(__name__)
 
@@ -37,18 +38,12 @@ class _DataReadyNotifier(QObject):
     ready = Signal()
 
 
-class LCDHandler:
+class LCDHandler(BaseHandler):
     """Handler for a single LCD device — like C# FormCZTV.
 
-    Each LCD device gets its own handler with its own LCDDevice.
+    Each LCD device gets its own handler with its own Device.
     All LCD operations route through here: themes, video, overlay,
     brightness, rotation, slideshow, screencast.
-
-    Args:
-        lcd: LCDDevice instance (built by ControllerBuilder).
-        widgets: Dict of shared GUI widgets this handler drives.
-        make_timer: Callable to create QTimers parented to app.
-        data_dir: Application data directory.
     """
 
     def __init__(
@@ -59,6 +54,7 @@ class LCDHandler:
         data_dir: Path,
         is_visible_fn: Any = None,
     ) -> None:
+        super().__init__(lcd, 'form')
         self._lcd = lcd
         self._w = widgets  # preview, theme_setting, theme_local, etc.
         self._data_dir = data_dir
@@ -85,16 +81,6 @@ class LCDHandler:
         self._animation_timer: QTimer = make_timer(self._on_video_tick)
         self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
         self._flash_timer: QTimer = make_timer(self._on_flash_timeout, single_shot=True)
-
-    # ── Handler interface ────────────────────────────────────────────
-
-    @property
-    def view_name(self) -> str:
-        return 'form'
-
-    @property
-    def device_info(self) -> DeviceInfo | None:
-        return self._lcd.device_info
 
     # ── Public API ───────────────────────────────────────────────────
 

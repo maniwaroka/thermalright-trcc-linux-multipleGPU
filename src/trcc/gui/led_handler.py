@@ -20,12 +20,13 @@ import trcc.conf as _conf
 
 from ..core.device import Device
 from ..core.models import LED_STYLES, DeviceInfo, resolve_led_style_id
+from .base_handler import BaseHandler
 from .uc_led_control import UCLedControl
 
 log = logging.getLogger(__name__)
 
 
-class LEDHandler:
+class LEDHandler(BaseHandler):
     """Handler for a single LED device.
 
     Config-driven: device object holds all state, handler is just
@@ -42,6 +43,7 @@ class LEDHandler:
         panel: UCLedControl,
         on_temp_unit_changed: Any,
     ) -> None:
+        super().__init__(led, 'led')
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
         self._led = led
@@ -49,19 +51,6 @@ class LEDHandler:
         self._style_id = 0
         self._metrics_count = 0
         self._connect_signals()
-
-    # ── Handler interface ────────────────────────────────────────────
-
-    @property
-    def view_name(self) -> str:
-        return 'led'
-
-    @property
-    def device_info(self) -> DeviceInfo | None:
-        return self._led.device_info if self._led else None
-
-    def stop_timers(self) -> None:
-        """No-op — LED has no timers (metrics-driven)."""
 
     def cleanup(self) -> None:
         """Save config and release device resources."""
