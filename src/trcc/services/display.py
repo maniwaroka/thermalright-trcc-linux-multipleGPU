@@ -163,10 +163,6 @@ class DisplayService:
     def clean_background(self) -> Any | None:
         return self._clean_background
 
-    @property
-    def path_resolver(self) -> Any | None:
-        return self._path_resolver
-
     def invalidate_video_cache(self) -> None:
         self._cache = None
 
@@ -937,11 +933,3 @@ class DisplayService:
     @property
     def masks_dir(self) -> Path | None:
         return self._orientation.masks_dir
-
-    def user_masks_dir(self, width: int = 0, height: int = 0) -> Path | None:
-        """User-created masks directory for a resolution."""
-        if not self._path_resolver:
-            return None
-        w = width or self._width
-        h = height or self._height
-        return Path(self._path_resolver.user_masks_dir(w, h))
