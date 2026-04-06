@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.models import MaskInfo, ThemeData, ThemeDir, ThemeInfo, ThemeType
+from ..core.paths import theme_dir_name
 from .image import ImageService
 
 log = logging.getLogger(__name__)
@@ -444,7 +445,7 @@ class ThemeService:
 
         w, h = lcd_size
         safe_name = f'Custom_{name}' if not name.startswith('Custom_') else name
-        theme_path = data_dir / f'theme{w}{h}' / safe_name
+        theme_path = data_dir / theme_dir_name(w, h) / safe_name
 
         try:
             theme_path.mkdir(parents=True, exist_ok=True)
@@ -541,7 +542,7 @@ class ThemeService:
         try:
             w, h = lcd_size
             name = import_path.stem
-            theme_path = data_dir / f'theme{w}{h}' / name
+            theme_path = data_dir / theme_dir_name(w, h) / name
             self._import_theme_fn(str(import_path), str(theme_path))
             theme = theme_info_from_directory(theme_path)
 

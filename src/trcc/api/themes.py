@@ -80,9 +80,10 @@ def list_themes(resolution: str) -> list[ThemeResponse]:
     o = _display_dispatcher.orientation if _display_dispatcher else None
     td = o.theme_dir if o else None
     theme_dir = td.path if td else Path(resolve_theme_dir(w, h))
-    user_content_dir = getattr(_settings, 'user_content_dir', None)
+    ucd = getattr(_settings, 'user_content_dir', None)
+    user_data_dir = ucd / 'data' if ucd else None
     themes = ThemeService.discover_local_merged(
-        theme_dir, user_content_dir, (w, h))
+        theme_dir, user_data_dir, (w, h))
     return [
         ThemeResponse(
             name=t.name,
@@ -351,10 +352,11 @@ def export_theme(theme_name: str, resolution: str | None = None) -> Response:
     o = _display_dispatcher.orientation if _display_dispatcher else None
     td = o.theme_dir if o else None
     theme_dir = td.path if td else Path(resolve_theme_dir(w, h))
-    user_content_dir = getattr(_settings, 'user_content_dir', None)
+    ucd = getattr(_settings, 'user_content_dir', None)
+    user_data_dir = ucd / 'data' if ucd else None
 
     themes = ThemeService.discover_local_merged(
-        theme_dir, user_content_dir, (w, h))
+        theme_dir, user_data_dir, (w, h))
     match = next((t for t in themes if t.name == theme_name), None)
     if not match:
         match = next(

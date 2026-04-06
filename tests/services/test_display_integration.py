@@ -414,9 +414,9 @@ class TestThemeSaveRoundTrip:
         ok, msg = display_svc.save_theme('OverlayTest')
         assert ok is True
 
-        # 00.png should be clean blue bg (saved to user_content_dir from resolver)
+        # 00.png should be clean blue bg (saved to user_content_dir/data/)
         user_dir = Path(display_svc._path_resolver.user_content_dir())
-        theme_path = user_dir / 'theme320320' / 'Custom_OverlayTest'
+        theme_path = user_dir / 'data' / 'theme320320' / 'Custom_OverlayTest'
         bg_path = theme_path / '00.png'
         assert bg_path.exists()
 
@@ -449,7 +449,7 @@ class TestThemeSaveRoundTrip:
 
         user_dir = Path(display_svc._path_resolver.user_content_dir())
         config = json.loads(
-            (user_dir / 'theme320320' / 'Custom_MaskSave' / 'config.json').read_text())
+            (user_dir / 'data' / 'theme320320' / 'Custom_MaskSave' / 'config.json').read_text())
         assert config['mask'] == str(mask_dir)
 
     def test_cloud_load_preserves_mask_source_dir(
@@ -498,7 +498,7 @@ class TestThemeSaveRoundTrip:
         assert ok is True
 
         user_dir = Path(display_svc._path_resolver.user_content_dir())
-        theme_path = user_dir / 'theme320320' / 'Custom_BrightSave'
+        theme_path = user_dir / 'data' / 'theme320320' / 'Custom_BrightSave'
         saved_bg = renderer.open_image(theme_path / '00.png')
         r, g, b = get_pixel(saved_bg, 160, 160)[:3]
         # Clean bg is white, NOT dimmed
@@ -556,7 +556,7 @@ class TestLCDDeviceIntegration:
         assert result['success'] is True
 
         user_dir = Path(display_svc._path_resolver.user_content_dir())
-        theme_path = user_dir / 'theme320320' / 'Custom_RoundTrip'
+        theme_path = user_dir / 'data' / 'theme320320' / 'Custom_RoundTrip'
         assert (theme_path / '00.png').exists()
         assert (theme_path / 'Theme.png').exists()
         assert (theme_path / 'config.json').exists()

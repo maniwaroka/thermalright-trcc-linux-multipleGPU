@@ -26,7 +26,11 @@ from ...core.paths import (
     ASSETS_DIR,  # noqa: F401 — re-export (package resource dir)
     RESOURCES_DIR,  # noqa: F401 — re-export (package resource dir)
     USER_CONFIG_DIR,  # noqa: F401 — re-export (universal config dir)
+    _has_any_content,
     has_themes,
+    masks_dir_name,
+    theme_dir_name,
+    web_dir_name,
 )
 from ...core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 
@@ -365,14 +369,9 @@ class DataManager:
         return str(settings.user_data_dir)
 
     @staticmethod
-    def _has_any_content(d: str) -> bool:
-        """Check if a directory exists and has any files/subdirs."""
-        return os.path.isdir(d) and bool(os.listdir(d))
-
-    @staticmethod
     def ensure_themes(width: int, height: int) -> bool:
         """Extract default themes from .7z archive if not already present."""
-        name = f'theme{width}{height}'
+        name = theme_dir_name(width, height)
         return DataManager._fetch_and_extract(
             label=f"Themes {width}x{height}",
             pkg_dir=os.path.join(DataManager._data_dir(), name),
@@ -385,20 +384,20 @@ class DataManager:
     @staticmethod
     def ensure_web(width: int, height: int) -> bool:
         """Extract cloud theme previews from .7z archive if not already present."""
-        res_key = f'{width}{height}'
+        res_key = web_dir_name(width, height)
         return DataManager._fetch_and_extract(
             label=f"Web previews {width}x{height}",
             pkg_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
             user_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
             archive_name=f'{res_key}.7z',
-            check_fn=DataManager._has_any_content,
+            check_fn=_has_any_content,
             fetch_fn=lambda a: DataManager._fetch_archive(a, 'web'),
         )
 
     @staticmethod
     def ensure_web_masks(width: int, height: int) -> bool:
         """Extract cloud mask themes from .7z archive if not already present."""
-        res_key = f'zt{width}{height}'
+        res_key = masks_dir_name(width, height)
         return DataManager._fetch_and_extract(
             label=f"Mask themes {width}x{height}",
             pkg_dir=os.path.join(DataManager._data_dir(), 'web', res_key),
@@ -465,7 +464,7 @@ class DataManager:
         if key not in load_config().get("installed_resolutions", []):
             log.debug("Resolution %s: not in installed_resolutions", key)
             return False
-        name = f"theme{width}{height}"
+        name = theme_dir_name(width, height)
         pkg = os.path.join(DataManager._data_dir(), name)
         user = os.path.join(DataManager._data_dir(), name)
         if has_themes(pkg):

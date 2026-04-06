@@ -399,7 +399,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
             old_mask = Path(td) / 'zt1280480' / 'Mask01'
             old_mask.mkdir(parents=True)
             (old_mask / '01.png').write_bytes(b'fake')
-            lcd._display_svc._mask_source_dir = old_mask
+            lcd._display_svc.mask_source_dir = old_mask
 
             new_mask = Path(td) / 'zt4801280' / 'Mask01'
             new_mask.mkdir(parents=True)
@@ -422,7 +422,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             old_mask = Path(td) / 'zt1280480' / 'Mask01'
             old_mask.mkdir(parents=True)
-            lcd._display_svc._mask_source_dir = old_mask
+            lcd._display_svc.mask_source_dir = old_mask
 
             new_masks = Path(td) / 'zt4801280'
             new_masks.mkdir()
@@ -430,7 +430,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
 
             lcd._reload_mask_for_rotation(lcd._display_svc)
             self.assertIsNone(lcd._display_svc.overlay.theme_mask)
-            self.assertIsNone(lcd._display_svc._mask_source_dir)
+            self.assertIsNone(lcd._display_svc.mask_source_dir)
 
     @patch.object(LCDDevice, '_persist')
     def test_rotation_skips_theme_reload_when_only_web_mask_dirs(self, _):
@@ -494,7 +494,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
             new_mask.mkdir(parents=True)
             (new_mask / '01.png').write_bytes(b'fake')
 
-            lcd._display_svc._mask_source_dir = old_mask
+            lcd._display_svc.mask_source_dir = old_mask
             o.portrait_web_dir = Path(td) / 'web' / '4801280'
             o.portrait_masks_dir = Path(td) / 'zt4801280'
 

@@ -217,8 +217,9 @@ class UCThemeLocal(BaseThemeBrowser):
         from ..conf import settings
         from ..services import ThemeService
 
+        ucd = settings.user_content_dir
         themes = ThemeService.discover_local_merged(
-            self.theme_directory, settings.user_content_dir)
+            self.theme_directory, ucd / 'data' if ucd else None)
 
         all_items: list[LocalThemeItem] = []
         for t in themes:

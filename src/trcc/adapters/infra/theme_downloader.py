@@ -23,6 +23,7 @@ from typing import Dict
 
 import trcc.conf as _conf
 from trcc.core.models import FBL_TO_RESOLUTION
+from trcc.core.paths import theme_dir_name
 
 from .data_repository import DataManager
 
@@ -67,7 +68,7 @@ def _build_registry() -> Dict[str, PackInfo]:
     registry: Dict[str, PackInfo] = {}
     for w, h in _all_resolutions():
         pack_id = f"themes-{w}x{h}"
-        archive = f"theme{w}{h}.7z"
+        archive = f"{theme_dir_name(w, h)}.7z"
         archive_path = os.path.join(str(_conf.settings.user_data_dir), archive)
         size_kb = os.path.getsize(archive_path) // 1024 if os.path.isfile(archive_path) else 0
         registry[pack_id] = PackInfo(
@@ -124,10 +125,10 @@ class ThemeDownloader:
     @staticmethod
     def _theme_dir(w: int, h: int) -> Path:
         """Path to extracted theme directory (prefers user dir)."""
-        user = _conf.settings.user_data_dir / f"theme{w}{h}"
+        user = _conf.settings.user_data_dir / theme_dir_name(w, h)
         if user.exists():
             return user
-        pkg = _conf.settings.user_data_dir / f"theme{w}{h}"
+        pkg = _conf.settings.user_data_dir / theme_dir_name(w, h)
         if pkg.exists():
             return pkg
         return user  # default to user dir for installs
@@ -225,8 +226,8 @@ class ThemeDownloader:
 
         # Force: remove existing first
         if force:
-            for d in (_conf.settings.user_data_dir / f"theme{w}{h}",
-                      _conf.settings.user_data_dir / f"theme{w}{h}"):
+            for d in (_conf.settings.user_data_dir / theme_dir_name(w, h),
+                      _conf.settings.user_data_dir / theme_dir_name(w, h)):
                 if d.exists():
                     log.info("Removing %s for reinstall", d)
                     shutil.rmtree(d)
@@ -251,7 +252,7 @@ class ThemeDownloader:
             return 1
 
         info = _get_registry()[pack_name]
-        user_dir = _conf.settings.user_data_dir / f"theme{info.width}{info.height}"
+        user_dir = _conf.settings.user_data_dir / theme_dir_name(info.width, info.height)
 
         if not user_dir.exists():
             print(f"Theme pack '{pack_name}' is not installed in user directory")

@@ -430,15 +430,15 @@ class LCDDevice(Device):
             ovl.set_mask(mask_img, position)
             ovl.enabled = True
             # Track mask source for theme save
-            self._display_svc._mask_source_dir = p if p.is_dir() else p.parent
-            self.log.debug("load_mask_standalone: _mask_source_dir=%s", self._display_svc._mask_source_dir)
+            self._display_svc.mask_source_dir = p if p.is_dir() else p.parent
+            self.log.debug("load_mask_standalone: mask_source_dir=%s", self._display_svc.mask_source_dir)
             # Use current theme bg, fall back to black
-            bg = self._display_svc._clean_background or \
+            bg = self._display_svc.clean_background or \
                 self._display_svc.current_image or \
                 ImageService.solid_color(0, 0, 0, w, h)
             self._display_svc.current_image = bg
             # Invalidate video cache (old mask baked in)
-            self._display_svc._cache = None
+            self._display_svc.invalidate_video_cache()
             result_img = self._display_svc.render_overlay()
         else:
             ovl = OverlayService(
@@ -610,7 +610,7 @@ class LCDDevice(Device):
         old_canvas = svc.canvas_size
         old_theme_dir = svc.theme_dir
         # Save before _reload_theme_for_rotation → select() clobbers it
-        saved_mask_dir = svc._mask_source_dir
+        saved_mask_dir = svc.mask_source_dir
         self.log.debug("set_rotation: %d° saved_mask_dir=%s old_theme_dir=%s",
                   degrees, saved_mask_dir,
                   old_theme_dir.path if old_theme_dir else None)
@@ -680,7 +680,7 @@ class LCDDevice(Device):
                         self._lcd_config.apply_format_prefs(overlay_cfg)
                     self.set_config(overlay_cfg)
                     self.enable_overlay(True)
-                    rendered = svc._render_and_process()
+                    rendered = svc.render_and_process()
                     return rendered
                 else:
                     self.enable_overlay(False)
@@ -700,7 +700,7 @@ class LCDDevice(Device):
         Uses saved_mask_dir (captured before select() clobbers it) to
         resolve the mask name reliably.
         """
-        old_mask_dir = saved_mask_dir or svc._mask_source_dir
+        old_mask_dir = saved_mask_dir or svc.mask_source_dir
         if not old_mask_dir or not svc.masks_dir:
             self.log.debug("_reload_mask_for_rotation: no mask dir to reload "
                       "(old=%s, masks_dir=%s)", old_mask_dir, svc.masks_dir)
@@ -727,11 +727,11 @@ class LCDDevice(Device):
                 self.enable_overlay(True)
             # Mask PNG last — composites at correct dims
             self.load_mask_standalone(str(new_mask_dir))
-            return svc._render_and_process()
+            return svc.render_and_process()
         self.log.debug("_reload_mask_for_rotation: mask '%s' not in new masks dir %s",
                   mask_name, svc.masks_dir)
         svc.overlay.set_theme_mask(None)
-        svc._mask_source_dir = None
+        svc.mask_source_dir = None
         return None
 
     def set_split_mode(self, mode: int) -> dict:
@@ -818,10 +818,10 @@ class LCDDevice(Device):
                 return {"success": False, "error": "No theme directory"}
             path = td.path / theme_name
             if not path.exists():
-                # Custom themes live in ~/.trcc-user/
-                pr = self._display_svc._path_resolver if self._display_svc else None
+                # Custom themes live in ~/.trcc-user/data/
+                pr = self._display_svc.path_resolver if self._display_svc else None
                 if pr:
-                    user_path = Path(pr.user_content_dir()) / td.path.name / theme_name
+                    user_path = Path(pr.user_content_dir()) / 'data' / td.path.name / theme_name
                     if user_path.exists():
                         self.log.info("restore_last_theme: found in user content dir: %s", user_path)
                         path = user_path
@@ -848,7 +848,7 @@ class LCDDevice(Device):
             mask_dir = Path(base) / mask_id if base else None
             if mask_dir and mask_dir.exists():
                 svc = self._display_svc
-                already_loaded = (svc and svc._mask_source_dir == mask_dir)
+                already_loaded = (svc and svc.mask_source_dir == mask_dir)
                 if not already_loaded:
                     self.load_mask_standalone(str(mask_dir))
 
@@ -947,8 +947,8 @@ class LCDDevice(Device):
         svc = self._display_svc
         td = self.orientation.theme_dir
         theme_dir = td.path if td else Path(resolve_theme_dir(w, h))
-        pr = svc._path_resolver if svc else None
-        user_content_dir = Path(pr.user_content_dir()) if pr else None
+        pr = svc.path_resolver if svc else None
+        user_content_dir = Path(pr.user_content_dir()) / 'data' if pr else None
         themes = self._theme_svc.discover_local_merged(
             theme_dir, user_content_dir, (w, h))
         match = next((t for t in themes if t.name == name), None)
@@ -1023,7 +1023,7 @@ class LCDDevice(Device):
         if mask_img is None:
             return {"success": False, "error": f"Failed to load mask: {path}"}
         self._display_svc.overlay.set_theme_mask(mask_img)
-        self._display_svc._mask_source_dir = p.parent
+        self._display_svc.mask_source_dir = p.parent
         return {"success": True, "message": f"Mask: {p.name}"}
 
     def export_config(self, path: Any) -> dict:
@@ -1038,10 +1038,10 @@ class LCDDevice(Device):
 
     def load(self, path: Any) -> dict:
         """Load video/GIF for playback."""
-        self._display_svc._cache = None
+        self._display_svc.invalidate_video_cache()
         success = self._display_svc.media.load(Path(path))
         if success:
-            self._display_svc._convert_media_frames()
+            self._display_svc.convert_media_frames()
         if success:
             return {
                 "success": True,

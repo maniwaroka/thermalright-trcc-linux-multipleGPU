@@ -37,7 +37,7 @@ def list_themes():
         print(f"No local themes for {w}x{h}.")
         return 0
     themes = ThemeService.discover_local_merged(
-        Path(theme_dir), settings.user_content_dir, (w, h))
+        Path(theme_dir), settings.user_content_dir / 'data', (w, h))
     print(f"Local themes ({w}x{h}): {len(themes)}")
     for t in themes:
         kind = "video" if t.is_animated else "static"
@@ -308,7 +308,7 @@ def export_theme(theme_name, output_path):
         return 1
 
     themes = ThemeService.discover_local_merged(
-        Path(theme_dir), settings.user_content_dir, (w, h))
+        Path(theme_dir), settings.user_content_dir / 'data', (w, h))
     match = next((t for t in themes if t.name == theme_name), None)
     if not match:
         match = next(

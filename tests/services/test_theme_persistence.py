@@ -256,7 +256,7 @@ class TestLoadMaskStandaloneWiring:
 
         user_dir = Path(display_svc._path_resolver.user_content_dir())
         config = json.loads(
-            (user_dir / 'theme320320' / 'Custom_MaskTest' / 'config.json').read_text())
+            (user_dir / 'data' / 'theme320320' / 'Custom_MaskTest' / 'config.json').read_text())
         assert config['mask'] == str(mask_dir), \
             f"Expected mask={mask_dir}, got {config['mask']}"
 

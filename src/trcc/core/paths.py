@@ -22,7 +22,8 @@ DATA_DIR = USER_DATA_DIR
 
 # User-created content (~/.trcc-user/) — survives uninstall and data re-download
 USER_CONTENT_DIR = os.path.expanduser('~/.trcc-user')
-USER_MASKS_WEB_DIR = os.path.join(USER_CONTENT_DIR, 'data', 'web')
+USER_CONTENT_DATA_DIR = os.path.join(USER_CONTENT_DIR, 'data')
+USER_MASKS_WEB_DIR = os.path.join(USER_CONTENT_DATA_DIR, 'web')
 
 
 # =========================================================================
@@ -48,13 +49,25 @@ def has_themes(theme_dir: str) -> bool:
     return False
 
 
+def theme_dir_name(width: int, height: int) -> str:
+    return f'theme{width}{height}'
+
+
+def web_dir_name(width: int, height: int) -> str:
+    return f'{width}{height}'
+
+
+def masks_dir_name(width: int, height: int) -> str:
+    return f'zt{width}{height}'
+
+
 def resolve_theme_dir(width: int, height: int) -> str:
     """Resolve the best theme directory path for a resolution.
 
     Tries user dir first, falls back to package dir. Returns a path string
     (not ThemeDir — paths.py cannot import from models.py).
     """
-    name = f'theme{width}{height}'
+    name = theme_dir_name(width, height)
     user_dir = os.path.join(USER_DATA_DIR, name)
     if has_themes(user_dir):
         return user_dir
@@ -82,12 +95,12 @@ def _resolve_web_subdir(
 
 def get_web_dir(width: int, height: int) -> str:
     """Get cloud theme Web directory for a resolution."""
-    return _resolve_web_subdir(f'{width}{height}')
+    return _resolve_web_subdir(web_dir_name(width, height))
 
 
 def get_web_masks_dir(width: int, height: int) -> str:
     """Get cloud masks directory for a resolution."""
-    return _resolve_web_subdir(f'zt{width}{height}', check_fn=has_themes)
+    return _resolve_web_subdir(masks_dir_name(width, height), check_fn=has_themes)
 
 
 def is_safe_archive_member(name: str) -> bool:
@@ -101,4 +114,4 @@ def get_user_masks_dir(width: int, height: int) -> str:
     Lives in ~/.trcc-user/data/web/zt{W}{H}/ — separate from cloud masks
     so user content survives uninstall and data re-download.
     """
-    return os.path.join(USER_MASKS_WEB_DIR, f'zt{width}{height}')
+    return os.path.join(USER_MASKS_WEB_DIR, masks_dir_name(width, height))

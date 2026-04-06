@@ -389,6 +389,12 @@ class LCDHandler(BaseHandler):
 
     # ── DC File Loading ────────────────────────────────────────────
 
+    def _save_overlay(self, enabled: bool, config: dict) -> None:
+        if self._device_key:
+            Settings.save_device_setting(self._device_key, 'overlay', {
+                'enabled': enabled, 'config': config,
+            })
+
     def _load_theme_overlay_config(self, theme_dir: Path,
                                     *, persist: bool = True) -> None:
         """Load overlay config from theme's config.json or config1.dc."""
@@ -398,10 +404,8 @@ class LCDHandler(BaseHandler):
         if not overlay_config:
             self.log.info("_load_theme_overlay_config: no DC found → overlay disabled")
             self._w['theme_setting'].set_overlay_enabled(False)
-            if persist and self._device_key:
-                Settings.save_device_setting(self._device_key, 'overlay', {
-                    'enabled': False, 'config': {},
-                })
+            if persist:
+                self._save_overlay(False, {})
             self._render_and_send()
             return
 
@@ -414,11 +418,8 @@ class LCDHandler(BaseHandler):
         self._lcd.enable_overlay(True)
         self._render_and_send()
 
-        if persist and self._device_key:
-            Settings.save_device_setting(self._device_key, 'overlay', {
-                'enabled': True,
-                'config': overlay_config,
-            })
+        if persist:
+            self._save_overlay(True, overlay_config)
 
     # ── Video (C# ucBoFangQiKongZhi1) ─────────────────────────────
 
@@ -515,11 +516,9 @@ class LCDHandler(BaseHandler):
         else:
             self._render_and_send()
 
-        if self._device_key:
-            Settings.save_device_setting(self._device_key, 'overlay', {
-                'enabled': self._w['theme_setting'].overlay_grid.overlay_enabled,
-                'config': element_data,
-            })
+        self._save_overlay(
+            self._w['theme_setting'].overlay_grid.overlay_enabled,
+            element_data)
 
     def update_preview(self, image: Any) -> None:
         """Display a frame that was already rendered and sent to the device."""

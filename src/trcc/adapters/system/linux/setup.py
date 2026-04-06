@@ -449,8 +449,8 @@ class LinuxSetup(PlatformSetup):
         return USER_CONTENT_DIR
 
     def theme_dir(self, width: int, height: int) -> str:
-        from trcc.core.paths import DATA_DIR
-        return os.path.join(DATA_DIR, f'theme{width}{height}')
+        from trcc.core.paths import DATA_DIR, theme_dir_name
+        return os.path.join(DATA_DIR, theme_dir_name(width, height))
 
     def web_dir(self, width: int, height: int) -> str:
         from trcc.core.paths import get_web_dir

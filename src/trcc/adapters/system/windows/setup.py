@@ -13,6 +13,7 @@ from trcc.adapters.system._shared import (
     _copy_assets_to_user_dir,
     _print_summary,
 )
+from trcc.core.paths import masks_dir_name, theme_dir_name, web_dir_name
 from trcc.core.ports import PlatformSetup
 
 log = logging.getLogger(__name__)
@@ -42,16 +43,16 @@ class WindowsSetup(PlatformSetup):
         return os.path.join(Path.home(), '.trcc-user')
 
     def theme_dir(self, width: int, height: int) -> str:
-        return os.path.join(self.data_dir(), f'theme{width}{height}')
+        return os.path.join(self.data_dir(), theme_dir_name(width, height))
 
     def web_dir(self, width: int, height: int) -> str:
-        return os.path.join(self.data_dir(), 'web', f'{width}{height}')
+        return os.path.join(self.data_dir(), 'web', web_dir_name(width, height))
 
     def web_masks_dir(self, width: int, height: int) -> str:
-        return os.path.join(self.data_dir(), 'web', f'zt{width}{height}')
+        return os.path.join(self.data_dir(), 'web', masks_dir_name(width, height))
 
     def user_masks_dir(self, width: int, height: int) -> str:
-        return os.path.join(self.user_content_dir(), 'data', 'web', f'zt{width}{height}')
+        return os.path.join(self.user_content_dir(), 'data', 'web', masks_dir_name(width, height))
 
     def ffmpeg_install_help(self) -> str:
         return (

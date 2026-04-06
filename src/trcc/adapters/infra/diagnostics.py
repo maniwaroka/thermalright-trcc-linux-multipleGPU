@@ -1793,7 +1793,7 @@ class DebugReport:
         sec = self._add("Installed themes")
         try:
             from trcc.core.models import FBL_PROFILES
-            from trcc.core.paths import USER_DATA_DIR
+            from trcc.core.paths import USER_DATA_DIR, masks_dir_name, theme_dir_name
 
             # Collect unique resolutions from FBL_PROFILES
             seen: set[tuple[int, int]] = set()
@@ -1806,8 +1806,8 @@ class DebugReport:
 
             found_any = False
             for w, h in resolutions:
-                theme_dir = os.path.join(USER_DATA_DIR, f"theme{w}{h}")
-                web_dir = os.path.join(USER_DATA_DIR, "web", f"zt{w}{h}")
+                theme_dir = os.path.join(USER_DATA_DIR, theme_dir_name(w, h))
+                web_dir = os.path.join(USER_DATA_DIR, "web", masks_dir_name(w, h))
                 has_themes = os.path.isdir(theme_dir)
                 has_masks = os.path.isdir(web_dir)
                 if not has_themes and not has_masks:

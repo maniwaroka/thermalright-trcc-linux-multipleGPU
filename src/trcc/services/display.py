@@ -149,6 +149,31 @@ class DisplayService:
         profile = get_profile(dev.fbl_code)
         return get_encode_rotation(profile, dev.sub_byte, self.rotation)
 
+    @property
+    def mask_source_dir(self) -> Path | None:
+        return self._mask_source_dir
+
+    @mask_source_dir.setter
+    def mask_source_dir(self, value: Path | None) -> None:
+        self._mask_source_dir = value
+
+    @property
+    def clean_background(self) -> Any | None:
+        return self._clean_background
+
+    @property
+    def path_resolver(self) -> Any | None:
+        return self._path_resolver
+
+    def invalidate_video_cache(self) -> None:
+        self._cache = None
+
+    def convert_media_frames(self) -> None:
+        self._convert_media_frames()
+
+    def render_and_process(self) -> Any | None:
+        return self._render_and_process()
+
     # -- Initialization ----------------------------------------------------
 
     def initialize(self, data_dir: Path) -> None:
@@ -866,11 +891,11 @@ class DisplayService:
     def save_theme(self, name: str) -> Tuple[bool, str]:
         """Save current config as a custom theme.
 
-        Custom themes always go to user_content_dir (~/.trcc-user/) so they
+        Custom themes always go to user_content_dir (~/.trcc-user/data/) so they
         survive uninstall and data re-downloads.
         """
         if self._path_resolver:
-            data_dir = Path(self._path_resolver.user_content_dir())
+            data_dir = Path(self._path_resolver.user_content_dir()) / 'data'
         elif self._data_dir:
             data_dir = self._data_dir
         else:
@@ -886,7 +911,8 @@ class DisplayService:
         )
         if ok:
             safe_name = f'Custom_{name}' if not name.startswith('Custom_') else name
-            self.current_theme_path = data_dir / f'theme{self.lcd_width}{self.lcd_height}' / safe_name
+            from ..core.paths import theme_dir_name
+            self.current_theme_path = data_dir / theme_dir_name(self.lcd_width, self.lcd_height) / safe_name
         return ok, msg
 
     def export_config(self, export_path: Path) -> Tuple[bool, str]:

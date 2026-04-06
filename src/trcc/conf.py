@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Optional
 
 from .__version__ import __version__
 from .core.models import LEGACY_TO_ISO, LOCALE_TO_LANG
-from .core.paths import USER_CONFIG_DIR
+from .core.paths import USER_CONFIG_DIR, USER_CONTENT_DATA_DIR, USER_CONTENT_DIR
 
 if TYPE_CHECKING:
     from .core.ports import PathResolver
@@ -76,6 +76,39 @@ def _migrate_old_config() -> None:
     except OSError:
         pass
     log.info("Migrated config from %s to %s", old_dir, CONFIG_DIR)
+
+
+def _migrate_user_content_themes() -> None:
+    """One-time migration: move custom themes from ~/.trcc-user/theme* to ~/.trcc-user/data/theme*.
+
+    Aligns user content layout with data dir — both roots now use
+    identical subtrees: {root}/data/theme{W}{H}/, {root}/data/web/, etc.
+    """
+    import shutil
+    if not os.path.isdir(USER_CONTENT_DIR):
+        return
+    for name in os.listdir(USER_CONTENT_DIR):
+        if not name.startswith('theme'):
+            continue
+        old = os.path.join(USER_CONTENT_DIR, name)
+        if not os.path.isdir(old):
+            continue
+        new = os.path.join(USER_CONTENT_DATA_DIR, name)
+        if os.path.exists(new):
+            # Merge: move individual theme dirs that don't exist in target
+            for item in os.listdir(old):
+                src = os.path.join(old, item)
+                dst = os.path.join(new, item)
+                if os.path.isdir(src) and not os.path.exists(dst):
+                    shutil.move(src, dst)
+            try:
+                os.rmdir(old)
+            except OSError:
+                pass
+        else:
+            os.makedirs(USER_CONTENT_DATA_DIR, exist_ok=True)
+            shutil.move(old, new)
+        log.info("Migrated user themes: %s → %s", old, new)
 
 
 def _migrate_device_keys(config: dict) -> bool:
@@ -584,6 +617,7 @@ def init_settings(path_resolver: 'PathResolver') -> Settings:
     platform adapter via ControllerBuilder.build_setup().
     """
     global _settings, settings  # noqa: PLW0603
+    _migrate_user_content_themes()
     _settings = Settings(path_resolver)
     settings = _settings
     return settings
