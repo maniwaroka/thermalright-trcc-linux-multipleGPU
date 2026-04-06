@@ -1,5 +1,18 @@
 # Changelog
 
+## v9.3.9
+
+### Refactors
+- **Unified Device class**: `LCDDevice` + `LEDDevice` merged into one `Device` class with `device_type` boolean (True=LCD, False=LED). One `build_device()` replaces `build_lcd()`/`build_led()`. TrccApp uses `_devices` dict — no separate LCD/LED fields.
+- **Full device identity in logger**: Every log line now shows `[lcd:0 [0402:3922 FBL=100 PM=32 SUB=1]]` — VID:PID, FBL, PM, SUB from handshake. No more guessing which device produced which log line.
+
+### Testing
+- **Integration tests for ALL devices**: Every VID:PID in registry, every FBL resolution, every LED PM product — tested through the real app flow (MockPlatform + real builder + real services). 286 new tests.
+- **User session tests**: send_color, set_brightness, set_mode, tick — what users actually do, tested for every device.
+- **DI fixtures**: `lcd_device` and `led_device` fixtures build through real builder flow instead of constructing with MagicMock services.
+- **MockPlatform shared**: `tests/mock_platform.py` — noop USB protocols, shared between test suite and dev/mock_gui.py.
+- **mock_gui --report**: `PYTHONPATH=src python3 dev/mock_gui.py --report user_report.txt` — reproduce any user's exact device setup from their `trcc report` output.
+
 ## v9.3.8
 
 ### Fixes
