@@ -13,109 +13,121 @@ def _make_builder() -> ControllerBuilder:
 
 
 class TestControllerBuilderLcd(unittest.TestCase):
-    """ControllerBuilder.build_lcd() — assembles LCDDevice with DI."""
+    """ControllerBuilder.build_device() — assembles LCD Device with DI."""
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_build_lcd_returns_lcd_device(self, _):
-        """build_lcd() returns an LCDDevice instance."""
-        from trcc.core.lcd_device import LCDDevice
-        lcd = _make_builder().with_renderer(ImageService._r()).build_lcd()
-        self.assertIsInstance(lcd, LCDDevice)
+    def test_build_device_returns_lcd_device(self, _):
+        """build_device() returns an LCD Device instance."""
+        from trcc.core.device import Device
+        device = _make_builder().with_renderer(ImageService._r()).build_device()
+        self.assertIsInstance(device, Device)
+        self.assertTrue(device.is_lcd)
 
-    def test_build_lcd_without_renderer_raises(self):
-        """build_lcd() without with_renderer() raises RuntimeError."""
+    def test_build_device_without_renderer_raises(self):
+        """build_device() without with_renderer() raises RuntimeError."""
         with self.assertRaises(RuntimeError) as ctx:
-            _make_builder().build_lcd()
-        self.assertIn('with_renderer', str(ctx.exception))
+            _make_builder().build_device()
+        self.assertIn('renderer', str(ctx.exception))
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_build_lcd_wires_device_service(self, _):
-        """LCDDevice has a wired DeviceService."""
-        lcd = _make_builder().with_renderer(ImageService._r()).build_lcd()
-        self.assertIsNotNone(lcd._device_svc)
+    def test_build_device_wires_device_service(self, _):
+        """Device has a wired DeviceService."""
+        device = _make_builder().with_renderer(ImageService._r()).build_device()
+        self.assertIsNotNone(device._device_svc)
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_build_lcd_wires_display_service(self, _):
-        """LCDDevice has a wired DisplayService."""
-        lcd = _make_builder().with_renderer(ImageService._r()).build_lcd()
-        self.assertIsNotNone(lcd._display_svc)
+    def test_build_device_wires_display_service(self, _):
+        """Device has a wired DisplayService."""
+        device = _make_builder().with_renderer(ImageService._r()).build_device()
+        self.assertIsNotNone(device._display_svc)
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_build_lcd_wires_theme_service(self, _):
-        """LCDDevice has a wired ThemeService."""
-        lcd = _make_builder().with_renderer(ImageService._r()).build_lcd()
-        self.assertIsNotNone(lcd._theme_svc)
+    def test_build_device_wires_theme_service(self, _):
+        """Device has a wired ThemeService."""
+        device = _make_builder().with_renderer(ImageService._r()).build_device()
+        self.assertIsNotNone(device._theme_svc)
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_build_lcd_wires_renderer(self, _):
-        """LCDDevice has the injected renderer."""
+    def test_build_device_wires_renderer(self, _):
+        """Device has the injected renderer."""
         renderer = ImageService._r()
-        lcd = _make_builder().with_renderer(renderer).build_lcd()
-        self.assertIs(lcd._renderer, renderer)
+        device = _make_builder().with_renderer(renderer).build_device()
+        self.assertIs(device._renderer, renderer)
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
     def test_with_data_dir_triggers_initialize(self, mock_ensure):
-        """with_data_dir() causes build_lcd() to call lcd.initialize()."""
+        """with_data_dir() causes build_device() to call device.initialize()."""
         import tempfile
         from pathlib import Path
         with tempfile.TemporaryDirectory() as d:
-            lcd = (_make_builder()
-                   .with_renderer(ImageService._r())
-                   .with_data_dir(Path(d))
-                   .build_lcd())
+            device = (_make_builder()
+                      .with_renderer(ImageService._r())
+                      .with_data_dir(Path(d))
+                      .build_device())
             # initialize was called (ensure_all is the data download step)
-            self.assertIsNotNone(lcd)
+            self.assertIsNotNone(device)
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_build_lcd_without_data_dir_skips_initialize(self, mock_ensure):
+    def test_build_device_without_data_dir_skips_initialize(self, mock_ensure):
         """Without with_data_dir(), initialize is not called."""
-        lcd = _make_builder().with_renderer(ImageService._r()).build_lcd()
-        # No crash, lcd built without initialization
-        self.assertIsNotNone(lcd)
+        device = _make_builder().with_renderer(ImageService._r()).build_device()
+        # No crash, device built without initialization
+        self.assertIsNotNone(device)
 
 
 class TestControllerBuilderLed(unittest.TestCase):
-    """ControllerBuilder.build_led() — assembles LEDDevice."""
+    """ControllerBuilder.build_device(detected) — assembles LED Device."""
 
-    def test_build_led_returns_led_device(self):
-        """build_led() returns an LEDDevice instance."""
-        from trcc.core.led_device import LEDDevice
-        led = _make_builder().build_led()
-        self.assertIsInstance(led, LEDDevice)
+    def _led_detected(self):
+        """Build a DetectedDevice with protocol='led'."""
+        from trcc.core.models import DetectedDevice
+        return DetectedDevice(
+            vid=0x0416, pid=0x8001,
+            vendor_name="Winbond", product_name="LED",
+            usb_path="2-1", protocol="led",
+        )
+
+    def test_build_device_returns_led_device(self):
+        """build_device(led_detected) returns an LED Device instance."""
+        from trcc.core.device import Device
+        device = _make_builder().build_device(self._led_detected())
+        self.assertIsInstance(device, Device)
+        self.assertTrue(device.is_led)
 
     def test_build_led_no_renderer_required(self):
-        """LED doesn't need a renderer — build_led() works without it."""
-        led = _make_builder().build_led()
-        self.assertIsNotNone(led)
+        """LED doesn't need a renderer — build_device() works without it."""
+        device = _make_builder().build_device(self._led_detected())
+        self.assertIsNotNone(device)
 
     def test_build_led_wires_get_protocol(self):
-        """LEDDevice gets the protocol factory wired."""
-        led = _make_builder().build_led()
-        self.assertIsNotNone(led._get_protocol)
+        """LED Device gets the protocol factory wired."""
+        device = _make_builder().build_device(self._led_detected())
+        self.assertIsNotNone(device._get_protocol)
 
     def test_build_led_injects_device_svc(self):
-        """build_led() injects a DeviceService so connect() works."""
-        led = _make_builder().build_led()
-        self.assertIsNotNone(led._device_svc)
+        """build_device(led) injects a DeviceService so connect() works."""
+        device = _make_builder().build_device(self._led_detected())
+        self.assertIsNotNone(device._device_svc)
 
 
-class TestControllerBuilderLcdFromService(unittest.TestCase):
-    """ControllerBuilder.lcd_from_service() — builds from existing DeviceService."""
+class TestControllerBuilderDeviceFromService(unittest.TestCase):
+    """ControllerBuilder.device_from_service() — builds from existing DeviceService."""
 
-    def test_returns_lcd_device(self):
-        from trcc.core.lcd_device import LCDDevice
+    def test_returns_device(self):
+        from trcc.core.device import Device
         svc = MagicMock()
         svc.selected = MagicMock()
-        lcd = _make_builder().lcd_from_service(svc)
-        self.assertIsInstance(lcd, LCDDevice)
+        device = _make_builder().device_from_service(svc)
+        self.assertIsInstance(device, Device)
+        self.assertTrue(device.is_lcd)
 
     def test_wires_display_and_theme_services(self):
         svc = MagicMock()
         svc.selected = MagicMock()
-        lcd = _make_builder().lcd_from_service(svc)
-        self.assertIsNotNone(lcd._display_svc)
-        self.assertIsNotNone(lcd._theme_svc)
-        self.assertIs(lcd._device_svc, svc)
+        device = _make_builder().device_from_service(svc)
+        self.assertIsNotNone(device._display_svc)
+        self.assertIsNotNone(device._theme_svc)
+        self.assertIs(device._device_svc, svc)
 
 
 class TestControllerBuilderSetup(unittest.TestCase):
@@ -178,11 +190,12 @@ class TestControllerBuilderFluent(unittest.TestCase):
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
     def test_full_chain(self, _):
         """Full fluent chain builds successfully."""
-        from trcc.core.lcd_device import LCDDevice
-        lcd = (_make_builder()
-               .with_renderer(ImageService._r())
-               .build_lcd())
-        self.assertIsInstance(lcd, LCDDevice)
+        from trcc.core.device import Device
+        device = (_make_builder()
+                  .with_renderer(ImageService._r())
+                  .build_device())
+        self.assertIsInstance(device, Device)
+        self.assertTrue(device.is_lcd)
 
 
 class TestControllerBuilderBootstrap(unittest.TestCase):
@@ -262,14 +275,14 @@ class TestBuilderPsutilFallback(unittest.TestCase):
     """_make_build_services_fn: psutil ImportError → lcd still builds."""
 
     @patch('trcc.adapters.infra.data_repository.DataManager.ensure_all')
-    def test_psutil_unavailable_still_builds_lcd(self, _):
+    def test_psutil_unavailable_still_builds_device(self, _):
         import sys
 
         from trcc.services.image import ImageService
         renderer = ImageService._r()
         with patch.dict(sys.modules, {'psutil': None}):
-            lcd = _make_builder().with_renderer(renderer).build_lcd()
-        self.assertIsNotNone(lcd._display_svc)
+            device = _make_builder().with_renderer(renderer).build_device()
+        self.assertIsNotNone(device._display_svc)
 
 
 if __name__ == '__main__':

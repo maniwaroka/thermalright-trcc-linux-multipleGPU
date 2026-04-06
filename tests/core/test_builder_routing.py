@@ -69,9 +69,15 @@ class TestLinuxBuilderContract:
         from trcc.core.ports import PlatformSetup
         assert isinstance(linux_builder.build_setup(), PlatformSetup)
 
-    def test_build_led_returns_led_device(self, linux_builder):
-        from trcc.core.led_device import LEDDevice
-        assert isinstance(linux_builder.build_led(), LEDDevice)
+    def test_build_device_led_returns_led(self, linux_builder):
+        from trcc.core.device import Device
+        detected = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
+            usb_path="2-1", protocol="led",
+        )
+        device = linux_builder.build_device(detected)
+        assert isinstance(device, Device)
+        assert device.is_led
 
 
 class TestWindowsBuilderContract:
@@ -83,9 +89,15 @@ class TestWindowsBuilderContract:
         from trcc.core.ports import PlatformSetup
         assert isinstance(windows_builder.build_setup(), PlatformSetup)
 
-    def test_build_led_returns_led_device(self, windows_builder):
-        from trcc.core.led_device import LEDDevice
-        assert isinstance(windows_builder.build_led(), LEDDevice)
+    def test_build_device_led_returns_led(self, windows_builder):
+        from trcc.core.device import Device
+        detected = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
+            usb_path="2-1", protocol="led",
+        )
+        device = windows_builder.build_device(detected)
+        assert isinstance(device, Device)
+        assert device.is_led
 
 
 class TestMacOSBuilderContract:
@@ -97,9 +109,15 @@ class TestMacOSBuilderContract:
         from trcc.core.ports import PlatformSetup
         assert isinstance(macos_builder.build_setup(), PlatformSetup)
 
-    def test_build_led_returns_led_device(self, macos_builder):
-        from trcc.core.led_device import LEDDevice
-        assert isinstance(macos_builder.build_led(), LEDDevice)
+    def test_build_device_led_returns_led(self, macos_builder):
+        from trcc.core.device import Device
+        detected = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
+            usb_path="2-1", protocol="led",
+        )
+        device = macos_builder.build_device(detected)
+        assert isinstance(device, Device)
+        assert device.is_led
 
 
 class TestBSDBuilderContract:
@@ -111,9 +129,15 @@ class TestBSDBuilderContract:
         from trcc.core.ports import PlatformSetup
         assert isinstance(bsd_builder.build_setup(), PlatformSetup)
 
-    def test_build_led_returns_led_device(self, bsd_builder):
-        from trcc.core.led_device import LEDDevice
-        assert isinstance(bsd_builder.build_led(), LEDDevice)
+    def test_build_device_led_returns_led(self, bsd_builder):
+        from trcc.core.device import Device
+        detected = DetectedDevice(
+            vid=0x0416, pid=0x8001, vendor_name="Winbond", product_name="LED",
+            usb_path="2-1", protocol="led",
+        )
+        device = bsd_builder.build_device(detected)
+        assert isinstance(device, Device)
+        assert device.is_led
 
 
 # ── build_device() — per-device protocol routing ─────────────────────────────
@@ -124,13 +148,12 @@ class TestBSDBuilderContract:
 @pytest.mark.parametrize("vid_pid,entry", list(ALL_DEVICES.items()),
                          ids=[f"{v:04X}:{p:04X}" for v, p in ALL_DEVICES])
 def test_build_device_routes_to_correct_type(vid_pid, entry, linux_builder):
-    """Every device in ALL_DEVICES must build the right Device subclass.
+    """Every device in ALL_DEVICES must build the right Device type.
 
-    LED devices (protocol='led') → LEDDevice.
-    Everything else → LCDDevice.
+    LED devices (protocol='led') → Device with device_type=False.
+    Everything else → Device with is_lcd=True.
     """
-    from trcc.core.lcd_device import LCDDevice
-    from trcc.core.led_device import LEDDevice
+    from trcc.core.device import Device
     from trcc.services.image import ImageService
 
     detected = _detected_for(*vid_pid, entry)
@@ -138,16 +161,16 @@ def test_build_device_routes_to_correct_type(vid_pid, entry, linux_builder):
 
     if trait.is_led:
         device = linux_builder.build_device(detected)
-        assert isinstance(device, LEDDevice), (
+        assert isinstance(device, Device) and device.is_led, (
             f"{vid_pid[0]:04X}:{vid_pid[1]:04X} (protocol={entry.protocol!r}) "
-            f"should build LEDDevice"
+            f"should build LED Device"
         )
     else:
         linux_builder._renderer = ImageService._r()
         device = linux_builder.build_device(detected)
-        assert isinstance(device, LCDDevice), (
+        assert isinstance(device, Device) and device.is_lcd, (
             f"{vid_pid[0]:04X}:{vid_pid[1]:04X} (protocol={entry.protocol!r}) "
-            f"should build LCDDevice"
+            f"should build LCD Device"
         )
 
 
@@ -177,13 +200,14 @@ def test_led_devices_wire_get_protocol(vid_pid, entry, linux_builder):
 
 
 def test_build_device_no_detected_builds_lcd(linux_builder):
-    """build_device(None) builds an unconnected LCDDevice as the default."""
-    from trcc.core.lcd_device import LCDDevice
+    """build_device(None) builds an unconnected LCD Device as the default."""
+    from trcc.core.device import Device
     from trcc.services.image import ImageService
 
     linux_builder._renderer = ImageService._r()
     device = linux_builder.build_device(None)
-    assert isinstance(device, LCDDevice)
+    assert isinstance(device, Device)
+    assert device.is_lcd
 
 
 def test_build_device_lcd_without_renderer_raises(linux_builder):
@@ -219,7 +243,7 @@ def test_scsi_devices_are_not_led():
 
 
 def test_led_devices_classify_as_led():
-    """LED_DEVICES entries must resolve to is_led=True via PROTOCOL_TRAITS."""
+    """LED_DEVICES entries must resolve to device_type=False via PROTOCOL_TRAITS."""
     for (v, p), entry in LED_DEVICES.items():
         trait = PROTOCOL_TRAITS.get(entry.protocol)
         assert trait is not None, (

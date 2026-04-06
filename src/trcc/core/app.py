@@ -19,12 +19,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..services.system import SystemService
     from .builder import ControllerBuilder
-    from .lcd_device import LCDDevice
-    from .led_device import LEDDevice
+    from .device import Device
     from .models import DetectedDevice
     from .ports import (
         AutostartManager,
-        Device,
         FindActiveFn,
         GetDiskInfoFn,
         GetMemoryInfoFn,
@@ -82,9 +80,7 @@ class TrccApp:
         self._metrics_stop: threading.Event = threading.Event()
         self._metrics_wake: threading.Event = threading.Event()
         self._current_metrics: Any = None
-        # Active devices — set when a device connects, cleared when it disconnects
-        self._lcd_device: LCDDevice | None = None
-        self._led_device: LEDDevice | None = None
+        # Active devices live in self._devices dict — no separate references
         # IPC handlers — injected by composition roots (CLI/API/GUI entry points)
         self._find_active_fn: FindActiveFn | None = None
         self._proxy_factory_fn: ProxyFactoryFn | None = None
@@ -297,31 +293,22 @@ class TrccApp:
         """Remove a device by path and notify observers."""
         device = self._devices.pop(path, None)
         if device is not None:
-            if device.is_lcd:
-                self._lcd_device = None
-            elif device.is_led:
-                self._led_device = None
             self._notify(AppEvent.DEVICE_LOST, device)
 
     def _wire_device(self, device: Device) -> None:
-        """Store device reference and initialize pipeline.
+        """Initialize device pipeline and inject IPC handlers.
 
         IPC handlers (set via set_ipc_handlers) are injected here so that
         devices built by scan() can proxy to a running GUI/API instance.
         """
-        from .lcd_device import LCDDevice
-        from .led_device import LEDDevice
-
         device.wire_ipc(self._find_active_fn, self._proxy_factory_fn)
-        if isinstance(device, LCDDevice):
-            self._lcd_device = device
+        if device.is_lcd:
             log.debug("LCD device ready: %s", getattr(device, 'device_path', '?'))
             if self._settings is not None:
                 device.initialize_pipeline(self._settings)
             else:
                 log.warning("_wire_device: settings not initialized — skipping pipeline init")
-        elif isinstance(device, LEDDevice):
-            self._led_device = device
+        else:
             log.debug("LED device ready: %s", getattr(device, 'device_path', '?'))
 
     @property
@@ -332,36 +319,38 @@ class TrccApp:
     @property
     def has_lcd(self) -> bool:
         """True if an LCD device is connected."""
-        return self._lcd_device is not None
+        return self.lcd_device is not None
 
     @property
     def has_led(self) -> bool:
         """True if an LED device is connected."""
-        return self._led_device is not None
+        return self.led_device is not None
 
     @property
-    def lcd_device(self) -> LCDDevice | None:
-        """The active LCD device, or None if not connected."""
-        return self._lcd_device
+    def lcd_device(self) -> Device | None:
+        """The first LCD device, or None."""
+        return next((d for d in self._devices.values() if d.is_lcd), None)
 
     @property
-    def led_device(self) -> LEDDevice | None:
-        """The active LED device, or None if not connected."""
-        return self._led_device
+    def led_device(self) -> Device | None:
+        """The first LED device, or None."""
+        return next((d for d in self._devices.values() if d.is_led), None)
 
     @property
-    def lcd(self) -> LCDDevice:
-        """The active LCD device. Raises if not connected."""
-        if self._lcd_device is None:
+    def lcd(self) -> Device:
+        """The first LCD device. Raises if not connected."""
+        d = self.lcd_device
+        if d is None:
             raise RuntimeError("No LCD device connected. Call scan() first.")
-        return self._lcd_device
+        return d
 
     @property
-    def led(self) -> LEDDevice:
-        """The active LED device. Raises if not connected."""
-        if self._led_device is None:
+    def led(self) -> Device:
+        """The first LED device. Raises if not connected."""
+        d = self.led_device
+        if d is None:
             raise RuntimeError("No LED device connected. Call scan() first.")
-        return self._led_device
+        return d
 
     # ── DI: device construction ──────────────────────────────────────────────
 
@@ -374,13 +363,18 @@ class TrccApp:
         self._find_active_fn = find_active_fn
         self._proxy_factory_fn = proxy_factory_fn
 
-    def build_led(self) -> LEDDevice:
-        """Build an unconnected LEDDevice (for IPC server use only)."""
-        return self._builder.build_led()
+    def build_led_device(self) -> Device:
+        """Build an unconnected LED Device (for IPC server use only)."""
+        from .models import DetectedDevice
+        # Build with LED protocol traits — detected=None triggers auto-detect on connect
+        dummy = DetectedDevice(vid=0x0416, pid=0x8001, vendor_name='',
+                               product_name='', usb_path='',
+                               implementation='hid_led', protocol='led')
+        return self._builder.build_device(dummy)
 
-    def lcd_from_service(self, device_svc: Any) -> LCDDevice:
-        """Build an LCDDevice from an existing DeviceService (API standalone mode)."""
-        return self._builder.lcd_from_service(device_svc)
+    def device_from_service(self, device_svc: Any) -> Device:
+        """Build a Device from an existing DeviceService (API standalone mode)."""
+        return self._builder.device_from_service(device_svc)
 
     # ── OS / platform operations (previously OSCommandHandler) ───────────────
 

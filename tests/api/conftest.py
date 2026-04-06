@@ -41,9 +41,11 @@ def lcd_only_app(monkeypatch):
     mock_lcd = MagicMock()
     mock_lcd.restore_last_theme.return_value = {"success": True, "image": None}
 
-    # Fake discover: wires lcd_device directly
+    # Fake discover: wires device into _devices dict
+    mock_lcd.is_lcd = True
+    mock_lcd.is_led = False
     def _fake_discover(path=None):
-        app._lcd_device = mock_lcd
+        app._devices['mock_lcd'] = mock_lcd
         return {"success": True, "message": "1 device(s) found"}
 
     app.discover = _fake_discover  # type: ignore[method-assign]

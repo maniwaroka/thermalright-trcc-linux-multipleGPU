@@ -18,7 +18,7 @@ from typing import Any
 
 import trcc.conf as _conf
 
-from ..core.led_device import LEDDevice
+from ..core.device import Device
 from ..core.models import LED_STYLES, DeviceInfo, resolve_led_style_id
 from .uc_led_control import UCLedControl
 
@@ -38,7 +38,7 @@ class LEDHandler:
 
     def __init__(
         self,
-        led: LEDDevice,
+        led: Device,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
     ) -> None:
@@ -96,7 +96,7 @@ class LEDHandler:
         return self._led is not None
 
     @property
-    def led_port(self) -> LEDDevice | None:
+    def led_port(self) -> Device | None:
         return self._led
 
     def show(self, device: DeviceInfo) -> None:
@@ -104,7 +104,7 @@ class LEDHandler:
         model = device.model or ''
         led_style = device.led_style_id or resolve_led_style_id(model)
 
-        self._led.initialize(device, led_style)
+        self._led.initialize_led(device, led_style)
         self._style_id = led_style
 
         style_info = LED_STYLES.get(led_style)

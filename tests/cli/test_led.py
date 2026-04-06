@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.led_device import LEDDevice
+from trcc.core.device import Device
 from trcc.core.models import LEDMode
 
 # =========================================================================
@@ -27,10 +27,10 @@ class TestLEDDeviceInit:
     """Construction, connected, status, service properties."""
 
     def test_default_init_no_svc(self, led_empty):
-        assert led_empty._svc is None
+        assert led_empty._led_svc is None
 
     def test_init_with_svc(self, mock_led_svc, led):
-        assert led._svc is mock_led_svc
+        assert led._led_svc is mock_led_svc
 
     def test_connected_false_when_no_svc(self, led_empty):
         assert led_empty.connected is False
@@ -97,7 +97,7 @@ class TestLEDDeviceConnect:
     """connect() with mocked detect_devices + LEDService."""
 
     def test_connect_returns_success_when_already_connected(self, mock_led_svc):
-        dev = LEDDevice(svc=mock_led_svc)
+        dev = Device(led_svc=mock_led_svc, device_type=False)
         dev._init_status = "connected"
         result = dev.connect()
         assert result["success"] is True
@@ -110,7 +110,7 @@ class TestLEDDeviceConnect:
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = [fake_dev]
 
-        dev = LEDDevice(device_svc=mock_dev_svc)
+        dev = Device(device_svc=mock_dev_svc, device_type=False)
         with patch('trcc.services.LEDService'):
             result = dev.connect()
         assert result["success"] is False
@@ -121,7 +121,7 @@ class TestLEDDeviceConnect:
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = []
 
-        dev = LEDDevice(device_svc=mock_dev_svc)
+        dev = Device(device_svc=mock_dev_svc, device_type=False)
         result = dev.connect()
         assert result["success"] is False
         assert "No LED device" in result["error"]
@@ -138,14 +138,15 @@ class TestLEDDeviceConnect:
         mock_dev_svc = MagicMock()
         mock_dev_svc.devices = [led_dev]
 
-        dev = LEDDevice(
+        dev = Device(
             device_svc=mock_dev_svc,
             led_svc_factory=lambda **kw: fake_svc,
+            device_type=False,
         )
         result = dev.connect()
 
         assert result["success"] is True
-        assert dev._svc is fake_svc
+        assert dev._led_svc is fake_svc
         assert dev._init_status == "AX120"
 
 
@@ -210,32 +211,32 @@ class TestLEDDeviceInternalHelpers:
     """_apply_and_send and _send_and_save."""
 
     def test_apply_and_send_calls_toggle_global_true(self, led, mock_led_svc):
-        led._apply_and_send()
+        led._led_apply_and_send()
         mock_led_svc.toggle_global.assert_called_with(True)
 
     def test_apply_and_send_calls_tick(self, led, mock_led_svc):
-        led._apply_and_send()
+        led._led_apply_and_send()
         mock_led_svc.tick.assert_called_once()
 
     def test_apply_and_send_calls_send_colors(self, led, mock_led_svc):
         colors = mock_led_svc.tick.return_value
-        led._apply_and_send()
+        led._led_apply_and_send()
         mock_led_svc.send_colors.assert_called_once_with(colors)
 
     def test_apply_and_send_calls_save_config(self, led, mock_led_svc):
-        led._apply_and_send()
+        led._led_apply_and_send()
         mock_led_svc.save_config.assert_called_once()
 
     def test_apply_and_send_returns_colors(self, led, mock_led_svc):
-        result = led._apply_and_send()
+        result = led._led_apply_and_send()
         assert result == mock_led_svc.tick.return_value
 
     def test_send_and_save_calls_send_tick(self, led, mock_led_svc):
-        led._send_and_save()
+        led._led_send_and_save()
         mock_led_svc.send_tick.assert_called_once()
 
     def test_send_and_save_calls_save_config(self, led, mock_led_svc):
-        led._send_and_save()
+        led._led_send_and_save()
         mock_led_svc.save_config.assert_called_once()
 
 

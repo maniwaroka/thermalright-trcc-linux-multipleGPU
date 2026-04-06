@@ -33,12 +33,10 @@ def _get_led():
 
 
 def _led():
-    """Get LEDDevice from TrccApp. Raises 409 if not connected."""
+    """Get LED Device from TrccApp. Raises 409 if not connected."""
     from trcc.core.app import TrccApp
-    from trcc.core.led_device import LEDDevice
     _get_led()
-    led: LEDDevice = TrccApp.get().led
-    return led
+    return TrccApp.get().led
 
 
 # ── Global operations ──────────────────────────────────────────────────

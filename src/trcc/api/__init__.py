@@ -56,8 +56,8 @@ _device_svc = DeviceService(
 _system_svc: SystemService | None = None
 
 # Lazy-initialized devices (set when device is selected)
-_display_dispatcher = None  # LCDDevice | None
-_led_dispatcher = None      # LEDDevice | None
+_display_dispatcher = None  # Device | DisplayProxy | None
+_led_dispatcher = None      # Device | LEDProxy | None
 
 # Last frame sent to LCD — updated by display/theme endpoints for preview
 _current_image = None  # QImage | None

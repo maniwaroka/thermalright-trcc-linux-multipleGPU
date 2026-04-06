@@ -1,4 +1,4 @@
-"""Integration tests for DisplayService + LCDDevice with real services.
+"""Integration tests for DisplayService + Device with real services.
 
 Tests state wiring that mocks can't catch — the exact class of bug
 that caused v8.0.1 theme save failures. Real OverlayService, real
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import get_pixel
 
-from trcc.core.lcd_device import LCDDevice
+from trcc.core.device import Device
 from trcc.core.models import ThemeInfo, ThemeType
 from trcc.services.display import DisplayService
 from trcc.services.image import ImageService
@@ -65,9 +65,9 @@ def display_svc(renderer: Any, mock_media: MagicMock, mock_path_resolver: MagicM
 
 
 @pytest.fixture()
-def lcd(display_svc: DisplayService, renderer: Any) -> LCDDevice:
-    """LCDDevice wired to real display_svc."""
-    return LCDDevice(
+def lcd(display_svc: DisplayService, renderer: Any) -> Device:
+    """Device wired to real display_svc."""
+    return Device(
         device_svc=display_svc.devices,
         display_svc=display_svc,
         theme_svc=MagicMock(),
@@ -506,15 +506,15 @@ class TestThemeSaveRoundTrip:
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# Group 4: LCDDevice facade integration
+# Group 4: Device facade integration
 # ═════════════════════════════════════════════════════════════════════════
 
 
-class TestLCDDeviceIntegration:
-    """Test LCDDevice methods with real services underneath."""
+class TestDeviceIntegration:
+    """Test Device methods with real services underneath."""
 
     def test_select_theme_wires_state(
-        self, lcd: LCDDevice, display_svc: DisplayService,
+        self, lcd: Device, display_svc: DisplayService,
         static_theme: ThemeInfo,
     ) -> None:
         """lcd.select() must wire current_image and current_theme_path."""
@@ -525,7 +525,7 @@ class TestLCDDeviceIntegration:
         assert lcd.current_theme_path == static_theme.path
 
     def test_set_brightness_returns_transformed_image(
-        self, lcd: LCDDevice, display_svc: DisplayService,
+        self, lcd: Device, display_svc: DisplayService,
         renderer: Any,
     ) -> None:
         """lcd.set_brightness() must return an actually transformed image."""
@@ -542,7 +542,7 @@ class TestLCDDeviceIntegration:
         assert r < 200, f"Expected dimmed image, got r={r}"
 
     def test_save_round_trip(
-        self, lcd: LCDDevice, display_svc: DisplayService,
+        self, lcd: Device, display_svc: DisplayService,
         renderer: Any, tmp_path: Path,
     ) -> None:
         """lcd.save() must write correct files to disk."""
@@ -671,11 +671,11 @@ class TestRunVideoLoop:
         assert len(frames_sent) > 0  # at least some frames
 
 
-class TestLCDDevicePlayVideoLoop:
-    """Tests for LCDDevice.play_video_loop() delegation."""
+class TestDevicePlayVideoLoop:
+    """Tests for Device.play_video_loop() delegation."""
 
     def test_delegates_to_display_service(
-        self, lcd: LCDDevice, display_svc: DisplayService, tmp_path: Path,
+        self, lcd: Device, display_svc: DisplayService, tmp_path: Path,
     ) -> None:
         """play_video_loop should delegate to DisplayService.run_video_loop."""
         with patch.object(display_svc, 'run_video_loop',
@@ -686,7 +686,7 @@ class TestLCDDevicePlayVideoLoop:
 
     def test_returns_error_without_display_svc(self) -> None:
         """play_video_loop should return error if no display service."""
-        lcd = LCDDevice()
+        lcd = Device()
         result = lcd.play_video_loop('/tmp/test.gif')
         assert result['success'] is False
         assert 'not initialized' in result['error']

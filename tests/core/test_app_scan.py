@@ -36,8 +36,8 @@ def _detected_led(usb_path: str = "2-2") -> DetectedDevice:
 
 
 def _mock_lcd_device(path: str = "2-1", resolution: tuple = (320, 320)):
-    from trcc.core.lcd_device import LCDDevice
-    dev = MagicMock(spec=LCDDevice)
+    from trcc.core.device import Device
+    dev = MagicMock(spec=Device)
     dev.is_lcd = True
     dev.is_led = False
     dev.device_path = path
@@ -48,8 +48,8 @@ def _mock_lcd_device(path: str = "2-1", resolution: tuple = (320, 320)):
 
 
 def _mock_led_device(path: str = "2-2"):
-    from trcc.core.led_device import LEDDevice
-    dev = MagicMock(spec=LEDDevice)
+    from trcc.core.device import Device
+    dev = MagicMock(spec=Device)
     dev.is_lcd = False
     dev.is_led = True
     dev.device_path = path
@@ -122,7 +122,7 @@ class TestScanSingleLcd:
     def test_lcd_device_stored(self, lcd_app):
         app, lcd_dev = lcd_app
         app.scan()
-        assert app._lcd_device is lcd_dev
+        assert app.lcd_device is lcd_dev
 
     def test_connect_called(self, lcd_app):
         app, lcd_dev = lcd_app
@@ -178,7 +178,7 @@ class TestScanSingleLed:
     def test_led_device_stored(self, led_app):
         app, led_dev = led_app
         app.scan()
-        assert app._led_device is led_dev
+        assert app.led_device is led_dev
 
     def test_no_lcd_bus(self, led_app):
         app, _ = led_app

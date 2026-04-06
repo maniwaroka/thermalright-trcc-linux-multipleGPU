@@ -123,8 +123,7 @@ def _mock_builder(mock_platform):
     mock_builder._platform = mock_platform
     mock_builder.build_setup.return_value = MagicMock()
     mock_builder.build_system.return_value = MagicMock()
-    mock_builder.build_lcd.return_value = MagicMock()
-    mock_builder.build_led.return_value = MagicMock()
+    mock_builder.build_device.return_value = MagicMock()
     mock_builder.build_autostart.return_value = MagicMock()
     mock_builder.build_detect_fn.return_value = MagicMock()
     mock_builder.build_hardware_fns.return_value = (MagicMock(), MagicMock())
@@ -358,7 +357,7 @@ def settings_with_resolution(tmp_config):
 
 @pytest.fixture
 def failed_lcd_device():
-    """Mock LCDDevice whose methods always return failure dicts.
+    """Mock LCD Device whose methods always return failure dicts.
 
     Use to test failure paths in LCD operations without needing a real device.
     """
@@ -379,7 +378,7 @@ def failed_lcd_device():
 
 @pytest.fixture
 def failed_led_device():
-    """Mock LEDDevice whose methods always return failure dicts.
+    """Mock LED Device whose methods always return failure dicts.
 
     Use to test failure paths in LED operations without needing a real device.
     """

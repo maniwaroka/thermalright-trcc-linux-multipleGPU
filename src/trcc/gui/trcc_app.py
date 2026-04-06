@@ -34,8 +34,6 @@ from trcc.conf import Settings
 
 from ..adapters.infra.dc_writer import read_carousel
 from ..core.app import AppEvent
-from ..core.lcd_device import LCDDevice
-from ..core.led_device import LEDDevice
 from ..core.models import DeviceInfo
 from ..core.ports import AutostartManager, GetDiskInfoFn, GetMemoryInfoFn, PlatformSetup
 from ..services.system import SystemService
@@ -436,33 +434,32 @@ class TRCCApp(QMainWindow):
         path = info.path
 
         added = False
-        match device:
-            case LEDDevice() if path not in self._handlers:
-                handler = LEDHandler(
-                    device, self.uc_led_control, self._on_temp_unit_changed)
-                self._handlers[path] = handler
-                log.info("LED handler added: %s", path)
-                added = True
-            case LCDDevice() if path not in self._handlers:
-                widgets = {
-                    'preview': self.uc_preview,
-                    'theme_setting': self.uc_theme_setting,
-                    'theme_local': self.uc_theme_local,
-                    'theme_web': self.uc_theme_web,
-                    'theme_mask': self.uc_theme_mask,
-                    'image_cut': self.uc_image_cut,
-                    'video_cut': self.uc_video_cut,
-                    'rotation_combo': self.rotation_combo,
-                }
-                lcd_handler = LCDHandler(
-                    device, widgets, self._make_timer, self._data_dir,
-                    is_visible_fn=self.is_app_visible)
-                self._handlers[path] = lcd_handler
-                log.info("LCD handler added: %s", path)
-                added = True
-                # Wire IPC frame capture if server is already running
-                if self._ipc_server and lcd_handler.display.device_service:
-                    lcd_handler.display.device_service.on_frame_sent = self._ipc_server.capture_frame
+        if device.is_led and path not in self._handlers:
+            handler = LEDHandler(
+                device, self.uc_led_control, self._on_temp_unit_changed)
+            self._handlers[path] = handler
+            log.info("LED handler added: %s", path)
+            added = True
+        elif device.is_lcd and path not in self._handlers:
+            widgets = {
+                'preview': self.uc_preview,
+                'theme_setting': self.uc_theme_setting,
+                'theme_local': self.uc_theme_local,
+                'theme_web': self.uc_theme_web,
+                'theme_mask': self.uc_theme_mask,
+                'image_cut': self.uc_image_cut,
+                'video_cut': self.uc_video_cut,
+                'rotation_combo': self.rotation_combo,
+            }
+            lcd_handler = LCDHandler(
+                device, widgets, self._make_timer, self._data_dir,
+                is_visible_fn=self.is_app_visible)
+            self._handlers[path] = lcd_handler
+            log.info("LCD handler added: %s", path)
+            added = True
+            # Wire IPC frame capture if server is already running
+            if self._ipc_server and lcd_handler.display.device_service:
+                lcd_handler.display.device_service.on_frame_sent = self._ipc_server.capture_frame
         if not added and path not in self._handlers:
             log.warning("_add_handler: unhandled device type %s path=%s — skipped",
                         type(device).__name__, path)

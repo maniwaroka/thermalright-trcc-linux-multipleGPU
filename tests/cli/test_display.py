@@ -1,4 +1,4 @@
-"""Tests for LCDDevice (core/lcd_device.py) + CLI display wrappers (_display.py).
+"""Tests for Device (core/lcd_device.py) + CLI display wrappers (_display.py).
 
 Real DisplayService + OverlayService via cli/conftest.py fixtures.
 Only DeviceService (USB I/O) is mocked. Assertions verify actual behavior
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from conftest import get_pixel, make_test_surface
 
-from trcc.core.lcd_device import LCDDevice
+from trcc.core.device import Device
 
 # =========================================================================
 # Patch-path constants
@@ -31,10 +31,10 @@ def _make_png(path: Path, w=10, h=10, color=(255, 0, 0)) -> Path:
 
 
 # =========================================================================
-# TestLCDDeviceInit — construction, properties
+# TestDeviceInit — construction, properties
 # =========================================================================
 
-class TestLCDDeviceInit:
+class TestDeviceInit:
     def test_default_no_services(self, lcd_empty):
         assert lcd_empty.frame is lcd_empty
         assert lcd_empty.overlay is lcd_empty
@@ -55,7 +55,7 @@ class TestLCDDeviceInit:
     def test_connected_false_when_no_selected(self):
         svc = MagicMock()
         svc.selected = None
-        lcd = LCDDevice(device_svc=svc, display_svc=MagicMock(),
+        lcd = Device(device_svc=svc, display_svc=MagicMock(),
                         theme_svc=MagicMock())
         assert lcd.connected is False
 
@@ -82,7 +82,7 @@ class TestLCDDeviceInit:
 
 
 # =========================================================================
-# TestLCDDeviceConnect
+# TestDeviceConnect
 # =========================================================================
 
 def _mock_build_services_fn():
@@ -98,7 +98,7 @@ def _mock_build_services_fn():
     return _build
 
 
-class TestLCDDeviceConnect:
+class TestDeviceConnect:
     def test_connect_success(self):
         svc = MagicMock()
         dev = MagicMock()
@@ -106,7 +106,7 @@ class TestLCDDeviceConnect:
         dev.path = "/dev/sg0"
         svc.selected = dev
 
-        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        lcd = Device(device_svc=svc, build_services_fn=_mock_build_services_fn())
         result = lcd.connect()
 
         assert result["success"] is True
@@ -117,7 +117,7 @@ class TestLCDDeviceConnect:
         svc = MagicMock()
         svc.selected = None
 
-        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        lcd = Device(device_svc=svc, build_services_fn=_mock_build_services_fn())
         result = lcd.connect()
 
         assert result["success"] is False
@@ -130,7 +130,7 @@ class TestLCDDeviceConnect:
         dev.path = "/dev/sg1"
         svc.selected = dev
 
-        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        lcd = Device(device_svc=svc, build_services_fn=_mock_build_services_fn())
         lcd.connect("/dev/sg1")
 
         svc.scan_and_select.assert_called_once_with("/dev/sg1")
@@ -142,7 +142,7 @@ class TestLCDDeviceConnect:
         dev.path = "/dev/sg0"
         svc.selected = dev
 
-        lcd = LCDDevice(device_svc=svc, build_services_fn=_mock_build_services_fn())
+        lcd = Device(device_svc=svc, build_services_fn=_mock_build_services_fn())
         assert lcd.frame is lcd
         lcd.connect()
         assert lcd.frame is lcd

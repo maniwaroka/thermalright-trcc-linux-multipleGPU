@@ -786,7 +786,7 @@ class TestLEDHandler:
         """
         device, mock_led, style_info = self._make_device_and_style(handler)
         self._show_with_mock_led(handler, device, mock_led, style_info)
-        mock_led.initialize.assert_called_once_with(device, 1)
+        mock_led.initialize_led.assert_called_once_with(device, 1)
         handler.stop()
 
     def test_show_activates_handler(self, handler):
@@ -800,7 +800,7 @@ class TestLEDHandler:
             handler, model="PA120_DIGITAL", style_id=2, zone_count=4)
         self._show_with_mock_led(handler, device, mock_led, style_info,
                                  style_id=2)
-        mock_led.initialize.assert_called_once_with(device, 2)
+        mock_led.initialize_led.assert_called_once_with(device, 2)
         handler.stop()
 
     # ── Metrics-driven updates ────────────────────────────────────

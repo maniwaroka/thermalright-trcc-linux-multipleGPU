@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any
 
 from .ports import (
     AutostartManager,
-    Device,
     GetDiskInfoFn,
     GetMemoryInfoFn,
     PlatformAdapter,
@@ -22,14 +21,13 @@ from .ports import (
 
 if TYPE_CHECKING:
     from ..services.system import SystemService
-    from .lcd_device import LCDDevice
-    from .led_device import LEDDevice
+    from .device import Device
 
 log = logging.getLogger(__name__)
 
 
 class ControllerBuilder:
-    """Assembles LCDDevice / LEDDevice / SystemService with injected deps.
+    """Assembles Device / SystemService with injected deps.
 
     PlatformAdapter is injected at construction — all build methods use
     self._platform. No OS checks anywhere except for_current_os().
@@ -37,7 +35,7 @@ class ControllerBuilder:
     Usage::
 
         builder = ControllerBuilder.for_current_os().with_renderer(renderer)
-        lcd     = builder.build_lcd()
+        device  = builder.build_device(detected)
         system  = builder.build_system()
         setup   = builder.build_setup()
     """
@@ -120,68 +118,14 @@ class ControllerBuilder:
 
     # ── Build methods ──────────────────────────────────────────────
 
-    def build_lcd(self) -> LCDDevice:
-        """Build and return an LCDDevice."""
-        from ..conf import Settings
-        from ..services.image import ImageService
-        from ..services.lcd_config import LCDConfigService
-        from ..services.theme import theme_info_from_directory
-        from .lcd_device import LCDDevice
-
-        renderer = self._renderer
-        if renderer is None:
-            raise RuntimeError(
-                "ControllerBuilder.with_renderer() must be called before build_lcd().")
-        ImageService.set_renderer(renderer)
-
-        device_svc = self._build_device_svc()
-        build_services_fn = self._make_build_services_fn()
-        result = build_services_fn(device_svc, renderer)
-
-        lcd_config = LCDConfigService(
-            **self._build_config_callables(),
-            apply_format_prefs_fn=Settings.apply_format_prefs,
-        )
-        lcd = LCDDevice(
-            device_svc=device_svc,
-            display_svc=result['display_svc'],
-            theme_svc=result['theme_svc'],
-            renderer=renderer,
-            dc_config_cls=result['dc_config_cls'],
-            load_config_json_fn=result['load_config_json_fn'],
-            theme_info_from_dir_fn=theme_info_from_directory,
-            lcd_config=lcd_config,
-            build_services_fn=build_services_fn,
-        )
-
-        if self._data_dir:
-            lcd.initialize(self._data_dir)
-
-        return lcd
-
-    def build_led(self) -> LEDDevice:
-        """Build and return a LEDDevice."""
-        from ..adapters.device.factory import DeviceProtocolFactory
-        from ..services import LEDService
-        from ..services.led_config import LEDConfigService
-        from .led_device import LEDDevice
-
-        led_config = LEDConfigService(**self._build_config_callables())
-        return LEDDevice(
-            device_svc=self._build_device_svc(),
-            get_protocol=DeviceProtocolFactory.get_protocol,
-            led_svc_factory=LEDService,
-            led_config=led_config,
-        )
-
     def build_device(self, detected: Any = None) -> 'Device':
-        """Build and return the correct Device for the detected hardware.
+        """Build a Device from detected hardware or config.
 
-        Reads PROTOCOL_TRAITS.is_led to decide LCDDevice vs LEDDevice.
-        If detected is None, creates an unconnected device that auto-detects on connect().
-        Adapters depend only on Device — never on LCDDevice or LEDDevice.
+        ProtocolTraits.is_led drives what services get injected.
+        One method, one class. The config tells us what to build.
         """
         from ..adapters.device.factory import DeviceProtocolFactory
+        from .device import Device
         from .models import PROTOCOL_TRAITS
 
         device_svc = self._build_device_svc()
@@ -195,9 +139,9 @@ class ControllerBuilder:
         if is_led:
             from ..services import LEDService
             from ..services.led_config import LEDConfigService
-            from .led_device import LEDDevice
-            return LEDDevice(
+            return Device(
                 device_svc=device_svc,
+                device_type=False,  # LED
                 get_protocol=DeviceProtocolFactory.get_protocol,
                 led_svc_factory=LEDService,
                 led_config=LEDConfigService(**cfg),
@@ -207,7 +151,6 @@ class ControllerBuilder:
         from ..services.image import ImageService
         from ..services.lcd_config import LCDConfigService
         from ..services.theme import theme_info_from_directory
-        from .lcd_device import LCDDevice
         build_fn = self._make_build_services_fn()
         renderer = self._renderer
         if renderer is None:
@@ -219,13 +162,21 @@ class ControllerBuilder:
             **cfg,
             apply_format_prefs_fn=Settings.apply_format_prefs,
         )
-        return LCDDevice(
+        result = build_fn(device_svc, renderer)
+        device = Device(
             device_svc=device_svc,
-            build_services_fn=build_fn,
+            display_svc=result['display_svc'],
+            theme_svc=result['theme_svc'],
             renderer=renderer,
+            dc_config_cls=result['dc_config_cls'],
+            load_config_json_fn=result['load_config_json_fn'],
             theme_info_from_dir_fn=theme_info_from_directory,
             lcd_config=lcd_config,
+            build_services_fn=build_fn,
         )
+        if self._data_dir:
+            device.initialize(self._data_dir)
+        return device
 
     def build_system(self) -> SystemService:
         """Build and return a SystemService."""
@@ -268,11 +219,11 @@ class ControllerBuilder:
         """Return platform-specific (get_memory_info, get_disk_info) callables."""
         return self._platform.get_memory_info_fn(), self._platform.get_disk_info_fn()
 
-    def lcd_from_service(self, device_svc) -> LCDDevice:
-        """Build an LCDDevice from an existing DeviceService."""
-        from .lcd_device import LCDDevice
+    def device_from_service(self, device_svc) -> 'Device':
+        """Build a Device from an existing DeviceService (API standalone mode)."""
+        from .device import Device
         build_fn = self._make_build_services_fn()
-        return LCDDevice.from_service(
+        return Device.from_service(
             device_svc,
             renderer=self._renderer,
             build_services_fn=build_fn,

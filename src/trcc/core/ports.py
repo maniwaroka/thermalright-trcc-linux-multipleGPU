@@ -152,102 +152,10 @@ class Renderer(ABC):
 
 
 # =========================================================================
-# Device ABC — minimal contract for all Thermalright devices (ISP)
+# Device — concrete class in core/device.py, re-exported here for compat
 # =========================================================================
 
-
-class Device(ABC):
-    """Base device contract — sidebar, CLI, API all depend on this.
-
-    Minimal interface (ISP): only what ALL devices share.
-    Brightness is device-type-specific (LCD backlight vs LED strip),
-    so it lives on LCDDevice/LEDDevice, not here.
-
-    Concrete implementations:
-        - LCDDevice (core/lcd_device.py) — LCD display devices
-        - LEDDevice (core/led_device.py) — LED segment display devices
-    """
-
-    # Proxy routing state — shared by all device types
-    _find_active_fn: Any = None
-    _proxy_factory_fn: Any = None
-    _proxy: Any = None
-
-    def _try_proxy_route(self, detected: Any) -> dict | None:
-        """Check for active instance and route through proxy if found.
-
-        Returns result dict if proxied, None if caller should connect directly.
-        Both LCDDevice and LEDDevice call this at the start of connect().
-        """
-        if detected is None and self._find_active_fn and self._proxy_factory_fn:
-            active = self._find_active_fn()
-            if active is not None:
-                self._proxy = self._proxy_factory_fn(active)
-                return {"success": True, "proxy": active}
-        return None
-
-    @property
-    @abstractmethod
-    def is_lcd(self) -> bool:
-        """True if this device is an LCD display."""
-
-    @property
-    @abstractmethod
-    def is_led(self) -> bool:
-        """True if this device is an LED controller."""
-
-    @abstractmethod
-    def connect(self, detected: Any = None) -> dict:
-        """Connect to device. Handshakes via protocol, fills DeviceInfo from models.
-
-        Returns: {"success": bool, "message": str, ...}
-        """
-
-    @property
-    @abstractmethod
-    def connected(self) -> bool:
-        """Whether device is connected and ready."""
-
-    @property
-    @abstractmethod
-    def device_info(self) -> Any:
-        """DeviceInfo — models hold all device state."""
-
-    def wire_ipc(self, find_active_fn: Any, proxy_factory_fn: Any) -> None:
-        """Inject IPC routing functions for proxy delegation."""
-        self._find_active_fn = find_active_fn
-        self._proxy_factory_fn = proxy_factory_fn
-
-    def initialize_pipeline(self, settings: Any) -> None:
-        """Post-connect initialization. Override in LCD to set resolution + data dir."""
-
-    def notify_data_ready(self) -> None:
-        """Data extraction completed. Override in LCD to refresh theme dirs."""
-
-    @abstractmethod
-    def set_temp_unit(self, unit: int) -> dict:
-        """Set temperature unit (0=Celsius, 1=Fahrenheit)."""
-
-    @abstractmethod
-    def update_metrics(self, metrics: Any) -> dict:
-        """Push polled hardware metrics into the device (overlay/LED effects).
-
-        Returns: {"success": bool}
-        """
-
-    @abstractmethod
-    def tick(self) -> None:
-        """Overlay tick — called by TrccApp metrics loop at fixed interval.
-
-        LCD: render overlay frame if metrics changed, send to hardware.
-             Skipped when video is playing (animation timer drives video).
-        LED: advance LED animation state, send to hardware.
-        No OS deps — pure device logic.
-        """
-
-    @abstractmethod
-    def cleanup(self) -> None:
-        """Release resources on shutdown."""
+from .device import Device  # noqa: F401, E402
 
 
 class DeviceConfigService:

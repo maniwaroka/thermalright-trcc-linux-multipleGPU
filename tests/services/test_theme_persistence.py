@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_test_surface
 
-from trcc.core.lcd_device import LCDDevice
+from trcc.core.device import Device
 from trcc.services.display import DisplayService
 from trcc.services.image import ImageService
 from trcc.services.overlay import OverlayService
@@ -99,9 +99,9 @@ def display_svc(renderer: Any, mock_path_resolver: MagicMock) -> DisplayService:
 
 
 @pytest.fixture()
-def lcd(display_svc: DisplayService, renderer: Any) -> LCDDevice:
-    """LCDDevice wired to display_svc (the GUI path)."""
-    return LCDDevice(
+def lcd(display_svc: DisplayService, renderer: Any) -> Device:
+    """Device wired to display_svc (the GUI path)."""
+    return Device(
         device_svc=display_svc.devices,
         display_svc=display_svc,
         renderer=renderer,
@@ -236,7 +236,7 @@ class TestLoadMaskStandaloneWiring:
     so _mask_source_dir was never set. Save then wrote mask=null."""
 
     def test_sets_mask_source_dir(
-        self, lcd: LCDDevice, display_svc: DisplayService, mask_dir: Path,
+        self, lcd: Device, display_svc: DisplayService, mask_dir: Path,
     ) -> None:
         """load_mask_standalone must update _display_svc._mask_source_dir."""
         result = lcd.load_mask_standalone(str(mask_dir))
@@ -245,7 +245,7 @@ class TestLoadMaskStandaloneWiring:
         assert display_svc._mask_source_dir == mask_dir
 
     def test_save_after_mask_has_mask_in_config(
-        self, lcd: LCDDevice, display_svc: DisplayService,
+        self, lcd: Device, display_svc: DisplayService,
         mask_dir: Path, tmp_path: Path,
     ) -> None:
         """Full flow: load_mask_standalone → save → config.json has mask."""

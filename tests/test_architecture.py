@@ -56,10 +56,10 @@ class TestDependencyInjection(unittest.TestCase):
         from unittest.mock import MagicMock
 
         from trcc.core.builder import ControllerBuilder
-        from trcc.core.lcd_device import LCDDevice
+        from trcc.core.device import Device
 
-        lcd = ControllerBuilder(MagicMock()).with_renderer(ImageService._r()).build_lcd()
-        self.assertIsInstance(lcd, LCDDevice)
+        lcd = ControllerBuilder(MagicMock()).with_renderer(ImageService._r()).build_device()
+        self.assertIsInstance(lcd, Device)
 
 
 # =============================================================================

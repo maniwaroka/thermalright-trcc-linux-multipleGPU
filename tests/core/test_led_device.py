@@ -1,15 +1,15 @@
-"""Tests for core/led_device.py — LEDDevice application facade."""
+"""Tests for Device (LED mode) — LED application facade."""
 
 import unittest
 from unittest.mock import MagicMock
 
+from trcc.core.device import Device
 from trcc.core.instance import InstanceKind
-from trcc.core.led_device import LEDDevice
 from trcc.core.models import DetectedDevice, LEDMode
 
 
-def _make_led(**overrides) -> LEDDevice:
-    """Create LEDDevice with mock service pre-wired."""
+def _make_led(**overrides) -> Device:
+    """Create Device(device_type=False) with mock service pre-wired."""
     svc = MagicMock()
     svc.state = MagicMock()
     svc.state.zones = [MagicMock(), MagicMock()]
@@ -18,9 +18,9 @@ def _make_led(**overrides) -> LEDDevice:
     svc.apply_mask.return_value = [(255, 0, 0)]
     svc.has_protocol = True
 
-    defaults = {'svc': svc, 'get_protocol': MagicMock()}
+    defaults = {'led_svc': svc, 'get_protocol': MagicMock(), 'device_type': False}
     defaults.update(overrides)
-    led = LEDDevice(**defaults)
+    led = Device(**defaults)
     return led
 
 
@@ -30,25 +30,25 @@ def _make_led(**overrides) -> LEDDevice:
 
 
 class TestLEDDeviceConstruction(unittest.TestCase):
-    """LEDDevice construction."""
+    """Device (LED mode) construction."""
 
     def test_default_no_service(self):
-        led = LEDDevice()
-        self.assertIsNone(led._svc)
+        led = Device(device_type=False)
+        self.assertIsNone(led._led_svc)
 
     def test_with_service(self):
         svc = MagicMock()
-        led = LEDDevice(svc=svc)
-        self.assertIs(led._svc, svc)
+        led = Device(led_svc=svc, device_type=False)
+        self.assertIs(led._led_svc, svc)
 
     def test_with_get_protocol(self):
         gp = MagicMock()
-        led = LEDDevice(get_protocol=gp)
+        led = Device(get_protocol=gp, device_type=False)
         self.assertIs(led._get_protocol, gp)
 
     def test_connect_requires_device_svc(self):
         """connect() raises RuntimeError without injected device_svc."""
-        led = LEDDevice()
+        led = Device(device_type=False)
         with self.assertRaises(RuntimeError, msg="ControllerBuilder"):
             led.connect()
 
@@ -73,10 +73,11 @@ def _make_detected_led(model: str = "AX120_DIGITAL",
 class TestLEDDeviceConnectIsolation(unittest.TestCase):
     """connect(detected) uses the detected device directly — no re-detect."""
 
-    def _make_unconnected_led(self) -> LEDDevice:
+    def _make_unconnected_led(self) -> Device:
         svc = MagicMock()
         svc.initialize.return_value = "LED: AX120 (30 LEDs)"
-        return LEDDevice(
+        return Device(
+            device_type=False,
             get_protocol=MagicMock(),
             led_svc_factory=lambda **kw: svc,
             led_config=MagicMock(),
@@ -109,10 +110,10 @@ class TestLEDDeviceConnectIsolation(unittest.TestCase):
         """connect() without detected uses DeviceService.detect()."""
         dev_svc = MagicMock()
         dev_svc.devices = []  # No LED devices found
-        led = LEDDevice(
+        led = Device(
             device_svc=dev_svc,
             get_protocol=MagicMock(),
-            led_svc_factory=MagicMock(),
+            device_type=False,
         )
 
         result = led.connect()
@@ -127,29 +128,29 @@ class TestLEDDeviceConnectIsolation(unittest.TestCase):
 
 
 class TestLEDDeviceABC(unittest.TestCase):
-    """Device ABC methods on LEDDevice."""
+    """Device ABC methods on Device (LED mode)."""
 
     def test_connected_true_with_service(self):
         led = _make_led()
         self.assertTrue(led.connected)
 
     def test_connected_false_without_service(self):
-        led = LEDDevice()
+        led = Device(device_type=False)
         self.assertFalse(led.connected)
 
     def test_device_info_returns_device(self):
         led = _make_led()
         dev = MagicMock()
-        led._device = dev
+        led._info = dev
         self.assertIs(led.device_info, dev)
 
     def test_cleanup_calls_service(self):
         led = _make_led()
         led.cleanup()
-        led._svc.cleanup.assert_called_once()
+        led._led_svc.cleanup.assert_called_once()
 
     def test_cleanup_safe_without_service(self):
-        led = LEDDevice()
+        led = Device(device_type=False)
         led.cleanup()  # should not raise
 
     def test_connect_returns_success_when_already_initialized(self):
@@ -176,14 +177,14 @@ class TestLEDDeviceProperties(unittest.TestCase):
 
     def test_service_accessor(self):
         led = _make_led()
-        self.assertIs(led.service, led._svc)
+        self.assertIs(led.service, led._led_svc)
 
     def test_state_from_service(self):
         led = _make_led()
-        self.assertIs(led.state, led._svc.state)
+        self.assertIs(led.state, led._led_svc.state)
 
     def test_state_none_without_service(self):
-        led = LEDDevice()
+        led = Device(device_type=False)
         self.assertIsNone(led.state)
 
 
@@ -193,7 +194,7 @@ class TestLEDDeviceProperties(unittest.TestCase):
 
 
 class TestResolveMode(unittest.TestCase):
-    """LEDDevice._resolve_mode() — flexible mode resolution."""
+    """Device._resolve_mode() — flexible mode resolution."""
 
     def setUp(self):
         self.led = _make_led()
@@ -245,7 +246,7 @@ class TestValidation(unittest.TestCase):
         self.assertFalse(result['success'])
 
     def test_zone_no_zones(self):
-        self.led._svc.state.zones = []
+        self.led._led_svc.state.zones = []
         result = self.led._validate_zone(0)
         self.assertFalse(result['success'])
         self.assertIn('no zones', result['error'])
@@ -259,7 +260,7 @@ class TestValidation(unittest.TestCase):
         self.assertFalse(result['success'])
 
     def test_segment_no_segments(self):
-        self.led._svc.state.segment_on = []
+        self.led._led_svc.state.segment_on = []
         result = self.led._validate_segment(0)
         self.assertFalse(result['success'])
         self.assertIn('no segments', result['error'])
@@ -279,8 +280,8 @@ class TestGlobalOperations(unittest.TestCase):
     def test_set_color(self):
         result = self.led.set_color(255, 0, 0)
         self.assertTrue(result['success'])
-        self.led._svc.set_mode.assert_called_with(LEDMode.STATIC)
-        self.led._svc.set_color.assert_called_with(255, 0, 0)
+        self.led._led_svc.set_mode.assert_called_with(LEDMode.STATIC)
+        self.led._led_svc.set_color.assert_called_with(255, 0, 0)
         self.assertIn('#ff0000', result['message'])
 
     def test_set_mode_by_name(self):
@@ -301,7 +302,7 @@ class TestGlobalOperations(unittest.TestCase):
     def test_set_brightness_valid(self):
         result = self.led.set_brightness(50)
         self.assertTrue(result['success'])
-        self.led._svc.set_brightness.assert_called_with(50)
+        self.led._led_svc.set_brightness.assert_called_with(50)
 
     def test_set_brightness_too_high(self):
         result = self.led.set_brightness(150)
@@ -324,17 +325,17 @@ class TestGlobalOperations(unittest.TestCase):
     def test_off(self):
         result = self.led.off()
         self.assertTrue(result['success'])
-        self.led._svc.toggle_global.assert_called_with(False)
+        self.led._led_svc.toggle_global.assert_called_with(False)
 
     def test_set_sensor_source_cpu(self):
         result = self.led.set_sensor_source('cpu')
         self.assertTrue(result['success'])
-        self.led._svc.set_sensor_source.assert_called_with('cpu')
+        self.led._led_svc.set_sensor_source.assert_called_with('cpu')
 
     def test_set_sensor_source_gpu(self):
         result = self.led.set_sensor_source('GPU')
         self.assertTrue(result['success'])
-        self.led._svc.set_sensor_source.assert_called_with('gpu')
+        self.led._led_svc.set_sensor_source.assert_called_with('gpu')
 
     def test_set_sensor_source_invalid(self):
         result = self.led.set_sensor_source('memory')
@@ -355,7 +356,7 @@ class TestZoneOperations(unittest.TestCase):
     def test_set_zone_color(self):
         result = self.led.set_zone_color(0, 0, 255, 0)
         self.assertTrue(result['success'])
-        self.led._svc.set_zone_color.assert_called_with(0, 0, 255, 0)
+        self.led._led_svc.set_zone_color.assert_called_with(0, 0, 255, 0)
 
     def test_set_zone_color_invalid_zone(self):
         result = self.led.set_zone_color(99, 0, 0, 0)
@@ -380,18 +381,18 @@ class TestZoneOperations(unittest.TestCase):
     def test_toggle_zone(self):
         result = self.led.toggle_zone(0, True)
         self.assertTrue(result['success'])
-        self.led._svc.toggle_zone.assert_called_with(0, True)
+        self.led._led_svc.toggle_zone.assert_called_with(0, True)
 
     def test_set_zone_sync(self):
         result = self.led.set_zone_sync(True, interval=5)
         self.assertTrue(result['success'])
-        self.led._svc.set_zone_sync_interval.assert_called_with(5)
-        self.led._svc.set_zone_sync.assert_called_with(True)
+        self.led._led_svc.set_zone_sync_interval.assert_called_with(5)
+        self.led._led_svc.set_zone_sync.assert_called_with(True)
 
     def test_set_zone_sync_no_interval(self):
         result = self.led.set_zone_sync(False)
         self.assertTrue(result['success'])
-        self.led._svc.set_zone_sync_interval.assert_not_called()
+        self.led._led_svc.set_zone_sync_interval.assert_not_called()
 
 
 # =============================================================================
@@ -408,7 +409,7 @@ class TestSegmentOperations(unittest.TestCase):
     def test_toggle_segment(self):
         result = self.led.toggle_segment(0, False)
         self.assertTrue(result['success'])
-        self.led._svc.toggle_segment.assert_called_with(0, False)
+        self.led._led_svc.toggle_segment.assert_called_with(0, False)
 
     def test_toggle_segment_invalid(self):
         result = self.led.toggle_segment(100, True)
@@ -430,7 +431,7 @@ class TestSegmentOperations(unittest.TestCase):
             self.assertTrue(result['success'])
             self.assertEqual(result['message'], f"Temperature unit set to {expected}")
         self.assertTrue(result['success'])
-        self.led._svc.set_seg_temp_unit.assert_called_with('F')
+        self.led._led_svc.set_seg_temp_unit.assert_called_with('F')
 
 
     def test_set_seg_temp_unit_alias(self):
@@ -452,63 +453,63 @@ class TestUpdateMutators(unittest.TestCase):
 
     def test_update_color(self):
         self.led.update_color(100, 200, 50)
-        self.led._svc.set_color.assert_called_with(100, 200, 50)
+        self.led._led_svc.set_color.assert_called_with(100, 200, 50)
 
     def test_update_mode(self):
         self.led.update_mode(LEDMode.RAINBOW)
-        self.led._svc.set_mode.assert_called_with(LEDMode.RAINBOW)
+        self.led._led_svc.set_mode.assert_called_with(LEDMode.RAINBOW)
 
     def test_update_mode_from_int(self):
         self.led.update_mode(LEDMode.STATIC.value)
-        self.led._svc.set_mode.assert_called_with(LEDMode.STATIC)
+        self.led._led_svc.set_mode.assert_called_with(LEDMode.STATIC)
 
     def test_update_brightness_clamps_high(self):
         self.led.update_brightness(200)
-        self.led._svc.set_brightness.assert_called_with(100)
+        self.led._led_svc.set_brightness.assert_called_with(100)
 
     def test_update_brightness_clamps_low(self):
         self.led.update_brightness(-10)
-        self.led._svc.set_brightness.assert_called_with(0)
+        self.led._led_svc.set_brightness.assert_called_with(0)
 
     def test_update_global_on(self):
         self.led.update_global_on(True)
-        self.led._svc.toggle_global.assert_called_with(True)
+        self.led._led_svc.toggle_global.assert_called_with(True)
 
     def test_update_segment(self):
         self.led.update_segment(1, True)
-        self.led._svc.toggle_segment.assert_called_with(1, True)
+        self.led._led_svc.toggle_segment.assert_called_with(1, True)
 
     def test_update_zone_color(self):
         self.led.update_zone_color(0, 10, 20, 30)
-        self.led._svc.set_zone_color.assert_called_with(0, 10, 20, 30)
+        self.led._led_svc.set_zone_color.assert_called_with(0, 10, 20, 30)
 
     def test_update_zone_brightness_clamps(self):
         self.led.update_zone_brightness(0, 150)
-        self.led._svc.set_zone_brightness.assert_called_with(0, 100)
+        self.led._led_svc.set_zone_brightness.assert_called_with(0, 100)
 
     def test_update_clock_format(self):
         self.led.update_clock_format(True)
-        self.led._svc.set_clock_format.assert_called_with(True)
+        self.led._led_svc.set_clock_format.assert_called_with(True)
 
     def test_update_week_start(self):
         self.led.update_week_start(False)
-        self.led._svc.set_week_start.assert_called_with(False)
+        self.led._led_svc.set_week_start.assert_called_with(False)
 
     def test_update_disk_index(self):
         self.led.update_disk_index(2)
-        self.led._svc.set_disk_index.assert_called_with(2)
+        self.led._led_svc.set_disk_index.assert_called_with(2)
 
     def test_update_memory_ratio(self):
         self.led.update_memory_ratio(75)
-        self.led._svc.set_memory_ratio.assert_called_with(75)
+        self.led._led_svc.set_memory_ratio.assert_called_with(75)
 
     def test_update_test_mode(self):
         self.led.update_test_mode(True)
-        self.led._svc.set_test_mode.assert_called_with(True)
+        self.led._led_svc.set_test_mode.assert_called_with(True)
 
     def test_update_selected_zone(self):
         self.led.update_selected_zone(1)
-        self.led._svc.set_selected_zone.assert_called_with(1)
+        self.led._led_svc.set_selected_zone.assert_called_with(1)
 
 
 # =============================================================================
@@ -528,36 +529,36 @@ class TestTickAndConfig(unittest.TestCase):
         self.assertIn('display_colors', result)
 
     def test_tick_sends_when_protocol_connected(self):
-        self.led._svc.has_protocol = True
+        self.led._led_svc.has_protocol = True
         self.led.tick()
-        self.led._svc.send_colors.assert_called_once()
+        self.led._led_svc.send_colors.assert_called_once()
 
     def test_tick_skips_send_without_protocol(self):
-        self.led._svc.has_protocol = False
+        self.led._led_svc.has_protocol = False
         self.led.tick()
-        self.led._svc.send_colors.assert_not_called()
+        self.led._led_svc.send_colors.assert_not_called()
 
     def test_save_config(self):
         self.led.save_config()
-        self.led._svc.save_config.assert_called_once()
+        self.led._led_svc.save_config.assert_called_once()
 
     def test_save_config_safe_without_service(self):
-        led = LEDDevice()
+        led = Device(device_type=False)
         led.save_config()  # no crash
 
     def test_load_config(self):
         self.led.load_config()
-        self.led._svc.load_config.assert_called_once()
+        self.led._led_svc.load_config.assert_called_once()
 
     def test_load_config_safe_without_service(self):
-        led = LEDDevice()
+        led = Device(device_type=False)
         led.load_config()  # no crash
 
     def test_update_metrics(self):
         metrics = MagicMock()
         result = self.led.update_metrics(metrics)
         self.assertTrue(result['success'])
-        self.led._svc.update_metrics.assert_called_with(metrics)
+        self.led._led_svc.update_metrics.assert_called_with(metrics)
 
 
 # =============================================================================
@@ -566,24 +567,24 @@ class TestTickAndConfig(unittest.TestCase):
 
 
 class TestInitialize(unittest.TestCase):
-    """LEDDevice.initialize() — GUI path with pre-detected device."""
+    """Device.initialize_led() — GUI path with pre-detected device."""
 
     def test_initialize_creates_service_if_needed(self):
-        led = LEDDevice(get_protocol=MagicMock())
+        led = Device(get_protocol=MagicMock(), device_type=False)
         device = MagicMock()
-        led._svc = None  # force creation
-        with unittest.mock.patch('trcc.core.led_device.LEDDevice.initialize') as mock_init:
+        led._led_svc = None  # force creation
+        with unittest.mock.patch('trcc.core.device.Device.initialize_led') as mock_init:
             mock_init.return_value = {"success": True, "status": "", "style": 2}
-            result = led.initialize(device, 2)
+            result = led.initialize_led(device, 2)
         self.assertTrue(result['success'])
 
     def test_initialize_with_existing_service(self):
         led = _make_led()
         device = MagicMock()
-        result = led.initialize(device, 3)
+        result = led.initialize_led(device, 3)
         self.assertTrue(result['success'])
         self.assertEqual(result['style'], 3)
-        self.assertIs(led._device, device)
+        self.assertIs(led._info, device)
 
 
 # =============================================================================
@@ -592,15 +593,16 @@ class TestInitialize(unittest.TestCase):
 
 
 class TestLEDDeviceProxyRouting(unittest.TestCase):
-    """LEDDevice.connect() routes through proxy when another instance active."""
+    """Device.connect() routes through proxy when another instance active."""
 
     def test_connect_routes_through_proxy_when_active(self):
         """When find_active_fn returns an instance, connect() sets proxy."""
         proxy = MagicMock()
         proxy.connected = True
-        led = LEDDevice(
+        led = Device(
             find_active_fn=lambda: InstanceKind.GUI,
             proxy_factory_fn=lambda kind: proxy,
+            device_type=False,
         )
         result = led.connect()
         self.assertTrue(result["success"])
@@ -610,13 +612,14 @@ class TestLEDDeviceProxyRouting(unittest.TestCase):
 
     def test_connect_direct_when_no_active_instance(self):
         """When find_active_fn returns None, connect() goes direct USB."""
-        led = LEDDevice(
+        led = Device(
             find_active_fn=lambda: None,
             proxy_factory_fn=lambda kind: MagicMock(),
+            device_type=False,
         )
         # Mock the adapter imports for direct path
         from unittest.mock import patch
-        with patch.object(LEDDevice, 'connect', wraps=led.connect):
+        with patch.object(Device, 'connect', wraps=led.connect):
             # Direct path will try USB — just verify proxy is not set
             # by giving it a DeviceService with no LED devices
             dev_svc = MagicMock()
@@ -631,9 +634,10 @@ class TestLEDDeviceProxyRouting(unittest.TestCase):
         proxy = MagicMock()
         proxy.connected = True
         proxy.set_color.return_value = {"success": True, "message": "ok"}
-        led = LEDDevice(
+        led = Device(
             find_active_fn=lambda: InstanceKind.GUI,
             proxy_factory_fn=lambda kind: proxy,
+            device_type=False,
         )
         led.connect()
         result = led.set_color(255, 0, 0)
@@ -645,9 +649,10 @@ class TestLEDDeviceProxyRouting(unittest.TestCase):
         proxy = MagicMock()
         proxy.connected = True
         proxy.off.return_value = {"success": True, "message": "off"}
-        led = LEDDevice(
+        led = Device(
             find_active_fn=lambda: InstanceKind.GUI,
             proxy_factory_fn=lambda kind: proxy,
+            device_type=False,
         )
         led.connect()
         result = led.off()
@@ -659,15 +664,16 @@ class TestLEDDeviceProxyRouting(unittest.TestCase):
         led = _make_led()
         result = led.set_color(255, 0, 0)
         self.assertTrue(result["success"])
-        led._svc.set_color.assert_called_once_with(255, 0, 0)
+        led._led_svc.set_color.assert_called_once_with(255, 0, 0)
 
     def test_connected_via_proxy(self):
         """connected property works through proxy."""
         proxy = MagicMock()
         proxy.connected = True
-        led = LEDDevice(
+        led = Device(
             find_active_fn=lambda: InstanceKind.API,
             proxy_factory_fn=lambda kind: proxy,
+            device_type=False,
         )
         led.connect()
         self.assertTrue(led.connected)

@@ -20,7 +20,7 @@ from PySide6.QtGui import QIcon, QPixmap
 
 from trcc.conf import Settings
 
-from ..core.lcd_device import LCDDevice
+from ..core.device import Device
 from ..core.models import (
     DEFAULT_BRIGHTNESS_LEVEL,
     SPLIT_MODE_RESOLUTIONS,
@@ -53,7 +53,7 @@ class LCDHandler:
 
     def __init__(
         self,
-        lcd: LCDDevice,
+        lcd: Device,
         widgets: dict[str, Any],
         make_timer: Any,
         data_dir: Path,
@@ -99,7 +99,7 @@ class LCDHandler:
     # ── Public API ───────────────────────────────────────────────────
 
     @property
-    def display(self) -> LCDDevice:
+    def display(self) -> Device:
         return self._lcd
 
     @property

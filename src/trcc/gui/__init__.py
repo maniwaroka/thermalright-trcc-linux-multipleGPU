@@ -106,10 +106,10 @@ def launch(verbosity: int = 0, decorated: bool = False,
     )
 
     # ── IPC server ────────────────────────────────────────────────────────
-    from trcc.core.lcd_device import LCDDevice
+    from trcc.core.device import Device
     from trcc.ipc import IPCServer
-    ipc_display = LCDDevice(device_svc=None)   # device wired later via on_app_event
-    ipc_led = app.build_led()
+    ipc_display = Device(device_svc=None)   # device wired later via on_app_event
+    ipc_led = app.build_led_device()
     ipc_server = IPCServer(ipc_display, ipc_led)
     ipc_server.start()
     window._ipc_server = ipc_server

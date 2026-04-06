@@ -4,7 +4,7 @@ Fixtures inherit from each other following the same DI chain as production code:
 
     mock_device_info → mock_device_svc ──┐
     renderer + mock_media ───────────────┼→ display_svc (REAL)
-                                         ├→ lcd (REAL LCDDevice) → mock_connect_lcd
+                                         ├→ lcd (REAL Device) → mock_connect_lcd
     mock_led_svc → led → led_no_zones / led_no_segments
                  └→ led_empty (no svc)
 
@@ -22,8 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trcc.core.lcd_device import LCDDevice
-from trcc.core.led_device import LEDDevice
+from trcc.core.device import Device
 from trcc.services.display import DisplayService
 from trcc.services.image import ImageService
 from trcc.services.overlay import OverlayService
@@ -102,8 +101,8 @@ def display_svc(renderer, mock_media, mock_device_svc) -> DisplayService:
 
 
 @pytest.fixture
-def lcd(mock_device_svc, display_svc, renderer) -> LCDDevice:
-    """LCDDevice wired to real DisplayService + real OverlayService.
+def lcd(mock_device_svc, display_svc, renderer) -> Device:
+    """Device wired to real DisplayService + real OverlayService.
 
     Only DeviceService (USB I/O) and MediaService (video decode) are mocked.
     """
@@ -115,7 +114,7 @@ def lcd(mock_device_svc, display_svc, renderer) -> LCDDevice:
         get_config_fn=Settings.get_device_config,
         apply_format_prefs_fn=Settings.apply_format_prefs,
     )
-    return LCDDevice(
+    return Device(
         device_svc=mock_device_svc,
         display_svc=display_svc,
         theme_svc=MagicMock(),
@@ -126,8 +125,8 @@ def lcd(mock_device_svc, display_svc, renderer) -> LCDDevice:
 
 @pytest.fixture
 def lcd_empty():
-    """LCDDevice with no services (not connected)."""
-    return LCDDevice()
+    """Device with no services (not connected)."""
+    return Device()
 
 
 # ── Connect fixtures ─────────────────────────────────────────────────────────
@@ -136,7 +135,7 @@ def lcd_empty():
 def mock_connect_lcd(lcd):
     """Patch LCD _connect_or_fail → 0 and wire TrccApp with mock lcd.
 
-    TrccApp.lcd returns a MagicMock wrapping the real LCDDevice so CLI
+    TrccApp.lcd returns a MagicMock wrapping the real Device so CLI
     tests can set return_value on device methods.
     """
     from trcc.core.app import TrccApp
@@ -190,28 +189,28 @@ def mock_led_svc():
 
 @pytest.fixture
 def led(mock_led_svc):
-    """LEDDevice wired to mock service."""
-    return LEDDevice(svc=mock_led_svc)
+    """LED Device wired to mock service."""
+    return Device(led_svc=mock_led_svc, device_type=False)
 
 
 @pytest.fixture
 def led_empty():
-    """LEDDevice with no service (not connected)."""
-    return LEDDevice()
+    """LED Device with no service (not connected)."""
+    return Device(device_type=False)
 
 
 @pytest.fixture
 def led_no_zones(mock_led_svc):
-    """LEDDevice with empty zone list."""
+    """LED Device with empty zone list."""
     mock_led_svc.state.zones = []
-    return LEDDevice(svc=mock_led_svc)
+    return Device(led_svc=mock_led_svc, device_type=False)
 
 
 @pytest.fixture
 def led_no_segments(mock_led_svc):
-    """LEDDevice with empty segment list."""
+    """LED Device with empty segment list."""
     mock_led_svc.state.segment_on = []
-    return LEDDevice(svc=mock_led_svc)
+    return Device(led_svc=mock_led_svc, device_type=False)
 
 
 # ── Theme factories ───────────────────────────────────────────────────────────

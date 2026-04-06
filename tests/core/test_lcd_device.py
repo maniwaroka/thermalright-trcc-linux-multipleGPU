@@ -1,4 +1,4 @@
-"""Tests for core/lcd_device.py — LCDDevice application facade."""
+"""Tests for core/device.py — Device (LCD mode) application facade."""
 
 import unittest
 from pathlib import Path
@@ -7,16 +7,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import get_pixel, make_test_surface
 
+from trcc.core.device import Device
 from trcc.core.instance import InstanceKind
-from trcc.core.lcd_device import LCDDevice
 from trcc.core.orientation import Orientation
 from trcc.services.display import DisplayService
 from trcc.services.image import ImageService
 from trcc.services.overlay import OverlayService
 
 
-def _make_lcd(**overrides) -> LCDDevice:
-    """Create LCDDevice with mock services."""
+def _make_lcd(**overrides) -> Device:
+    """Create Device with mock services."""
     defaults = {
         'device_svc': MagicMock(),
         'display_svc': MagicMock(),
@@ -31,11 +31,11 @@ def _make_lcd(**overrides) -> LCDDevice:
         }),
     }
     defaults.update(overrides)
-    return LCDDevice(**defaults)
+    return Device(**defaults)
 
 
-def _make_real_lcd() -> tuple[LCDDevice, MagicMock]:
-    """Create LCDDevice with real DisplayService + OverlayService.
+def _make_real_lcd() -> tuple[Device, MagicMock]:
+    """Create Device with real DisplayService + OverlayService.
 
     Only DeviceService is mocked (USB boundary).
     Returns (lcd, mock_device_svc) so tests can verify send_frame calls.
@@ -61,7 +61,7 @@ def _make_real_lcd() -> tuple[LCDDevice, MagicMock]:
     overlay = OverlayService(320, 320, renderer=renderer)
     display_svc = DisplayService(device_svc, overlay, mock_media)
     display_svc.set_resolution(320, 320)
-    lcd = LCDDevice(
+    lcd = Device(
         device_svc=device_svc,
         display_svc=display_svc,
         theme_svc=MagicMock(),
@@ -76,8 +76,8 @@ def _make_real_lcd() -> tuple[LCDDevice, MagicMock]:
 # =============================================================================
 
 
-class TestLCDDeviceConstruction(unittest.TestCase):
-    """LCDDevice construction and self-referencing accessors."""
+class TestDeviceConstruction(unittest.TestCase):
+    """Device construction and self-referencing accessors."""
 
     def test_capability_accessors_point_to_self(self):
         """frame/video/overlay/theme/settings all point to self."""
@@ -98,21 +98,21 @@ class TestLCDDeviceConstruction(unittest.TestCase):
         self.assertIs(lcd._theme_svc, theme)
 
     def test_default_no_services(self):
-        """LCDDevice() with no args starts empty."""
-        lcd = LCDDevice()
+        """Device() with no args starts empty."""
+        lcd = Device()
         self.assertIsNone(lcd._device_svc)
         self.assertIsNone(lcd._display_svc)
         self.assertIsNone(lcd._theme_svc)
 
     def test_connect_requires_device_svc(self):
         """connect() raises RuntimeError without injected device_svc."""
-        lcd = LCDDevice()
+        lcd = Device()
         with self.assertRaises(RuntimeError, msg="ControllerBuilder"):
             lcd.connect()
 
     def test_build_services_requires_factory(self):
         """_build_services() raises RuntimeError without build_services_fn."""
-        lcd = LCDDevice(device_svc=MagicMock())
+        lcd = Device(device_svc=MagicMock())
         with self.assertRaises(RuntimeError, msg="ControllerBuilder"):
             lcd._build_services(MagicMock())
 
@@ -122,8 +122,8 @@ class TestLCDDeviceConstruction(unittest.TestCase):
 # =============================================================================
 
 
-class TestLCDDeviceABC(unittest.TestCase):
-    """Device ABC methods on LCDDevice."""
+class TestDeviceABC(unittest.TestCase):
+    """Device ABC methods on Device."""
 
     def test_connected_true_when_device_selected(self):
         svc = MagicMock()
@@ -132,7 +132,7 @@ class TestLCDDeviceABC(unittest.TestCase):
         self.assertTrue(lcd.connected)
 
     def test_connected_false_when_no_device_svc(self):
-        lcd = LCDDevice()
+        lcd = Device()
         self.assertFalse(lcd.connected)
 
     def test_connected_false_when_no_selected_device(self):
@@ -149,7 +149,7 @@ class TestLCDDeviceABC(unittest.TestCase):
         self.assertIs(lcd.device_info, dev)
 
     def test_device_info_none_when_no_svc(self):
-        lcd = LCDDevice()
+        lcd = Device()
         self.assertIsNone(lcd.device_info)
 
     def test_cleanup_calls_display_svc(self):
@@ -159,7 +159,7 @@ class TestLCDDeviceABC(unittest.TestCase):
         disp.cleanup.assert_called_once()
 
     def test_cleanup_safe_when_no_display_svc(self):
-        lcd = LCDDevice()
+        lcd = Device()
         lcd.cleanup()  # should not raise
 
 
@@ -168,7 +168,7 @@ class TestLCDDeviceABC(unittest.TestCase):
 # =============================================================================
 
 
-class TestLCDDeviceProperties(unittest.TestCase):
+class TestDeviceProperties(unittest.TestCase):
     """LCD-specific properties delegating to services."""
 
     def test_lcd_size_from_display_svc(self):
@@ -179,7 +179,7 @@ class TestLCDDeviceProperties(unittest.TestCase):
         self.assertEqual(lcd.lcd_size, (480, 480))
 
     def test_lcd_size_zero_when_no_display_svc(self):
-        lcd = LCDDevice()
+        lcd = Device()
         self.assertEqual(lcd.lcd_size, (0, 0))
 
     def test_resolution_equals_lcd_size(self):
@@ -190,7 +190,7 @@ class TestLCDDeviceProperties(unittest.TestCase):
         self.assertEqual(lcd.resolution, lcd.lcd_size)
 
     def test_collect_other_resolutions_empty_when_no_devices(self):
-        lcd = LCDDevice()
+        lcd = Device()
         assert lcd.collect_other_device_resolutions() == []
 
     def test_collect_other_resolutions_skips_current(self):
@@ -240,7 +240,7 @@ class TestLCDDeviceProperties(unittest.TestCase):
         self.assertEqual(lcd.device_path, '/dev/sg0')
 
     def test_device_path_none_when_no_device(self):
-        lcd = LCDDevice()
+        lcd = Device()
         self.assertIsNone(lcd.device_path)
 
     def test_current_image_delegates_to_display(self):
@@ -256,7 +256,7 @@ class TestLCDDeviceProperties(unittest.TestCase):
         self.assertEqual(disp.current_image, 'new_image')
 
     def test_current_image_none_when_no_display(self):
-        lcd = LCDDevice()
+        lcd = Device()
         self.assertIsNone(lcd.current_image)
 
     def test_current_theme_path(self):
@@ -266,7 +266,7 @@ class TestLCDDeviceProperties(unittest.TestCase):
         self.assertEqual(lcd.current_theme_path, '/themes/test')
 
     def test_auto_send_default_false(self):
-        lcd = LCDDevice()
+        lcd = Device()
         self.assertFalse(lcd.auto_send)
 
 
@@ -275,7 +275,7 @@ class TestLCDDeviceProperties(unittest.TestCase):
 # =============================================================================
 
 
-class TestLCDDeviceFrame(unittest.TestCase):
+class TestDeviceFrame(unittest.TestCase):
     """Frame send operations — real image processing, mocked USB send."""
 
     def test_send_image_file_not_found(self):
@@ -333,24 +333,24 @@ class TestLCDDeviceFrame(unittest.TestCase):
 # =============================================================================
 
 
-class TestLCDDeviceSettings(unittest.TestCase):
+class TestDeviceSettings(unittest.TestCase):
     """Settings operations — real DisplayService verifies actual state changes."""
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_set_brightness_percent(self, _):
         lcd, _ = _make_real_lcd()
         result = lcd.set_brightness(75)
         self.assertTrue(result['success'])
         self.assertEqual(lcd._display_svc.brightness, 75)
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_set_brightness_1_percent(self, _):
         lcd, _ = _make_real_lcd()
         result = lcd.set_brightness(1)
         self.assertTrue(result['success'])
         self.assertEqual(lcd._display_svc.brightness, 1)
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_set_brightness_100_percent(self, _):
         lcd, _ = _make_real_lcd()
         result = lcd.set_brightness(100)
@@ -362,7 +362,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
         result = lcd.set_brightness(-5)
         self.assertFalse(result['success'])
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_set_rotation_valid(self, _):
         lcd, _ = _make_real_lcd()
         for deg in (0, 90, 180, 270):
@@ -376,7 +376,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
         result = lcd.set_rotation(45)
         self.assertFalse(result['success'])
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_set_rotation_swaps_output_resolution(self, _):
         """Non-square device rotation swaps output resolution."""
         lcd, _ = _make_real_lcd()
@@ -387,7 +387,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
         # Output always swaps for non-square at 90/270
         self.assertEqual(lcd._display_svc.output_resolution, (480, 800))
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_rotation_reloads_mask_from_new_dir(self, _):
         """Non-square rotation reloads mask from new zt directory."""
         import tempfile
@@ -412,7 +412,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
                 lcd._reload_mask_for_rotation(lcd._display_svc)
                 mock_load.assert_called_once_with(str(new_mask))
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_rotation_clears_mask_when_no_rotated_variant(self, _):
         """Non-square rotation clears mask if new zt dir has no match."""
         import tempfile
@@ -434,7 +434,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
             self.assertIsNone(lcd._display_svc.overlay.theme_mask)
             self.assertIsNone(lcd._display_svc.mask_source_dir)
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_rotation_skips_theme_reload_when_only_web_mask_dirs(self, _):
         """No theme reload when only web/mask portrait dirs exist.
 
@@ -454,7 +454,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
         # Canvas stays landscape — no portrait theme dir
         self.assertEqual(lcd._display_svc.canvas_size, (1280, 480))
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_rotation_fires_theme_reload_when_portrait_theme_dir(self, _):
         """Theme reload fires when portrait theme dir exists."""
         import tempfile
@@ -476,7 +476,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
                 lcd.set_rotation(90)
             mock_reload.assert_called_once()
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_rotation_mask_uses_saved_dir_not_clobbered(self, _):
         """Full set_rotation() uses saved mask dir, not the one select() clobbers."""
         import tempfile
@@ -503,7 +503,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
                 lcd.set_rotation(90)
             mock_load.assert_called_once_with(str(new_mask))
 
-    @patch.object(LCDDevice, '_persist')
+    @patch.object(Device, '_persist')
     def test_set_split_mode_valid(self, _):
         lcd, _ = _make_real_lcd()
         for mode in (0, 1, 2, 3):
@@ -523,7 +523,7 @@ class TestLCDDeviceSettings(unittest.TestCase):
 # =============================================================================
 
 
-class TestLCDDeviceOverlay(unittest.TestCase):
+class TestDeviceOverlay(unittest.TestCase):
     """Overlay enable/disable/config operations — real OverlayService."""
 
     def test_enable_overlay(self):
@@ -553,18 +553,18 @@ class TestLCDDeviceOverlay(unittest.TestCase):
 
 
 class TestFromService(unittest.TestCase):
-    """LCDDevice.from_service() classmethod."""
+    """Device.from_service() classmethod."""
 
     def test_from_service_builds_services(self):
         svc = MagicMock()
-        with patch.object(LCDDevice, '_build_services') as mock_build:
-            lcd = LCDDevice.from_service(svc)
+        with patch.object(Device, '_build_services') as mock_build:
+            lcd = Device.from_service(svc)
         mock_build.assert_called_once_with(svc)
-        self.assertIsInstance(lcd, LCDDevice)
+        self.assertTrue(lcd.is_lcd)
 
 
 class TestRestoreDeviceSettings(unittest.TestCase):
-    """LCDDevice.restore_device_settings()."""
+    """Device.restore_device_settings()."""
 
     def test_restores_brightness_and_rotation(self):
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
@@ -586,7 +586,7 @@ class TestRestoreDeviceSettings(unittest.TestCase):
 
 
 class TestLoadLastTheme(unittest.TestCase):
-    """LCDDevice.load_last_theme()."""
+    """Device.load_last_theme()."""
 
     def test_no_theme_returns_error(self):
         dev = MagicMock(device_index=0, vid=0x0402, pid=0x3922)
@@ -770,7 +770,7 @@ class TestLoadLastTheme(unittest.TestCase):
 
 @pytest.fixture
 def lcd_with_mocks():
-    """LCDDevice with mock services, 320x320 resolution."""
+    """Device with mock services, 320x320 resolution."""
     svc = MagicMock()
     svc.selected = MagicMock(
         resolution=(320, 320), device_index=0, vid=0x0402, pid=0x3922,
@@ -790,7 +790,7 @@ def lcd_with_mocks():
 
 
 class TestLoadThemeByName:
-    """LCDDevice.load_theme_by_name — core theme loading by name."""
+    """Device.load_theme_by_name — core theme loading by name."""
 
     def test_found_theme_calls_select(self, lcd_with_mocks):
         from trcc.core.models import ThemeInfo, ThemeType
@@ -946,8 +946,8 @@ class TestIPCDisplayRoutes:
 # =============================================================================
 
 
-class TestLCDDeviceProxyRouting:
-    """LCDDevice.connect() routes through proxy when another instance active."""
+class TestDeviceProxyRouting:
+    """Device.connect() routes through proxy when another instance active."""
 
     def test_connect_routes_through_proxy_when_active(self):
         """When find_active_fn returns an instance, connect() sets proxy."""
@@ -956,7 +956,7 @@ class TestLCDDeviceProxyRouting:
         proxy.resolution = (320, 320)
         proxy.device_path = '/dev/sg0'
 
-        lcd = LCDDevice(
+        lcd = Device(
             find_active_fn=lambda: InstanceKind.GUI,
             proxy_factory_fn=lambda kind: proxy,
         )
@@ -972,7 +972,7 @@ class TestLCDDeviceProxyRouting:
         """When find_active_fn returns None, connect() goes direct."""
         svc = MagicMock()
         svc.selected = None
-        lcd = LCDDevice(
+        lcd = Device(
             device_svc=svc,
             build_services_fn=MagicMock(),
             find_active_fn=lambda: None,
@@ -986,7 +986,7 @@ class TestLCDDeviceProxyRouting:
         """Without DI params, connect() never checks for active instances."""
         svc = MagicMock()
         svc.selected = None
-        lcd = LCDDevice(device_svc=svc, build_services_fn=MagicMock())
+        lcd = Device(device_svc=svc, build_services_fn=MagicMock())
         result = lcd.connect()
         assert not result["success"]
         assert lcd._proxy is None
@@ -995,7 +995,7 @@ class TestLCDDeviceProxyRouting:
         """connected property returns True when proxy is set."""
         proxy = MagicMock()
         proxy.connected = True
-        lcd = LCDDevice(
+        lcd = Device(
             find_active_fn=lambda: InstanceKind.GUI,
             proxy_factory_fn=lambda kind: proxy,
         )
@@ -1007,7 +1007,7 @@ class TestLCDDeviceProxyRouting:
         find_fn = MagicMock(return_value=InstanceKind.GUI)
         svc = MagicMock()
         svc.selected = None
-        lcd = LCDDevice(
+        lcd = Device(
             device_svc=svc,
             build_services_fn=MagicMock(),
             find_active_fn=find_fn,
@@ -1023,7 +1023,7 @@ class TestLCDDeviceProxyRouting:
 
 
 class TestKeepAliveLoop:
-    """LCDDevice.keep_alive_loop — delegates to DisplayService.run_static_loop."""
+    """Device.keep_alive_loop — delegates to DisplayService.run_static_loop."""
 
     def test_delegates_to_display_service(self):
         disp = MagicMock()

@@ -119,7 +119,7 @@ class TestDeviceEndpoints(unittest.TestCase):
                          protocol="led", implementation="hid_led")
         _device_svc._devices = [dev]
         with patch.object(_device_svc, '_discover_resolution') as mock_discover, \
-             patch("trcc.core.led_device.LEDDevice") as mock_led:
+             patch("trcc.core.device.Device") as mock_led:
             mock_led.return_value.connect.return_value = {"success": True}
             resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)
@@ -306,7 +306,8 @@ class TestDisplayEndpoints(unittest.TestCase):
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
 
-        TrccApp.get()._lcd_device = self.mock_lcd
+        self.mock_lcd.is_lcd, self.mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = self.mock_lcd
 
     def tearDown(self):
         from trcc.core.app import TrccApp
@@ -433,7 +434,8 @@ class TestLEDEndpoints(unittest.TestCase):
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
 
-        TrccApp.get()._led_device = self.mock_led
+        self.mock_led.is_lcd, self.mock_led.is_led = False, True
+        TrccApp.get()._devices['mock_led'] = self.mock_led
 
     def tearDown(self):
         from trcc.core.app import TrccApp
@@ -508,7 +510,8 @@ class TestThemeOperations(unittest.TestCase):
 
 
         api_module._display_dispatcher = mock_lcd
-        TrccApp.get()._lcd_device = mock_lcd
+        mock_lcd.is_lcd, mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = mock_lcd
 
     def test_load_theme_no_device(self):
         api_module._display_dispatcher = None
@@ -899,7 +902,8 @@ class TestVideoPlaybackEndpoints(unittest.TestCase):
         api_module._display_dispatcher = mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        TrccApp.get()._lcd_device = mock_lcd
+        mock_lcd.is_lcd, mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = mock_lcd
 
         resp = self.client.post("/themes/load", json={"name": "VideoTheme"})
 
@@ -1586,7 +1590,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
     def test_select_lcd_device_sets_display_dispatcher(self) -> None:
         dev = _scsi_dev()
         _device_svc._devices = [dev]
-        with patch("trcc.core.lcd_device.LCDDevice") as mock_disp_cls, \
+        with patch("trcc.core.device.Device") as mock_disp_cls, \
              patch("trcc.api.mount_static_dirs"):
             mock_disp = MagicMock()
             mock_disp_cls.return_value = mock_disp
@@ -1600,7 +1604,7 @@ class TestDeviceEdgeCases(unittest.TestCase):
     def test_select_response_contains_resolution(self) -> None:
         dev = _scsi_dev()
         _device_svc._devices = [dev]
-        with patch("trcc.core.lcd_device.LCDDevice"), \
+        with patch("trcc.core.device.Device"), \
              patch("trcc.api.mount_static_dirs"):
             resp = self.client.post("/devices/0/select")
         self.assertEqual(resp.status_code, 200)
@@ -1794,7 +1798,8 @@ class TestLEDErrorPaths(unittest.TestCase):
         api_module._led_dispatcher = self.mock_led
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        TrccApp.get()._led_device = self.mock_led
+        self.mock_led.is_lcd, self.mock_led.is_led = False, True
+        TrccApp.get()._devices['mock_led'] = self.mock_led
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -1999,7 +2004,8 @@ class TestThemeEdgeCases(unittest.TestCase):
             "success": True, "message": "Theme: Theme001",
         }
         api_module._display_dispatcher = mock_lcd
-        TrccApp.get()._lcd_device = mock_lcd
+        mock_lcd.is_lcd, mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = mock_lcd
 
         resp = self.client.post("/themes/load", json={"name": "Theme001"})
 
@@ -2018,7 +2024,8 @@ class TestThemeEdgeCases(unittest.TestCase):
             "success": False, "error": "No image file in theme",
         }
         api_module._display_dispatcher = mock_lcd
-        TrccApp.get()._lcd_device = mock_lcd
+        mock_lcd.is_lcd, mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = mock_lcd
 
         resp = self.client.post("/themes/load", json={"name": "Broken"})
 
@@ -2284,7 +2291,8 @@ class TestDisplayHappyPaths(unittest.TestCase):
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
 
-        TrccApp.get()._lcd_device = self.mock_lcd
+        self.mock_lcd.is_lcd, self.mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = self.mock_lcd
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -2445,7 +2453,8 @@ class TestLEDHappyPaths(unittest.TestCase):
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
 
-        TrccApp.get()._led_device = self.mock_led
+        self.mock_led.is_lcd, self.mock_led.is_led = False, True
+        TrccApp.get()._devices['mock_led'] = self.mock_led
 
     def tearDown(self) -> None:
         from trcc.core.app import TrccApp
@@ -2912,7 +2921,8 @@ class TestDisplayTestEndpoint(unittest.TestCase):
         api_module._display_dispatcher = mock_lcd
         TrccApp.reset()
         TrccApp._instance = TrccApp(MagicMock())
-        TrccApp.get()._lcd_device = mock_lcd
+        mock_lcd.is_lcd, mock_lcd.is_led = True, False
+        TrccApp.get()._devices['mock_lcd'] = mock_lcd
 
         mock_img = MagicMock()
         mock_solid.return_value = mock_img

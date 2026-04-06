@@ -111,7 +111,7 @@ def select_device(device_id: int) -> dict:
             _device_svc._discover_resolution(dev)
             # Fallback: wire LCD from existing device service if discover didn't find one
             if not app.has_lcd:
-                api._display_dispatcher = app.lcd_from_service(_device_svc)
+                api._display_dispatcher = app.device_from_service(_device_svc)
             else:
                 api._display_dispatcher = app.lcd_device
 
