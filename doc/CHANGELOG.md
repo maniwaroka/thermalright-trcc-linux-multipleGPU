@@ -1,5 +1,23 @@
 # Changelog
 
+## v9.3.8
+
+### Fixes
+- **Theme not restored on restart**: First-install guard only checked legacy `theme_path` config key, missed `theme_name` (current format) — auto-loaded theme #1 instead of user's saved theme.
+- **Custom themes not found on restore**: `restore_last_theme()` only searched `~/.trcc/data/`, missed `~/.trcc-user/data/` where saved themes live.
+- **`save_theme()` wrote legacy config key**: Wrote `theme_path` instead of `theme_name` + `theme_type`.
+- **Multi-device: only active LCD restored on startup**: Inactive LCD devices now get `restore_device_settings()` + `restore_last_theme()` at scan time.
+- **CLI `resume` misleading for animated themes**: Now shows "start GUI for playback" instead of "Sent".
+- **Diagnostics reported stale config field**: Reported `theme_path` (usually absent) instead of `theme_name` + `theme_type`.
+
+### Refactors
+- **DisplayService encapsulation**: Public API for `mask_source_dir`, `clean_background`, `invalidate_video_cache()`, `convert_media_frames()`, `render_and_process()`. LCDDevice no longer accesses any DisplayService private attributes.
+- **Centralized dir name helpers**: `theme_dir_name()`, `web_dir_name()`, `masks_dir_name()` in `core/paths.py` replace 30+ scattered format strings across 11 files.
+- **Overlay save centralized**: `_save_overlay()` helper replaces 3 inline dict constructions.
+- **Consistent user content layout**: Custom themes now save to `~/.trcc-user/data/` (was `~/.trcc-user/`), mirroring `~/.trcc/data/` exactly. Auto-migration on first startup.
+- **Orientation simplified**: Stores 2 root paths + `has_portrait_themes` boolean. All dirs derived from resolution math — no stored dir lists, no `landscape_*`/`portrait_*` attributes. Removed `is_square`, `is_portrait`, `swaps_dirs`, `has_rotated_dirs`.
+- **Removed dead code**: `DisplayService.path_resolver` property, `DisplayService.user_masks_dir()` method, `_has_any_content` duplicate, portrait dir persistence.
+
 ## v9.3.7
 
 ### Fixes
