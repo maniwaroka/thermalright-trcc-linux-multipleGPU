@@ -393,6 +393,70 @@ def failed_led_device():
     return led
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# DI device fixtures — real builder flow, noop protocol
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def mock_lcd_platform(tmp_path):
+    """MockPlatform with one LCD device (320x320 SCSI)."""
+    from mock_platform import MockPlatform
+    spec = [{"type": "lcd", "vid": "0402", "pid": "3922",
+             "resolution": "320x320", "pm": 100}]
+    root = tmp_path / '.trcc'
+    root.mkdir(exist_ok=True)
+    (root / 'data').mkdir(exist_ok=True)
+    return MockPlatform(spec, root=root)
+
+
+@pytest.fixture
+def mock_led_platform(tmp_path):
+    """MockPlatform with one LED device (AX120)."""
+    from mock_platform import MockPlatform
+    spec = [{"type": "led", "vid": "0416", "pid": "8001",
+             "model": "AX120_DIGITAL"}]
+    root = tmp_path / '.trcc'
+    root.mkdir(exist_ok=True)
+    (root / 'data').mkdir(exist_ok=True)
+    return MockPlatform(spec, root=root)
+
+
+@pytest.fixture
+def lcd_device(mock_lcd_platform, tmp_config):
+    """Connected LCD Device through real builder flow."""
+    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.adapters.render.qt import QtRenderer
+    from trcc.conf import init_settings
+    from trcc.core.builder import ControllerBuilder
+
+    setup = mock_lcd_platform.create_setup()
+    init_settings(setup)
+    mock_lcd_platform.configure_scsi_protocol(DeviceProtocolFactory)
+    builder = ControllerBuilder(mock_lcd_platform).with_renderer(QtRenderer())
+    detected = mock_lcd_platform.create_detect_fn()()[0]
+    device = builder.build_device(detected)
+    device.connect(detected)
+    return device
+
+
+@pytest.fixture
+def led_device(mock_led_platform, tmp_config):
+    """Connected LED Device through real builder flow."""
+    from trcc.adapters.device.factory import DeviceProtocolFactory
+    from trcc.conf import init_settings
+    from trcc.core.builder import ControllerBuilder
+
+    setup = mock_led_platform.create_setup()
+    init_settings(setup)
+    mock_led_platform.configure_scsi_protocol(DeviceProtocolFactory)
+    builder = ControllerBuilder(mock_led_platform)
+    detected = mock_led_platform.create_detect_fn()()[0]
+    device = builder.build_device(detected)
+    device.connect(detected)
+    return device
+
+
 @pytest.fixture
 def fake_detect():
     """No-hardware detect callable. Inject into any function that accepts detect_fn.

@@ -1,6 +1,6 @@
-"""Tests for LEDDevice (core/led_device.py) + CLI LED wrappers (_led.py).
+"""Tests for Device (LED mode) + CLI LED wrappers (_led.py).
 
-Fixtures build mock LEDService and inject into LEDDevice. Tests verify
+Fixtures build mock LEDService and inject into Device. Tests verify
 device methods return correct result dicts, and CLI wrappers print/exit
 correctly.
 """
