@@ -122,10 +122,6 @@ _ZONE_STYLE_TO_ASSETS: dict = {
     8: ZONE_ASSETS_BTNN, 10: ZONE_ASSETS_BTNN,
 }
 
-# Power/close button — C#: buttonPower at (1212, 24) 40x40
-POWER_X, POWER_Y = 1212, 24
-POWER_W, POWER_H = 40, 40
-
 # Status label
 STATUS_X = 590
 STATUS_Y = 770
@@ -277,7 +273,6 @@ class UCLedControl(QWidget):
     color_changed = Signal(int, int, int)   # R, G, B
     brightness_changed = Signal(int)         # 0-100
     global_toggled = Signal(bool)            # on/off (from color wheel center button)
-    close_requested = Signal()               # close/hide LED panel (C# cmd 255)
     segment_clicked = Signal(int)            # segment index
     # Zone signals
     zone_selected = Signal(int)              # zone index (0-based)
@@ -525,27 +520,6 @@ class UCLedControl(QWidget):
         self._brightness_slider.valueChanged.connect(
             lambda v: self._brightness_label.setText(f"{v}%")
         )
-
-        # -- Power/close button (C# buttonPower at (1212, 24) 40x40) --
-        # C# sends delegate cmd 255 = close the LED form.
-        # Uses Alogout默认 (normal) / Alogout选中 (hover/pressed)
-        self._close_btn = QPushButton(self)
-        self._close_btn.setGeometry(POWER_X, POWER_Y, POWER_W, POWER_H)
-        self._close_btn.setFlat(True)
-        _pwr_normal = Assets.get('Alogout默认')
-        _pwr_active = Assets.get('Alogout选中')
-        if _pwr_normal and _pwr_active:
-            self._close_btn.setStyleSheet(
-                f"QPushButton {{ border: none; "
-                f"background-image: url({_pwr_normal}); "
-                f"background-repeat: no-repeat; }}"
-                f"QPushButton:hover {{ "
-                f"background-image: url({_pwr_active}); }}"
-            )
-        else:
-            self._close_btn.setStyleSheet(_STYLE_FLAT_BTN)
-        self._close_btn.setToolTip("Close LED panel")
-        self._close_btn.clicked.connect(self.close_requested.emit)
 
         # -- Test mode checkbox (C# checkBox1 at (36, 78)) --
         self._test_cb = QCheckBox("", self)
@@ -968,8 +942,6 @@ class UCLedControl(QWidget):
         self._brightness_slider.setGeometry(BRIGHT_X, BRIGHT_Y, BRIGHT_W, 20)
         self._brightness_label.setGeometry(
             BRIGHT_X + BRIGHT_W + 5, BRIGHT_Y, 40, 20)
-
-        self._close_btn.setVisible(True)
 
         self._status.setGeometry(STATUS_X, STATUS_Y, STATUS_W, 24)
 

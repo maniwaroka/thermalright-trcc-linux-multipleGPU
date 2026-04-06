@@ -20,28 +20,27 @@ import trcc.conf as _conf
 
 from ..core.led_device import LEDDevice
 from ..core.models import LED_STYLES, DeviceInfo, resolve_led_style_id
-from .base import BaseHandler
 from .uc_led_control import UCLedControl
 
 log = logging.getLogger(__name__)
 
 
-class LEDHandler(BaseHandler):
+class LEDHandler:
     """Handler for a single LED device.
 
-    Owns LEDDevice lifecycle, animation timer, signal wiring.
-    GUI signal handlers call update_* methods directly on the device
-    (state-only). The 150ms tick handles animation + hardware send.
+    Config-driven: device object holds all state, handler is just
+    the runtime instance for UI manipulation. Active handler gets
+    panel interaction and metrics updates; inactive ones keep running
+    their last state on hardware.
     """
 
-    _SAVE_INTERVAL = 20  # save config every N ticks (~3 s)
+    _SAVE_INTERVAL = 20  # save config every N metrics updates
 
     def __init__(
         self,
         led: LEDDevice,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
-        make_timer: Any = None,
     ) -> None:
         self._panel = panel
         self._on_temp_unit_changed = on_temp_unit_changed
@@ -51,7 +50,7 @@ class LEDHandler(BaseHandler):
         self._metrics_count = 0
         self._connect_signals()
 
-    # ── BaseHandler interface ────────────────────────────────────────
+    # ── Handler interface ────────────────────────────────────────────
 
     @property
     def view_name(self) -> str:
@@ -62,13 +61,29 @@ class LEDHandler(BaseHandler):
         return self._led.device_info if self._led else None
 
     def stop_timers(self) -> None:
-        pass  # No timer — panel updates driven by metrics signal
+        """No-op — LED has no timers (metrics-driven)."""
 
-    def _cleanup_device(self) -> None:
+    def cleanup(self) -> None:
+        """Save config and release device resources."""
         log.info("LED: cleanup")
+        self._active = False
         if self._led:
             self._led.save_config()
             self._led.cleanup()
+
+    def update_metrics(self, metrics: Any) -> None:
+        if not (self._led and self._active):
+            return
+        self._led.update_metrics(metrics)
+        result = self._led.tick_with_result()
+        display_colors = result.get('display_colors')
+        if display_colors is not None:
+            self._panel.set_led_colors(display_colors)
+        self._panel.update_metrics(metrics)
+        self._metrics_count += 1
+        if self._metrics_count >= self._SAVE_INTERVAL:
+            self._metrics_count = 0
+            self._led.save_config()
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -85,7 +100,7 @@ class LEDHandler(BaseHandler):
         return self._led
 
     def show(self, device: DeviceInfo) -> None:
-        """Initialize LED device and start animation."""
+        """Activate handler — initialize device, sync panel from device state."""
         model = device.model or ''
         led_style = device.led_style_id or resolve_led_style_id(model)
 
@@ -115,34 +130,12 @@ class LEDHandler(BaseHandler):
         if self._led:
             self._led.save_config()
 
-    def stop(self) -> None:
-        """Alias for deactivate (BaseHandler interface)."""
-        self.deactivate()
+    stop = deactivate  # alias — LCD uses stop_timers(), LED uses deactivate()
 
     def set_temp_unit(self, unit: int) -> None:
         if self._led:
             log.debug("LED: temp_unit=%d", unit)
             self._led.set_seg_temp_unit(unit)
-
-    def restart_if_needed(self) -> None:
-        """No-op — LED updates are metrics-driven, no timer to restart."""
-        pass
-
-    def update_metrics(self, metrics: Any) -> None:
-        if not (self._led and self._active):
-            return
-        self._led.update_metrics(metrics)
-        # Push display colors to panel (replaces old 150ms timer tick)
-        result = self._led.tick_with_result()
-        display_colors = result.get('display_colors')
-        if display_colors is not None:
-            self._panel.set_led_colors(display_colors)
-        self._panel.update_metrics(metrics)
-        # Periodic config save
-        self._metrics_count += 1
-        if self._metrics_count >= self._SAVE_INTERVAL:
-            self._metrics_count = 0
-            self._led.save_config()
 
     # ── Private ──────────────────────────────────────────────────────
 
@@ -244,19 +237,3 @@ class LEDHandler(BaseHandler):
 
     def _on_test_mode_changed(self, on: bool) -> None:
         self._led.update_test_mode(on)
-
-    def _on_tick(self) -> None:
-        """Manual tick — used by tests. Normal path is update_metrics()."""
-        if not (self._led and self._active):
-            return
-        try:
-            result = self._led.tick_with_result()
-            display_colors = result.get('display_colors')
-            if display_colors is not None:
-                self._panel.set_led_colors(display_colors)
-            self._metrics_count += 1
-            if self._metrics_count >= self._SAVE_INTERVAL:
-                self._metrics_count = 0
-                self._led.save_config()
-        except Exception:
-            log.exception("LED tick error")

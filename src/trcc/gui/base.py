@@ -2,7 +2,6 @@
 Base widget classes for PySide6 TRCC components.
 
 Provides common functionality:
-- BaseHandler: ABC for device handlers (LCDHandler, LEDHandler)
 - BasePanel: delegate pattern, resource loading
 - ImageLabel: fast image display
 - ClickableFrame: QFrame with clicked signal
@@ -14,12 +13,8 @@ Provides common functionality:
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
-
-if TYPE_CHECKING:
-    from ..core.models import DeviceInfo
+from typing import Callable, Optional
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPixmap
@@ -37,45 +32,6 @@ from .constants import Colors, Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
 
-
-class BaseHandler(ABC):
-    """ABC for LCD and LED device handlers.
-
-    Defines the lifecycle contract TRCCApp depends on, allowing it to manage
-    all device handlers through a single dict[str, BaseHandler] without
-    branching on device type for common operations.
-
-    Subclasses own all device-specific behaviour (rendering, animation, UI
-    wiring). TRCCApp uses isinstance only where device-specific access is
-    genuinely needed (e.g. handshake, overlay tick).
-    """
-
-    @property
-    @abstractmethod
-    def view_name(self) -> str:
-        """Stack view to show when this device is active ('form' or 'led')."""
-
-    @property
-    @abstractmethod
-    def device_info(self) -> DeviceInfo | None:
-        """Current DeviceInfo for sidebar display, or None if unavailable."""
-
-    @abstractmethod
-    def update_metrics(self, metrics: Any) -> None:
-        """Push hardware metrics into device + UI. Called by TRCCApp tick loop."""
-
-    def cleanup(self) -> None:
-        """Stop all timers and release device resources. Template method."""
-        self.stop_timers()
-        self._cleanup_device()
-
-    @abstractmethod
-    def stop_timers(self) -> None:
-        """Pause all timers (e.g. on system sleep)."""
-
-    @abstractmethod
-    def _cleanup_device(self) -> None:
-        """Release device-specific resources. Called by cleanup()."""
 
 
 class BasePanel(QFrame):

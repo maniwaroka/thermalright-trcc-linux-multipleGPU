@@ -28,7 +28,6 @@ from ..core.models import (
     ThemeInfo,
 )
 from ..services.theme import theme_info_from_directory
-from .base import BaseHandler
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +37,7 @@ class _DataReadyNotifier(QObject):
     ready = Signal()
 
 
-class LCDHandler(BaseHandler):
+class LCDHandler:
     """Handler for a single LCD device — like C# FormCZTV.
 
     Each LCD device gets its own handler with its own LCDDevice.
@@ -87,7 +86,7 @@ class LCDHandler(BaseHandler):
         self._slideshow_timer: QTimer = make_timer(self._on_slideshow_tick)
         self._flash_timer: QTimer = make_timer(self._on_flash_timeout, single_shot=True)
 
-    # ── BaseHandler interface ────────────────────────────────────────
+    # ── Handler interface ────────────────────────────────────────────
 
     @property
     def view_name(self) -> str:
@@ -763,6 +762,11 @@ class LCDHandler(BaseHandler):
         return self._ldd_is_split
 
     # ── Lifecycle ──────────────────────────────────────────────────
+
+    def cleanup(self) -> None:
+        """Stop timers and release device resources."""
+        self.stop_timers()
+        self._cleanup_device()
 
     def stop_timers(self) -> None:
         """Stop all timers (called when switching away from this device)."""

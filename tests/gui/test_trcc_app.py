@@ -609,17 +609,11 @@ class TestUCSystemInfo:
 
 
 class TestLEDHandler:
-    """Test the LEDHandler mediator from trcc_app.
+    """Test the LEDHandler — GUI adapter for LED devices.
 
-    LEDHandler is the GUI adapter for LED devices (hexagonal pattern).
-    Signal handlers call update_*() methods directly on the LEDDevice
-    (state-only). The 150ms tick timer handles animation + USB send (C# pattern).
-
-    Key architecture rules tested:
-    - Handlers call update_* on LEDDevice (state-only, no tick/send)
-    - No handler calls tick() or save_config() directly
-    - Zone-aware handlers call additional zone update methods when zones exist
-    - Periodic config save happens in _on_tick, not in handlers
+    Handlers call update_* on LEDDevice (state-only). Panel updates
+    are metrics-driven (no timer). Only the active handler updates
+    the shared panel via _guard().
     """
 
     @pytest.fixture
@@ -809,59 +803,54 @@ class TestLEDHandler:
         mock_led.initialize.assert_called_once_with(device, 2)
         handler.stop()
 
-    # ── Tick ─────────────────────────────────────────────────────
+    # ── Metrics-driven updates ────────────────────────────────────
 
-    def test_tick_no_led(self, handler):
-        handler._on_tick()  # Should not raise
+    def test_update_metrics_no_led(self, handler):
+        handler.update_metrics(MagicMock())  # Should not raise
 
-    def test_tick_not_active(self, handler):
+    def test_update_metrics_not_active(self, handler):
         mock_led = self._wire_led(handler)
         handler._active = False
-        handler._on_tick()
-        mock_led.tick.assert_not_called()
+        handler.update_metrics(MagicMock())
+        mock_led.update_metrics.assert_not_called()
 
-    def test_tick_calls_led_tick_and_updates_panel(self, handler):
+    def test_update_metrics_active_updates_panel(self, handler):
         mock_led = self._wire_led(handler)
         display_colors = [(255, 0, 0), (0, 255, 0)]
         mock_led.tick_with_result.return_value = {'display_colors': display_colors}
         handler._active = True
-        handler._on_tick()
+        metrics = MagicMock()
+        handler.update_metrics(metrics)
+        mock_led.update_metrics.assert_called_once_with(metrics)
         mock_led.tick_with_result.assert_called_once()
         handler._panel.set_led_colors.assert_called_once_with(display_colors)
 
-    def test_tick_saves_config_at_interval(self, handler):
-        """Config is saved every _SAVE_INTERVAL ticks."""
+    def test_update_metrics_saves_config_at_interval(self, handler):
+        """Config is saved every _SAVE_INTERVAL metrics updates."""
         mock_led = self._wire_led(handler)
         mock_led.tick_with_result.return_value = {'display_colors': [(255, 0, 0)]}
         handler._active = True
         handler._metrics_count = handler._SAVE_INTERVAL - 1
-        handler._on_tick()
+        handler.update_metrics(MagicMock())
         mock_led.save_config.assert_called_once()
 
-    def test_tick_no_save_before_interval(self, handler):
-        """Config is NOT saved before _SAVE_INTERVAL ticks."""
+    def test_update_metrics_no_save_before_interval(self, handler):
+        """Config is NOT saved before _SAVE_INTERVAL updates."""
         mock_led = self._wire_led(handler)
         mock_led.tick_with_result.return_value = {'display_colors': [(255, 0, 0)]}
         handler._active = True
         handler._metrics_count = 0
-        handler._on_tick()
+        handler.update_metrics(MagicMock())
         mock_led.save_config.assert_not_called()
 
-    def test_tick_resets_counter_after_save(self, handler):
+    def test_update_metrics_resets_counter_after_save(self, handler):
         """Save counter resets to 0 after config save."""
         mock_led = self._wire_led(handler)
-        mock_led.tick.return_value = {'display_colors': [(255, 0, 0)]}
+        mock_led.tick_with_result.return_value = {'display_colors': [(255, 0, 0)]}
         handler._active = True
         handler._metrics_count = handler._SAVE_INTERVAL - 1
-        handler._on_tick()
+        handler.update_metrics(MagicMock())
         assert handler._metrics_count == 0
-
-    def test_tick_error_does_not_crash(self, handler):
-        """LED tick exceptions are caught and logged, timer keeps running."""
-        mock_led = self._wire_led(handler)
-        mock_led.tick.side_effect = RuntimeError("USB error")
-        handler._active = True
-        handler._on_tick()  # Should not raise
 
     # ── Signal handlers: mode ────────────────────────────────────
 
@@ -1127,20 +1116,6 @@ class TestLEDHandler:
         mock_led = self._wire_led(handler)
         handler._on_test_mode_changed(False)
         mock_led.update_test_mode.assert_called_once_with(False)
-
-    # ── Metrics ──────────────────────────────────────────────────
-
-    def test_update_metrics_no_led(self, handler):
-        handler.update_metrics(MagicMock())  # Should not raise
-
-    def test_update_metrics_forwards_to_led_and_panel(self, handler):
-        mock_led = self._wire_led(handler)
-        mock_led.tick_with_result.return_value = {'display_colors': [(255, 0, 0)]}
-        handler._active = True
-        metrics = MagicMock()
-        handler.update_metrics(metrics)
-        mock_led.update_metrics.assert_called_once_with(metrics)
-        handler._panel.update_metrics.assert_called_once_with(metrics)
 
     # ── Hexagonal purity: no handler calls set_*() / tick() ──────
 

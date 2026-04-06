@@ -40,7 +40,7 @@ from ..core.models import DeviceInfo
 from ..core.ports import AutostartManager, GetDiskInfoFn, GetMemoryInfoFn, PlatformSetup
 from ..services.system import SystemService
 from .assets import Assets
-from .base import BaseHandler, create_image_button, set_background_pixmap
+from .base import create_image_button, set_background_pixmap
 from .constants import Colors, Layout, Sizes, Styles
 from .lcd_handler import LCDHandler
 from .led_handler import LEDHandler
@@ -240,7 +240,7 @@ class TRCCApp(QMainWindow):
     Knows nothing about builders, detectors, or OS internals.
 
     One handler per device keyed by USB path:
-      _handlers: dict[str, BaseHandler]  # LCDHandler | LEDHandler, keyed by USB path
+      _handlers: dict[str, LCDHandler | LEDHandler]  # keyed by USB path
 
     Panel stack shows the active device; all devices tick in background.
     """
@@ -297,7 +297,7 @@ class TRCCApp(QMainWindow):
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
 
         # Per-device handlers keyed by USB path
-        self._handlers: dict[str, BaseHandler] = {}
+        self._handlers: dict[str, LCDHandler | LEDHandler] = {}
         self._active_path = ''       # path of device currently shown in panel stack
 
         self._handshake_pending = False
@@ -438,9 +438,8 @@ class TRCCApp(QMainWindow):
         added = False
         match device:
             case LEDDevice() if path not in self._handlers:
-                handler: BaseHandler = LEDHandler(
-                    device, self.uc_led_control, self._on_temp_unit_changed,
-                    make_timer=self._make_timer)
+                handler = LEDHandler(
+                    device, self.uc_led_control, self._on_temp_unit_changed)
                 self._handlers[path] = handler
                 log.info("LED handler added: %s", path)
                 added = True
@@ -517,14 +516,13 @@ class TRCCApp(QMainWindow):
         if path == self._active_path:
             return
         log.info("_activate_device: %s", path)
-        # Stop previous device's timers before switching — prevents
-        # stale frames writing to the shared panel widgets.
+        # Deactivate previous device before switching
         if self._active_path:
             prev = self._handlers.get(self._active_path)
             if isinstance(prev, LCDHandler):
                 prev.stop_timers()
             elif isinstance(prev, LEDHandler):
-                prev.stop()
+                prev.deactivate()
         self._active_path = path
         handler = self._handlers.get(path)
         if handler is None:
@@ -1173,7 +1171,6 @@ class TRCCApp(QMainWindow):
         self.uc_activity_sidebar.sensor_clicked.connect(self._on_sensor_element_add)
 
         self.uc_about.close_requested.connect(self._on_about_close_requested)
-        self.uc_led_control.close_requested.connect(self._on_led_close_requested)
         self.uc_about.language_changed.connect(self._set_language)
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
@@ -1191,12 +1188,6 @@ class TRCCApp(QMainWindow):
     def _on_about_close_requested(self) -> None:
         """Close button on About/Control Center panel — return to form view."""
         log.debug("_on_about_close_requested: returning to form")
-        self._show_view('form')
-        self.uc_device.restore_device_selection()
-
-    def _on_led_close_requested(self) -> None:
-        """Close button on LED control panel — return to form view."""
-        log.debug("_on_led_close_requested: returning to form")
         self._show_view('form')
         self.uc_device.restore_device_selection()
 
@@ -1848,10 +1839,6 @@ class TRCCApp(QMainWindow):
 
     def showEvent(self, event: Any) -> None:
         super().showEvent(event)
-        # Safety: restart LED tick timers if stopped while hidden
-        for h in self._handlers.values():
-            if isinstance(h, LEDHandler):
-                h.restart_if_needed()
 
     def mousePressEvent(self, event: Any) -> None:
         if self._decorated or event.button() != Qt.MouseButton.LeftButton:

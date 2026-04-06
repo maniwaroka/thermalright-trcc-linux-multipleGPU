@@ -619,12 +619,6 @@ class TestLedControlSignals:
         led_control._on_wheel_onoff(0)
         assert received == [False]
 
-    def test_close_requested_signal(self, led_control):
-        received: list[bool] = []
-        led_control.close_requested.connect(lambda: received.append(True))
-        led_control._close_btn.click()
-        assert received == [True]
-
     def test_temp_unit_changed_signal(self, led_control):
         received: list[str] = []
         led_control.temp_unit_changed.connect(lambda u: received.append(u))
