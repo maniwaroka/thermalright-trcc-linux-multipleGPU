@@ -220,24 +220,21 @@ class TestReactivate:
 class TestUpdateThemeDirectories:
     """_update_theme_directories first-install auto-load and skip-if-saved-theme guard."""
 
-    def _make_theme_dir(self, tmp_path: Path) -> MagicMock:
-        """Build a mock ThemeDir with one valid theme subfolder."""
-        theme1 = tmp_path / 'Theme1'
-        theme1.mkdir()
+    def _make_data_root(self, tmp_path: Path, w: int = 320, h: int = 320) -> Path:
+        """Create a data root with one valid theme subfolder under theme{w}{h}."""
+        theme_root = tmp_path / f'theme{w}{h}'
+        theme1 = theme_root / 'Theme1'
+        theme1.mkdir(parents=True)
         (theme1 / '00.png').touch()
-
-        td = MagicMock()
-        td.exists.return_value = True
-        td.path = tmp_path
-        return td
+        return tmp_path
 
     @patch('trcc.gui.lcd_handler.Settings')
     def test_auto_loads_first_theme_on_first_install(self, mock_settings, make_lcd_handler, mock_lcd_device, tmp_path):
         """With no current image and no saved theme_path, auto-loads the first theme folder."""
-        td = self._make_theme_dir(tmp_path)
+        data_root = self._make_data_root(tmp_path)
         from trcc.core.orientation import Orientation
         o = Orientation(320, 320)
-        o.landscape_theme_dir = td
+        o.data_root = data_root
         mock_lcd_device.orientation = o
 
         mock_settings.get_device_config.return_value = {}  # no saved theme_path
@@ -255,13 +252,8 @@ class TestUpdateThemeDirectories:
     @patch('trcc.gui.lcd_handler.Settings')
     def test_skips_auto_load_when_saved_theme_path_exists(self, mock_settings, make_lcd_handler, mock_lcd_device, tmp_path):
         """With no current image but a saved theme_path (legacy), skips auto-load."""
-        td = self._make_theme_dir(tmp_path)
-        svc = mock_lcd_device._display_svc
-        svc.lcd_width = 320
-        svc.lcd_height = 320
-        svc.theme_dir = td
-        svc.web_dir = None
-        svc.masks_dir = None
+        data_root = self._make_data_root(tmp_path)
+        mock_lcd_device.orientation.data_root = data_root
 
         # Legacy config key — must still guard against auto-load
         mock_settings.get_device_config.return_value = {'theme_path': '/themes/MyTheme'}
@@ -279,13 +271,8 @@ class TestUpdateThemeDirectories:
     @patch('trcc.gui.lcd_handler.Settings')
     def test_skips_auto_load_when_saved_theme_name_exists(self, mock_settings, make_lcd_handler, mock_lcd_device, tmp_path):
         """With no current image but a saved theme_name (current format), skips auto-load."""
-        td = self._make_theme_dir(tmp_path)
-        svc = mock_lcd_device._display_svc
-        svc.lcd_width = 320
-        svc.lcd_height = 320
-        svc.theme_dir = td
-        svc.web_dir = None
-        svc.masks_dir = None
+        data_root = self._make_data_root(tmp_path)
+        mock_lcd_device.orientation.data_root = data_root
 
         # Current config format — theme_name, not theme_path
         mock_settings.get_device_config.return_value = {
@@ -305,13 +292,8 @@ class TestUpdateThemeDirectories:
     @patch('trcc.gui.lcd_handler.Settings')
     def test_skips_auto_load_when_image_already_showing(self, mock_settings, make_lcd_handler, mock_lcd_device, tmp_path):
         """With a current image already loaded, skips auto-load regardless of saved config."""
-        td = self._make_theme_dir(tmp_path)
-        svc = mock_lcd_device._display_svc
-        svc.lcd_width = 320
-        svc.lcd_height = 320
-        svc.theme_dir = td
-        svc.web_dir = None
-        svc.masks_dir = None
+        data_root = self._make_data_root(tmp_path)
+        mock_lcd_device.orientation.data_root = data_root
         mock_settings.get_device_config.return_value = {}
 
         mock_lcd_device.current_image = MagicMock()  # image already showing
@@ -763,10 +745,9 @@ class TestThemeIO:
     """save_theme, export_config, import_config."""
 
     @patch('trcc.gui.lcd_handler.Settings')
-    def test_save_theme_success(self, mock_settings_cls, lcd_handler, mock_lcd_device):
-        td = MagicMock()
-        td.exists.return_value = True
-        mock_lcd_device.orientation.landscape_theme_dir = td
+    def test_save_theme_success(self, mock_settings_cls, lcd_handler, mock_lcd_device, tmp_path):
+        # Set data_root so orientation.theme_dir returns a valid ThemeDir
+        mock_lcd_device.orientation.data_root = tmp_path
         mock_lcd_device.current_theme_path = Path('/themes/Custom_MyTheme')
         lcd_handler._device_key = 'dev0'
         lcd_handler.save_theme("MyTheme")
@@ -781,10 +762,9 @@ class TestThemeIO:
         lcd_handler.export_config(Path('/out/theme.tr'))
         mock_lcd_device.export_config.assert_called()
 
-    def test_import_config_success_reloads(self, lcd_handler, mock_lcd_device):
-        td = MagicMock()
-        td.exists.return_value = True
-        mock_lcd_device.orientation.landscape_theme_dir = td
+    def test_import_config_success_reloads(self, lcd_handler, mock_lcd_device, tmp_path):
+        # Set data_root so orientation.theme_dir returns a valid ThemeDir
+        mock_lcd_device.orientation.data_root = tmp_path
         lcd_handler.import_config(Path('/in/theme.tr'))
         mock_lcd_device.import_config.assert_called()
         lcd_handler._w['theme_local'].set_theme_directory.assert_called_once()

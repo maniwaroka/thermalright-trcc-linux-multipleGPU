@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from trcc.core.models import ThemeDir
 from trcc.core.orientation import Orientation, output_resolution
 
 # =========================================================================
@@ -69,143 +69,134 @@ class TestOutputResolution:
 class TestOrientationSquare:
     """Orientation on a square device — dirs never swap."""
 
-    def test_is_square(self):
-        o = Orientation(320, 320)
-        assert o.is_square is True
-
-    def test_is_portrait_always_false(self):
-        o = Orientation(320, 320)
-        o.rotation = 90
-        assert o.is_portrait is False
-
-    def test_output_resolution_never_swaps(self):
+    def test_square_output_never_swaps(self):
         o = Orientation(320, 320)
         o.rotation = 90
         assert o.output_resolution == (320, 320)
 
-    def test_canvas_resolution_never_swaps(self):
+    def test_square_canvas_never_swaps(self):
         o = Orientation(320, 320)
         o.rotation = 90
         assert o.canvas_resolution == (320, 320)
 
-    def test_image_rotation_returns_actual(self):
+    def test_square_image_rotation_returns_actual(self):
         o = Orientation(320, 320)
         o.rotation = 90
         assert o.image_rotation == 90
+
+    def test_square_is_rotated_false(self):
+        o = Orientation(320, 320)
+        o.rotation = 90
+        assert o._is_rotated() is False
 
 
 class TestOrientationNonSquare:
-    """Orientation on a non-square device — dirs swap when portrait dirs exist."""
+    """Orientation on a non-square device — behavior depends on has_portrait_themes."""
 
-    def _make(self, with_portrait: bool = False) -> Orientation:
+    def _make(self, has_portrait: bool = False) -> Orientation:
         o = Orientation(1280, 480)
-        o.landscape_theme_dir = ThemeDir('/data/theme1280480')
-        o.landscape_web_dir = Path('/data/web/1280480')
-        o.landscape_masks_dir = Path('/data/web/zt1280480')
-        if with_portrait:
-            o.portrait_theme_dir = ThemeDir('/data/theme4801280')
-            o.portrait_web_dir = Path('/data/web/4801280')
-            o.portrait_masks_dir = Path('/data/web/zt4801280')
+        o.data_root = Path('/data')
+        o.has_portrait_themes = has_portrait
         return o
 
-    # Without portrait dirs — pixel rotation
-    def test_no_portrait_swaps_dirs_false(self):
-        o = self._make(with_portrait=False)
-        o.rotation = 90
-        assert o.swaps_dirs is False
-
-    def test_no_portrait_has_rotated_dirs_false(self):
-        o = self._make(with_portrait=False)
-        assert o.has_rotated_dirs is False
-
-    def test_no_portrait_theme_dir_is_landscape(self):
-        o = self._make(with_portrait=False)
-        o.rotation = 90
-        assert 'theme1280480' in str(o.theme_dir.path)
-
-    def test_no_portrait_image_rotation_is_actual(self):
-        o = self._make(with_portrait=False)
-        o.rotation = 90
-        assert o.image_rotation == 90
-
+    # Without portrait themes — pixel rotation
     def test_no_portrait_canvas_stays_landscape(self):
-        o = self._make(with_portrait=False)
+        o = self._make(has_portrait=False)
         o.rotation = 90
         assert o.canvas_resolution == (1280, 480)
 
-    # With web/mask portrait dirs only (no portrait themes) — no canvas swap
-    def test_web_only_portrait_no_canvas_swap(self):
-        o = self._make(with_portrait=False)
-        o.portrait_web_dir = Path('/data/web/4801280')
-        o.portrait_masks_dir = Path('/data/web/zt4801280')
+    def test_no_portrait_image_rotation_is_actual(self):
+        o = self._make(has_portrait=False)
         o.rotation = 90
-        assert o.has_rotated_dirs is True
-        assert o.swaps_dirs is False  # no portrait theme dir
-        assert o.canvas_resolution == (1280, 480)  # stays landscape
-        assert o.image_rotation == 90  # pixel-rotate
+        assert o.image_rotation == 90
 
-    def test_web_only_portrait_dirs_swap_independently(self):
-        o = self._make(with_portrait=False)
-        o.portrait_web_dir = Path('/data/web/4801280')
+    def test_no_portrait_theme_dir_is_landscape(self):
+        o = self._make(has_portrait=False)
         o.rotation = 90
-        assert 'theme1280480' in str(o.theme_dir.path)  # theme stays landscape
-        assert str(o.web_dir) == '/data/web/4801280'  # web swaps to portrait
+        assert 'theme1280480' in str(o.theme_dir.path)
 
-    # With all portrait dirs — dir swap
-    def test_portrait_swaps_dirs_true_at_90(self):
-        o = self._make(with_portrait=True)
-        o.rotation = 90
-        assert o.swaps_dirs is True
-
-    def test_portrait_theme_dir_is_portrait(self):
-        o = self._make(with_portrait=True)
-        o.rotation = 90
-        assert 'theme4801280' in str(o.theme_dir.path)
-
-    def test_portrait_image_rotation_is_zero(self):
-        o = self._make(with_portrait=True)
-        o.rotation = 90
-        assert o.image_rotation == 0
-
+    # With portrait themes — dir swap
     def test_portrait_canvas_swaps(self):
-        o = self._make(with_portrait=True)
+        o = self._make(has_portrait=True)
         o.rotation = 90
         assert o.canvas_resolution == (480, 1280)
 
+    def test_portrait_image_rotation_is_zero(self):
+        o = self._make(has_portrait=True)
+        o.rotation = 90
+        assert o.image_rotation == 0
+
+    def test_portrait_theme_dir_is_portrait(self):
+        o = self._make(has_portrait=True)
+        o.rotation = 90
+        assert 'theme4801280' in str(o.theme_dir.path)
+
     def test_output_resolution_always_swaps(self):
-        o = self._make(with_portrait=False)
+        o = self._make(has_portrait=False)
         o.rotation = 90
         assert o.output_resolution == (480, 1280)
 
+    # Web/mask dirs swap independently on rotation
+    @patch('pathlib.Path.exists', return_value=True)
+    def test_web_dir_swaps_on_rotation(self, _):
+        o = self._make(has_portrait=False)
+        o.rotation = 90
+        assert '4801280' in str(o.web_dir)
+
+    @patch('pathlib.Path.exists', return_value=True)
+    def test_masks_dir_swaps_on_rotation(self, _):
+        o = self._make(has_portrait=False)
+        o.rotation = 90
+        assert 'zt4801280' in str(o.masks_dir)
+
     # At 0° — always landscape
     def test_zero_rotation_uses_landscape(self):
-        o = self._make(with_portrait=True)
+        o = self._make(has_portrait=True)
         o.rotation = 0
         assert 'theme1280480' in str(o.theme_dir.path)
-        assert o.swaps_dirs is False
+
+    # User content dirs
+    def test_user_theme_dir_from_user_root(self, tmp_path):
+        o = self._make()
+        o.user_root = tmp_path
+        user_td = tmp_path / 'theme1280480'
+        user_td.mkdir()
+        assert o.user_theme_dir == user_td
+
+    def test_user_theme_dir_none_when_missing(self, tmp_path):
+        o = self._make()
+        o.user_root = tmp_path
+        assert o.user_theme_dir is None
+
+    def test_user_masks_dir_from_user_root(self, tmp_path):
+        o = self._make()
+        o.user_root = tmp_path
+        user_md = tmp_path / 'web' / 'zt1280480'
+        user_md.mkdir(parents=True)
+        assert o.user_masks_dir == user_md
 
 
 class TestOrientationToDict:
-    """to_dict serializes dir paths for config persistence."""
+    """to_dict serializes roots + portrait flag."""
 
-    def test_all_dirs_populated(self):
+    def test_populated(self):
         o = Orientation(1280, 480)
-        o.landscape_theme_dir = ThemeDir('/a')
-        o.landscape_web_dir = Path('/b')
-        o.landscape_masks_dir = Path('/c')
-        o.portrait_theme_dir = ThemeDir('/d')
-        o.portrait_web_dir = Path('/e')
-        o.portrait_masks_dir = Path('/f')
+        o.data_root = Path('/data')
+        o.user_root = Path('/user')
+        o.has_portrait_themes = True
         d = o.to_dict()
         assert d == {
-            'theme': '/a', 'web': '/b', 'masks': '/c',
-            'theme_portrait': '/d', 'web_portrait': '/e', 'masks_portrait': '/f',
+            'data_root': '/data',
+            'user_root': '/user',
+            'has_portrait_themes': True,
         }
 
-    def test_none_dirs(self):
+    def test_none_roots(self):
         o = Orientation(320, 320)
         d = o.to_dict()
-        assert all(v is None for v in d.values())
+        assert d['data_root'] is None
+        assert d['user_root'] is None
+        assert d['has_portrait_themes'] is False
 
 
 class TestOrientationFromDict:
@@ -213,20 +204,21 @@ class TestOrientationFromDict:
 
     def test_round_trip(self):
         o = Orientation(1280, 480)
-        o.landscape_theme_dir = ThemeDir('/a')
-        o.landscape_web_dir = Path('/b')
-        o.landscape_masks_dir = Path('/c')
-        o.portrait_theme_dir = ThemeDir('/d')
-        o.portrait_web_dir = Path('/e')
-        o.portrait_masks_dir = Path('/f')
+        o.data_root = Path('/data')
+        o.user_root = Path('/user')
+        o.has_portrait_themes = True
         restored = Orientation.from_dict(1280, 480, o.to_dict())
         assert restored is not None
-        assert str(restored.landscape_theme_dir.path) == '/a'
-        assert str(restored.portrait_web_dir) == '/e'
+        assert restored.data_root == Path('/data')
+        assert restored.user_root == Path('/user')
+        assert restored.has_portrait_themes is True
+
+    def test_legacy_format_extracts_data_root(self):
+        """Old config format with theme path → extracts data_root from parent."""
+        restored = Orientation.from_dict(320, 320, {'theme': '/data/theme320320'})
+        assert restored is not None
+        assert restored.data_root == Path('/data')
 
     def test_returns_none_for_malformed(self):
         assert Orientation.from_dict(320, 320, {}) is None
         assert Orientation.from_dict(320, 320, 'bad') is None
-
-    def test_returns_none_when_no_theme(self):
-        assert Orientation.from_dict(320, 320, {'web': '/b'}) is None

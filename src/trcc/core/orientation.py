@@ -1,13 +1,12 @@
 """Display orientation — owns rotation state + content directory refs.
 
-Holds landscape/portrait directory paths for each content type (themes,
-web backgrounds, masks). On rotation, properties resolve to the correct
-dir. When a portrait dir doesn't exist, the landscape dir is used and
-the output gets pixel-rotated instead.
+Stores native resolution, rotation, and two root paths (data + user content).
+All content directories are derived from resolution math + dir name helpers.
+No stored dir lists — the dir name encodes the orientation.
 
 C# equivalents:
     output_resolution  → directionB + is{W}x{H} flags (physical output shape)
-    canvas_resolution  → rendering dims (swaps only when portrait dirs exist)
+    canvas_resolution  → rendering dims (swaps only when portrait themes exist)
     image_rotation     → RotateImg() dispatch in ImageToJpg
 """
 from __future__ import annotations
@@ -15,6 +14,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
+
+from .paths import masks_dir_name, theme_dir_name, web_dir_name
 
 log = logging.getLogger(__name__)
 
@@ -30,130 +31,134 @@ def output_resolution(w: int, h: int, rotation: int) -> tuple[int, int]:
 
 
 class Orientation:
-    """Rotation state + content directory resolution for one LCD device."""
+    """Rotation state + content directory resolution for one LCD device.
+
+    Stores two root paths and native resolution. All content directories
+    are derived: root / dir_name(w, h). Rotation swaps w,h in the name.
+    """
 
     def __init__(self, width: int, height: int) -> None:
         self.native = (width, height)
         self.rotation: int = 0
 
-        # Landscape dirs (always set when device has content)
-        self.landscape_theme_dir: Any | None = None
-        self.landscape_web_dir: Path | None = None
-        self.landscape_masks_dir: Path | None = None
+        # Root paths (set by _setup_dirs after connect)
+        self.data_root: Path | None = None      # ~/.trcc/data
+        self.user_root: Path | None = None       # ~/.trcc-user/data
 
-        # Portrait dirs (None when no rotated content exists)
-        self.portrait_theme_dir: Any | None = None
-        self.portrait_web_dir: Path | None = None
-        self.portrait_masks_dir: Path | None = None
+        # Probed at init — only non-derivable fact
+        self.has_portrait_themes: bool = False
 
-    # ── Computed state ──────────────────────────────────────────────
+    # ── Resolution helpers ─────────────────────────────────────────
 
-    @property
-    def is_square(self) -> bool:
-        return self.native[0] == self.native[1]
+    def _is_rotated(self) -> bool:
+        """True when rotation is 90/270 on a non-square device."""
+        w, h = self.native
+        return w != h and self.rotation in (90, 270)
 
-    @property
-    def is_portrait(self) -> bool:
-        """True when rotation is 90 or 270 on a non-square device."""
-        return not self.is_square and self.rotation in (90, 270)
+    def _rotated_res(self) -> tuple[int, int]:
+        """Resolution with w,h swapped if rotated."""
+        w, h = self.native
+        return (h, w) if self._is_rotated() else (w, h)
 
-    @property
-    def has_rotated_dirs(self) -> bool:
-        """True when any portrait content directory exists on disk."""
-        return (self.portrait_theme_dir is not None
-                or self.portrait_web_dir is not None
-                or self.portrait_masks_dir is not None)
-
-    @property
-    def swaps_dirs(self) -> bool:
-        """True when portrait THEME dir exists and rotation is 90/270.
-
-        Only theme dirs trigger canvas swap. Web/mask dirs swap
-        independently via their own properties — they don't affect
-        canvas_resolution or image_rotation.
-        """
-        return self.is_portrait and self.portrait_theme_dir is not None
-
-    # ── Resolution properties ───────────────────────────────────────
+    # ── Resolution properties ──────────────────────────────────────
 
     @property
     def output_resolution(self) -> tuple[int, int]:
         """Physical device output shape — always swaps for non-square at 90/270."""
-        w, h = self.native
-        if self.is_portrait:
-            return (h, w)
-        return (w, h)
+        return self._rotated_res()
 
     @property
     def canvas_resolution(self) -> tuple[int, int]:
-        """Internal rendering resolution — only swaps when dirs swap."""
-        w, h = self.native
-        if self.swaps_dirs:
+        """Internal rendering resolution — only swaps when portrait themes exist."""
+        if self.has_portrait_themes and self._is_rotated():
+            w, h = self.native
             return (h, w)
-        return (w, h)
+        return self.native
 
     @property
     def image_rotation(self) -> int:
         """Degrees to pixel-rotate the composited output.
 
         0 when portrait theme dirs handle orientation (content already portrait).
-        Actual degrees when pixel rotation is needed (no portrait dirs, or square).
+        Actual degrees when pixel rotation is needed.
         """
-        if self.swaps_dirs:
+        if self.has_portrait_themes and self._is_rotated():
             return 0
         return self.rotation
 
-    # ── Active directory properties ─────────────────────────────────
-    # Each content type swaps independently based on its own portrait dir.
+    # ── Content directory properties ───────────────────────────────
+    # All derived from roots + resolution. Rotation swaps w,h in the name.
 
     @property
     def theme_dir(self) -> Any | None:
-        if self.is_portrait and self.portrait_theme_dir is not None:
-            return self.portrait_theme_dir
-        return self.landscape_theme_dir
+        """Active theme dir. Swaps only when portrait themes exist."""
+        if not self.data_root:
+            return None
+        from .models import ThemeDir
+        w, h = self.canvas_resolution
+        return ThemeDir(str(self.data_root / theme_dir_name(w, h)))
 
     @property
     def web_dir(self) -> Path | None:
-        if self.is_portrait and self.portrait_web_dir is not None:
-            return self.portrait_web_dir
-        return self.landscape_web_dir
+        """Active cloud backgrounds dir. Swaps independently on rotation."""
+        if not self.data_root:
+            return None
+        w, h = self._rotated_res()
+        d = self.data_root / 'web' / web_dir_name(w, h)
+        return d if d.exists() else None
 
     @property
     def masks_dir(self) -> Path | None:
-        if self.is_portrait and self.portrait_masks_dir is not None:
-            return self.portrait_masks_dir
-        return self.landscape_masks_dir
+        """Active masks dir. Swaps independently on rotation."""
+        if not self.data_root:
+            return None
+        w, h = self._rotated_res()
+        d = self.data_root / 'web' / masks_dir_name(w, h)
+        return d if d.exists() else None
+
+    @property
+    def user_theme_dir(self) -> Path | None:
+        """User custom themes dir (~/.trcc-user/data/theme{W}{H})."""
+        if not self.user_root:
+            return None
+        w, h = self.canvas_resolution
+        d = self.user_root / theme_dir_name(w, h)
+        return d if d.exists() else None
+
+    @property
+    def user_masks_dir(self) -> Path | None:
+        """User custom masks dir (~/.trcc-user/data/web/zt{W}{H})."""
+        if not self.user_root:
+            return None
+        w, h = self._rotated_res()
+        d = self.user_root / 'web' / masks_dir_name(w, h)
+        return d if d.exists() else None
 
     # ── Serialization ──────────────────────────────────────────────
 
-    def to_dict(self) -> dict[str, str | None]:
-        """Serialize resolved dirs for config persistence."""
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for config persistence."""
         return {
-            'theme': str(self.landscape_theme_dir.path) if self.landscape_theme_dir else None,
-            'web': str(self.landscape_web_dir) if self.landscape_web_dir else None,
-            'masks': str(self.landscape_masks_dir) if self.landscape_masks_dir else None,
-            'theme_portrait': str(self.portrait_theme_dir.path) if self.portrait_theme_dir else None,
-            'web_portrait': str(self.portrait_web_dir) if self.portrait_web_dir else None,
-            'masks_portrait': str(self.portrait_masks_dir) if self.portrait_masks_dir else None,
+            'data_root': str(self.data_root) if self.data_root else None,
+            'user_root': str(self.user_root) if self.user_root else None,
+            'has_portrait_themes': self.has_portrait_themes,
         }
 
     @classmethod
     def from_dict(cls, width: int, height: int, dirs: dict) -> 'Orientation | None':
-        """Restore from stored config dirs. Returns None if malformed/stale."""
+        """Restore from stored config. Returns None if malformed."""
         if not isinstance(dirs, dict):
             return None
-        # Must have at least the landscape theme dir
-        theme = dirs.get('theme')
-        if not theme:
-            return None
-
-        from ..core.models import ThemeDir
-
+        data_root = dirs.get('data_root')
+        if not data_root:
+            # Legacy format — extract data_root from theme dir path
+            theme = dirs.get('theme')
+            if not theme:
+                return None
+            data_root = str(Path(theme).parent)
         o = cls(width, height)
-        o.landscape_theme_dir = ThemeDir(theme)
-        o.landscape_web_dir = Path(dirs['web']) if dirs.get('web') else None
-        o.landscape_masks_dir = Path(dirs['masks']) if dirs.get('masks') else None
-        o.portrait_theme_dir = ThemeDir(dirs['theme_portrait']) if dirs.get('theme_portrait') else None
-        o.portrait_web_dir = Path(dirs['web_portrait']) if dirs.get('web_portrait') else None
-        o.portrait_masks_dir = Path(dirs['masks_portrait']) if dirs.get('masks_portrait') else None
+        o.data_root = Path(data_root)
+        if dirs.get('user_root'):
+            o.user_root = Path(dirs['user_root'])
+        o.has_portrait_themes = dirs.get('has_portrait_themes', False)
         return o

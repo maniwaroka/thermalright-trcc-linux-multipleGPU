@@ -1,6 +1,7 @@
 """Tests for core/lcd_device.py — LCDDevice application facade."""
 
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,7 +9,6 @@ from conftest import get_pixel, make_test_surface
 
 from trcc.core.instance import InstanceKind
 from trcc.core.lcd_device import LCDDevice
-from trcc.core.models import ThemeDir
 from trcc.core.orientation import Orientation
 from trcc.services.display import DisplayService
 from trcc.services.image import ImageService
@@ -396,15 +396,16 @@ class TestLCDDeviceSettings(unittest.TestCase):
         lcd._display_svc.set_resolution(1280, 480)
 
         with tempfile.TemporaryDirectory() as td:
-            old_mask = Path(td) / 'zt1280480' / 'Mask01'
+            old_mask = Path(td) / 'web' / 'zt1280480' / 'Mask01'
             old_mask.mkdir(parents=True)
             (old_mask / '01.png').write_bytes(b'fake')
             lcd._display_svc.mask_source_dir = old_mask
 
-            new_mask = Path(td) / 'zt4801280' / 'Mask01'
+            new_mask = Path(td) / 'web' / 'zt4801280' / 'Mask01'
             new_mask.mkdir(parents=True)
             (new_mask / '01.png').write_bytes(b'fake')
-            lcd._display_svc.orientation.landscape_masks_dir = Path(td) / 'zt4801280'
+            lcd._display_svc.orientation.data_root = Path(td)
+            lcd._display_svc.orientation.rotation = 90
 
             with patch.object(lcd, 'load_mask_standalone',
                               return_value={'success': True}) as mock_load:
@@ -420,13 +421,14 @@ class TestLCDDeviceSettings(unittest.TestCase):
         lcd._display_svc.set_resolution(1280, 480)
 
         with tempfile.TemporaryDirectory() as td:
-            old_mask = Path(td) / 'zt1280480' / 'Mask01'
+            old_mask = Path(td) / 'web' / 'zt1280480' / 'Mask01'
             old_mask.mkdir(parents=True)
             lcd._display_svc.mask_source_dir = old_mask
 
-            new_masks = Path(td) / 'zt4801280'
-            new_masks.mkdir()
-            lcd._display_svc.orientation.landscape_masks_dir = new_masks
+            new_masks = Path(td) / 'web' / 'zt4801280'
+            new_masks.mkdir(parents=True)
+            lcd._display_svc.orientation.data_root = Path(td)
+            lcd._display_svc.orientation.rotation = 90
 
             lcd._reload_mask_for_rotation(lcd._display_svc)
             self.assertIsNone(lcd._display_svc.overlay.theme_mask)
@@ -440,14 +442,10 @@ class TestLCDDeviceSettings(unittest.TestCase):
         doesn't change and _reload_theme_for_rotation is never called.
         Local themes pixel-rotate via image_rotation instead.
         """
-        from pathlib import Path
         lcd, _ = _make_real_lcd()
         lcd._display_svc.set_resolution(1280, 480)
         lcd.orientation = lcd._display_svc.orientation
-        o = lcd.orientation
-        o.portrait_web_dir = Path('/fake/web/4801280')
-        o.portrait_masks_dir = Path('/fake/web/zt4801280')
-        # portrait_theme_dir stays None
+        # has_portrait_themes stays False (default) — no portrait theme dir
 
         with patch.object(lcd, '_reload_theme_for_rotation') as mock_reload:
             result = lcd.set_rotation(90)
@@ -467,7 +465,10 @@ class TestLCDDeviceSettings(unittest.TestCase):
         o = lcd.orientation
 
         with tempfile.TemporaryDirectory() as td:
-            o.portrait_theme_dir = ThemeDir(Path(td) / 'theme4801280')
+            o.has_portrait_themes = True
+            o.data_root = Path(td)
+            # Create portrait theme dir so theme_dir resolves
+            (Path(td) / 'theme4801280').mkdir()
             lcd._display_svc.current_theme_path = Path('/fake/theme1280480/Theme1')
 
             with patch.object(lcd, '_reload_theme_for_rotation',
@@ -486,17 +487,16 @@ class TestLCDDeviceSettings(unittest.TestCase):
         o = lcd.orientation
 
         with tempfile.TemporaryDirectory() as td:
-            # Set up portrait masks dir with matching mask
-            old_mask = Path(td) / 'zt1280480' / 'Mask01'
+            o.data_root = Path(td)
+            # Set up masks dirs under web/ for both orientations
+            old_mask = Path(td) / 'web' / 'zt1280480' / 'Mask01'
             old_mask.mkdir(parents=True)
             (old_mask / '01.png').write_bytes(b'fake')
-            new_mask = Path(td) / 'zt4801280' / 'Mask01'
+            new_mask = Path(td) / 'web' / 'zt4801280' / 'Mask01'
             new_mask.mkdir(parents=True)
             (new_mask / '01.png').write_bytes(b'fake')
 
             lcd._display_svc.mask_source_dir = old_mask
-            o.portrait_web_dir = Path(td) / 'web' / '4801280'
-            o.portrait_masks_dir = Path(td) / 'zt4801280'
 
             with patch.object(lcd, 'load_mask_standalone',
                               return_value={'success': True}) as mock_load:
@@ -606,8 +606,11 @@ class TestLoadLastTheme(unittest.TestCase):
             }}),
         )
         import tempfile
+        from pathlib import Path
         with tempfile.TemporaryDirectory() as td:
-            lcd.orientation.landscape_theme_dir = ThemeDir(td)
+            # theme_dir derives as data_root / 'theme00' for Orientation(0,0)
+            (Path(td) / 'theme00').mkdir()
+            lcd.orientation.data_root = Path(td)
             result = lcd.load_last_theme()
         self.assertFalse(result['success'])
         self.assertIn("not found", result['error'])
@@ -641,7 +644,10 @@ class TestLoadLastTheme(unittest.TestCase):
         svc = MagicMock(selected=dev)
         disp = MagicMock()
         with tempfile.TemporaryDirectory() as td:
-            theme_dir = Path(td) / "Theme1"
+            # theme_dir derives as data_root / 'theme00' for Orientation(0,0)
+            theme_base = Path(td) / 'theme00'
+            theme_base.mkdir()
+            theme_dir = theme_base / "Theme1"
             theme_dir.mkdir()
             (theme_dir / "00.png").write_bytes(b"fake")
             lcd = _make_lcd(
@@ -650,7 +656,7 @@ class TestLoadLastTheme(unittest.TestCase):
                     'theme_name': 'Theme1', 'theme_type': 'local',
                 }}),
             )
-            lcd.orientation.landscape_theme_dir = ThemeDir(td)
+            lcd.orientation.data_root = Path(td)
             result = lcd.load_last_theme()
             self.assertTrue(result['success'])
 
@@ -670,7 +676,10 @@ class TestLoadLastTheme(unittest.TestCase):
             render_overlay=MagicMock(return_value=rendered_image),
         )
         with tempfile.TemporaryDirectory() as td:
-            theme_dir = Path(td) / "Theme1"
+            # theme_dir derives as data_root / 'theme00' for Orientation(0,0)
+            theme_base = Path(td) / 'theme00'
+            theme_base.mkdir()
+            theme_dir = theme_base / "Theme1"
             theme_dir.mkdir()
             (theme_dir / "00.png").write_bytes(b"fake")
             lcd = _make_lcd(
@@ -679,7 +688,7 @@ class TestLoadLastTheme(unittest.TestCase):
                     'theme_name': 'Theme1', 'theme_type': 'local',
                 }}),
             )
-            lcd.orientation.landscape_theme_dir = ThemeDir(td)
+            lcd.orientation.data_root = Path(td)
             result = lcd.restore_last_theme()
             self.assertTrue(result['success'])
             disp.render_overlay.assert_called_once()
@@ -701,7 +710,10 @@ class TestLoadLastTheme(unittest.TestCase):
             render_overlay=MagicMock(return_value=rendered_image),
         )
         with tempfile.TemporaryDirectory() as td:
-            theme_dir = Path(td) / "Theme1"
+            # theme_dir derives as data_root / 'theme00' for Orientation(0,0)
+            theme_base = Path(td) / 'theme00'
+            theme_base.mkdir()
+            theme_dir = theme_base / "Theme1"
             theme_dir.mkdir()
             (theme_dir / "00.png").write_bytes(b"fake")
             lcd = _make_lcd(
@@ -711,7 +723,7 @@ class TestLoadLastTheme(unittest.TestCase):
                     'overlay': {'enabled': True, 'config': {'elements': []}},
                 }}),
             )
-            lcd.orientation.landscape_theme_dir = ThemeDir(td)
+            lcd.orientation.data_root = Path(td)
             result = lcd.restore_last_theme()
             self.assertTrue(result['success'])
             self.assertTrue(result['overlay_enabled'])
@@ -731,7 +743,10 @@ class TestLoadLastTheme(unittest.TestCase):
             }),
         )
         with tempfile.TemporaryDirectory() as td:
-            theme_dir = Path(td) / "Theme1"
+            # theme_dir derives as data_root / 'theme00' for Orientation(0,0)
+            theme_base = Path(td) / 'theme00'
+            theme_base.mkdir()
+            theme_dir = theme_base / "Theme1"
             theme_dir.mkdir()
             (theme_dir / "00.png").write_bytes(b"fake")
             lcd = _make_lcd(
@@ -740,7 +755,7 @@ class TestLoadLastTheme(unittest.TestCase):
                     'theme_name': 'Theme1', 'theme_type': 'local',
                 }}),
             )
-            lcd.orientation.landscape_theme_dir = ThemeDir(td)
+            lcd.orientation.data_root = Path(td)
             result = lcd.restore_last_theme()
             self.assertTrue(result['success'])
             self.assertTrue(result['is_animated'])
@@ -770,7 +785,7 @@ def lcd_with_mocks():
     theme = MagicMock()
     lcd = _make_lcd(device_svc=svc, display_svc=disp, theme_svc=theme)
     lcd.orientation = Orientation(320, 320)
-    lcd.orientation.landscape_theme_dir = ThemeDir('/tmp/themes')
+    lcd.orientation.data_root = Path('/tmp')
     return lcd
 
 

@@ -19,7 +19,6 @@ from trcc.core.models import (
     _PM_TO_FBL_OVERRIDES,
     DEVICE_BUTTON_IMAGE,
     FBL_PROFILES,
-    ThemeDir,
     fbl_to_resolution,
     get_button_image,
     pm_to_fbl,
@@ -212,8 +211,8 @@ class TestOrientationIsolation:
 
     def test_rotation_switches_active_dir(self):
         o = Orientation(1280, 480)
-        o.landscape_theme_dir = ThemeDir('/theme1280480')
-        o.portrait_theme_dir = ThemeDir('/theme4801280')
+        o.data_root = Path('/')
+        o.has_portrait_themes = True
         o.rotation = 0
         assert 'theme1280480' in str(o.theme_dir.path)
         o.rotation = 90
@@ -221,7 +220,7 @@ class TestOrientationIsolation:
 
     def test_square_never_swaps(self):
         o = Orientation(320, 320)
-        o.landscape_theme_dir = ThemeDir('/theme320320')
+        o.data_root = Path('/')
         o.rotation = 90
         assert 'theme320320' in str(o.theme_dir.path)
 

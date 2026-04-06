@@ -14,7 +14,7 @@ from typing import Any
 
 from .models import DEFAULT_BRIGHTNESS_LEVEL, ThemeInfo, ThemeType
 from .orientation import Orientation
-from .paths import resolve_theme_dir
+from .paths import masks_dir_name, resolve_theme_dir, theme_dir_name, web_dir_name
 from .ports import Device
 
 log = logging.getLogger(__name__)
@@ -399,7 +399,7 @@ class LCDDevice(Device):
         # Theme built-in masks and landscape use canvas_size (native landscape).
         mask_dir = p if p.is_dir() else p.parent
         is_zt = mask_dir.parent.name.startswith('zt')
-        if is_zt and self.orientation.is_portrait:
+        if is_zt and self.orientation._is_rotated():
             w, h = self._display_svc.output_resolution
             self._display_svc.overlay.set_resolution(w, h)
             self.log.info("load_mask_standalone: portrait zt mask → overlay %dx%d", w, h)
@@ -557,16 +557,19 @@ class LCDDevice(Device):
             self._lcd_config.persist(dev, field, value)
 
     def persist_dirs(self) -> None:
-        """Write device's resolved dirs to config — records what's downloaded.
-
-        Local themes are landscape only (no portrait theme dirs exist).
-        Web backgrounds and masks have portrait variants for non-square devices.
-        """
+        """Write device's native-resolution dirs to config for CLI headless use."""
         o = self.orientation
-        td = o.landscape_theme_dir
-        self._persist('theme_dir', str(td.path) if td else None)
-        self._persist('web_dir', str(o.landscape_web_dir) if o.landscape_web_dir else None)
-        self._persist('masks_dir', str(o.landscape_masks_dir) if o.landscape_masks_dir else None)
+        if not isinstance(o, Orientation) or not o.data_root:
+            return
+        w, h = o.native
+        if not w or not h:
+            return
+        td = o.data_root / theme_dir_name(w, h)
+        self._persist('theme_dir', str(td) if td.exists() else None)
+        web = o.data_root / 'web' / web_dir_name(w, h)
+        self._persist('web_dir', str(web) if web.exists() else None)
+        masks = o.data_root / 'web' / masks_dir_name(w, h)
+        self._persist('masks_dir', str(masks) if masks.exists() else None)
 
     def refresh_dirs(self) -> None:
         """Re-probe filesystem dirs and update config. Called after DATA_READY."""
@@ -637,7 +640,8 @@ class LCDDevice(Device):
         # Mask dir switches independently — reload only zt masks (not theme built-in).
         # Theme masks (theme{w}{h}/ThemeName) pixel-rotate with the theme.
         # zt masks (zt{w}{h}/maskName) switch to the portrait dir.
-        if not self.orientation.is_square and saved_mask_dir:
+        w, h = self.orientation.native
+        if w != h and saved_mask_dir:
             is_zt_mask = saved_mask_dir.parent.name.startswith('zt')
             if is_zt_mask:
                 self.log.info("set_rotation: reloading zt mask from saved_mask_dir=%s",
@@ -710,7 +714,7 @@ class LCDDevice(Device):
         if new_mask_dir.exists():
             self.log.info("_reload_mask_for_rotation: %s → %s", old_mask_dir, new_mask_dir)
             # Set overlay resolution for new orientation FIRST
-            if self.orientation.is_portrait:
+            if self.orientation._is_rotated():
                 ow, oh = svc.output_resolution
                 svc.overlay.set_resolution(ow, oh)
                 self.log.info("_reload_mask_for_rotation: portrait → overlay %dx%d", ow, oh)
@@ -819,9 +823,9 @@ class LCDDevice(Device):
             path = td.path / theme_name
             if not path.exists():
                 # Custom themes live in ~/.trcc-user/data/
-                pr = self._display_svc.path_resolver if self._display_svc else None
-                if pr:
-                    user_path = Path(pr.user_content_dir()) / 'data' / td.path.name / theme_name
+                utd = self.orientation.user_theme_dir
+                if utd:
+                    user_path = utd / theme_name
                     if user_path.exists():
                         self.log.info("restore_last_theme: found in user content dir: %s", user_path)
                         path = user_path
@@ -843,8 +847,8 @@ class LCDDevice(Device):
                 mask_id = Path(old_path).name
         if mask_id:
             is_custom = cfg.get("mask_custom", False)
-            svc = self._display_svc
-            base = svc.user_masks_dir() if is_custom and svc else self.orientation.masks_dir
+            o = self.orientation
+            base = o.user_masks_dir if is_custom else o.masks_dir
             mask_dir = Path(base) / mask_id if base else None
             if mask_dir and mask_dir.exists():
                 svc = self._display_svc
@@ -944,13 +948,11 @@ class LCDDevice(Device):
         theme_path (Path), config_path (Path|None for overlay dc).
         """
         w, h = (width, height) if width and height else self.lcd_size
-        svc = self._display_svc
         td = self.orientation.theme_dir
         theme_dir = td.path if td else Path(resolve_theme_dir(w, h))
-        pr = svc.path_resolver if svc else None
-        user_content_dir = Path(pr.user_content_dir()) / 'data' if pr else None
+        utd = self.orientation.user_theme_dir
         themes = self._theme_svc.discover_local_merged(
-            theme_dir, user_content_dir, (w, h))
+            theme_dir, utd, (w, h))
         match = next((t for t in themes if t.name == name), None)
         if not match:
             return {"success": False, "error": f"Theme '{name}' not found"}

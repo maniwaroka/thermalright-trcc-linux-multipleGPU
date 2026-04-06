@@ -16,9 +16,9 @@ from typing import TYPE_CHECKING, Any, Callable, Tuple
 if TYPE_CHECKING:
     from ..core.ports import PathResolver
 
-from ..core.models import SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP, ThemeDir
+from ..core.models import SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP
 from ..core.orientation import Orientation
-from ..core.paths import RESOURCES_DIR, has_themes, resolve_theme_dir
+from ..core.paths import RESOURCES_DIR, has_themes, theme_dir_name
 from .device import DeviceService
 from .image import ImageService
 from .media import MediaService
@@ -136,7 +136,9 @@ class DisplayService:
     @property
     def _image_rotation(self) -> int:
         """Pixel rotation angle. 0 when content is already portrait."""
-        if self._orientation.is_portrait and self.overlay.height > self.overlay.width:
+        o = self._orientation
+        w, h = o.native
+        if w != h and o.rotation in (90, 270) and self.overlay.height > self.overlay.width:
             return 0
         return self._orientation.image_rotation
 
@@ -188,48 +190,30 @@ class DisplayService:
             self._setup_dirs(self._width, self._height)
 
     def _setup_dirs(self, width: int, height: int) -> None:
-        """Populate Orientation with landscape + portrait directory refs.
+        """Set Orientation roots and probe portrait theme availability.
 
-        Landscape dirs are always resolved from native resolution.
-        Portrait dirs are resolved from swapped resolution — set to None
-        when the directory doesn't exist on disk.
+        Dirs are derived from roots + resolution — no stored dir lists.
+        Only non-derivable fact probed: do portrait themes exist on disk?
         """
         o = self._orientation
-        nw, nh = width, height
-        sw, sh = nh, nw  # swapped
+        pr = self._path_resolver
 
-        # ── Landscape (always set) ────────────────────────────────────
-        o.landscape_theme_dir = ThemeDir(resolve_theme_dir(nw, nh))
-        self.log.info("Orientation: landscape_theme_dir=%s (has_themes=%s)",
-                 o.landscape_theme_dir.path,
-                 has_themes(str(o.landscape_theme_dir.path)))
-
-        if self._path_resolver:
-            web = Path(self._path_resolver.web_dir(nw, nh))
-            o.landscape_web_dir = web if web.exists() else None
-            masks = Path(self._path_resolver.web_masks_dir(nw, nh))
-            o.landscape_masks_dir = masks if masks.exists() else None
-            self.log.info("Orientation: landscape_web=%s landscape_masks=%s",
-                     o.landscape_web_dir, o.landscape_masks_dir)
-
-        # ── Portrait (only for non-square, only if dirs exist) ────────
-        if nw != nh:
-            ptd = ThemeDir(resolve_theme_dir(sw, sh))
-            o.portrait_theme_dir = ptd if has_themes(str(ptd.path)) else None
-
-            if self._path_resolver:
-                web = Path(self._path_resolver.web_dir(sw, sh))
-                o.portrait_web_dir = web if web.exists() else None
-                masks = Path(self._path_resolver.web_masks_dir(sw, sh))
-                o.portrait_masks_dir = masks if masks.exists() else None
-
-            self.log.info("Orientation: portrait_theme=%s portrait_web=%s portrait_masks=%s",
-                     o.portrait_theme_dir.path if o.portrait_theme_dir else None,
-                     o.portrait_web_dir, o.portrait_masks_dir)
+        if pr:
+            o.data_root = Path(pr.data_dir())
+            o.user_root = Path(pr.user_content_dir()) / 'data'
         else:
-            o.portrait_theme_dir = None
-            o.portrait_web_dir = None
-            o.portrait_masks_dir = None
+            from ..core.paths import DATA_DIR
+            o.data_root = Path(DATA_DIR)
+            o.user_root = None
+
+        # Probe portrait themes — the only non-derivable fact
+        sw, sh = height, width
+        o.has_portrait_themes = (
+            width != height
+            and has_themes(str(o.data_root / theme_dir_name(sw, sh)))
+        )
+        self.log.info("Orientation: data_root=%s user_root=%s has_portrait_themes=%s",
+                 o.data_root, o.user_root, o.has_portrait_themes)
 
     def cleanup(self) -> None:
         """Clean up working directory on exit."""
@@ -274,16 +258,16 @@ class DisplayService:
         """Set display rotation. Returns rendered image or None.
 
         Two behaviors based on Orientation:
-        - swaps_dirs=True: canvas re-inits at portrait dims, dirs swap
-        - swaps_dirs=False: canvas stays, composited output gets pixel-rotated
+        - has_portrait_themes=True: canvas re-inits at portrait dims, dirs swap
+        - has_portrait_themes=False: canvas stays, composited output gets pixel-rotated
         """
         old_canvas = self.canvas_size
         self.rotation = degrees % 360
         new_canvas = self.canvas_size
 
-        self.log.info("set_rotation: %d° canvas %s→%s swaps_dirs=%s image_rotation=%d",
+        self.log.info("set_rotation: %d° canvas %s→%s portrait_themes=%s image_rotation=%d",
                  degrees, old_canvas, new_canvas,
-                 self._orientation.swaps_dirs, self._image_rotation)
+                 self._orientation.has_portrait_themes, self._image_rotation)
 
         if old_canvas != new_canvas:
             cw, ch = new_canvas

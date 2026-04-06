@@ -281,7 +281,6 @@ class TestRotationWebOnlyNoCanvasSwap:
         # Portrait web dir exists but no portrait theme dir
         web_dir = tmp_path / 'data' / 'web' / '4801280'
         web_dir.mkdir(parents=True)
-        svc.orientation.portrait_web_dir = web_dir
 
         bg = renderer.create_surface(1280, 480, (100, 50, 200))
         svc._clean_background = bg
@@ -310,7 +309,6 @@ class TestRotationWebOnlyNoCanvasSwap:
         # Portrait mask dir exists but no portrait theme dir
         masks_dir = tmp_path / 'data' / 'web' / 'zt4801280'
         masks_dir.mkdir(parents=True)
-        svc.orientation.portrait_masks_dir = masks_dir
 
         bg = renderer.create_surface(1280, 480, (100, 50, 200))
         svc._clean_background = bg
@@ -1000,21 +998,24 @@ class TestDisplayServiceContracts:
 
     def test_local_dir_property(self, display_svc: DisplayService, tmp_path: Path) -> None:
         """local_dir delegates to orientation.theme_dir (must exist on disk)."""
-        from trcc.core.models import ThemeDir
-        d = tmp_path / 'themes'
-        d.mkdir()
-        display_svc._orientation.landscape_theme_dir = ThemeDir(d)
-        assert display_svc.local_dir == d
+        # data_root set by set_resolution via mock_path_resolver → tmp_path/data
+        theme_path = tmp_path / 'data' / 'theme320320'
+        theme_path.mkdir(parents=True, exist_ok=True)
+        assert display_svc.local_dir == theme_path
 
-    def test_web_dir_property(self, display_svc: DisplayService) -> None:
+    def test_web_dir_property(self, display_svc: DisplayService, tmp_path: Path) -> None:
         """web_dir delegates to orientation."""
-        display_svc._orientation.landscape_web_dir = Path('/some/web')
-        assert display_svc.web_dir == Path('/some/web')
+        # data_root set by set_resolution via mock_path_resolver → tmp_path/data
+        web_path = tmp_path / 'data' / 'web' / '320320'
+        web_path.mkdir(parents=True, exist_ok=True)
+        assert display_svc.web_dir == web_path
 
-    def test_masks_dir_property(self, display_svc: DisplayService) -> None:
+    def test_masks_dir_property(self, display_svc: DisplayService, tmp_path: Path) -> None:
         """masks_dir delegates to orientation."""
-        display_svc._orientation.landscape_masks_dir = Path('/some/masks')
-        assert display_svc.masks_dir == Path('/some/masks')
+        # data_root set by set_resolution via mock_path_resolver → tmp_path/data
+        masks_path = tmp_path / 'data' / 'web' / 'zt320320'
+        masks_path.mkdir(parents=True, exist_ok=True)
+        assert display_svc.masks_dir == masks_path
 
 
 # ═════════════════════════════════════════════════════════════════════════

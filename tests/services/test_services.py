@@ -888,13 +888,10 @@ class TestSetupDirsFallback(unittest.TestCase):
             (native / 'Theme1').mkdir()
             (native / 'Theme1' / '00.png').write_bytes(b'fake')
 
-            def _resolve(w, h):
-                return str(Path(td) / f'theme{w}{h}')
-
-            with patch('trcc.services.display.resolve_theme_dir',
-                       side_effect=_resolve):
-                svc.set_resolution(800, 480)
-                svc.rotation = 90
-                svc._setup_dirs(800, 480)
-        # Falls back to native since theme480800 doesn't exist
+            o = svc.orientation
+            o.data_root = Path(td)
+            o.has_portrait_themes = False  # no portrait theme dir
+            svc.set_resolution(800, 480)
+            o.rotation = 90
+        # Falls back to native since has_portrait_themes is False
         self.assertIn('800480', str(svc.theme_dir.path))
