@@ -1,5 +1,7 @@
 # Intro
 > "I’ll do it while you talk" - Józef Piłsudski, was the founding father of modern Poland
+
+> "Free software is a matter of liberty, not price. To understand the concept, you should think of free as in free speech, not as in free beer." - [Richard Stallman](https://stallman.org/), founder of the [Free Software Foundation](https://www.fsf.org/)
 # TRCC Linux
 > **Looking for testers!** We need **Linux**, **Windows**, **macOS**, and **BSD** testers. If you have a Thermalright LCD or LED device on any platform, grab the latest [release](https://github.com/Lexonight1/thermalright-trcc-linux/releases/latest) and [let us know how it goes](https://github.com/Lexonight1/thermalright-trcc-linux/issues) — run `trcc report` and paste the output in an issue. Every test report helps, even if nothing works yet!
 
