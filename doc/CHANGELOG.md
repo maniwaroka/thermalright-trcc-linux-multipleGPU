@@ -1,5 +1,22 @@
 # Changelog
 
+## v9.3.13
+
+### Fixes
+- **LED metrics not updating in GUI**: LED frame events were silently dropped — `_show_view('led')` cleared `_active_path`, so `FRAME_RENDERED` and `METRICS_UPDATED` never reached the LED handler. LED segment displays (CPU/GPU temp) and color preview now update correctly.
+- **Close/help buttons disappearing**: Buttons were only visible in Control Center view. Now always visible on the golden bar regardless of active device or view.
+- **LED button images showing as text**: Unknown LED devices fell back to text labels instead of the generic device image. Now uses `A1KVMALEDC6` (C# default) for unrecognized LED PM bytes, `A1CZTV` for unrecognized LCD PM bytes.
+- **LCD button images not resolved for SCSI devices**: Handshake was skipped when resolution was already known, so PM/SUB were never set and button images stayed generic. Handshake now always runs to resolve device identity.
+- **Missing `pm_byte` after HID handshake**: `_on_handshake_done` set `sub_byte` and `fbl_code` but not `pm_byte` — button image resolution used stale data.
+
+### Refactors
+- **Unified device enrichment**: `DeviceService._enrich_device()` resolves button images for all device types at detection time — LED via PmRegistry, LCD via DEVICE_BUTTON_IMAGE. Deleted duplicate GUI resolution block.
+- **Single tick loop**: `TrccApp.start_metrics_loop()` owns the tick (50ms animation) and metrics poll (`refresh_interval` setting). Deleted API's `start_led_loop`/`stop_led_loop` and CLI's inline while loop. All UIs observe via `AppObserver`.
+- **Handler `deactivate()` interface**: Renamed `stop_timers()` to `deactivate()` on `BaseHandler`. Collapsed `isinstance` dispatch in `_activate_device` to `prev.deactivate()`.
+- **IPC `DeviceProxy` base class**: Extracted shared proxy logic. `DisplayProxy`/`LEDProxy` are thin subclasses. Unified factory via `_create_proxy()`.
+- **Deleted `tick_with_result()`**: LED tick returns colors dict directly from `_tick_led()`. One tick, one compute — GUI observes via `FRAME_RENDERED` like LCD does.
+- **`LCD_DEFAULT_BUTTON` / `LED_DEFAULT_BUTTON` constants**: Single source of truth for default sidebar button images, matching C# fallback behavior.
+
 ## v9.3.12
 
 ### Fixes
