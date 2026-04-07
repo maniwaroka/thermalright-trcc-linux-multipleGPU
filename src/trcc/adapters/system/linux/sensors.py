@@ -605,6 +605,76 @@ class SensorEnumerator(SensorEnumeratorABC):
             pass
 
     # =========================================================================
+    # GPU ranking — pick best by VRAM
+    # =========================================================================
+
+    def _best_gpu(self) -> dict:
+        """Find the GPU with the most VRAM across all vendors.
+
+        Returns {'vendor': str, 'nvidia_idx': int|None, 'drm_card': str,
+                 'hwmon_driver': str, 'vram': int}.
+        Empty dict if no GPU found.
+        """
+        best: dict = {}
+        best_vram = 0
+
+        # NVIDIA — query VRAM via pynvml handles
+        for idx, handle in self._nvidia_handles.items():
+            try:
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)  # type: ignore[union-attr]
+                vram = int(mem.total)
+                log.debug("nvidia:%d VRAM=%d MB", idx, vram // (1024 * 1024))
+                if vram > best_vram:
+                    best_vram = vram
+                    best = {'vendor': 'nvidia', 'nvidia_idx': idx,
+                            'drm_card': '', 'hwmon_driver': '', 'vram': vram}
+            except Exception:
+                continue
+
+        # AMD — query VRAM via sysfs
+        drm_base = Path('/sys/class/drm')
+        for card_dir in sorted(drm_base.glob('card[0-9]*')):
+            if '-' in card_dir.name:
+                continue
+            try:
+                vendor = (card_dir / 'device' / 'vendor').read_text().strip().removeprefix('0x')
+                if vendor != _GPU_VENDOR_AMD:
+                    continue
+                vram_path = card_dir / 'device' / 'mem_info_vram_total'
+                if not vram_path.exists():
+                    continue
+                vram = int(vram_path.read_text().strip())
+                log.debug("%s VRAM=%d MB", card_dir.name, vram // (1024 * 1024))
+                if vram > best_vram:
+                    best_vram = vram
+                    hwmon = self._drm_card_to_hwmon_driver(card_dir.name)
+                    best = {'vendor': 'amd', 'nvidia_idx': None,
+                            'drm_card': card_dir.name,
+                            'hwmon_driver': hwmon or 'amdgpu', 'vram': vram}
+            except (OSError, ValueError):
+                continue
+
+        if best:
+            log.info("Best GPU: %s (VRAM=%d MB)", best.get('vendor'), best_vram // (1024 * 1024))
+        return best
+
+    def _drm_card_to_hwmon_driver(self, card_name: str) -> str:
+        """Resolve DRM card name → hwmon driver key for sensor routing."""
+        drm_base = Path('/sys/class/drm')
+        hwmon_base = Path('/sys/class/hwmon')
+        try:
+            dev_path = str((drm_base / card_name / 'device').resolve())
+        except OSError:
+            return ''
+        for hwmon_dir in sorted(hwmon_base.iterdir()):
+            try:
+                if str((hwmon_dir / 'device').resolve()) == dev_path:
+                    return SysUtils.read_sysfs(str(hwmon_dir / 'name')) or ''
+            except OSError:
+                continue
+        return ''
+
+    # =========================================================================
     # Default sensor mapping (legacy compat)
     # =========================================================================
 
@@ -647,30 +717,31 @@ class SensorEnumerator(SensorEnumeratorABC):
         mapping['cpu_freq'] = 'psutil:cpu_freq'
         mapping['cpu_power'] = _find_first(source='rapl') or ''
 
-        # GPU — prefer NVIDIA (pynvml) > AMD (amdgpu hwmon + drm) > Intel (i915 hwmon + drm)
-        nvidia_temp = _find_first(source='nvidia', name_contains='Temperature')
-        if nvidia_temp:
-            mapping['gpu_temp'] = nvidia_temp
-            mapping['gpu_usage'] = _find_first(source='nvidia', name_contains='GPU Utilization') or ''
-            mapping['gpu_clock'] = _find_first(source='nvidia', name_contains='Graphics Clock') or ''
-            mapping['gpu_power'] = _find_first(source='nvidia', name_contains='Power Draw') or ''
+        # GPU — pick best GPU by VRAM, fall back to vendor priority.
+        gpu = self._best_gpu()
+        if gpu.get('vendor') == 'nvidia':
+            prefix = f"nvidia:{gpu['nvidia_idx']}"
+            mapping['gpu_temp'] = f"{prefix}:temp"
+            mapping['gpu_usage'] = f"{prefix}:gpu_util"
+            mapping['gpu_clock'] = f"{prefix}:clock"
+            mapping['gpu_power'] = f"{prefix}:power"
+        elif gpu.get('vendor') == 'amd':
+            drv = gpu['hwmon_driver']
+            card = gpu['drm_card']
+            mapping['gpu_temp'] = _find_first(source='hwmon', name_contains=drv, category='temperature') or ''
+            mapping['gpu_usage'] = _find_first(source='drm', name_contains=card, category='usage') or ''
+            mapping['gpu_clock'] = _find_first(source='hwmon', name_contains=drv, category='clock') or ''
+            mapping['gpu_power'] = _find_first(source='hwmon', name_contains=drv, category='power') or ''
+        elif _GPU_VENDOR_INTEL in _detect_gpu_vendors():
+            mapping['gpu_temp'] = _find_first(source='hwmon', name_contains='i915', category='temperature') or ''
+            mapping['gpu_usage'] = ''
+            mapping['gpu_clock'] = _find_first(source='drm', category='clock') or ''
+            mapping['gpu_power'] = _find_first(source='hwmon', name_contains='i915', category='power') or ''
         else:
-            gpu_vendors = _detect_gpu_vendors()
-            if _GPU_VENDOR_AMD in gpu_vendors:
-                mapping['gpu_temp'] = _find_first(source='hwmon', name_contains='amdgpu', category='temperature') or ''
-                mapping['gpu_usage'] = _find_first(source='drm', category='usage') or ''
-                mapping['gpu_clock'] = _find_first(source='hwmon', name_contains='amdgpu', category='clock') or ''
-                mapping['gpu_power'] = _find_first(source='hwmon', name_contains='amdgpu', category='power') or ''
-            elif _GPU_VENDOR_INTEL in gpu_vendors:
-                mapping['gpu_temp'] = _find_first(source='hwmon', name_contains='i915', category='temperature') or ''
-                mapping['gpu_usage'] = ''  # Intel iGPU doesn't expose utilization via sysfs
-                mapping['gpu_clock'] = _find_first(source='drm', category='clock') or ''
-                mapping['gpu_power'] = _find_first(source='hwmon', name_contains='i915', category='power') or ''
-            else:
-                mapping['gpu_temp'] = ''
-                mapping['gpu_usage'] = ''
-                mapping['gpu_clock'] = ''
-                mapping['gpu_power'] = ''
+            mapping['gpu_temp'] = ''
+            mapping['gpu_usage'] = ''
+            mapping['gpu_clock'] = ''
+            mapping['gpu_power'] = ''
 
         # Memory
         mapping['mem_temp'] = _find_first(source='hwmon', name_contains='spd') or ''

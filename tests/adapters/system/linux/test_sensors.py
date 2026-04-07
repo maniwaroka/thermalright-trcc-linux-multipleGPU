@@ -928,14 +928,25 @@ class TestDiscoverRaplEdge(unittest.TestCase):
 
 class TestMapDefaultsGpuAndTemp(unittest.TestCase):
 
-    def _run(self, sensors):
+    def _run(self, sensors, nvidia_handles=None):
         SensorEnumerator._default_map = None
         enum = SensorEnumerator()
         enum._sensors = sensors
+        if nvidia_handles is not None:
+            enum._nvidia_handles = nvidia_handles
         from trcc.adapters.system.linux.sensors import map_defaults
         result = map_defaults(enum)
         SensorEnumerator._default_map = None
         return result
+
+    @staticmethod
+    def _mock_nvidia_handle(vram_bytes: int = 8 * 1024**3):
+        from unittest.mock import MagicMock
+        handle = MagicMock()
+        mem = MagicMock()
+        mem.total = vram_bytes
+        handle._vram = mem
+        return handle
 
     def test_nvidia_gpu_mapping(self):
         sensors = [
@@ -945,7 +956,10 @@ class TestMapDefaultsGpuAndTemp(unittest.TestCase):
             SensorInfo('nvidia:0:power', 'RTX / Power Draw', 'power', 'W', 'nvidia'),
             SensorInfo('psutil:cpu_percent', 'CPU Usage', 'usage', '%', 'psutil'),
         ]
-        m = self._run(sensors)
+        handle = self._mock_nvidia_handle()
+        with patch('trcc.adapters.system.linux.sensors.pynvml') as mock_nv:
+            mock_nv.nvmlDeviceGetMemoryInfo.return_value = handle._vram
+            m = self._run(sensors, nvidia_handles={0: handle})
         self.assertEqual(m['gpu_temp'], 'nvidia:0:temp')
         self.assertEqual(m['gpu_usage'], 'nvidia:0:gpu_util')
         self.assertEqual(m['gpu_clock'], 'nvidia:0:clock')
