@@ -221,7 +221,7 @@ class IPCServer:
                 return _sanitize(getattr(self._led, method)(*args, **kwargs))
 
     def _display_status(self) -> dict:
-        """Return flat LCD device status."""
+        """Return flat LCD device status with handshake identity."""
         if not self._display or not self._display.connected:
             return {"success": True, "connected": False}
         dev = self._display.device_info
@@ -229,15 +229,33 @@ class IPCServer:
             "success": True,
             "connected": True,
             "path": dev.path,
+            "vid": dev.vid,
+            "pid": dev.pid,
             "resolution": list(dev.resolution),
             "protocol": dev.protocol,
+            "fbl_code": dev.fbl_code,
+            "pm_byte": dev.pm_byte,
+            "sub_byte": dev.sub_byte,
+            "model": dev.model,
+            "button_image": dev.button_image,
         }
 
     def _led_status(self) -> dict:
-        """Return flat LED device status."""
+        """Return flat LED device status with handshake identity."""
         if not self._led or not self._led.connected:
             return {"success": True, "connected": False}
-        return {"success": True, "connected": True}
+        dev = self._led.device_info
+        return {
+            "success": True,
+            "connected": True,
+            "path": getattr(dev, 'path', ''),
+            "vid": getattr(dev, 'vid', 0),
+            "pid": getattr(dev, 'pid', 0),
+            "pm_byte": getattr(dev, 'pm_byte', 0),
+            "sub_byte": getattr(dev, 'sub_byte', 0),
+            "model": getattr(dev, 'model', ''),
+            "led_style_id": getattr(dev, 'led_style_id', None),
+        }
 
     def _pause_display(self) -> dict:
         """Pause LCD frame sending (for exclusive device access)."""
