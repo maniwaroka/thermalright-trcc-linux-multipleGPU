@@ -374,4 +374,4 @@ If this project saved you from keeping a Windows partition around, consider **[b
 
 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.en.html) — free as in freedom. This project is and always will be free software. You can use it, study it, modify it, and share it. That's the deal.
 
-Built on the shoulders of the [GNU Project](https://www.gnu.org/gnu/thegnuproject.en.html) and the [Free Software Foundation](https://www.fsf.org/). If you care about software freedom, [read why it matters](https://www.gnu.org/philosophy/free-sw.en.html).
+Built on the shoulders of [Richard Stallman](https://stallman.org/), the [GNU Project](https://www.gnu.org/gnu/thegnuproject.en.html), and the [Free Software Foundation](https://www.fsf.org/). If you care about software freedom, [read why it matters](https://www.gnu.org/philosophy/free-sw.en.html).
