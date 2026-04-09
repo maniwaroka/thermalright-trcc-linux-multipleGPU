@@ -57,6 +57,37 @@ def get_metrics_by_category(category: str) -> dict:
     return {k: v for k, v in all_data.items() if k.startswith(prefix)}
 
 
+@router.get("/gpu")
+def get_gpu_list() -> dict:
+    """List available GPUs and current selection."""
+    svc = _get_system_svc()
+    gpu_list = svc.enumerator.get_gpu_list()
+    from trcc.conf import settings
+    return {
+        "gpus": [{"key": k, "name": n} for k, n in gpu_list],
+        "selected": settings.gpu_device,
+    }
+
+
+@router.put("/gpu")
+def set_gpu(gpu_key: str) -> dict:
+    """Set the active GPU for metrics."""
+    from fastapi import HTTPException
+
+    svc = _get_system_svc()
+    valid_keys = [k for k, _ in svc.enumerator.get_gpu_list()]
+    if gpu_key not in valid_keys:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown GPU '{gpu_key}'. Available: {', '.join(valid_keys)}",
+        )
+    from trcc.conf import settings
+    settings.set_gpu_device(gpu_key)
+    svc.enumerator.set_preferred_gpu(gpu_key)
+    log.info("API: GPU set to %s", gpu_key)
+    return {"selected": gpu_key}
+
+
 @router.get("/report")
 def get_report() -> dict:
     """Generate diagnostic report for bug reports."""

@@ -631,6 +631,49 @@ def _cmd_led_temp_unit(
     return _led.set_temp_unit(TrccApp.get(), unit)
 
 
+@app.command("gpu-list", rich_help_panel="System")
+@_cli_handler
+def _cmd_gpu_list() -> int:
+    """List available GPUs."""
+    from trcc.core.builder import ControllerBuilder
+    builder = ControllerBuilder.for_current_os()
+    svc = builder.build_system()
+    svc.discover()
+    gpu_list = svc.enumerator.get_gpu_list()
+    if not gpu_list:
+        print("No GPUs detected.")
+        return 0
+    from trcc.conf import settings
+    current = settings.gpu_device
+    for gpu_key, name in gpu_list:
+        marker = " *" if gpu_key == current else ""
+        print(f"  {gpu_key}: {name}{marker}")
+    return 0
+
+
+@app.command("gpu-set", rich_help_panel="System")
+@_cli_handler
+def _cmd_gpu_set(
+    gpu_key: Annotated[str, typer.Argument(
+        help="GPU key from gpu-list (e.g., nvidia:0, amd:card0)",
+    )],
+) -> int:
+    """Set the active GPU for metrics."""
+    from trcc.conf import settings
+    from trcc.core.builder import ControllerBuilder
+    builder = ControllerBuilder.for_current_os()
+    svc = builder.build_system()
+    svc.discover()
+    valid_keys = [k for k, _ in svc.enumerator.get_gpu_list()]
+    if gpu_key not in valid_keys:
+        print(f"Unknown GPU '{gpu_key}'. Available: {', '.join(valid_keys)}")
+        return 1
+    settings.set_gpu_device(gpu_key)
+    svc.enumerator.set_preferred_gpu(gpu_key)
+    print(f"GPU set to: {gpu_key}")
+    return 0
+
+
 @app.command("lang", rich_help_panel="System")
 def _cmd_lang() -> int:
     """Show current language."""
