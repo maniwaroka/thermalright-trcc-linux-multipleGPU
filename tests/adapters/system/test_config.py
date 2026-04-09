@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from trcc.adapters.system.config import (
     CATEGORY_COLORS,
@@ -153,6 +153,12 @@ class TestSaveLoad(unittest.TestCase):
 class TestAutoMap(unittest.TestCase):
     """auto_map fills empty sensor_ids from sensor discovery."""
 
+    def _mock_enumerator(self, defaults):
+        """Create a mock enumerator that returns the given defaults."""
+        enum = MagicMock()
+        enum.map_defaults.return_value = defaults
+        return enum
+
     def test_fills_empty_ids(self):
         cfg = SysInfoConfig()
         cfg.panels = [
@@ -163,14 +169,13 @@ class TestAutoMap(unittest.TestCase):
                 SensorBinding('Power', '', 'W'),
             ]),
         ]
-        mock_defaults = {
+        enum = self._mock_enumerator({
             'cpu_temp': 'hwmon:coretemp:temp1',
             'cpu_percent': 'psutil:cpu_percent',
             'cpu_freq': 'psutil:cpu_freq',
             'cpu_power': 'hwmon:power:power1',
-        }
-        with patch('trcc.adapters.system.linux.sensors.map_defaults', return_value=mock_defaults):
-            cfg.auto_map(enumerator=None)
+        })
+        cfg.auto_map(enumerator=enum)
 
         self.assertEqual(cfg.panels[0].sensors[0].sensor_id, 'hwmon:coretemp:temp1')
         self.assertEqual(cfg.panels[0].sensors[1].sensor_id, 'psutil:cpu_percent')
@@ -185,9 +190,8 @@ class TestAutoMap(unittest.TestCase):
                 SensorBinding('Power', '', 'W'),
             ]),
         ]
-        mock_defaults = {'cpu_temp': 'hwmon:coretemp:temp1', 'cpu_percent': 'auto'}
-        with patch('trcc.adapters.system.linux.sensors.map_defaults', return_value=mock_defaults):
-            cfg.auto_map(enumerator=None)
+        enum = self._mock_enumerator({'cpu_temp': 'hwmon:coretemp:temp1', 'cpu_percent': 'auto'})
+        cfg.auto_map(enumerator=enum)
 
         # First sensor preserved (already had an ID)
         self.assertEqual(cfg.panels[0].sensors[0].sensor_id, 'custom:my_sensor')

@@ -48,8 +48,11 @@ def is_root() -> bool:
 def detect_install_method() -> str:
     """Detect how trcc-linux was installed.
 
-    Returns 'pipx', 'pip', 'pacman', 'dnf', or 'apt'.
+    Returns 'pyinstaller', 'pipx', 'pip', 'pacman', 'dnf', or 'apt'.
     """
+    if getattr(sys, 'frozen', False):
+        log.debug("install method: pyinstaller (frozen)")
+        return 'pyinstaller'
     if 'pipx' in sys.prefix:
         log.debug("install method: pipx")
         return 'pipx'

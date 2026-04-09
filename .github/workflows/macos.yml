@@ -31,7 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install ".[nvidia]"
+          pip install ".[nvidia,hid]"
 
       - name: Extract version
         id: version
@@ -60,6 +60,7 @@ jobs:
             --windowed \
             --icon src/trcc/assets/icons/app.icns \
             --add-data "src/trcc/assets:trcc/assets" \
+            --add-data "src/trcc/gui/assets:trcc/gui/assets" \
             --hidden-import PySide6.QtSvg \
             --hidden-import pynvml \
             --collect-submodules trcc \

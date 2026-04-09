@@ -221,16 +221,15 @@ class DataManager:
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
         tmp_path = dest_path + '.tmp'
 
-        # PyInstaller sets SSL_CERT_FILE to a bundled cacert.pem that may
-        # not exist at runtime, causing certificate verification failures.
-        # Temporarily clear it so ssl.create_default_context() loads certs
-        # from the OS store (Windows) or system CA bundle instead.
-        stashed = os.environ.pop('SSL_CERT_FILE', None)
+        # macOS Python doesn't access the system Keychain for SSL certs,
+        # and PyInstaller bundles lack system CA paths. Use certifi's
+        # Mozilla CA bundle — works on all platforms and bundle types.
+        ctx = ssl.create_default_context()
         try:
-            ctx = ssl.create_default_context()
-        finally:
-            if stashed is not None:
-                os.environ['SSL_CERT_FILE'] = stashed
+            import certifi
+            ctx.load_verify_locations(certifi.where())
+        except ImportError:
+            pass
 
         try:
             log.info("Downloading %s ...", os.path.basename(dest_path))
