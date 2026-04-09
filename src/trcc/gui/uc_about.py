@@ -27,7 +27,7 @@ from urllib.request import urlopen
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QIntValidator
-from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QToolTip
+from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QToolTip
 
 from .assets import Assets
 from .base import BasePanel, create_image_button, set_background_pixmap
@@ -147,19 +147,23 @@ class UCAbout(BasePanel):
     startup_changed = Signal(bool)       # auto-start enabled
     hdd_toggle_changed = Signal(bool)    # HDD info enabled
     refresh_changed = Signal(int)        # refresh interval (seconds)
+    gpu_changed = Signal(str)            # gpu_key for metrics
     _update_available = Signal(str, dict) # (version, {mgr: download_url})
     _upgrade_finished = Signal(bool)     # True=success, False=failure
 
-    def __init__(self, parent=None, autostart_manager: AutostartManager | None = None):
+    def __init__(self, parent=None, autostart_manager: AutostartManager | None = None,
+                 gpu_list: list[tuple[str, str]] | None = None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
 
         self._autostart_manager = autostart_manager
+        self._gpu_list = gpu_list or []
         self._lang_buttons: dict[str, QPushButton] = {}  # Legacy — populated by combo in trcc_app
         self._temp_mode = 'C'
         self._autostart = autostart_manager.is_enabled() if autostart_manager else False
         from ..conf import settings
         self._read_hdd = settings.hdd_enabled
         self._refresh_interval = settings.refresh_interval
+        self._gpu_device = settings.gpu_device
 
         # Load checkbox pixmaps
         sz = Layout.ABOUT_CHECKBOX_SIZE
@@ -275,6 +279,9 @@ class UCAbout(BasePanel):
         self._update_timer.start(60 * 60 * 1000)  # 1 hour
         Thread(target=self._check_for_update, daemon=True).start()
 
+        # === GPU selection (below language row) ===
+        self._setup_gpu_widget()
+
     def _show_update_tooltip(self):
         """Show tooltip to the right of the update button, vertically centered."""
         tip_pos = self.mapToGlobal(
@@ -371,6 +378,45 @@ class UCAbout(BasePanel):
     @property
     def refresh_interval(self):
         return self._refresh_interval
+
+    # --- GPU selection ---
+
+    def _setup_gpu_widget(self):
+        """Create GPU label or dropdown depending on GPU count."""
+        x, y, w, h = Layout.ABOUT_GPU_COMBO
+        if len(self._gpu_list) <= 1:
+            # Single GPU or none — plain text label
+            name = self._gpu_list[0][1] if self._gpu_list else 'No GPU detected'
+            self._gpu_label = QLabel(name, self)
+            self._gpu_label.setGeometry(x, y, w, h)
+            self._gpu_label.setStyleSheet(
+                "color: white; font-size: 10pt; background: transparent;"
+                " padding-left: 5px;")
+        else:
+            # Multiple GPUs — dropdown
+            self._gpu_combo = QComboBox(self)
+            self._gpu_combo.setGeometry(x, y, w, h)
+            for gpu_key, display_name in self._gpu_list:
+                self._gpu_combo.addItem(display_name, gpu_key)
+            # Pre-select saved GPU
+            if self._gpu_device:
+                idx = self._gpu_combo.findData(self._gpu_device)
+                if idx >= 0:
+                    self._gpu_combo.setCurrentIndex(idx)
+            self._gpu_combo.setStyleSheet(
+                "QComboBox { background: #2A2A2A; color: white; border: 1px solid #555;"
+                " font-size: 10pt; padding-left: 5px; }"
+                "QComboBox::drop-down { border: none; width: 20px; }"
+                "QComboBox QAbstractItemView { background: #2A2A2A; color: white;"
+                " selection-background-color: #3A3A3A; }")
+            self._gpu_combo.currentIndexChanged.connect(self._on_gpu_selected)
+
+    def _on_gpu_selected(self, index: int):
+        """Handle GPU dropdown selection."""
+        gpu_key = self._gpu_combo.itemData(index)
+        if gpu_key:
+            log.info("GPU selected: %s", gpu_key)
+            self.gpu_changed.emit(gpu_key)
 
     # --- Running Mode ---
 

@@ -313,6 +313,7 @@ class Layout:
         (567, 443, 'zh_TW'),   # 中文繁體
         (657, 443, 'ko'),      # 한국어
     ]
+    ABOUT_GPU_COMBO = (297, 456, 250, 28)
     ABOUT_CHECKBOX_SIZE = 14
 
     # Re-export from models — single source of truth for locale→suffix mapping

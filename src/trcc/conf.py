@@ -339,6 +339,18 @@ class Settings:
         config['refresh_interval'] = interval
         save_config(config)
 
+    @staticmethod
+    def _get_saved_gpu_device() -> str:
+        """Get saved GPU selection key. Empty string = auto (best VRAM)."""
+        return load_config().get('gpu_device', '')
+
+    @staticmethod
+    def _save_gpu_device(gpu_key: str) -> None:
+        """Persist GPU selection to config."""
+        config = load_config()
+        config['gpu_device'] = gpu_key
+        save_config(config)
+
     # --- Public static methods (device config, format prefs, etc.) ---
 
     @staticmethod
@@ -499,6 +511,7 @@ class Settings:
         self.temp_unit: int = Settings._get_saved_temp_unit()
         self.hdd_enabled: bool = Settings._get_saved_hdd_enabled()
         self.refresh_interval: int = Settings._get_saved_refresh_interval()
+        self.gpu_device: str = Settings._get_saved_gpu_device()
         self._lang: str = self._get_saved_lang()
 
         # Static paths
@@ -553,6 +566,11 @@ class Settings:
         """Set metrics refresh interval in seconds and persist."""
         self.refresh_interval = interval
         Settings._save_refresh_interval(interval)
+
+    def set_gpu_device(self, gpu_key: str) -> None:
+        """Set selected GPU and persist."""
+        self.gpu_device = gpu_key
+        Settings._save_gpu_device(gpu_key)
 
     @property
     def lang(self) -> str:

@@ -322,6 +322,34 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
             pass
         return None
 
+    def get_gpu_list(self) -> list[tuple[str, str]]:
+        """Return discovered GPUs on macOS."""
+        gpus: list[tuple[str, str]] = []
+        # Apple Silicon: single integrated GPU
+        if IS_APPLE_SILICON:
+            gpus.append(('iokit:gpu', 'Apple Silicon GPU'))
+        else:
+            # Intel Mac: try system_profiler for GPU name
+            try:
+                import json as _json
+                result = subprocess.run(
+                    ['system_profiler', 'SPDisplaysDataType', '-json'],
+                    capture_output=True, text=True, timeout=5,
+                )
+                data = _json.loads(result.stdout)
+                for item in data.get('SPDisplaysDataType', []):
+                    name = item.get('sppci_model', 'Unknown GPU')
+                    vram = item.get('sppci_vram', '')
+                    label = f'{name} ({vram})' if vram else name
+                    key = f'smc:{name.lower().replace(" ", "_")[:20]}'
+                    gpus.append((key, label))
+            except Exception:
+                gpus.append(('smc:gpu', 'Intel Mac GPU'))
+        # NVIDIA eGPU (rare but possible)
+        nvidia_gpus = super().get_gpu_list()
+        gpus.extend(nvidia_gpus)
+        return gpus
+
     # ── macOS-specific mapping ────────────────────────────────────────
 
     def _build_mapping(self) -> dict[str, str]:

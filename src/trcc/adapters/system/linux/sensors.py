@@ -493,8 +493,79 @@ class SensorEnumerator(SensorEnumeratorBase):
 
         return mapping
 
+    def get_gpu_list(self) -> list[tuple[str, str]]:
+        """Return all discovered GPUs (NVIDIA + AMD + Intel) sorted by VRAM."""
+        gpus: list[tuple[str, str, int]] = []  # (key, display_name, vram_bytes)
+
+        # NVIDIA: pynvml handles
+        if NVML_AVAILABLE and pynvml is not None:
+            for idx, handle in self._nvidia_handles.items():
+                try:
+                    name = pynvml.nvmlDeviceGetName(handle)
+                    if isinstance(name, bytes):
+                        name = name.decode()
+                    name = str(name)
+                except Exception:
+                    name = f'GPU {idx}'
+                try:
+                    mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                    vram = int(mem.total)
+                except Exception:
+                    vram = 0
+                vram_mb = vram // (1024 * 1024)
+                gpus.append((f'nvidia:{idx}', f'{name} ({vram_mb} MB)', vram))
+
+        # AMD/Intel: DRM sysfs
+        drm_base = Path('/sys/class/drm')
+        if drm_base.exists():
+            for card_dir in sorted(drm_base.glob('card[0-9]*')):
+                if '-' in card_dir.name:
+                    continue
+                vendor_path = card_dir / 'device' / 'vendor'
+                if not vendor_path.exists():
+                    continue
+                try:
+                    vendor = vendor_path.read_text().strip().removeprefix('0x')
+                except OSError:
+                    continue
+                if vendor not in (_GPU_VENDOR_AMD, _GPU_VENDOR_INTEL):
+                    continue
+
+                card = card_dir.name
+                vendor_label = 'AMD' if vendor == _GPU_VENDOR_AMD else 'Intel'
+
+                # Get driver name from hwmon
+                hwmon_driver = ''
+                hwmon_path = card_dir / 'device' / 'hwmon'
+                if hwmon_path.exists():
+                    for hdir in hwmon_path.iterdir():
+                        if (drv := SysUtils.read_sysfs(str(hdir / 'name'))):
+                            hwmon_driver = drv
+                            break
+
+                # VRAM (AMD discrete GPUs expose this)
+                vram = 0
+                mem_path = card_dir / 'device' / 'mem_info_vram_total'
+                if mem_path.exists():
+                    if (val := SysUtils.read_sysfs(str(mem_path))):
+                        try:
+                            vram = int(val)
+                        except ValueError:
+                            pass
+
+                vram_mb = vram // (1024 * 1024)
+                driver_part = f' {hwmon_driver}' if hwmon_driver else ''
+                label = f'{vendor_label}{driver_part} ({card}, {vram_mb} MB)' if vram_mb else f'{vendor_label}{driver_part} ({card})'
+                key = f'{vendor_label.lower()}:{card}'
+                gpus.append((key, label, vram))
+
+        gpus.sort(key=lambda g: g[2], reverse=True)
+        return [(key, name) for key, name, _ in gpus]
+
     def _best_gpu(self) -> dict:
         """Find the GPU with the most VRAM across all vendors.
+
+        If _preferred_gpu is set, returns that GPU's info instead.
 
         Returns {'vendor': str, 'nvidia_idx': int|None, 'drm_card': str,
                  'hwmon_driver': str, 'vram': int}.
@@ -507,11 +578,14 @@ class SensorEnumerator(SensorEnumeratorBase):
                 try:
                     mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
                     vram = int(mem.total)
-                    if vram > best.get('vram', 0):
-                        best = {'vendor': 'nvidia', 'nvidia_idx': idx,
-                                'drm_card': '', 'hwmon_driver': '', 'vram': vram}
                 except Exception:
-                    pass
+                    vram = 0
+                info = {'vendor': 'nvidia', 'nvidia_idx': idx,
+                        'drm_card': '', 'hwmon_driver': '', 'vram': vram}
+                if self._preferred_gpu == f'nvidia:{idx}':
+                    return info
+                if vram > best.get('vram', 0):
+                    best = info
 
         # AMD/Intel: check from DRM sysfs
         drm_base = Path('/sys/class/drm')
@@ -540,19 +614,22 @@ class SensorEnumerator(SensorEnumeratorBase):
                         except ValueError:
                             pass
 
+                # Find hwmon driver for this card
+                hwmon_driver = ''
+                hwmon_path = card_dir / 'device' / 'hwmon'
+                if hwmon_path.exists():
+                    for hdir in hwmon_path.iterdir():
+                        if (name := SysUtils.read_sysfs(str(hdir / 'name'))):
+                            hwmon_driver = name
+                            break
+                vendor_name = 'amd' if vendor == _GPU_VENDOR_AMD else 'intel'
+                info = {'vendor': vendor_name, 'nvidia_idx': None,
+                        'drm_card': card_dir.name, 'hwmon_driver': hwmon_driver,
+                        'vram': vram}
+                if self._preferred_gpu == f'{vendor_name}:{card_dir.name}':
+                    return info
                 if vram > best.get('vram', 0):
-                    # Find hwmon driver for this card
-                    hwmon_driver = ''
-                    hwmon_path = card_dir / 'device' / 'hwmon'
-                    if hwmon_path.exists():
-                        for hdir in hwmon_path.iterdir():
-                            if (name := SysUtils.read_sysfs(str(hdir / 'name'))):
-                                hwmon_driver = name
-                                break
-                    vendor_name = 'amd' if vendor == _GPU_VENDOR_AMD else 'intel'
-                    best = {'vendor': vendor_name, 'nvidia_idx': None,
-                            'drm_card': card_dir.name, 'hwmon_driver': hwmon_driver,
-                            'vram': vram}
+                    best = info
 
         return best
 

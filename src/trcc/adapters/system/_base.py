@@ -73,6 +73,8 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         self._cpu_pct_bootstrapped: bool = False
         # nvidia handles (populated by _discover_nvidia)
         self._nvidia_handles: dict[int, object] = {}
+        # GPU selection (set by composition root from settings)
+        self._preferred_gpu: str = ''
 
     # ══════════════════════════════════════════════════════════════════
     # ABC implementation — concrete shared methods
@@ -132,6 +134,47 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         mapping = self._build_mapping()
         self._default_map = {k: v for k, v in mapping.items() if v}
         return self._default_map
+
+    def set_preferred_gpu(self, gpu_key: str) -> None:
+        """Set the user-selected GPU for metric mapping.
+
+        Invalidates cached map_defaults so next call rebuilds with new GPU.
+        Called by composition root with settings.gpu_device value.
+        """
+        if gpu_key != self._preferred_gpu:
+            self._preferred_gpu = gpu_key
+            self._default_map = None
+            log.info("Preferred GPU set to: %s", gpu_key or '(auto)')
+
+    def get_gpu_list(self) -> list[tuple[str, str]]:
+        """Return discovered GPUs as (gpu_key, display_name) pairs.
+
+        gpu_key: identifier for config storage (e.g. 'nvidia:0')
+        display_name: human-readable name (e.g. 'GeForce RTX 4090 (24576 MB)')
+
+        Default implementation returns NVIDIA GPUs from pynvml.
+        Platform subclasses override to add AMD/Intel/LHM GPUs.
+        Sorted by VRAM descending (best first).
+        """
+        if not NVML_AVAILABLE or pynvml is None:
+            return []
+        gpus: list[tuple[str, str, int]] = []  # (key, name, vram_mb)
+        for idx, handle in self._nvidia_handles.items():
+            try:
+                name = pynvml.nvmlDeviceGetName(handle)
+                if isinstance(name, bytes):
+                    name = name.decode()
+                name = str(name)
+            except Exception:
+                name = f'GPU {idx}'
+            try:
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                vram_mb = int(mem.total) // (1024 * 1024)
+            except Exception:
+                vram_mb = 0
+            gpus.append((f'nvidia:{idx}', f'{name} ({vram_mb} MB)', vram_mb))
+        gpus.sort(key=lambda g: g[2], reverse=True)
+        return [(key, name) for key, name, _ in gpus]
 
     # ══════════════════════════════════════════════════════════════════
     # Abstract — subclasses must implement

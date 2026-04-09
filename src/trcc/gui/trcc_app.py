@@ -284,6 +284,11 @@ class TRCCApp(QMainWindow):
         self._minimize_on_close = setup.minimize_on_close()
         self._autostart_manager = autostart
 
+        # Apply saved GPU selection to sensor enumerator
+        from ..conf import settings
+        if settings.gpu_device:
+            self._system_svc.enumerator.set_preferred_gpu(settings.gpu_device)
+
         self._decorated = decorated
         self._drag_pos = None
         self._force_quit = False
@@ -747,7 +752,10 @@ class TRCCApp(QMainWindow):
         self._apply_settings_backgrounds()
 
         # About panel
-        self.uc_about = UCAbout(parent=central, autostart_manager=self._autostart_manager)
+        gpu_list = self._system_svc.enumerator.get_gpu_list()
+        self.uc_about = UCAbout(
+            parent=central, autostart_manager=self._autostart_manager,
+            gpu_list=gpu_list)
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)
 
@@ -900,6 +908,7 @@ class TRCCApp(QMainWindow):
     def _create_i18n_overlays(self) -> None:
         from ..core.i18n import (
             ABOUT_AUTOSTART_POS,
+            ABOUT_GPU_POS,
             ABOUT_HDD_POS,
             ABOUT_HDD_WARN_POS,
             ABOUT_LANG_POS,
@@ -1043,6 +1052,7 @@ class TRCCApp(QMainWindow):
             ('Multi-threaded (high resource usage)', ABOUT_MULTI_THREAD_POS),
             ('Software Update', ABOUT_UPDATE_POS),
             ('Language selection', ABOUT_LANG_POS),
+            ('Graphics card', ABOUT_GPU_POS),
             ('Software version:', ABOUT_VERSION_POS),
         ]
         for key, pos in about_items:
@@ -1166,6 +1176,7 @@ class TRCCApp(QMainWindow):
         self.uc_about.temp_unit_changed.connect(self._on_temp_unit_changed)
         self.uc_about.hdd_toggle_changed.connect(self._on_hdd_toggle_changed)
         self.uc_about.refresh_changed.connect(self._on_refresh_changed)
+        self.uc_about.gpu_changed.connect(self._on_gpu_changed)
 
     # ── Device Selection ────────────────────────────────────────────
 
@@ -1754,6 +1765,13 @@ class TRCCApp(QMainWindow):
         from ..core.app import TrccApp
         TrccApp.get().set_metrics_refresh(interval)
         self.uc_preview.set_status(f"Refresh: {interval}s")
+
+    def _on_gpu_changed(self, gpu_key: str) -> None:
+        log.debug("_on_gpu_changed: gpu_key=%s", gpu_key)
+        from ..conf import settings
+        settings.set_gpu_device(gpu_key)
+        self._system_svc.enumerator.set_preferred_gpu(gpu_key)
+        self.uc_preview.set_status(f"GPU: {gpu_key}")
 
     def _set_language(self, lang: str) -> None:
         from ..core.app import TrccApp

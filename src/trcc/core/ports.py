@@ -353,6 +353,14 @@ class SensorEnumerator(ABC):
         Returns dict like {'cpu_temp': 'hwmon:coretemp:temp1', ...}.
         """
 
+    @abstractmethod
+    def set_preferred_gpu(self, gpu_key: str) -> None:
+        """Set user-selected GPU for metric mapping."""
+
+    @abstractmethod
+    def get_gpu_list(self) -> list[tuple[str, str]]:
+        """Return discovered GPUs as (gpu_key, display_name) pairs."""
+
 
 # =========================================================================
 # Platform Setup ABC — contract for platform-specific setup wizards

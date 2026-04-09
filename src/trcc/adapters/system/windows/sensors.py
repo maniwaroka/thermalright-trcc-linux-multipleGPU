@@ -205,6 +205,23 @@ class WindowsSensorEnumerator(SensorEnumeratorBase):
             s_name = str(sensor.Name).lower().replace(' ', '_')
             readings[f'lhm:{hw_key}:{s_name}'] = float(val)
 
+    def get_gpu_list(self) -> list[tuple[str, str]]:
+        """Return discovered GPUs from LHM or pynvml fallback."""
+        gpus: list[tuple[str, str]] = []
+        if self._lhm_computer is not None:
+            try:
+                for hw in self._lhm_computer.Hardware:
+                    hw_type = str(hw.HardwareType)
+                    if 'Gpu' in hw_type:
+                        hw_name = str(hw.Name)
+                        hw_key = hw_name.lower().replace(' ', '_')[:20]
+                        gpus.append((f'lhm:{hw_key}', hw_name))
+            except Exception:
+                log.debug("LHM GPU enumeration failed")
+        if not gpus:
+            gpus = super().get_gpu_list()
+        return gpus
+
     # ── Windows-specific mapping ──────────────────────────────────────
 
     def _build_mapping(self) -> dict[str, str]:
