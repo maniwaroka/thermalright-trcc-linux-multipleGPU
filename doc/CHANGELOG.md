@@ -1,5 +1,18 @@
 # Changelog
 
+## v9.4.1
+
+### Fixes
+- **LED circulate (zone_sync) not restored on startup** (#110): Setting saved correctly but UI checkbox never synced back on device activation. Added `load_sync_state()` on the LED panel and expanded handler `_sync_ui_from_state()`.
+- **macOS PyInstaller SSL cert failure** (#109): Downloads failed with `CERTIFICATE_VERIFY_FAILED` — macOS Python can't access Keychain natively and PyInstaller removed the certifi runtime hook. Now uses `certifi.where()` explicitly.
+- **macOS missing GUI assets** (#109): PyInstaller `--add-data` only bundled `src/trcc/assets` (icons/policy), not `src/trcc/gui/assets/` (buttons/backgrounds/panels).
+- **Linux sensor module loading on macOS** (#109): `config.py` imported `linux.sensors.map_defaults` unconditionally, triggering `pynvml.nvmlInit()` on macOS. Replaced with `enumerator.map_defaults()` (every platform's enumerator has this method).
+- **Install method detection for PyInstaller**: `detect_install_method()` now checks `sys.frozen` first, returning `'pyinstaller'` instead of falling through to `'pip'`.
+- **macOS hidapi not bundled**: macOS CI now installs `".[nvidia,hid]"` so hidapi is included in the `.app` bundle.
+
+### Refactors
+- **Unified button image resolution**: Split `DEVICE_BUTTON_IMAGE` into `_LCD_BUTTON_IMAGE` + `_LED_BUTTON_IMAGE`. Single `get_button_image(pm, sub, *, is_led=False)` entry point replaces dual LED/LCD paths. Removed `PmRegistry.get_button_image()`. 8 PM values collide between LED and LCD namespaces.
+
 ## v9.4.0
 
 ### Features
