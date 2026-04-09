@@ -2,75 +2,113 @@
 
 Shared base behavior (psutil, nvidia, computed I/O, polling, read_all)
 is tested in tests/adapters/system/conftest.py.
+
+Tests follow the app flow: discover() → read_all() → map_defaults().
+Mock at I/O boundary only: subprocess for sysctl.
 """
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from tests.adapters.system.conftest import BASE
+import pytest
 
 MODULE = 'trcc.adapters.system.bsd.sensors'
 
+SYSCTL_OUTPUT = (
+    "dev.cpu.0.temperature: 45.0C\n"
+    "dev.cpu.1.temperature: 47.0C\n"
+    "hw.acpi.thermal.tz0.temperature: 40.0C\n"
+)
 
-def _make_enum(**flags):
-    """Create BSDSensorEnumerator with optional feature flags."""
-    with patch(f'{BASE}.NVML_AVAILABLE', flags.get('nvml', False)):
-        from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
-        return BSDSensorEnumerator()
+
+@pytest.fixture
+def mock_bsd(mock_io_no_nvidia):
+    """BSD enumerator with mocked sysctl."""
+    with patch(f'{MODULE}.subprocess') as sub:
+        sub.run.return_value = MagicMock(returncode=0, stdout=SYSCTL_OUTPUT)
+        mock_io_no_nvidia.subprocess = sub
+        yield mock_io_no_nvidia
 
 
-class TestDiscoverSysctl:
+@pytest.fixture
+def enum(mock_bsd):
+    """Discovered BSD enumerator — ready for read_all/map_defaults."""
+    from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
+    e = BSDSensorEnumerator()
+    e.discover()
+    return e
 
-    @patch(f'{MODULE}.subprocess')
-    def test_discovers_cpu_temps(self, mock_sub):
-        mock_sub.run.return_value = MagicMock(
-            returncode=0,
-            stdout='dev.cpu.0.temperature: 45.0C\ndev.cpu.1.temperature: 47.0C\n',
-        )
-        enum = _make_enum()
-        enum._discover_sysctl()
-        ids = [s.id for s in enum._sensors]
+
+class TestDiscover:
+    """BSD discover() registers sysctl sensors alongside base sensors."""
+
+    def test_sysctl_cpu_temps_registered(self, enum):
+        ids = [s.id for s in enum.get_sensors()]
         assert 'sysctl:cpu0_temp' in ids
         assert 'sysctl:cpu1_temp' in ids
-        assert all(s.source == 'sysctl' for s in enum._sensors)
 
-    @patch(f'{MODULE}.subprocess')
-    def test_discovers_acpi_thermal_zones(self, mock_sub):
-        mock_sub.run.return_value = MagicMock(
-            returncode=0,
-            stdout='hw.acpi.thermal.tz0.temperature: 40.0C\n',
-        )
-        enum = _make_enum()
-        enum._discover_sysctl()
-        ids = [s.id for s in enum._sensors]
+    def test_sysctl_thermal_zones_registered(self, enum):
+        ids = [s.id for s in enum.get_sensors()]
         assert 'sysctl:tz0_temp' in ids
 
-    @patch(f'{MODULE}.subprocess')
-    def test_handles_failure(self, mock_sub):
-        mock_sub.run.side_effect = RuntimeError("no sysctl")
-        enum = _make_enum()
-        enum._discover_sysctl()
-        assert not any(s.source == 'sysctl' for s in enum._sensors)
+    def test_base_sensors_also_registered(self, enum):
+        ids = [s.id for s in enum.get_sensors()]
+        assert 'psutil:cpu_percent' in ids
+        assert 'computed:disk_read' in ids
+        assert 'computed:date_year' in ids
+
+    def test_sysctl_failure_degrades_gracefully(self, mock_io_no_nvidia):
+        with patch(f'{MODULE}.subprocess') as sub:
+            sub.run.side_effect = RuntimeError("no sysctl")
+            from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
+            e = BSDSensorEnumerator()
+            sensors = e.discover()
+            assert not any(s.source == 'sysctl' for s in sensors)
+            assert any(s.source == 'psutil' for s in sensors)
 
 
-class TestPollSysctl:
+class TestReadAll:
+    """BSD read_all() returns sysctl temps alongside base readings."""
 
-    @patch(f'{MODULE}.subprocess')
-    def test_reads_cpu_temps(self, mock_sub):
-        mock_sub.run.return_value = MagicMock(
-            returncode=0,
-            stdout='dev.cpu.0.temperature: 45.0C\nhw.acpi.thermal.tz0.temperature: 38.5C\n',
-        )
-        enum = _make_enum()
-        readings: dict[str, float] = {}
-        enum._poll_sysctl(readings)
+    def test_sysctl_temps_in_readings(self, enum):
+        readings = enum.read_all()
         assert readings['sysctl:cpu0_temp'] == 45.0
-        assert readings['sysctl:tz0_temp'] == 38.5
+        assert readings['sysctl:cpu1_temp'] == 47.0
+        assert readings['sysctl:tz0_temp'] == 40.0
 
-    @patch(f'{MODULE}.subprocess')
-    def test_handles_failure(self, mock_sub):
-        mock_sub.run.side_effect = RuntimeError("sysctl failed")
-        enum = _make_enum()
-        readings: dict[str, float] = {}
-        enum._poll_sysctl(readings)
-        assert len(readings) == 0
+    def test_psutil_readings_also_present(self, enum):
+        readings = enum.read_all()
+        assert 'psutil:cpu_percent' in readings
+        assert 'psutil:mem_percent' in readings
+
+    def test_datetime_readings_present(self, enum):
+        readings = enum.read_all()
+        assert readings['computed:date_year'] == 2026.0
+
+    def test_sysctl_failure_returns_base_readings_only(self, mock_io_no_nvidia):
+        with patch(f'{MODULE}.subprocess') as sub:
+            sub.run.side_effect = RuntimeError("sysctl died")
+            from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
+            e = BSDSensorEnumerator()
+            e.discover()
+            readings = e.read_all()
+            assert 'psutil:cpu_percent' in readings
+            assert 'sysctl:cpu0_temp' not in readings
+
+
+class TestMapDefaults:
+    """BSD map_defaults() routes CPU temp to sysctl source."""
+
+    def test_cpu_temp_from_sysctl(self, enum):
+        mapping = enum.map_defaults()
+        assert mapping['cpu_temp'].startswith('sysctl:')
+
+    def test_common_mappings_present(self, enum):
+        mapping = enum.map_defaults()
+        assert mapping['cpu_percent'] == 'psutil:cpu_percent'
+        assert mapping['disk_read'] == 'computed:disk_read'
+        assert mapping['net_total_up'] == 'computed:net_total_up'
+
+    def test_no_gpu_without_nvidia(self, enum):
+        mapping = enum.map_defaults()
+        assert 'gpu_temp' not in mapping
