@@ -706,6 +706,52 @@ class TestLedControlLoadZone:
         assert led_control._mode_buttons[3].isChecked()
 
 
+class TestLedControlLoadSyncState:
+    """load_sync_state() — restore carousel/circulate UI from config."""
+
+    def _init_multi_zone(self, led_control, style_id=6, zones=2):
+        """Initialize panel as a multi-zone device (e.g. LF12 style 6)."""
+        led_control.initialize(style_id, segment_count=72, zone_count=zones,
+                               model='LF12')
+
+    def test_enables_carousel(self, led_control):
+        self._init_multi_zone(led_control)
+        led_control.load_sync_state(True, [True, False], 3)
+        assert led_control._carousel_mode is True
+        assert led_control._carousel_btn.isChecked()
+        assert not led_control._carousel_interval.isHidden()
+        assert led_control._carousel_interval.text() == "3"
+
+    def test_disabled_carousel(self, led_control):
+        self._init_multi_zone(led_control)
+        led_control.load_sync_state(False, [True, False], 2)
+        assert led_control._carousel_mode is False
+        assert not led_control._carousel_btn.isChecked()
+        assert led_control._carousel_interval.isHidden()
+
+    def test_sets_zone_buttons(self, led_control):
+        self._init_multi_zone(led_control)
+        led_control.load_sync_state(True, [False, True], 2)
+        assert not led_control._zone_buttons[0].isChecked()
+        assert led_control._zone_buttons[1].isChecked()
+
+    def test_no_signal_emission(self, led_control):
+        """blockSignals prevents round-trip through handler."""
+        self._init_multi_zone(led_control)
+        received: list[bool] = []
+        led_control.carousel_changed.connect(lambda c: received.append(c))
+        led_control.load_sync_state(True, [True, False], 3)
+        assert received == []
+
+    def test_select_all_style_hides_interval(self, led_control):
+        """Style 2 (select-all) — interval stays hidden even when enabled."""
+        led_control.initialize(2, segment_count=30, zone_count=4,
+                               model='PA120')
+        led_control.load_sync_state(True, [True, True, True, True], 2)
+        assert led_control._carousel_mode is True
+        assert led_control._carousel_interval.isHidden()
+
+
 class TestLedControlClockFormat:
     """LC2 clock format handlers."""
 

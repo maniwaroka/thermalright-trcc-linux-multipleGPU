@@ -1161,6 +1161,28 @@ class TestLEDHandler:
         # No handler should call tick() directly
         mock_led.tick.assert_not_called()
 
+    # ── _sync_ui_from_state: carousel restore ───────────────────
+
+    def test_sync_ui_restores_carousel(self, handler):
+        """zone_sync + zone_sync_zones → load_sync_state on panel."""
+        self._wire_led(
+            handler,
+            zone_sync=True,
+            zone_sync_zones=[True, False],
+            zone_sync_interval=13,
+        )
+        handler._sync_ui_from_state()
+        # 13 ticks × 150ms / 1000 = 1.95 → rounds to 2
+        handler._panel.load_sync_state.assert_called_once_with(
+            True, [True, False], 2,
+        )
+
+    def test_sync_ui_no_carousel_without_sync_zones(self, handler):
+        """Empty zone_sync_zones → load_sync_state not called."""
+        self._wire_led(handler, zone_sync=False, zone_sync_zones=[])
+        handler._sync_ui_from_state()
+        handler._panel.load_sync_state.assert_not_called()
+
 
 # =========================================================================
 # ScreencastHandler
@@ -1641,7 +1663,7 @@ class TestResolveDeviceIdentity:
         dev_dict = {'path': '/dev/sg0', 'button_image': 'A1CZTV', 'name': 'LCD'}
         app.uc_device.devices = [dev_dict]
 
-        # Unknown FBL=255 — no match in DEVICE_BUTTON_IMAGE
+        # Unknown FBL=255 — no match in _LCD_BUTTON_IMAGE
         app._on_handshake_done(device, ((320, 320), 255, 0, 0))
 
         # Button image unchanged

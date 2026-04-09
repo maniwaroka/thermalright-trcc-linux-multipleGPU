@@ -1120,6 +1120,30 @@ class UCLedControl(QWidget):
         self._sync_wheel_from_rgb(r, g, b)
         self._color_wheel.set_onoff(1 if on else 0)
 
+    def load_sync_state(self, enabled: bool, zones: list[bool],
+                        interval_secs: int) -> None:
+        """Restore carousel/sync UI state from device config.
+
+        Called by LEDHandler._sync_ui_from_state() on device activation.
+        Uses blockSignals to prevent round-tripping back through handler.
+        """
+        self._carousel_btn.blockSignals(True)
+        self._carousel_btn.setChecked(enabled)
+        self._carousel_btn.blockSignals(False)
+        self._carousel_mode = enabled
+
+        # Set zone button checked states to match zone_sync_zones
+        for i, btn in enumerate(self._zone_buttons):
+            if i < len(zones):
+                btn.setChecked(zones[i])
+
+        # Show interval for circulate styles (not select-all)
+        if not self._is_select_all_style:
+            self._carousel_interval.setVisible(enabled and self._zone_count > 1)
+            self._carousel_interval.blockSignals(True)
+            self._carousel_interval.setText(str(interval_secs))
+            self._carousel_interval.blockSignals(False)
+
     @property
     def selected_zone(self) -> int:
         return self._selected_zone

@@ -138,7 +138,15 @@ class LEDHandler(BaseHandler):
         else:
             self._panel.load_zone_state(
                 0, state.mode.value, state.color, state.brightness, state.global_on)
-        log.debug("LED: synced UI from state (zones=%d)", len(state.zones))
+
+        # Restore carousel/sync state (zone_sync_zones empty = single-zone device)
+        if state.zone_sync_zones:
+            interval_secs = max(1, round(state.zone_sync_interval * 150 / 1000))
+            self._panel.load_sync_state(
+                state.zone_sync, state.zone_sync_zones, interval_secs)
+
+        log.debug("LED: synced UI from state (zones=%d, sync=%s)",
+                  len(state.zones), state.zone_sync)
 
     def _guard(self, fn):
         """Wrap a slot so it only fires when this handler is active with a device."""

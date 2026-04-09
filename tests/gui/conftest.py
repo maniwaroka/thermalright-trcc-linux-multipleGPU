@@ -245,6 +245,9 @@ def make_led_state():
         brightness: int = 65,
         global_on: bool = True,
         memory_ratio: int = 1,
+        zone_sync: bool = False,
+        zone_sync_zones: list[bool] | None = None,
+        zone_sync_interval: int = 13,
     ) -> MagicMock:
         state = MagicMock()
         state.zones = zones or []
@@ -254,6 +257,9 @@ def make_led_state():
         state.global_on = global_on
         state.memory_ratio = memory_ratio
         state.segment_on = [True] * 10
+        state.zone_sync = zone_sync
+        state.zone_sync_zones = zone_sync_zones or []
+        state.zone_sync_interval = zone_sync_interval
         return state
     return _factory
 
