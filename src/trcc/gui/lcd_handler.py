@@ -480,7 +480,7 @@ class LCDHandler(BaseHandler):
         if send_img:
             w, h = self._lcd.lcd_size
             self.log.debug("_on_video_tick: sending raw frame %s (%dx%d)", result.get('frame_index'), w, h)
-            self._lcd.frame.send_async(send_img, w, h)
+            self._lcd.send_async(send_img, w, h)
 
     # ── Overlay (C# ucXiTongXianShi1) ─────────────────────────────
 

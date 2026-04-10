@@ -567,15 +567,6 @@ class TestSetRotation:
         with patch("trcc.conf._migrate_config"):
             return Settings(_mock_resolver())
 
-    def test_set_rotation_updates_property(self, settings):
-        assert settings.rotation == 0
-        settings.set_rotation(270)
-        assert settings.rotation == 270
-
-    def test_set_rotation_accepts_all_valid(self, settings):
-        for deg in (0, 90, 180, 270):
-            settings.set_rotation(deg)
-            assert settings.rotation == deg
 
 
 # =========================================================================

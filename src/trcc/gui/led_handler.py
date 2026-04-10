@@ -106,7 +106,7 @@ class LEDHandler(BaseHandler):
         self._panel.set_memory_ratio(self._led.state.memory_ratio)
         self._sync_ui_from_state()
 
-        self._led.set_seg_temp_unit(_conf.settings.temp_unit)
+        self._led.set_temp_unit(_conf.settings.temp_unit)
 
         self._active = True
         log.info("LED: show model=%s style=%d, active (metrics-driven)", model, led_style)
@@ -121,7 +121,7 @@ class LEDHandler(BaseHandler):
     def set_temp_unit(self, unit: int) -> None:
         if self._led:
             log.debug("LED: temp_unit=%d", unit)
-            self._led.set_seg_temp_unit(unit)
+            self._led.set_temp_unit(unit)
 
     # ── Private ──────────────────────────────────────────────────────
 

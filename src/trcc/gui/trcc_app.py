@@ -1612,7 +1612,7 @@ class TRCCApp(QMainWindow):
         if zt_path and h:
             h.display.load_video(Path(zt_path))
             h.display.play_video()
-            h._animation_timer.start(h.display.video.interval)
+            h._animation_timer.start(h.display.interval)
             self.uc_preview.set_playing(True)
             self.uc_preview.show_video_controls(True)
             self.uc_preview.set_status("Video loaded")

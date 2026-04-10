@@ -434,11 +434,6 @@ class TestSegmentOperations(unittest.TestCase):
         self.led._led_svc.set_seg_temp_unit.assert_called_with('F')
 
 
-    def test_set_seg_temp_unit_alias(self):
-        """set_seg_temp_unit is an alias for set_temp_unit."""
-        result = self.led.set_seg_temp_unit('C')
-        self.assertTrue(result['success'])
-
 
 # =============================================================================
 # State-only mutators (GUI path — no tick/send)

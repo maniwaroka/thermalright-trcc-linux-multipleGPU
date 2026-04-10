@@ -198,7 +198,7 @@ class TestDisplaySettings:
     def test_set_brightness_1_percent(self, lcd):
         with patch(_SETTINGS_KEY, return_value="0"), \
              patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_brightness(1)
+            result = lcd.set_brightness(1)
 
         assert result["success"] is True
         assert "1%" in result["message"]
@@ -206,7 +206,7 @@ class TestDisplaySettings:
     def test_set_brightness_25_percent(self, lcd):
         with patch(_SETTINGS_KEY, return_value="0"), \
              patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_brightness(25)
+            result = lcd.set_brightness(25)
 
         assert result["success"] is True
         assert "25%" in result["message"]
@@ -214,7 +214,7 @@ class TestDisplaySettings:
     def test_set_brightness_100_percent(self, lcd):
         with patch(_SETTINGS_KEY, return_value="0"), \
              patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_brightness(100)
+            result = lcd.set_brightness(100)
 
         assert result["success"] is True
         assert "100%" in result["message"]
@@ -222,27 +222,27 @@ class TestDisplaySettings:
     def test_set_brightness_percent_50(self, lcd):
         with patch(_SETTINGS_KEY, return_value="0"), \
              patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_brightness(50)
+            result = lcd.set_brightness(50)
 
         assert result["success"] is True
         assert "50%" in result["message"]
 
     def test_set_brightness_invalid_negative(self, lcd):
-        result = lcd.settings.set_brightness(-1)
+        result = lcd.set_brightness(-1)
         assert result["success"] is False
 
     def test_set_brightness_invalid_over_100(self, lcd):
-        result = lcd.settings.set_brightness(101)
+        result = lcd.set_brightness(101)
         assert result["success"] is False
 
     def test_set_brightness_persists(self, lcd):
         lcd._lcd_config = MagicMock()
-        lcd.settings.set_brightness(2)
+        lcd.set_brightness(2)
         lcd._lcd_config.persist.assert_called_once()
 
     def test_set_rotation_0(self, lcd):
         lcd._lcd_config = MagicMock()
-        result = lcd.settings.set_rotation(0)
+        result = lcd.set_rotation(0)
 
         assert result["success"] is True
         assert "0°" in result["message"]
@@ -250,28 +250,28 @@ class TestDisplaySettings:
 
     def test_set_rotation_90(self, lcd):
         with patch(_SETTINGS_KEY, return_value="k"), patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_rotation(90)
+            result = lcd.set_rotation(90)
         assert result["success"] is True
         assert "90°" in result["message"]
 
     def test_set_rotation_180(self, lcd):
         with patch(_SETTINGS_KEY, return_value="k"), patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_rotation(180)
+            result = lcd.set_rotation(180)
         assert result["success"] is True
 
     def test_set_rotation_270(self, lcd):
         with patch(_SETTINGS_KEY, return_value="k"), patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_rotation(270)
+            result = lcd.set_rotation(270)
         assert result["success"] is True
 
     def test_set_rotation_invalid_45(self, lcd):
-        result = lcd.settings.set_rotation(45)
+        result = lcd.set_rotation(45)
         assert result["success"] is False
         assert "0, 90, 180, or 270" in result["error"]
 
     def test_set_split_mode_0_off(self, lcd):
         lcd._lcd_config = MagicMock()
-        result = lcd.settings.set_split_mode(0)
+        result = lcd.set_split_mode(0)
 
         assert result["success"] is True
         assert "off" in result["message"]
@@ -279,22 +279,22 @@ class TestDisplaySettings:
 
     def test_set_split_mode_1(self, lcd):
         with patch(_SETTINGS_KEY, return_value="k"), patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_split_mode(1)
+            result = lcd.set_split_mode(1)
         assert result["success"] is True
         assert "style 1" in result["message"]
 
     def test_set_split_mode_2(self, lcd):
         with patch(_SETTINGS_KEY, return_value="k"), patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_split_mode(2)
+            result = lcd.set_split_mode(2)
         assert result["success"] is True
 
     def test_set_split_mode_3(self, lcd):
         with patch(_SETTINGS_KEY, return_value="k"), patch(_SETTINGS_SAVE):
-            result = lcd.settings.set_split_mode(3)
+            result = lcd.set_split_mode(3)
         assert result["success"] is True
 
     def test_set_split_mode_invalid_5(self, lcd):
-        result = lcd.settings.set_split_mode(5)
+        result = lcd.set_split_mode(5)
         assert result["success"] is False
         assert "0, 1, 2, or 3" in result["error"]
 

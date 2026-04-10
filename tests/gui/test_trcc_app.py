@@ -713,7 +713,7 @@ class TestLEDHandler:
     def test_set_temp_unit_with_led(self, handler):
         mock_led = self._wire_led(handler)
         handler.set_temp_unit(1)
-        mock_led.set_seg_temp_unit.assert_called_once_with(1)
+        mock_led.set_temp_unit.assert_called_once_with(1)
 
     # ── _sync_ui_from_state ──────────────────────────────────────
 

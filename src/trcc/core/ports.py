@@ -152,12 +152,6 @@ class Renderer(ABC):
 
 
 # =========================================================================
-# Device — concrete class in core/device.py, re-exported here for compat
-# =========================================================================
-
-from .device import Device  # noqa: F401, E402
-
-
 class DeviceConfigService:
     """Per-device config persistence — shared base for LCD and LED.
 

@@ -516,9 +516,6 @@ class Settings:
         res = Settings._get_saved_resolution()
         self._width, self._height = res if res else (0, 0)
 
-        # Rotation (live state — persisted per-device via save_device_setting)
-        self._rotation: int = 0
-
         # User preferences
         self.temp_unit: int = Settings._get_saved_temp_unit()
         self.hdd_enabled: bool = Settings._get_saved_hdd_enabled()
@@ -538,9 +535,6 @@ class Settings:
     def height(self) -> int:
         return self._height
 
-    @property
-    def rotation(self) -> int:
-        return self._rotation
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -559,10 +553,6 @@ class Settings:
                  self._width, self._height, width, height)
         self._width = width
         self._height = height
-
-    def set_rotation(self, degrees: int) -> None:
-        """Update saved rotation."""
-        self._rotation = degrees
 
     def set_temp_unit(self, unit: int) -> None:
         """Set temperature unit (0=Celsius, 1=Fahrenheit) and persist."""

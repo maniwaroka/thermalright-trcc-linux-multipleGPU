@@ -94,12 +94,6 @@ class Device:
         self._init_status: str | None = None
         self.log: logging.Logger = log
         self.orientation = Orientation(0, 0)
-        # Backward-compat aliases — all point to self
-        self.theme: Device = self   # type: ignore[assignment]
-        self.frame: Device = self   # type: ignore[assignment]
-        self.video: Device = self   # type: ignore[assignment]
-        self.overlay: Device = self  # type: ignore[assignment]
-        self.settings: Device = self  # type: ignore[assignment]
 
     # ══════════════════════════════════════════════════════════════════════
     # Type queries — from data, not class hierarchy
@@ -302,13 +296,8 @@ class Device:
         return device
 
     def _set_proxy(self, proxy: Any) -> None:
-        """Route all capability accessors through proxy."""
+        """Route calls through proxy (IPC forwarding)."""
         self._proxy = proxy
-        self.theme = proxy  # type: ignore[assignment]
-        self.frame = proxy  # type: ignore[assignment]
-        self.video = proxy  # type: ignore[assignment]
-        self.overlay = proxy  # type: ignore[assignment]
-        self.settings = proxy  # type: ignore[assignment]
 
     # ══════════════════════════════════════════════════════════════════════
     # LED connect
@@ -1196,10 +1185,6 @@ class Device:
         return self._display_svc.overlay.enabled if self._display_svc else False
 
     @property
-    def is_overlay_enabled(self) -> bool:
-        return self.enabled
-
-    @property
     def last_metrics(self) -> Any:
         return self._display_svc.overlay.metrics if self._display_svc else None
 
@@ -1342,9 +1327,6 @@ class Device:
         )
 
     # Overlay convenience aliases
-    def set_overlay_temp_unit(self, unit: int) -> dict:
-        return self.set_temp_unit(unit)
-
     def set_overlay_background(self, image: Any) -> dict:
         return self.set_background(image)
 
@@ -1639,9 +1621,6 @@ class Device:
         self._led_svc.set_week_start(is_sunday)
         self._led_send_and_save()
         return {"success": True}
-
-    def set_seg_temp_unit(self, unit: int) -> dict:
-        return self.set_temp_unit(unit)
 
     def set_disk_index(self, index: int) -> dict:
         self._led_svc.set_disk_index(index)
