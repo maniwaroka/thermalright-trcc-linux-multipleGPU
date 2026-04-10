@@ -478,6 +478,16 @@ class PlatformSetup(PathResolver):
         """
         return False
 
+    # ── First-run auto-setup ──────────────────────────────────────────────────
+    # pip installs don't get udev/SELinux — auto-detect and prompt on first run.
+
+    def needs_setup(self) -> bool:
+        """Check if critical system integration is missing. Default: False."""
+        return False
+
+    def auto_setup(self) -> None:
+        """Prompt and install critical system integration. Default: no-op."""
+
     # ── Platform-specific setup operations ───────────────────────────────────
     # Default implementations return 1 (unsupported / no-op).
     # Each platform override calls its own native implementation.

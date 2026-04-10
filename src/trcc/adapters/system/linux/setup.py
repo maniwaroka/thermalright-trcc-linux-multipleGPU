@@ -555,6 +555,24 @@ class LinuxSetup(PlatformSetup):
             "/etc/polkit-1/rules.d/50-trcc.rules",
         ]
 
+    def needs_setup(self) -> bool:
+        return not os.path.isfile('/etc/udev/rules.d/99-trcc-lcd.rules')
+
+    def auto_setup(self) -> None:
+        print("\n[TRCC] First run — device permissions need to be configured.")
+        print("       This requires your password (sudo) to install udev rules.")
+        print("       [Y]es — set up now (will prompt for sudo password)")
+        print("       [N]o  — skip, run 'trcc setup' later\n")
+        if not _confirm("Set up now?", auto_yes=False):
+            print("       Skipped. Run 'trcc setup' when ready.\n")
+            return
+        setup_udev()
+        from trcc.adapters.infra.diagnostics import check_selinux
+        se = check_selinux()
+        if se.enforcing and not se.ok:
+            setup_selinux()
+        print("[TRCC] Setup complete.\n")
+
     def setup_udev(self, dry_run: bool = False) -> int:
         return setup_udev(dry_run=dry_run)
 

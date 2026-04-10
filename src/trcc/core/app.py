@@ -194,6 +194,11 @@ class TrccApp:
         self._builder.bootstrap(verbosity)
         import trcc.conf as _conf
         self._settings = _conf.settings
+
+        setup = self._builder.build_setup()
+        if setup.needs_setup():
+            setup.auto_setup()
+
         if renderer_factory is not None:
             self.set_renderer(renderer_factory())
 
