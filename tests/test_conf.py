@@ -338,6 +338,16 @@ class TestSettingsDeviceConfig:
         assert cfg["rotation"] == 90
         assert cfg["vid_pid"] == "87cd_70db"
 
+    def test_save_device_settings_batch(self, tmp_config):
+        key = Settings.device_config_key(0, 0x0416, 0x5408)
+        Settings.save_device_settings(
+            key, theme_name='Theme1', theme_type='local', mask_id='')
+        cfg = Settings.get_device_config(key)
+        assert cfg['theme_name'] == 'Theme1'
+        assert cfg['theme_type'] == 'local'
+        assert cfg['mask_id'] == ''
+        assert cfg['vid_pid'] == '0416_5408'
+
     def test_get_selected_device_none(self, tmp_config):
         assert Settings.get_selected_device() is None
 

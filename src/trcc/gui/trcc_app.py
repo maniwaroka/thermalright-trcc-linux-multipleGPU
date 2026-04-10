@@ -1283,8 +1283,9 @@ class TRCCApp(QMainWindow):
                 log.debug("_resolve_device_identity: updated sidebar button for %s", device.path)
                 break
         active_key = Settings.device_config_key(device.device_index, device.vid, device.pid)
-        Settings.save_device_setting(active_key, 'resolved_button_image', btn_img)
-        Settings.save_device_setting(active_key, 'resolved_product', product)
+        Settings.save_device_settings(
+            active_key,
+            resolved_button_image=btn_img, resolved_product=product)
 
     # ── Theme Event Handlers ─────────────────────────────────────────
 

@@ -105,8 +105,7 @@ class LCDHandler(BaseHandler):
         self.log: logging.Logger = logging.getLogger(f'{__name__}.{label}')
         if hasattr(self.log, 'dev'):
             self.log.dev = label  # type: ignore[attr-defined]
-        Settings.save_device_setting(self._device_key, 'w', w)
-        Settings.save_device_setting(self._device_key, 'h', h)
+        Settings.save_device_settings(self._device_key, w=w, h=h)
         self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
         self._refresh(w, h)
 
@@ -291,9 +290,9 @@ class LCDHandler(BaseHandler):
 
         if persist and self._device_key:
             self.log.info("Saving theme_name: %s (key=%s)", path.name, self._device_key)
-            Settings.save_device_setting(self._device_key, 'theme_name', path.name)
-            Settings.save_device_setting(self._device_key, 'theme_type', 'local')
-            Settings.save_device_setting(self._device_key, 'mask_id', '')
+            Settings.save_device_settings(
+                self._device_key,
+                theme_name=path.name, theme_type='local', mask_id='')
         elif persist and not self._device_key:
             self.log.warning("_select_theme_from_path: not persisting — device_key is empty")
 
@@ -313,10 +312,9 @@ class LCDHandler(BaseHandler):
                 video_path, preview_path if preview_path.exists() else None)
             self._select_theme(theme)
             if self._device_key:
-                Settings.save_device_setting(
-                    self._device_key, 'theme_name', video_path.stem)
-                Settings.save_device_setting(
-                    self._device_key, 'theme_type', 'cloud')
+                Settings.save_device_settings(
+                    self._device_key,
+                    theme_name=video_path.stem, theme_type='cloud')
 
     def apply_mask(self, mask_info: Any) -> None:
         """Apply mask overlay on top of current content."""
@@ -332,10 +330,9 @@ class LCDHandler(BaseHandler):
                 self._w['preview'].set_image(image)
             if self._device_key:
                 is_custom = getattr(mask_info, 'is_custom', False)
-                Settings.save_device_setting(
-                    self._device_key, 'mask_id', mask_dir.name)
-                Settings.save_device_setting(
-                    self._device_key, 'mask_custom', is_custom)
+                Settings.save_device_settings(
+                    self._device_key,
+                    mask_id=mask_dir.name, mask_custom=is_custom)
         else:
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
 

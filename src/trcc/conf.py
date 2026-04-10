@@ -422,6 +422,18 @@ class Settings:
         save_config(config)
 
     @staticmethod
+    def save_device_settings(key: str, **updates: object) -> None:
+        """Save multiple settings for a device in one disk write."""
+        log.debug("save_device_settings: %s %s", key, updates)
+        config = load_config()
+        devices = config.setdefault('devices', {})
+        dev_cfg = devices.setdefault(key, {})
+        if 'vid_pid' not in dev_cfg and key in Settings._vid_pid_cache:
+            dev_cfg['vid_pid'] = Settings._vid_pid_cache[key]
+        dev_cfg.update(updates)
+        save_config(config)
+
+    @staticmethod
     def show_info_module() -> bool:
         """Whether to show the sensor metrics bar above the preview (default: off)."""
         return load_config().get('show_info_module', False)
