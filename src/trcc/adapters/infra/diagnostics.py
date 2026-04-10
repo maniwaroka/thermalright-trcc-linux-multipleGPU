@@ -866,7 +866,7 @@ def run_doctor(doctor_config: 'DoctorPlatformConfig | None' = None) -> int:
                 print(f"  {_OK}  {se.message}")
             else:
                 print(f"  {_MISS}  {se.message}")
-                print("         run: sudo trcc setup-selinux")
+                print("         run: trcc setup-selinux")
                 all_ok = False
 
     if doctor_config.run_rapl_check:
@@ -1420,7 +1420,7 @@ class DebugReport:
         se = check_selinux()
         sec.lines.append(f"  {se.message}")
         if not se.ok:
-            sec.lines.append("         run: sudo trcc setup-selinux")
+            sec.lines.append("         run: trcc setup-selinux")
 
     def _rapl_permissions(self) -> None:
         sec = self._add("RAPL power sensors")
