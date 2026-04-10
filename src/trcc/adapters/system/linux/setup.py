@@ -65,7 +65,7 @@ def sudo_reexec(subcommand: str) -> int:
     paths: list[str] = []
     paths.extend(site.getsitepackages())
     paths.append(site.getusersitepackages())
-    trcc_pkg = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    trcc_pkg = str(Path(__file__).resolve().parents[4])
     paths.append(trcc_pkg)
     pythonpath = os.pathsep.join(paths)
 

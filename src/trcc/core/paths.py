@@ -5,9 +5,10 @@ Zero project imports. Safe to import from any module without circular deps.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 # Navigate from core/ back to the trcc package root
-_TRCC_PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_TRCC_PKG = str(Path(__file__).resolve().parents[1])
 
 # Asset directories (inside trcc package)
 ASSETS_DIR = os.path.join(_TRCC_PKG, 'assets')

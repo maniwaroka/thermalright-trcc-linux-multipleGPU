@@ -19,6 +19,7 @@ import logging
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any, List, Optional
 
 from ...core.models import ThemeDir  # noqa: F401 — re-export for back-compat
@@ -36,9 +37,9 @@ from ...core.platform import SUBPROCESS_NO_WINDOW as _NO_WINDOW
 
 log = logging.getLogger(__name__)
 
-_THIS_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SRC_DIR = os.path.dirname(_THIS_DIR)
-PROJECT_ROOT = os.path.dirname(SRC_DIR)
+_THIS_DIR = str(Path(__file__).resolve().parents[2])
+SRC_DIR = str(Path(__file__).resolve().parents[3])
+PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
 
 # =========================================================================
 # SysUtils — cross-distro system utilities

@@ -15,6 +15,7 @@ import importlib.metadata
 import os
 import shutil
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import QProcess, Slot
 from PySide6.QtGui import QFont, QTextCursor
@@ -357,9 +358,8 @@ class SetupWizard(QWidget):
         → include both so root can find typer, PySide6, etc.
         """
         import site
-        # __file__ = .../src/trcc/install/gui.py → 3 levels up = .../src/
-        here = os.path.abspath(__file__)
-        trcc_root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+        # __file__ = .../src/trcc/install/gui.py → 2 parents up = .../src/
+        trcc_root = str(Path(__file__).resolve().parents[2])
         user_sp = site.getusersitepackages()
         if user_sp and os.path.isdir(user_sp) and user_sp != trcc_root:
             return f'{trcc_root}:{user_sp}'
