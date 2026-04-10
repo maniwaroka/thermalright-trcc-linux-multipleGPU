@@ -1,5 +1,13 @@
 # Changelog
 
+## v9.4.5
+
+### Fixes
+- **setup-gui freeze on macOS** (#115): Window opened behind Terminal with no `^C` support. Added SIGINT handler + `raise_()`/`activateWindow()` for window visibility. Made checks platform-aware via `DoctorPlatformConfig` — skips udev/SELinux/desktop entry on macOS.
+- **GPU shows 0 on LED after autostart** (#110): `pynvml.nvmlInit()` ran once at module import — if NVIDIA driver wasn't loaded yet (common on boot), GPU sensors were permanently unavailable. Now lazy-inits via `_ensure_nvml()` with retry each poll cycle. `_ensure_nvidia_ready()` handles late discovery + mapping invalidation.
+- **Second device never connects in multi-device GUI** (#101): `DeviceInfo.from_detected()` hardcoded `hid:VID:PID` path format, but `scan_and_select()` received `usb:BUS:ADDR` from the detector — mismatch meant every device fell back to the first one. Now uses `DetectedDevice.path` directly.
+- **macOS Tahoe sensor reads broken** (#109): `powermetrics --samplers smc` removed in macOS Tahoe, breaking all CPU temp, GPU temp, and fan reads on Apple Silicon. Replaced with direct IOKit SMC reads via ctypes. Expanded SMC key table covers Intel + Apple Silicon (M1-M5) with trial-and-error discovery. `powermetrics --samplers gpu_power` kept for GPU active residency/power/clock.
+
 ## v9.4.4
 
 ### Features
