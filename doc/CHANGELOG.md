@@ -1,5 +1,18 @@
 # Changelog
 
+## v9.4.6
+
+### Fixes
+- **SELinux policy missing SCSI device coverage**: `trcc_usb.te` only granted access to `usb_device_t` (`/dev/hidraw`, `/dev/bus/usb`). SCSI LCD devices (`/dev/sg*`) use `scsi_generic_device_t` in Fedora's SELinux policy — users with 0402:3922, 0416:5406, 87cd:70db on SELinux enforcing were silently unprotected. Users who previously ran `setup-selinux` need to run it again.
+- **Dev-mode first-run setup crash**: `sudo_reexec` computed wrong PYTHONPATH — `dirname` called 3 times instead of 5, resolving to `src/trcc/adapters/` instead of `src/`. Only affected dev installs (`PYTHONPATH=src`), not pip/RPM.
+
+### Refactors
+- **Eliminate config fsync thrashing**: New `Settings.save_device_settings(key, **updates)` batches multiple config writes into one load + save + fsync. Theme click: 3 fsyncs → 1. Mask apply: 2 → 1. Handshake: 2 → 1.
+- **Fix double-save for rotation and split_mode**: Both were persisted twice per change — once via `Device._persist()` and again directly in `lcd_handler`. Now matches brightness pattern (single owner).
+- **Delete dead code**: Vestigial `Settings._rotation`/`.rotation`/`.set_rotation()` (zero callers), Device self-aliases (`self.theme/frame/video/overlay/settings = self`, only 2 of 5 used), dead re-export files (`services/renderer.py`, `adapters/device/led_segment.py`), dead methods (`is_overlay_enabled`, `set_overlay_temp_unit`).
+- **Replace dirname chains with pathlib**: All nested `os.path.dirname()` chains replaced with `Path(__file__).resolve().parents[N]`.
+- **Deduplicate path constants**: `data_repository.py` redefined `_TRCC_PKG` as `_THIS_DIR` instead of importing from `core/paths.py`. Dead `SRC_DIR` removed.
+
 ## v9.4.5
 
 ### Fixes
