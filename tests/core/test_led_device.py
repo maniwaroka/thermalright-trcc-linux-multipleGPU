@@ -92,7 +92,7 @@ class TestLEDDeviceConnectIsolation(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(led.device_info.model, "PA120_DIGITAL")
-        self.assertEqual(led.device_info.path, "hid:0416:8002")
+        self.assertEqual(led.device_info.path, "mock:led:0416:8002")
 
     def test_connect_different_models_get_different_identities(self):
         """Multiple LED devices each get their own identity from detected."""

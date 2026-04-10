@@ -57,8 +57,7 @@ def _mock_hwmon_dir(name: str, driver: str, inputs: dict[str, str]) -> MagicMock
 @pytest.fixture
 def mock_linux(mock_io_no_nvidia):
     """Linux enumerator with mocked sysfs — no hwmon, no DRM, no RAPL."""
-    with patch(f'{MODULE}.NVML_AVAILABLE', False), \
-         patch(f'{MODULE}.pynvml', None), \
+    with patch(f'{MODULE}.pynvml', None), \
          patch(f'{MODULE}.Path') as mock_path:
         # Empty sysfs
         for path_str in ('/sys/class/hwmon', '/sys/class/drm',
@@ -128,9 +127,9 @@ class TestDiscover:
 class TestDiscoverNvidiaLinux:
     """Linux nvidia discovery — extended metrics (gpu_util, mem_util, vram)."""
 
-    @patch(f'{MODULE}.NVML_AVAILABLE', True)
+    @patch(f'{MODULE}._ensure_nvml', return_value=True)
     @patch(f'{MODULE}.pynvml')
-    def test_extended_nvidia_sensors(self, mock_nvml, mock_linux):
+    def test_extended_nvidia_sensors(self, mock_nvml, _mock_ensure, mock_linux):
         mock_nvml.nvmlDeviceGetCount.return_value = 1
         mock_nvml.nvmlDeviceGetHandleByIndex.return_value = 'h'
         mock_nvml.nvmlDeviceGetName.return_value = 'RTX 4090'
@@ -249,9 +248,9 @@ class TestRapl:
 
 class TestNvidiaLinuxPoll:
 
-    @patch(f'{MODULE}.NVML_AVAILABLE', True)
+    @patch(f'{MODULE}._ensure_nvml', return_value=True)
     @patch(f'{MODULE}.pynvml')
-    def test_extended_nvidia_readings(self, mock_nvml):
+    def test_extended_nvidia_readings(self, mock_nvml, _mock_ensure):
         """Linux nvidia poll includes gpu_util, mem_util, mem_clock, vram."""
         mock_nvml.NVML_TEMPERATURE_GPU = 0
         mock_nvml.NVML_CLOCK_GRAPHICS = 0
@@ -277,9 +276,9 @@ class TestNvidiaLinuxPoll:
         assert readings['nvidia:0:power'] == 250.0
         assert readings['nvidia:0:fan'] == 55.0
 
-    @patch(f'{MODULE}.NVML_AVAILABLE', True)
+    @patch(f'{MODULE}._ensure_nvml', return_value=True)
     @patch(f'{MODULE}.pynvml')
-    def test_partial_failure_isolated(self, mock_nvml):
+    def test_partial_failure_isolated(self, mock_nvml, _mock_ensure):
         """One metric failing doesn't block others."""
         mock_nvml.NVML_TEMPERATURE_GPU = 0
         mock_nvml.NVML_CLOCK_GRAPHICS = 0
@@ -300,8 +299,8 @@ class TestNvidiaLinuxPoll:
         assert readings['nvidia:0:gpu_util'] == 50.0
         assert readings['nvidia:0:fan'] == 45.0
 
-    @patch(f'{MODULE}.NVML_AVAILABLE', False)
-    def test_noop_without_nvml(self):
+    @patch(f'{MODULE}._ensure_nvml', return_value=False)
+    def test_noop_without_nvml(self, _mock_ensure):
         e = SensorEnumerator()
         readings: dict[str, float] = {}
         e._poll_nvidia_linux(readings)
@@ -370,9 +369,9 @@ class TestMapDefaults:
         assert mapping['disk_read'] == 'computed:disk_read'
         assert mapping['net_total_up'] == 'computed:net_total_up'
 
-    @patch(f'{MODULE}.NVML_AVAILABLE', True)
+    @patch(f'{MODULE}._ensure_nvml', return_value=True)
     @patch(f'{MODULE}.pynvml')
-    def test_nvidia_gpu_mapping(self, mock_nvml):
+    def test_nvidia_gpu_mapping(self, mock_nvml, _mock_ensure):
         mock_nvml.nvmlDeviceGetCount.return_value = 1
         mock_nvml.nvmlDeviceGetHandleByIndex.return_value = 'h'
         mock_nvml.nvmlDeviceGetName.return_value = 'RTX 4090'
@@ -434,9 +433,9 @@ class TestDiscoverRapl:
 
 class TestNvmlImport:
 
-    def test_nvml_available_is_bool(self):
-        from trcc.adapters.system.linux.sensors import NVML_AVAILABLE
-        assert isinstance(NVML_AVAILABLE, bool)
+    def test_ensure_nvml_is_callable(self):
+        from trcc.adapters.system.linux.sensors import _ensure_nvml
+        assert callable(_ensure_nvml)
 
 
 class TestReadSysfs:

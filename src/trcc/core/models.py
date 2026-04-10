@@ -378,7 +378,7 @@ class DeviceInfo:
         """Create DeviceInfo from a DetectedDevice."""
         return cls(
             name=f"{d.vendor_name} {d.product_name}",
-            path=d.scsi_device or f"hid:{d.vid:04x}:{d.pid:04x}",
+            path=d.path,
             vendor=d.vendor_name,
             product=d.product_name,
             model=d.model,

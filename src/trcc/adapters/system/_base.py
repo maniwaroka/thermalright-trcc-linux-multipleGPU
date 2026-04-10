@@ -23,18 +23,37 @@ from trcc.core.ports import SensorEnumerator as SensorEnumeratorABC
 log = logging.getLogger(__name__)
 
 # ── Optional: pynvml (cross-platform NVIDIA) ─────────────────────────
+# Import only — nvmlInit() is deferred to first use via _ensure_nvml().
+# On autostart the NVIDIA driver may not be loaded yet; lazy init retries
+# each poll cycle until the driver is ready (fixes LED GPU-zero-on-boot).
 try:
     import pynvml  # pyright: ignore[reportMissingImports]
-    pynvml.nvmlInit()
-    NVML_AVAILABLE = True
 except ImportError:
     pynvml = None  # type: ignore[assignment]
-    NVML_AVAILABLE = False
     log.debug("pynvml not installed — NVIDIA GPU sensors unavailable")
-except Exception as e:
-    pynvml = None  # type: ignore[assignment]
-    NVML_AVAILABLE = False
-    log.warning("pynvml init failed — NVIDIA GPU sensors unavailable: %s", e)
+
+_nvml_init_lock = threading.Lock()
+NVML_AVAILABLE = False
+
+
+def _ensure_nvml() -> bool:
+    """Initialize NVML on first use. Thread-safe, retries until driver is ready."""
+    global NVML_AVAILABLE
+    if NVML_AVAILABLE:
+        return True
+    if pynvml is None:
+        return False
+    with _nvml_init_lock:
+        if NVML_AVAILABLE:
+            return True
+        try:
+            pynvml.nvmlInit()
+            NVML_AVAILABLE = True
+            log.info("NVML initialized — NVIDIA GPU sensors available")
+            return True
+        except Exception as e:
+            log.debug("NVML not ready: %s", e)
+            return False
 
 
 class SensorEnumeratorBase(SensorEnumeratorABC):
@@ -146,6 +165,23 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
             self._default_map = None
             log.info("Preferred GPU set to: %s", gpu_key or '(auto)')
 
+    def _ensure_nvidia_ready(self) -> bool:
+        """Ensure NVML is initialized and GPU handles are discovered.
+
+        Handles lazy init when NVIDIA driver loads after app startup.
+        Invalidates mapping cache on late discovery (same as GPU switch).
+        """
+        if not _ensure_nvml():
+            return False
+        if not self._nvidia_handles:
+            self._discover_nvidia()
+            if not self._nvidia_handles:
+                return False
+            self._default_map = None
+            log.info("NVIDIA GPU discovered (late init): %d GPU(s)",
+                     len(self._nvidia_handles))
+        return True
+
     def get_gpu_list(self) -> list[tuple[str, str]]:
         """Return discovered GPUs as (gpu_key, display_name) pairs.
 
@@ -156,7 +192,7 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         Platform subclasses override to add AMD/Intel/LHM GPUs.
         Sorted by VRAM descending (best first).
         """
-        if not NVML_AVAILABLE or pynvml is None:
+        if not _ensure_nvml() or pynvml is None:
             return []
         gpus: list[tuple[str, str, int]] = []  # (key, name, vram_mb)
         for idx, handle in self._nvidia_handles.items():
@@ -236,7 +272,7 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
 
     def _discover_nvidia(self) -> None:
         """Probe NVIDIA GPUs via pynvml and register sensors."""
-        if not NVML_AVAILABLE or pynvml is None:
+        if not _ensure_nvml() or pynvml is None:
             return
         try:
             count = pynvml.nvmlDeviceGetCount()
@@ -296,7 +332,7 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
 
     def _poll_nvidia(self, readings: dict[str, float]) -> None:
         """Read NVIDIA GPU sensors via pynvml."""
-        if not NVML_AVAILABLE or pynvml is None:
+        if not self._ensure_nvidia_ready() or pynvml is None:
             return
         for i, handle in self._nvidia_handles.items():
             prefix = f'nvidia:{i}'

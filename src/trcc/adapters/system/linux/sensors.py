@@ -25,7 +25,7 @@ from typing import Optional
 import psutil
 
 from trcc.adapters.infra.data_repository import SysUtils
-from trcc.adapters.system._base import NVML_AVAILABLE, SensorEnumeratorBase, pynvml
+from trcc.adapters.system._base import SensorEnumeratorBase, _ensure_nvml, pynvml
 from trcc.core.models import SensorInfo
 
 log = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ class SensorEnumerator(SensorEnumeratorBase):
 
     def _discover_nvidia(self) -> None:
         """Discover NVIDIA GPUs with extended Linux-specific metrics."""
-        if not NVML_AVAILABLE or pynvml is None:
+        if not _ensure_nvml() or pynvml is None:
             return
         try:
             count = pynvml.nvmlDeviceGetCount()
@@ -351,7 +351,7 @@ class SensorEnumerator(SensorEnumeratorBase):
 
     def _poll_nvidia_linux(self, readings: dict[str, float]) -> None:
         """Linux NVIDIA: extended metrics (gpu_util, mem_util, mem_clock, vram)."""
-        if not NVML_AVAILABLE or pynvml is None:
+        if not self._ensure_nvidia_ready() or pynvml is None:
             return
         for i, handle in self._nvidia_handles.items():
             prefix = f"nvidia:{i}"
@@ -498,7 +498,7 @@ class SensorEnumerator(SensorEnumeratorBase):
         gpus: list[tuple[str, str, int]] = []  # (key, display_name, vram_bytes)
 
         # NVIDIA: pynvml handles
-        if NVML_AVAILABLE and pynvml is not None:
+        if _ensure_nvml() and pynvml is not None:
             for idx, handle in self._nvidia_handles.items():
                 try:
                     name = pynvml.nvmlDeviceGetName(handle)
@@ -573,7 +573,7 @@ class SensorEnumerator(SensorEnumeratorBase):
         best: dict = {}
 
         # NVIDIA: check VRAM via pynvml
-        if NVML_AVAILABLE and pynvml is not None:
+        if _ensure_nvml() and pynvml is not None:
             for idx, handle in self._nvidia_handles.items():
                 try:
                     mem = pynvml.nvmlDeviceGetMemoryInfo(handle)

@@ -151,10 +151,10 @@ class TestDeviceInfoFromDetected(unittest.TestCase):
         info = DeviceInfo.from_detected(d)
         self.assertEqual(info.path, "/dev/sg0")
 
-    def test_hid_path_fallback(self):
+    def test_usb_path_when_no_scsi(self):
         d = self._make_detected(scsi_device=None, vid=0x0416, pid=0x8001)
         info = DeviceInfo.from_detected(d)
-        self.assertEqual(info.path, "hid:0416:8001")
+        self.assertEqual(info.path, "2-1.4")
 
     def test_device_index_defaults_to_zero(self):
         d = self._make_detected()

@@ -238,7 +238,10 @@ class SetupWizard(QWidget):
             self._checks_lay.addStretch()
 
     def _run_full_checks(self) -> None:
-        """Full system checks — only called when trcc is importable."""
+        """Full system checks — only called when trcc is importable.
+
+        Uses DoctorPlatformConfig flags to show only OS-relevant checks.
+        """
         from trcc.adapters.infra.doctor import (
             check_desktop_entry,
             check_gpu,
@@ -247,63 +250,69 @@ class SetupWizard(QWidget):
             check_udev,
             get_setup_info,
         )
+        from trcc.core.builder import ControllerBuilder
 
-        info = get_setup_info()
+        config = ControllerBuilder.for_current_os().build_setup().get_doctor_config()
+        info = get_setup_info(config)
 
-        # Step 2 — system deps
-        self._section('Step 2: System Dependencies')
-        for d in check_system_deps(info.pkg_manager):
+        # System deps — always (already platform-aware via DoctorPlatformConfig)
+        self._section('System Dependencies')
+        for d in check_system_deps(info.pkg_manager, config):
             self._add_dep(
                 d.name, d.ok, d.required, d.version, d.note, d.install_cmd,
             )
 
-        # Step 3 — GPU
-        self._section('Step 3: GPU Detection')
-        if not (gpus := check_gpu()):
-            lbl = QLabel('    No discrete GPU detected')
-            lbl.setStyleSheet(f'color:{_C_GREY};')
-            self._checks_lay.addWidget(lbl)
-        for g in gpus:
-            self._add_dep(
-                g.label, g.package_installed, False,
-                install_cmd=g.install_cmd,
-            )
+        # GPU — Linux sysfs only
+        if config.run_gpu_check:
+            self._section('GPU Detection')
+            if not (gpus := check_gpu()):
+                lbl = QLabel('    No discrete GPU detected')
+                lbl.setStyleSheet(f'color:{_C_GREY};')
+                self._checks_lay.addWidget(lbl)
+            for g in gpus:
+                self._add_dep(
+                    g.label, g.package_installed, False,
+                    install_cmd=g.install_cmd,
+                )
 
-        # Step 4 — udev
-        self._section('Step 4: USB Device Permissions')
-        udev = check_udev()
-        udev_cmd = (
-            '' if udev.ok
-            else 'sudo ' + self._trcc_prefix() + ' setup-udev'
-        )
-        self._add_dep(
-            'udev rules', udev.ok, True,
-            note='' if udev.ok else udev.message,
-            install_cmd=udev_cmd,
-        )
-
-        # Step 5 — SELinux (only shown when enforcing)
-        se = check_selinux()
-        if se.enforcing:
-            self._section('Step 5: SELinux Policy')
-            se_cmd = (
-                '' if se.ok
-                else 'sudo ' + self._trcc_prefix() + ' setup-selinux'
+        # udev — Linux only
+        if config.run_udev_check:
+            self._section('USB Device Permissions')
+            udev = check_udev()
+            udev_cmd = (
+                '' if udev.ok
+                else 'sudo ' + self._trcc_prefix() + ' setup-udev'
             )
             self._add_dep(
-                'SELinux USB policy', se.ok, True,
-                note='' if se.ok else se.message,
-                install_cmd=se_cmd,
+                'udev rules', udev.ok, True,
+                note='' if udev.ok else udev.message,
+                install_cmd=udev_cmd,
             )
 
-        # Step 6 — desktop entry
-        self._section('Step 6: Desktop Integration')
-        desk = check_desktop_entry()
-        desk_cmd = '' if desk else self._trcc_prefix() + ' install-desktop'
-        self._add_dep(
-            'Application menu entry', desk, False,
-            install_cmd=desk_cmd,
-        )
+        # SELinux — Linux only
+        if config.run_selinux_check:
+            se = check_selinux()
+            if se.enforcing:
+                self._section('SELinux Policy')
+                se_cmd = (
+                    '' if se.ok
+                    else 'sudo ' + self._trcc_prefix() + ' setup-selinux'
+                )
+                self._add_dep(
+                    'SELinux USB policy', se.ok, True,
+                    note='' if se.ok else se.message,
+                    install_cmd=se_cmd,
+                )
+
+        # Desktop entry — Linux only (.desktop files)
+        if config.run_udev_check:
+            self._section('Desktop Integration')
+            desk = check_desktop_entry()
+            desk_cmd = '' if desk else self._trcc_prefix() + ' install-desktop'
+            self._add_dep(
+                'Application menu entry', desk, False,
+                install_cmd=desk_cmd,
+            )
 
     def _section(self, title: str) -> None:
         lbl = QLabel(title)
@@ -466,7 +475,12 @@ class SetupWizard(QWidget):
 
 def main() -> int:
     """Launch the setup wizard GUI."""
+    import signal
+
     app = QApplication.instance() or QApplication(sys.argv)
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
     w = SetupWizard()
     w.show()
+    w.raise_()
+    w.activateWindow()
     return app.exec()
