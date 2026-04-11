@@ -12,6 +12,10 @@ Sensor IDs follow the same format as Linux for compatibility:
     psutil:{metric}        e.g., psutil:cpu_percent
     nvidia:{gpu}:{metric}  e.g., nvidia:0:temp
     computed:{metric}      e.g., computed:disk_read
+
+Apple Silicon temperature key list derived from iSMC (GPL-3.0):
+    https://github.com/dkorunic/iSMC — smc/sensors.go
+    Copyright (c) Dinko Korunic. Used under GPL-3.0.
 """
 from __future__ import annotations
 
@@ -61,9 +65,10 @@ KERNEL_INDEX_SMC = 2
 SMC_CMD_READ_KEYINFO = 9
 SMC_CMD_READ_BYTES = 5
 
-# SMC key table — Intel + Apple Silicon.
+# SMC key table — Intel + Apple Silicon temperature keys.
 # Discovery probes every key; only those returning valid values are registered.
 # Apple Silicon keys vary by chip generation — trial-and-error handles this.
+# Fans are discovered dynamically via FNum (see _discover_fans).
 _SMC_KEYS: dict[str, tuple[str, str, str]] = {
     # Intel CPU temps
     'TC0P': ('CPU Proximity', 'temperature', '°C'),
@@ -72,7 +77,7 @@ _SMC_KEYS: dict[str, tuple[str, str, str]] = {
     'TC1C': ('CPU Core 1', 'temperature', '°C'),
     'TC2C': ('CPU Core 2', 'temperature', '°C'),
     'TC3C': ('CPU Core 3', 'temperature', '°C'),
-    # Apple Silicon CPU temps (performance cores)
+    # Apple Silicon CPU temps (performance cores — common across M1-M4)
     'Tp01': ('CPU P-Core 1', 'temperature', '°C'),
     'Tp02': ('CPU P-Core 2', 'temperature', '°C'),
     'Tp05': ('CPU P-Core 5', 'temperature', '°C'),
@@ -90,15 +95,60 @@ _SMC_KEYS: dict[str, tuple[str, str, str]] = {
     'Tm0P': ('Memory Proximity', 'temperature', '°C'),
     'Tm00': ('Memory Bank 0', 'temperature', '°C'),
     'Tm01': ('Memory Bank 1', 'temperature', '°C'),
-    # Fans (same on Intel + Apple Silicon)
-    'F0Ac': ('Fan 0', 'fan', 'RPM'),
-    'F1Ac': ('Fan 1', 'fan', 'RPM'),
-    'F2Ac': ('Fan 2', 'fan', 'RPM'),
-    'F3Ac': ('Fan 3', 'fan', 'RPM'),
     # Misc Intel
     'TN0P': ('Northbridge', 'temperature', '°C'),
     'TB0T': ('Battery', 'temperature', '°C'),
 }
+
+# Apple Silicon extended temperature keys (M1 through M5).
+# Derived from iSMC smc/sensors.go (GPL-3.0, Copyright Dinko Korunic).
+# Discovery probes all; only keys present on the actual chip are registered.
+_AS_TEMP_KEYS: frozenset[str] = frozenset({
+    # CPU P-cores (die/cluster temps across M1-M5 variants)
+    'Tp00', 'Tp04', 'Tp05', 'Tp06', 'Tp08', 'Tp0C', 'Tp0D', 'Tp0E',
+    'Tp0G', 'Tp0K', 'Tp0L', 'Tp0M', 'Tp0O', 'Tp0R', 'Tp0U', 'Tp0W',
+    'Tp0X', 'Tp0a', 'Tp0b', 'Tp0c', 'Tp0d', 'Tp0g', 'Tp0h', 'Tp0i',
+    'Tp0j', 'Tp0m', 'Tp0n', 'Tp0o', 'Tp0p', 'Tp0u', 'Tp0y',
+    'Tp12', 'Tp16', 'Tp1E', 'Tp1F', 'Tp1G', 'Tp1K', 'Tp1Q', 'Tp1R',
+    'Tp1S', 'Tp1j', 'Tp1n', 'Tp1t', 'Tp1w', 'Tp1z',
+    'Tp22', 'Tp25', 'Tp28', 'Tp2B', 'Tp2E', 'Tp2J', 'Tp2M', 'Tp2Q',
+    'Tp2T', 'Tp2W', 'Tp3P', 'Tp3X',
+    # CPU package sensors
+    'Tpx8', 'Tpx9', 'TpxA', 'TpxB', 'TpxC', 'TpxD',
+    # CPU E-cores (efficiency cluster temps)
+    'Te04', 'Te05', 'Te06', 'Te09', 'Te0G', 'Te0H', 'Te0I', 'Te0L',
+    'Te0P', 'Te0Q', 'Te0R', 'Te0S', 'Te0T', 'Te0U', 'Te0V',
+    # GPU dies
+    'Tg0G', 'Tg0H', 'Tg0K', 'Tg0L', 'Tg0U', 'Tg0X', 'Tg0d', 'Tg0e',
+    'Tg0g', 'Tg0k', 'Tg1U', 'Tg1Y', 'Tg1c', 'Tg1g', 'Tg1k',
+    # Die fabric / interconnect
+    'Tf14', 'Tf18', 'Tf19', 'Tf1A', 'Tf1D', 'Tf1E',
+    'Tf24', 'Tf28', 'Tf29', 'Tf2A', 'Tf2D', 'Tf2E',
+    # Memory (lowercase variant keys on some chips)
+    'Tm0p', 'Tm1p', 'Tm2p',
+})
+
+# Max fan index to probe when FNum is unavailable.
+_FNUM_FALLBACK = 4
+
+
+def _as_key_metadata(key: str) -> tuple[str, str, str]:
+    """Derive (name, category, unit) for an Apple Silicon temp key."""
+    suffix = key[2:]
+    match key[:2]:
+        case 'Tp':
+            name = f'CPU P-Core {suffix}' if suffix != 'x' else f'CPU Package {suffix}'
+        case 'Te':
+            name = f'CPU E-Core {suffix}'
+        case 'Tg':
+            name = f'GPU Die {suffix}'
+        case 'Tf':
+            name = f'Die Fabric {suffix}'
+        case 'Tm':
+            name = f'Memory {suffix}'
+        case _:
+            name = f'Sensor {key}'
+    return (name, 'temperature', '°C')
 
 # ── SMC structures ───────────────────────────────────────────────────
 
@@ -169,8 +219,8 @@ def _parse_smc_bytes(data_type: int, raw: ctypes.Array, size: int) -> float:
             return struct.unpack('>h', b[:2])[0] / 256.0
         case 'fpe2':  # unsigned 14.2 fixed-point (fan RPM)
             return struct.unpack('>H', b[:2])[0] / 4.0
-        case 'flt':   # IEEE 754 float
-            return struct.unpack('>f', b[:4])[0] if len(b) >= 4 else 0.0
+        case 'flt':   # IEEE 754 float (little-endian on all Macs)
+            return struct.unpack('<f', b[:4])[0] if len(b) >= 4 else 0.0
         case 'ui8':
             return float(b[0])
         case 'ui16':
@@ -181,6 +231,8 @@ def _parse_smc_bytes(data_type: int, raw: ctypes.Array, size: int) -> float:
             return struct.unpack('>H', b[:2])[0] / 32768.0
         case _:
             # Best effort: treat as big-endian unsigned
+            log.debug("SMC unknown data type '%s' (size=%d) — fallback BE uint",
+                      dt.rstrip(), size)
             return float(struct.unpack('>H', b[:2])[0]) / 256.0
 
 
@@ -272,11 +324,13 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
                 ctypes.byref(cmd), ctypes.byref(out_size),
             )
             if ret != 0:
+                log.debug("SMC KEYINFO %s: IOKit returned %d", key, ret)
                 return None
 
             data_type = cmd.keyInfo.dataType
             data_size = cmd.keyInfo.dataSize
             if data_size == 0:
+                log.debug("SMC KEYINFO %s: dataSize=0 — key not present", key)
                 return None
 
             # Read the actual bytes
@@ -287,10 +341,12 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
                 ctypes.byref(cmd), ctypes.byref(out_size),
             )
             if ret != 0:
+                log.debug("SMC READ %s: IOKit returned %d", key, ret)
                 return None
 
             return _parse_smc_bytes(data_type, cmd.bytes, data_size)
         except Exception:
+            log.debug("SMC read %s failed", key, exc_info=True)
             return None
 
     # ── Discovery ────────────────────────────────────────────────────
@@ -298,21 +354,80 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
     def _discover_smc(self) -> None:
         """Discover SMC sensors — works on both Intel and Apple Silicon.
 
-        Probes every key in _SMC_KEYS; registers only those returning
-        valid values. Chip-specific keys that don't exist return None
-        and are silently skipped.
+        Probes every key in _SMC_KEYS (temps); on Apple Silicon also probes
+        _AS_TEMP_KEYS for chip-specific die/cluster temps. Fans discovered
+        dynamically via FNum key.
         """
         if not self._open_smc():
             log.debug("SMC unavailable — skipping temp/fan sensors")
             return
+
+        found = 0
+        # ── Temperature keys from curated table ──
         for key, (name, category, unit) in _SMC_KEYS.items():
             val = self._read_smc_direct(key)
             if val is not None and val > 0:
                 self._sensors.append(
                     SensorInfo(f'smc:{key}', name, category, unit, 'smc'),
                 )
-        log.info("SMC discovery: %d sensors found",
-                 sum(1 for s in self._sensors if s.source == 'smc'))
+                log.debug("SMC key %s: %.1f %s (%s)", key, val, unit, name)
+                found += 1
+            else:
+                log.debug("SMC key %s: not present or zero", key)
+
+        # ── Apple Silicon extended temperature keys ──
+        if IS_APPLE_SILICON:
+            as_found = 0
+            as_probed = _AS_TEMP_KEYS - _SMC_KEYS.keys()
+            for key in sorted(as_probed):
+                val = self._read_smc_direct(key)
+                if val is not None and val > 0:
+                    name, category, unit = _as_key_metadata(key)
+                    self._sensors.append(
+                        SensorInfo(f'smc:{key}', name, category, unit, 'smc'),
+                    )
+                    log.debug("SMC AS key %s: %.1f %s (%s)",
+                              key, val, unit, name)
+                    as_found += 1
+            log.info("SMC AS temp discovery: %d/%d keys present",
+                     as_found, len(as_probed))
+            found += as_found
+
+        # ── Fans via FNum ──
+        found += self._discover_fans()
+
+        log.info("SMC discovery complete: %d sensors total", found)
+
+    def _discover_fans(self) -> int:
+        """Discover fan sensors dynamically via the FNum SMC key.
+
+        Reads FNum to get the actual fan count, then probes F{i}Ac for
+        each fan. Falls back to probing F0Ac–F3Ac if FNum is unreadable.
+        """
+        fnum_val = self._read_smc_direct('FNum')
+        if fnum_val is not None and fnum_val > 0:
+            fan_count = int(fnum_val)
+            log.info("SMC FNum reports %d fan(s)", fan_count)
+        else:
+            fan_count = _FNUM_FALLBACK
+            log.debug("SMC FNum unavailable — probing F0Ac..F%dAc", fan_count - 1)
+
+        found = 0
+        for i in range(fan_count):
+            key = f'F{i}Ac'
+            val = self._read_smc_direct(key)
+            if val is not None and val >= 0:
+                self._sensors.append(
+                    SensorInfo(f'smc:{key}', f'Fan {i}', 'fan', 'RPM', 'smc'),
+                )
+                log.debug("SMC fan %s: %.0f RPM", key, val)
+                found += 1
+            else:
+                log.debug("SMC fan %s: not present", key)
+
+        if found == 0:
+            log.debug("No fan sensors discovered via SMC")
+        return found
 
     def _discover_apple_silicon_gpu(self) -> None:
         """Register Apple Silicon GPU sensors (from powermetrics, not SMC)."""
@@ -345,6 +460,7 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
     def _poll_smc(self, readings: dict[str, float]) -> None:
         """Read all discovered SMC sensors via direct IOKit reads."""
         if not self._smc_conn:
+            log.debug("SMC poll skipped — no connection")
             return
         for sensor in self._sensors:
             if sensor.source != 'smc':
@@ -516,11 +632,3 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
         self._map_fans(mapping, fan_sources=('smc', 'iokit', 'nvidia'))
 
         return mapping
-
-
-def _parse_metric(line: str) -> float:
-    """Extract numeric value from powermetrics output line."""
-    match = re.search(r'([\d.]+)', line.split(':')[-1])
-    if match:
-        return float(match.group(1))
-    return 0.0

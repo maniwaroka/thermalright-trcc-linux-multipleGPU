@@ -34,11 +34,14 @@ DISKUTIL_OUTPUT = (
 )
 
 
-def _make_smc_response(data_type: str, value: float) -> MagicMock:
-    """Create a mock that simulates IOConnectCallStructMethod for SMC reads.
+def _make_smc_response(data_type: str, value: float) -> tuple[int, bytes]:
+    """Create mock SMC raw bytes for a given data type and value.
 
-    Returns a side_effect function that fills the SMCKeyData_t output struct
-    with the given data type and encoded value.
+    Encodes values the same way real hardware would:
+    - sp78: big-endian signed 8.8 fixed-point
+    - fpe2: big-endian unsigned 14.2 fixed-point
+    - flt:  little-endian IEEE 754 float (all Macs)
+    - ui8:  unsigned byte
     """
     dt_int = struct.unpack('>I', data_type.ljust(4).encode('ascii'))[0]
 
@@ -48,7 +51,9 @@ def _make_smc_response(data_type: str, value: float) -> MagicMock:
         case 'fpe2':
             raw = struct.pack('>H', int(value * 4))
         case 'flt':
-            raw = struct.pack('>f', value)
+            raw = struct.pack('<f', value)
+        case 'ui8':
+            raw = struct.pack('B', int(value))
         case _:
             raw = struct.pack('>H', int(value))
 
@@ -65,15 +70,13 @@ class MockSMC:
         dt_int, raw = _make_smc_response(data_type, value)
         self.keys[key] = (dt_int, raw)
 
-    def ioconnect_side_effect(self, conn, selector, in_ptr, in_size,
-                              out_ptr, out_size_ptr) -> int:
-        """Side effect for IOConnectCallStructMethod."""
-        from trcc.adapters.system.macos.sensors import SMCKeyData_t
+    def ioconnect_side_effect(self, conn, selector, cmd, in_size,
+                              cmd_out, out_size_ptr) -> int:
+        """Side effect for IOConnectCallStructMethod.
 
-        cmd = ctypes.cast(in_ptr, ctypes.POINTER(SMCKeyData_t)).contents
-        out = ctypes.cast(out_ptr, ctypes.POINTER(SMCKeyData_t)).contents
-
-        # Find which key was requested
+        The mock replaces ctypes.byref with identity (lambda x: x),
+        so cmd/cmd_out are the SMCKeyData_t structs directly.
+        """
         key_str = struct.pack('>I', cmd.key).decode('ascii', errors='replace')
         if key_str not in self.keys:
             return 1  # kIOReturnError
@@ -81,11 +84,11 @@ class MockSMC:
         dt_int, raw = self.keys[key_str]
 
         if cmd.data8 == 9:  # kSMCGetKeyInfo
-            out.keyInfo.dataType = dt_int
-            out.keyInfo.dataSize = len(raw)
+            cmd_out.keyInfo.dataType = dt_int
+            cmd_out.keyInfo.dataSize = len(raw)
         elif cmd.data8 == 5:  # kSMCReadKey
             for i, b in enumerate(raw):
-                out.bytes[i] = b
+                cmd_out.bytes[i] = b
 
         return 0  # kIOReturnSuccess
 
@@ -97,22 +100,88 @@ def mock_smc():
     smc.add_key('Tp01', 'sp78', 45.0)   # CPU P-Core 1
     smc.add_key('Tg0f', 'sp78', 52.0)   # GPU Die
     smc.add_key('Tm0P', 'sp78', 38.0)   # Memory
-    smc.add_key('F0Ac', 'fpe2', 1200.0)  # Fan 0
-    smc.add_key('F1Ac', 'fpe2', 1350.0)  # Fan 1
+    # Apple Silicon fans use flt (little-endian IEEE 754)
+    smc.add_key('FNum', 'ui8', 2.0)     # 2 fans
+    smc.add_key('F0Ac', 'flt', 1200.0)  # Fan 0
+    smc.add_key('F1Ac', 'flt', 1350.0)  # Fan 1
     return smc
+
+
+@pytest.fixture
+def mock_smc_intel():
+    """Pre-configured MockSMC with typical Intel Mac readings."""
+    smc = MockSMC()
+    smc.add_key('TC0P', 'sp78', 55.0)   # CPU Proximity
+    smc.add_key('TG0D', 'sp78', 48.0)   # GPU Die
+    # Intel fans use fpe2 (big-endian 14.2 fixed-point)
+    smc.add_key('FNum', 'ui8', 2.0)     # 2 fans
+    smc.add_key('F0Ac', 'fpe2', 1800.0) # Fan 0
+    smc.add_key('F1Ac', 'fpe2', 1900.0) # Fan 1
+    return smc
+
+
+def _make_iokit_mock(smc: MockSMC) -> MagicMock:
+    """Build an IOKit mock wired to a MockSMC instance.
+
+    IOServiceOpen sets the connection handle to a non-zero value so
+    _open_smc() succeeds (self._smc_conn != 0).
+    """
+    iokit = MagicMock()
+    iokit.IOServiceMatching.return_value = 1  # non-NULL
+
+    def _ioservice_open(service, task, conn_type, conn_ref):
+        conn_ref.value = 42  # non-zero connection handle
+        return 0  # kIOReturnSuccess
+
+    iokit.IOServiceGetMatchingService.return_value = 1  # service handle
+    iokit.IOServiceOpen.side_effect = _ioservice_open
+    iokit.IOConnectCallStructMethod.side_effect = smc.ioconnect_side_effect
+    iokit.IOServiceClose.return_value = 0
+    iokit.IOObjectRelease = MagicMock()
+    return iokit
 
 
 @pytest.fixture
 def mock_iokit(mock_smc):
     """Mock IOKit framework with working SMC connection."""
-    iokit = MagicMock()
-    iokit.IOServiceMatching.return_value = 1  # non-NULL
-    iokit.IOServiceGetMatchingService.return_value = 1  # service handle
-    iokit.IOServiceOpen.return_value = 0  # kIOReturnSuccess
-    iokit.IOConnectCallStructMethod.side_effect = mock_smc.ioconnect_side_effect
-    iokit.IOServiceClose.return_value = 0
-    iokit.IOObjectRelease = MagicMock()
-    return iokit
+    return _make_iokit_mock(mock_smc)
+
+
+@pytest.fixture
+def mock_iokit_intel(mock_smc_intel):
+    """Mock IOKit framework with Intel SMC."""
+    return _make_iokit_mock(mock_smc_intel)
+
+
+def _make_mock_ctypes():
+    """Common ctypes mock setup for SMC tests."""
+    mock_ctypes = MagicMock()
+    mock_ctypes.util.find_library.return_value = 'libSystem'
+    mock_ctypes.cdll.LoadLibrary.return_value = MagicMock(
+        mach_task_self=MagicMock(return_value=0))
+    mock_ctypes.c_uint = type('c_uint', (), {
+        '__init__': lambda self, v=0: setattr(self, 'value', v),
+        'value': 0,
+    })
+    mock_ctypes.byref = lambda x: x
+    mock_ctypes.sizeof = lambda x: 80
+    mock_ctypes.c_ulong = type('c_ulong', (), {
+        '__init__': lambda self, v=0: setattr(self, 'value', v),
+        'value': 80,
+    })
+    return mock_ctypes
+
+
+def _make_subprocess_side_effect(powermetrics_out=POWERMETRICS_GPU_OUTPUT,
+                                 diskutil_out=DISKUTIL_OUTPUT):
+    """Create subprocess.run side_effect for powermetrics/diskutil."""
+    def _run(cmd, **kwargs):
+        if 'powermetrics' in cmd:
+            return MagicMock(stdout=powermetrics_out)
+        if 'diskutil' in cmd:
+            return MagicMock(stdout=diskutil_out)
+        return MagicMock(stdout='')
+    return _run
 
 
 @pytest.fixture
@@ -121,29 +190,12 @@ def mock_macos(mock_io_no_nvidia, mock_iokit):
     with patch(f'{MODULE}.IS_APPLE_SILICON', True), \
          patch(f'{MODULE}._iokit', mock_iokit), \
          patch(f'{MODULE}.subprocess') as sub, \
-         patch(f'{MODULE}.ctypes') as mock_ctypes:
-        # Make ctypes work with our mock IOKit
-        mock_ctypes.util.find_library.return_value = 'libSystem'
-        mock_ctypes.cdll.LoadLibrary.return_value = MagicMock(
-            mach_task_self=MagicMock(return_value=0))
-        mock_ctypes.c_uint = type('c_uint', (), {
-            '__init__': lambda self, v=0: setattr(self, 'value', v),
-            'value': 0,
-        })
-        mock_ctypes.byref = lambda x: x
-        mock_ctypes.sizeof = lambda x: 80
-        mock_ctypes.c_ulong = type('c_ulong', (), {
-            '__init__': lambda self, v=0: setattr(self, 'value', v),
-            'value': 80,
-        })
-
-        def _run_side_effect(cmd, **kwargs):
-            if 'powermetrics' in cmd:
-                return MagicMock(stdout=POWERMETRICS_GPU_OUTPUT)
-            if 'diskutil' in cmd:
-                return MagicMock(stdout=DISKUTIL_OUTPUT)
-            return MagicMock(stdout='')
-        sub.run.side_effect = _run_side_effect
+         patch(f'{MODULE}.ctypes') as mock_ctypes_mod:
+        mc = _make_mock_ctypes()
+        for attr in dir(mc):
+            if not attr.startswith('_'):
+                setattr(mock_ctypes_mod, attr, getattr(mc, attr))
+        sub.run.side_effect = _make_subprocess_side_effect()
         mock_io_no_nvidia.subprocess = sub
         yield mock_io_no_nvidia
 
@@ -154,23 +206,22 @@ def mock_macos_no_smc(mock_io_no_nvidia):
     with patch(f'{MODULE}.IS_APPLE_SILICON', True), \
          patch(f'{MODULE}._iokit', None), \
          patch(f'{MODULE}.subprocess') as sub:
-        def _run_side_effect(cmd, **kwargs):
-            if 'powermetrics' in cmd:
-                return MagicMock(stdout=POWERMETRICS_GPU_OUTPUT)
-            if 'diskutil' in cmd:
-                return MagicMock(stdout=DISKUTIL_OUTPUT)
-            return MagicMock(stdout='')
-        sub.run.side_effect = _run_side_effect
+        sub.run.side_effect = _make_subprocess_side_effect()
         mock_io_no_nvidia.subprocess = sub
         yield mock_io_no_nvidia
 
 
 @pytest.fixture
-def mock_macos_intel(mock_io_no_nvidia):
-    """macOS Intel enumerator without IOKit."""
+def mock_macos_intel(mock_io_no_nvidia, mock_iokit_intel):
+    """macOS Intel enumerator with IOKit SMC."""
     with patch(f'{MODULE}.IS_APPLE_SILICON', False), \
-         patch(f'{MODULE}._iokit', None), \
-         patch(f'{MODULE}.subprocess') as sub:
+         patch(f'{MODULE}._iokit', mock_iokit_intel), \
+         patch(f'{MODULE}.subprocess') as sub, \
+         patch(f'{MODULE}.ctypes') as mock_ctypes_mod:
+        mc = _make_mock_ctypes()
+        for attr in dir(mc):
+            if not attr.startswith('_'):
+                setattr(mock_ctypes_mod, attr, getattr(mc, attr))
         sub.run.return_value = MagicMock(stdout='')
         mock_io_no_nvidia.subprocess = sub
         yield mock_io_no_nvidia
@@ -187,7 +238,7 @@ def enum_no_smc(mock_macos_no_smc):
 
 @pytest.fixture
 def enum_intel(mock_macos_intel):
-    """Discovered macOS Intel enumerator (no IOKit)."""
+    """Discovered macOS Intel enumerator with IOKit SMC."""
     from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
     e = MacOSSensorEnumerator()
     e.discover()
@@ -213,11 +264,130 @@ class TestDiscover:
         """No SMC sensors when IOKit unavailable (no root)."""
         assert not any(s.source == 'smc' for s in enum_no_smc.get_sensors())
 
-    def test_intel_no_smc_without_iokit(self, enum_intel):
-        """Intel Mac without IOKit — no SMC sensors, psutil still works."""
-        sensors = enum_intel.get_sensors()
-        assert not any(s.source == 'smc' for s in sensors)
-        assert any(s.source == 'psutil' for s in sensors)
+    def test_intel_smc_temps_discovered(self, enum_intel):
+        """Intel Mac discovers temps via IOKit SMC."""
+        ids = [s.id for s in enum_intel.get_sensors()]
+        assert 'smc:TC0P' in ids
+        assert 'smc:TG0D' in ids
+
+    def test_intel_fans_discovered(self, enum_intel):
+        """Intel Mac discovers fans via FNum + fpe2 encoding."""
+        ids = [s.id for s in enum_intel.get_sensors()]
+        assert 'smc:F0Ac' in ids
+        assert 'smc:F1Ac' in ids
+        # FNum=2, so F2Ac/F3Ac should NOT be probed
+        assert 'smc:F2Ac' not in ids
+
+    def test_intel_no_as_keys_probed(self, enum_intel):
+        """Intel Mac does not probe Apple Silicon extended keys."""
+        assert not any(s.id.startswith('smc:Te') for s in enum_intel.get_sensors())
+        assert not any(s.id.startswith('smc:Tf') for s in enum_intel.get_sensors())
+
+
+class TestAppleSiliconDiscovery:
+    """Apple Silicon extended key discovery + dynamic fan count."""
+
+    def test_as_temp_keys_discovered(self, mock_io_no_nvidia, mock_smc):
+        """AS-specific temp keys (Te*, Tg0K, etc.) are discovered."""
+        mock_smc.add_key('Te04', 'sp78', 41.0)
+        mock_smc.add_key('Tp0a', 'sp78', 43.0)
+        mock_smc.add_key('Tg0K', 'sp78', 50.0)
+        mock_smc.add_key('Tf14', 'sp78', 39.0)
+        iokit = _make_iokit_mock(mock_smc)
+
+        with patch(f'{MODULE}.IS_APPLE_SILICON', True), \
+             patch(f'{MODULE}._iokit', iokit), \
+             patch(f'{MODULE}.subprocess') as sub, \
+             patch(f'{MODULE}.ctypes') as mock_ctypes_mod:
+            mc = _make_mock_ctypes()
+            for attr in dir(mc):
+                if not attr.startswith('_'):
+                    setattr(mock_ctypes_mod, attr, getattr(mc, attr))
+            sub.run.side_effect = _make_subprocess_side_effect()
+            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            e = MacOSSensorEnumerator()
+            e.discover()
+
+        ids = [s.id for s in e.get_sensors()]
+        assert 'smc:Te04' in ids
+        assert 'smc:Tp0a' in ids
+        assert 'smc:Tg0K' in ids
+        assert 'smc:Tf14' in ids
+
+        for s in e.get_sensors():
+            if s.id in ('smc:Te04', 'smc:Tp0a', 'smc:Tg0K', 'smc:Tf14'):
+                assert s.category == 'temperature'
+                assert s.unit == '°C'
+
+    def test_fnum_dynamic_fan_count(self, mock_io_no_nvidia, mock_smc):
+        """FNum=2 limits fan probing to F0Ac and F1Ac only."""
+        iokit = _make_iokit_mock(mock_smc)
+
+        with patch(f'{MODULE}.IS_APPLE_SILICON', True), \
+             patch(f'{MODULE}._iokit', iokit), \
+             patch(f'{MODULE}.subprocess') as sub, \
+             patch(f'{MODULE}.ctypes') as mock_ctypes_mod:
+            mc = _make_mock_ctypes()
+            for attr in dir(mc):
+                if not attr.startswith('_'):
+                    setattr(mock_ctypes_mod, attr, getattr(mc, attr))
+            sub.run.side_effect = _make_subprocess_side_effect()
+            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            e = MacOSSensorEnumerator()
+            e.discover()
+
+        fan_ids = [s.id for s in e.get_sensors() if s.category == 'fan']
+        assert 'smc:F0Ac' in fan_ids
+        assert 'smc:F1Ac' in fan_ids
+        assert len(fan_ids) == 2
+
+    def test_fnum_unavailable_fallback(self, mock_io_no_nvidia):
+        """Without FNum, falls back to probing F0Ac–F3Ac."""
+        smc = MockSMC()
+        smc.add_key('Tp01', 'sp78', 45.0)
+        smc.add_key('F0Ac', 'flt', 1100.0)
+        smc.add_key('F1Ac', 'flt', 1200.0)
+        iokit = _make_iokit_mock(smc)
+
+        with patch(f'{MODULE}.IS_APPLE_SILICON', True), \
+             patch(f'{MODULE}._iokit', iokit), \
+             patch(f'{MODULE}.subprocess') as sub, \
+             patch(f'{MODULE}.ctypes') as mock_ctypes_mod:
+            mc = _make_mock_ctypes()
+            for attr in dir(mc):
+                if not attr.startswith('_'):
+                    setattr(mock_ctypes_mod, attr, getattr(mc, attr))
+            sub.run.side_effect = _make_subprocess_side_effect()
+            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            e = MacOSSensorEnumerator()
+            e.discover()
+
+        fan_ids = [s.id for s in e.get_sensors() if s.category == 'fan']
+        assert 'smc:F0Ac' in fan_ids
+        assert 'smc:F1Ac' in fan_ids
+        assert 'smc:F2Ac' not in fan_ids
+        assert len(fan_ids) == 2
+
+    def test_flt_fan_rpm_apple_silicon(self, mock_io_no_nvidia, mock_smc):
+        """Apple Silicon fan RPM parsed correctly from flt (LE float)."""
+        iokit = _make_iokit_mock(mock_smc)
+
+        with patch(f'{MODULE}.IS_APPLE_SILICON', True), \
+             patch(f'{MODULE}._iokit', iokit), \
+             patch(f'{MODULE}.subprocess') as sub, \
+             patch(f'{MODULE}.ctypes') as mock_ctypes_mod:
+            mc = _make_mock_ctypes()
+            for attr in dir(mc):
+                if not attr.startswith('_'):
+                    setattr(mock_ctypes_mod, attr, getattr(mc, attr))
+            sub.run.side_effect = _make_subprocess_side_effect()
+            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+            e = MacOSSensorEnumerator()
+            e.discover()
+            readings = e.read_all()
+
+        assert abs(readings['smc:F0Ac'] - 1200.0) < 0.1
+        assert abs(readings['smc:F1Ac'] - 1350.0) < 0.1
 
 
 class TestReadAll:
@@ -329,28 +499,59 @@ class TestSMCParsing:
         result = _parse_smc_bytes(dt, raw, 2)
         assert result == 1200.0
 
-    def test_flt_float(self):
+    def test_flt_little_endian(self):
+        """flt type uses little-endian IEEE 754 on all Macs."""
         from trcc.adapters.system.macos.sensors import _parse_smc_bytes
         dt = struct.unpack('>I', b'flt ')[0]
         raw = (ctypes.c_uint8 * 32)()
-        val = struct.pack('>f', 3.14)
+        val = struct.pack('<f', 1337.5)
         for i, b in enumerate(val):
             raw[i] = b
         result = _parse_smc_bytes(dt, raw, 4)
-        assert abs(result - 3.14) < 0.01
+        assert abs(result - 1337.5) < 0.1
+
+    def test_flt_fan_rpm(self):
+        """Fan RPM via flt type (Apple Silicon pattern)."""
+        from trcc.adapters.system.macos.sensors import _parse_smc_bytes
+        dt = struct.unpack('>I', b'flt ')[0]
+        raw = (ctypes.c_uint8 * 32)()
+        val = struct.pack('<f', 1200.0)
+        for i, b in enumerate(val):
+            raw[i] = b
+        result = _parse_smc_bytes(dt, raw, 4)
+        assert abs(result - 1200.0) < 0.1
 
 
-class TestParseMetric:
-    """_parse_metric helper — powermetrics line parser."""
+class TestASKeyMetadata:
+    """_as_key_metadata derives names from Apple Silicon key prefixes."""
 
-    def test_temperature(self):
-        from trcc.adapters.system.macos.sensors import _parse_metric
-        assert _parse_metric('CPU die temperature: 45.23 C') == 45.23
+    def test_cpu_pcore(self):
+        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        name, cat, unit = _as_key_metadata('Tp0a')
+        assert 'CPU P-Core' in name
+        assert cat == 'temperature'
+        assert unit == '°C'
 
-    def test_fan(self):
-        from trcc.adapters.system.macos.sensors import _parse_metric
-        assert _parse_metric('Fan: 1200 rpm') == 1200.0
+    def test_cpu_ecore(self):
+        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        name, cat, unit = _as_key_metadata('Te04')
+        assert 'CPU E-Core' in name
+        assert cat == 'temperature'
 
-    def test_no_number(self):
-        from trcc.adapters.system.macos.sensors import _parse_metric
-        assert _parse_metric('no numbers here') == 0.0
+    def test_gpu_die(self):
+        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        name, cat, unit = _as_key_metadata('Tg0K')
+        assert 'GPU Die' in name
+        assert cat == 'temperature'
+
+    def test_die_fabric(self):
+        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        name, cat, unit = _as_key_metadata('Tf14')
+        assert 'Die Fabric' in name
+        assert cat == 'temperature'
+
+    def test_memory(self):
+        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        name, cat, unit = _as_key_metadata('Tm1p')
+        assert 'Memory' in name
+        assert cat == 'temperature'
