@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..core.i18n import tr
 from ..core.models import (
     LED_MODE_LABELS,
     LED_PRESET_ASSETS,
@@ -325,31 +326,17 @@ class UCLedControl(QWidget):
         )
         self._title.setVisible(False)
 
-        # -- Mode buttons --
+        # -- Mode buttons (text rendered via i18n, not baked into PNG) --
+        from ..conf import settings
         self._mode_buttons: List[QPushButton] = []
-        for i, label in enumerate(MODE_LABELS):
+        for i, label_key in enumerate(MODE_LABELS):
+            label = tr(label_key, settings.lang)
             btn = QPushButton(label, self)
             x = MODE_X_START + i * (MODE_W + MODE_SPACING)
             btn.setGeometry(x, MODE_Y, MODE_W, MODE_H)
             btn.setCheckable(True)
             btn.setStyleSheet(self._mode_button_style(False))
             btn.clicked.connect(lambda checked, idx=i: self._on_mode_clicked(idx))
-
-            # Try to load mode button image
-            normal_name = f"led_mode_{i + 1}"
-            active_name = f"led_mode_{i + 1}_active"
-            normal_path = Assets.get(normal_name)
-            active_path = Assets.get(active_name)
-            if normal_path and active_path:
-                btn.setText("")  # Clear text, use images
-                btn.setStyleSheet(
-                    f"QPushButton {{ border: none; "
-                    f"background-image: url({normal_path}); "
-                    f"background-repeat: no-repeat; }}"
-                    f"QPushButton:checked {{ "
-                    f"background-image: url({active_path}); }}"
-                )
-
             btn.setToolTip(label)
             self._mode_buttons.append(btn)
 
@@ -521,8 +508,22 @@ class UCLedControl(QWidget):
             btn.setVisible(False)
             self._zone_buttons.append(btn)
 
+        # -- Bottom section labels (i18n text, not baked into PNG) --
+        self._display_selection_label = QLabel(
+            tr('Display Selection', settings.lang), self)
+        self._display_selection_label.setGeometry(590, 668, 140, 20)
+        self._display_selection_label.setStyleSheet(
+            "color: #ccc; font-size: 12px; background: transparent;")
+        self._display_selection_label.setVisible(False)
+
+        self._circulate_label = QLabel(
+            tr('Circulate', settings.lang), self)
+        self._circulate_label.setGeometry(760, 668, 80, 20)
+        self._circulate_label.setStyleSheet(
+            "color: #ccc; font-size: 12px; background: transparent;")
+        self._circulate_label.setVisible(False)
+
         # Carousel toggle button (C# buttonLB at (739, 680), 14x14)
-        # Background PNG has "Circulate" label baked in — this is just the checkbox image
         self._carousel_btn = QPushButton(self)
         self._carousel_btn.setGeometry(739, 680, 14, 14)
         self._carousel_btn.setCheckable(True)
@@ -812,12 +813,15 @@ class UCLedControl(QWidget):
         for i, btn in enumerate(self._zone_buttons):
             btn.setVisible(i < zone_count and zone_count > 1)
         self._is_select_all_style = style_id in LED_SELECT_ALL_STYLES
-        self._carousel_btn.setVisible(zone_count > 1)
+        has_zones = zone_count > 1
+        self._carousel_btn.setVisible(has_zones)
         self._carousel_btn.setToolTip(
             "Select all zones" if self._is_select_all_style
             else "Cycle through selected zones"
         )
         self._carousel_interval.setVisible(False)
+        self._display_selection_label.setVisible(has_zones)
+        self._circulate_label.setVisible(has_zones)
         self._selected_zone = 0
         self._carousel_mode = False
         self._carousel_btn.setChecked(False)
@@ -851,13 +855,22 @@ class UCLedControl(QWidget):
         self._status.setText(text)
 
     def apply_localized_background(self) -> None:
-        """Re-apply localized background for current settings.lang."""
+        """Re-apply localized background and text labels for current lang."""
         from ..conf import settings
         from ..core.models import LED_STYLES
+        lang = settings.lang
         style = LED_STYLES[self._style_id]
-        bg_name = Assets.get_localized(style.background_base, settings.lang)
+        bg_name = Assets.get_localized(style.background_base, lang)
         if Assets.get(bg_name):
             set_background_pixmap(self, bg_name)
+        # Refresh mode button + section label text
+        for i, label_key in enumerate(MODE_LABELS):
+            if i < len(self._mode_buttons):
+                text = tr(label_key, lang)
+                self._mode_buttons[i].setText(text)
+                self._mode_buttons[i].setToolTip(text)
+        self._display_selection_label.setText(tr('Display Selection', lang))
+        self._circulate_label.setText(tr('Circulate', lang))
 
     def set_temp_unit(self, unit_int: int) -> None:
         """Set temperature unit from app settings.
@@ -1348,17 +1361,17 @@ class UCLedControl(QWidget):
 
     @staticmethod
     def _mode_button_style(active: bool) -> str:
-        # Fallback when mode button images (led_mode_*) don't load.
-        # Transparent background — the background PNG has button visuals.
+        # Text-based mode buttons — rendered over blank background PNG.
         if active:
             return (
                 "QPushButton { background: rgba(33, 150, 243, 60); "
-                "color: transparent; border: none; }"
+                "color: white; border: none; font-size: 10px; }"
             )
         return (
-            "QPushButton { background: transparent; color: transparent; "
-            "border: none; }"
-            "QPushButton:checked { background: rgba(33, 150, 243, 60); }"
+            "QPushButton { background: transparent; color: #ccc; "
+            "border: none; font-size: 10px; }"
+            "QPushButton:checked { background: rgba(33, 150, 243, 60); "
+            "color: white; }"
             "QPushButton:hover { background: rgba(255, 255, 255, 20); }"
         )
 

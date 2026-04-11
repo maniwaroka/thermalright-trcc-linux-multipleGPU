@@ -2196,9 +2196,9 @@ LED_PRESET_ASSETS: list[str] = [
     'led_preset_purple', 'led_preset_white',
 ]
 
-# LED mode button labels (English)
+# LED mode button labels — English keys for tr() lookup in i18n.py
 LED_MODE_LABELS: list[str] = [
-    "Static", "Breathing", "Colorful", "Rainbow", "Temp Link", "Load Link",
+    "Solid", "Breathe", "Color Cycle", "Rainbow", "Temp Linked", "Load Linked",
 ]
 
 # LED zone button assets — 3 variants depending on style.
