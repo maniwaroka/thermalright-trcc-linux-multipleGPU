@@ -455,7 +455,16 @@ class LedProtocol(UsbProtocol):
             packet = LedPacketBuilder.build_led_packet(
                 remapped, is_on, global_on, brightness
             )
-            return self._sender.send_led_data(packet)
+
+            try:
+                return self._sender.send_led_data(packet)
+            except Exception:
+                log.warning("LED send failed, reconnecting and retrying")
+                self.close()
+                self._handshake_result = None
+                self.handshake()
+                return self._sender.send_led_data(packet)
+
         return self._guarded_send("LED", _do_send)
 
     def _do_handshake(self) -> Optional[HandshakeResult]:

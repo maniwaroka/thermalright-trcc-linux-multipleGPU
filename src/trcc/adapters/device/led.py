@@ -330,9 +330,6 @@ class LedHidSender(LedDevice):
 
             return True
 
-        except Exception as e:
-            log.warning("send_led_data: failed: %s", e)
-            return False
         finally:
             self._lock.release()
 

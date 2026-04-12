@@ -1123,18 +1123,18 @@ class TestLedHidSenderSendLedData:
         transport.write.side_effect = OSError("USB error")
         sender = LedHidSender(transport)
 
-        result = sender.send_led_data(b'\xAA' * 20)
-        assert result is False
+        with pytest.raises(OSError, match="USB error"):
+            sender.send_led_data(b'\xAA' * 20)
         assert not sender._lock.locked()
 
-    def test_write_exception_returns_false(self):
-        """Transport write exception should result in False return."""
+    def test_write_exception_propagates(self):
+        """Transport write exception propagates so protocol can reconnect."""
         transport = _make_mock_transport()
         transport.write.side_effect = OSError("USB disconnected")
         sender = LedHidSender(transport)
 
-        result = sender.send_led_data(b'\xAA' * 20)
-        assert result is False
+        with pytest.raises(OSError, match="USB disconnected"):
+            sender.send_led_data(b'\xAA' * 20)
 
     def test_is_sending_property(self):
         """is_sending reflects lock state."""
@@ -1214,12 +1214,12 @@ class TestSendLedColors:
         result = send_led_colors(transport, colors, is_on=is_on)
         assert result is True
 
-    def test_send_returns_false_on_transport_error(self):
+    def test_send_raises_on_transport_error(self):
         transport = _make_mock_transport()
         transport.write.side_effect = OSError("fail")
         colors = [(255, 0, 0)]
-        result = send_led_colors(transport, colors)
-        assert result is False
+        with pytest.raises(OSError, match="fail"):
+            send_led_colors(transport, colors)
 
     def test_send_builds_correct_packet(self):
         """Verify send_led_colors passes correct args to builder."""

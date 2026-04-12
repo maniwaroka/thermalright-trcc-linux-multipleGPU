@@ -42,6 +42,7 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "sounddevice>=0.4.6",
     "wmi>=1.5.1; sys_platform == 'win32'",
+    "certifi>=2023.7.22",
 ]
 
 [project.optional-dependencies]
