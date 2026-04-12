@@ -1,5 +1,11 @@
 # Changelog
 
+## v9.4.7
+
+### Fixes
+- **LED device blank after sleep/resume** (#108): LED protocol had no retry-with-reconnect — after sleep, USB handles go stale and sends fail silently forever. Now matches the Bulk/LY pattern: on first USB error, close transport, re-handshake, retry once. Self-heals regardless of DBus sleep monitor (fixes distrobox/container environments).
+- **macOS theme downloads fail with SSL error** (#109): `data_repository.py` already used `certifi` for the Mozilla CA bundle, but `certifi` wasn't in `pyproject.toml` dependencies. On macOS where Python can't find system certs, downloads silently failed with `SSL_CERTIFICATE_VERIFY_FAILED`.
+
 ## v9.4.6
 
 ### Fixes
