@@ -63,7 +63,6 @@ def _ensure_system(builder) -> None:
     if _system_svc is None:
         from trcc.services.system import set_instance
         svc = builder.build_system()
-        svc.start_polling()
         set_instance(svc)
         _system_svc = svc
 
@@ -638,7 +637,6 @@ def _cmd_gpu_list() -> int:
     from trcc.core.builder import ControllerBuilder
     builder = ControllerBuilder.for_current_os()
     svc = builder.build_system()
-    svc.discover()
     gpu_list = svc.enumerator.get_gpu_list()
     if not gpu_list:
         print("No GPUs detected.")
@@ -663,7 +661,6 @@ def _cmd_gpu_set(
     from trcc.core.builder import ControllerBuilder
     builder = ControllerBuilder.for_current_os()
     svc = builder.build_system()
-    svc.discover()
     valid_keys = [k for k, _ in svc.enumerator.get_gpu_list()]
     if gpu_key not in valid_keys:
         print(f"Unknown GPU '{gpu_key}'. Available: {', '.join(valid_keys)}")

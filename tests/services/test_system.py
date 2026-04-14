@@ -27,13 +27,14 @@ from trcc.services.system import SystemService, _read_sysfs
 
 class TestConstruction:
     def test_strict_di(self):
-        with pytest.raises(RuntimeError, match="requires"):
+        with pytest.raises(TypeError):
             SystemService()
 
-    def test_initial_state(self):
+    def test_auto_discovers_on_construction(self):
         enum = MagicMock()
-        svc = SystemService(enumerator=enum)
-        assert svc._discovered is False
+        enum.discover.return_value = []
+        SystemService(enumerator=enum)
+        enum.discover.assert_called_once()
 
 
 # =========================================================================
@@ -42,30 +43,21 @@ class TestConstruction:
 
 
 class TestDiscovery:
-    def test_discover_calls_enumerator(self):
+    def test_sensors_available_after_construction(self):
         enum = MagicMock()
         enum.discover.return_value = ['sensor1', 'sensor2']
+        enum.get_sensors.return_value = ['sensor1', 'sensor2']
         svc = SystemService(enumerator=enum)
-        result = svc.discover()
-        assert result == ['sensor1', 'sensor2']
-        enum.start_polling.assert_called_once()
-        assert svc._discovered is True
-
-    def test_lazy_discovery_on_sensors_access(self):
-        enum = MagicMock()
-        enum.discover.return_value = []
-        enum.get_sensors.return_value = ['s1']
-        svc = SystemService(enumerator=enum)
-        _ = svc.sensors
+        assert svc.sensors == ['sensor1', 'sensor2']
         enum.discover.assert_called_once()
 
-    def test_no_double_discovery(self):
+    def test_discover_called_exactly_once(self):
         enum = MagicMock()
         enum.discover.return_value = []
         enum.get_sensors.return_value = []
         svc = SystemService(enumerator=enum)
-        svc.discover()
         _ = svc.sensors
+        _ = svc.enumerator
         assert enum.discover.call_count == 1
 
 

@@ -51,28 +51,15 @@ _SENTINEL = object()
 class SystemService:
     """Unified system monitoring: sensor discovery, metrics, panel config."""
 
-    def __init__(self, enumerator: SensorEnumerator | None = None) -> None:
-        if enumerator is None:
-            raise RuntimeError(
-                "SystemService requires an enumerator. "
-                "Use ControllerBuilder to wire dependencies.")
+    def __init__(self, enumerator: SensorEnumerator) -> None:
         self._enumerator: SensorEnumerator = enumerator
-        self._discovered = False
         self._defaults: Optional[Dict[str, str]] = None
-        # Cached fallback values — computed once, reused on subsequent calls
         self._fallback_cache: Optional[Dict[str, float]] = None
         self._fallback_lock = threading.Lock()
         self._mem_clock_cache: object | float | None = _SENTINEL
+        self._enumerator.discover()
 
-    # ── Sensor discovery ──────────────────────────────────────────────
-
-    def discover(self) -> list[SensorInfo]:
-        """Scan hardware for available sensors. Call once at startup."""
-        sensors = self._enumerator.discover()
-        self._discovered = True
-        self._defaults = None  # Reset cached defaults
-        self._enumerator.start_polling()
-        return sensors
+    # ── Polling lifecycle ─────────────────────────────────────────────
 
     def set_poll_interval(self, seconds: float) -> None:
         """Set background sensor poll interval (user's data refresh setting)."""
@@ -80,47 +67,36 @@ class SystemService:
 
     def start_polling(self) -> None:
         """Start background sensor polling thread."""
-        self._ensure_discovered()
         self._enumerator.start_polling()
 
     def stop_polling(self) -> None:
         """Stop background sensor polling thread."""
         self._enumerator.stop_polling()
 
-    def _ensure_discovered(self) -> None:
-        """Lazy-discover sensors on first use."""
-        if not self._discovered:
-            self.discover()
-
     @property
     def sensors(self) -> list[SensorInfo]:
         """All discovered sensors."""
-        self._ensure_discovered()
         return self._enumerator.get_sensors()
 
     @property
     def enumerator(self):
         """Direct access to SensorEnumerator (for GUI sensor picker)."""
-        self._ensure_discovered()
         return self._enumerator
 
     # ── Readings ──────────────────────────────────────────────────────
 
     def read_all(self) -> dict[str, float]:
         """Read current values for all discovered sensors."""
-        self._ensure_discovered()
         return self._enumerator.read_all()
 
     def read_one(self, sensor_id: str) -> Optional[float]:
         """Read a single sensor by ID."""
-        self._ensure_discovered()
         return self._enumerator.read_one(sensor_id)
 
     # ── Legacy key mapping ────────────────────────────────────────────
 
     def _ensure_defaults(self) -> Dict[str, str]:
         """Get legacy metric key → sensor_id mapping (cached)."""
-        self._ensure_discovered()
         if self._defaults is None:
             self._defaults = self._enumerator.map_defaults() or {}
         defaults: Dict[str, str] = self._defaults  # type: ignore[assignment]
@@ -502,6 +478,7 @@ def set_instance(svc: SystemService) -> None:
     """
     global _instance  # noqa: PLW0603
     _instance = svc
+    svc.start_polling()
 
 
 def get_instance() -> SystemService:

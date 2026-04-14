@@ -484,7 +484,9 @@ class TrccApp:
 
     def set_system(self, system_svc: SystemService) -> None:
         """Inject the SystemService. Call before start_metrics_loop()."""
+        from ..services.system import set_instance
         self._system_svc = system_svc
+        set_instance(system_svc)
 
     @property
     def current_metrics(self) -> Any:

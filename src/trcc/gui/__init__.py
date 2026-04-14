@@ -91,9 +91,6 @@ def launch(verbosity: int = 0, decorated: bool = False,
     system_svc = app.build_system()
     app.set_system(system_svc)
 
-    from trcc.services.system import set_instance
-    set_instance(system_svc)
-
     # ── GUI adapter — receives everything injected, knows nothing of TrccApp ─
     from trcc.gui.trcc_app import TRCCApp as _TRCCApp
     window = _TRCCApp(
