@@ -140,10 +140,6 @@ ABOUT_LANG_POS = (56, 413, 220, 22, 14)
 ABOUT_GPU_POS = (56, 460, 220, 22, 14)
 ABOUT_VERSION_POS = (1043, 741, 200, 22, 12)
 
-# System Info panel (P1系统信息) — 490x800
-SYSINFO_NAME_POS = (55, 27, 120, 20, 10)
-SYSINFO_VALUE_POS = (350, 27, 80, 20, 10)
-
 # ---------------------------------------------------------------------------
 # TRANSLATIONS — {lang_code: {english_string: translated_string}}
 # English keys are the canonical identifiers used by tr().

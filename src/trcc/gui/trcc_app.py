@@ -939,8 +939,6 @@ class TRCCApp(QMainWindow):
             PARAM_COORDINATE_POS,
             PARAM_FONT_POS,
             SAVE_AS_POS,
-            SYSINFO_NAME_POS,
-            SYSINFO_VALUE_POS,
             TITLE_BAR_POS,
             TITLE_BAR_TEXT,
             tr,
@@ -1085,9 +1083,6 @@ class TRCCApp(QMainWindow):
 
         lang_combo.currentIndexChanged.connect(_on_preview_lang)
 
-        for key, pos in [('NAME', SYSINFO_NAME_POS), ('Value', SYSINFO_VALUE_POS)]:
-            x, y, w, h, pt = pos
-            _lbl(self.uc_system_info, tr(key, lang), x, y, w, h, pt, key)
 
     # ── View Navigation ─────────────────────────────────────────────
 
