@@ -35,7 +35,7 @@ from trcc.conf import Settings
 from ..adapters.infra.dc_writer import read_carousel
 from ..core.app import AppEvent
 from ..core.models import DeviceInfo
-from ..core.ports import AutostartManager, GetDiskInfoFn, GetMemoryInfoFn, PlatformSetup
+from ..core.ports import Platform
 from ..services.system import SystemService
 from .assets import Assets
 from .base import create_image_button, set_background_pixmap
@@ -269,20 +269,17 @@ class TRCCApp(QMainWindow):
     def __init__(
         self,
         system_svc: SystemService,
-        setup: PlatformSetup,
-        autostart: AutostartManager,
-        mem_fn: GetMemoryInfoFn,
-        disk_fn: GetDiskInfoFn,
+        platform: Platform,
         decorated: bool = False,
     ) -> None:
         super().__init__()
         from trcc.__version__ import __version__
         log.info("TRCC v%s starting", __version__)
 
-        # Injected platform deps — no builder, no OS imports
+        # Injected platform — one object for all OS concerns
         self._system_svc = system_svc
-        self._minimize_on_close = setup.minimize_on_close()
-        self._autostart_manager = autostart
+        self._platform = platform
+        self._minimize_on_close = platform.minimize_on_close()
 
         # Apply saved GPU selection to sensor enumerator
         from ..conf import settings
@@ -315,7 +312,7 @@ class TRCCApp(QMainWindow):
 
         # Build UI
         self._apply_dark_theme()
-        self._setup_ui(mem_fn, disk_fn)
+        self._setup_ui()
 
         # Screencast handler
         self._screencast = ScreencastHandler(self, self._on_screencast_frame)
@@ -347,7 +344,7 @@ class TRCCApp(QMainWindow):
             self.uc_about._set_temp('F')
 
         # Autostart
-        autostart_state = ensure_autostart(self._autostart_manager)
+        autostart_state = ensure_autostart(self._platform)
         self.uc_about._autostart = autostart_state
         self.uc_about.startup_btn.setChecked(autostart_state)
 
@@ -670,7 +667,7 @@ class TRCCApp(QMainWindow):
 
     # ── UI Setup ────────────────────────────────────────────────────
 
-    def _setup_ui(self, mem_fn: GetMemoryInfoFn, disk_fn: GetDiskInfoFn) -> None:
+    def _setup_ui(self) -> None:
         """Build main UI layout."""
         central = QWidget()
         self.setCentralWidget(central)
@@ -754,7 +751,7 @@ class TRCCApp(QMainWindow):
         # About panel
         gpu_list = self._system_svc.enumerator.get_gpu_list()
         self.uc_about = UCAbout(
-            parent=central, autostart_manager=self._autostart_manager,
+            parent=central, platform=self._platform,
             gpu_list=gpu_list)
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)
@@ -772,7 +769,7 @@ class TRCCApp(QMainWindow):
         self.uc_led_control = UCLedControl(central)
         self.uc_led_control.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_led_control.setVisible(False)
-        self.uc_led_control.set_hardware_fns(mem_fn, disk_fn)
+        self.uc_led_control.set_hardware_fns(self._platform.get_memory_info, self._platform.get_disk_info)
 
         # Form1 buttons
         self.form1_close_btn = create_image_button(

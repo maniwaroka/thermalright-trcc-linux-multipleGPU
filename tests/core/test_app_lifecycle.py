@@ -120,54 +120,35 @@ class TestSetLanguage:
 # ── Setup methods ────────────────────────────────────────────────────────────
 
 class TestSetupMethods:
-    """Each setup method delegates to the matching PlatformSetup method."""
+    """Setup is accessed via app.os — the unified Platform interface."""
 
-    def _mock_setup(self, app, rc: int = 0):
-        """Return a mock setup adapter and inject it via build_setup."""
-        mock_setup = MagicMock()
-        mock_setup.run.return_value = rc
-        mock_setup.setup_udev.return_value = rc
-        mock_setup.setup_selinux.return_value = rc
-        mock_setup.setup_polkit.return_value = rc
-        mock_setup.install_desktop.return_value = rc
-        mock_setup.setup_winusb.return_value = rc
-        app._builder.build_setup.return_value = mock_setup
-        return mock_setup
+    def test_os_property_returns_os_platform(self, app):
+        from trcc.core.ports import Platform
+        assert isinstance(app.os, Platform)
 
-    def test_setup_platform_calls_run(self, app):
-        setup = self._mock_setup(app)
-        app.setup_platform(auto_yes=True)
-        setup.run.assert_called_once_with(auto_yes=True)
+    def test_os_run_setup(self, app):
+        mock_os = MagicMock()
+        mock_os.run_setup.return_value = 0
+        app._builder._os = mock_os
+        rc = app.os.run_setup(auto_yes=True)
+        mock_os.run_setup.assert_called_once_with(auto_yes=True)
+        assert rc == 0
 
-    def test_setup_platform_fail_rc(self, app):
-        self._mock_setup(app, rc=1)
-        rc = app.setup_platform()
-        assert rc == 1
+    def test_os_install_rules(self, app):
+        mock_os = MagicMock()
+        mock_os.install_rules.return_value = 0
+        app._builder._os = mock_os
+        rc = app.os.install_rules()
+        mock_os.install_rules.assert_called_once()
+        assert rc == 0
 
-    def test_setup_udev_calls_setup_udev(self, app):
-        setup = self._mock_setup(app)
-        app.setup_udev(dry_run=True)
-        setup.setup_udev.assert_called_once_with(dry_run=True)
-
-    def test_setup_selinux_calls_setup_selinux(self, app):
-        setup = self._mock_setup(app)
-        app.setup_selinux()
-        setup.setup_selinux.assert_called_once()
-
-    def test_setup_polkit_calls_setup_polkit(self, app):
-        setup = self._mock_setup(app)
-        app.setup_polkit()
-        setup.setup_polkit.assert_called_once()
-
-    def test_install_desktop_calls_install_desktop(self, app):
-        setup = self._mock_setup(app)
-        app.install_desktop()
-        setup.install_desktop.assert_called_once()
-
-    def test_setup_winusb_calls_setup_winusb(self, app):
-        setup = self._mock_setup(app)
-        app.setup_winusb()
-        setup.setup_winusb.assert_called_once()
+    def test_os_install_desktop(self, app):
+        mock_os = MagicMock()
+        mock_os.install_desktop.return_value = 0
+        app._builder._os = mock_os
+        rc = app.os.install_desktop()
+        mock_os.install_desktop.assert_called_once()
+        assert rc == 0
 
 
 # ── Metrics loop ──────────────────────────────────────────────────────────────

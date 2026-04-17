@@ -204,7 +204,7 @@ class DeviceProtocol(Protocol):
     """Port: protocol for communicating with a USB device."""
 
     def handshake(self) -> Any: ...
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool: ...
+    def send_data(self, *args: Any, **kwargs: Any) -> bool: ...
 
 
 # Type alias for protocol factory callable.
@@ -250,7 +250,6 @@ ImportThemeFn = Callable[[str, str], None]
 PrivilegedCmdFn = Callable[[str, list[str]], list[str]]
 
 # Type aliases for platform hardware info callables.
-# Concrete: adapters/system/{linux,windows,macos,bsd}/hardware.py
 GetMemoryInfoFn = Callable[[], list[dict[str, str]]]
 GetDiskInfoFn = Callable[[], list[dict[str, str]]]
 
@@ -259,7 +258,7 @@ GetDiskInfoFn = Callable[[], list[dict[str, str]]]
 class DoctorPlatformConfig:
     """Platform-specific constants for the doctor health check.
 
-    Each OS adapter returns one of these from get_doctor_config().
+    Each OS adapter returns one of these from doctor_config().
     doctor.py reads the fields and stays OS-blind.
     """
     distro_name: str
@@ -279,7 +278,7 @@ class DoctorPlatformConfig:
 class ReportPlatformConfig:
     """Platform-specific constants for the diagnostic report.
 
-    Each OS adapter returns one of these from get_report_config().
+    Each OS adapter returns one of these from report_config().
     debug_report.py reads the fields and stays OS-blind.
     """
     distro_name: str
@@ -302,10 +301,10 @@ class SensorEnumerator(ABC):
     to provide sensor data via native sources (hwmon, LHM, IOKit, sysctl).
 
     Concrete implementations:
-        - SensorEnumerator (adapters/system/sensors.py) — Linux
-        - WindowsSensorEnumerator (adapters/system/windows/sensors.py)
-        - MacOSSensorEnumerator (adapters/system/macos/sensors.py)
-        - BSDSensorEnumerator (adapters/system/bsd/sensors.py)
+        - SensorEnumerator (adapters/system/linux_platform.py)
+        - SensorEnumerator (adapters/system/windows_platform.py)
+        - SensorEnumerator (adapters/system/macos_platform.py)
+        - SensorEnumerator (adapters/system/bsd_platform.py)
     """
 
     @abstractmethod
@@ -357,244 +356,7 @@ class SensorEnumerator(ABC):
 
 
 # =========================================================================
-# Platform Setup ABC — contract for platform-specific setup wizards
-# =========================================================================
-
-
-class PathResolver(ABC):
-    """Port: platform path resolution.
-
-    Segregated from PlatformSetup (ISP) — callers that only need paths
-    (Settings, DisplayService, LCDDevice) depend on this narrow interface.
-    """
-
-    @abstractmethod
-    def config_dir(self) -> str:
-        """User config directory (e.g. ~/.trcc/)."""
-
-    @abstractmethod
-    def data_dir(self) -> str:
-        """User data directory (e.g. ~/.trcc/data/)."""
-
-    @abstractmethod
-    def user_content_dir(self) -> str:
-        """User-created content directory (e.g. ~/.trcc-user/)."""
-
-    @abstractmethod
-    def web_dir(self, width: int, height: int) -> str:
-        """Cloud theme web directory for a resolution."""
-
-    @abstractmethod
-    def web_masks_dir(self, width: int, height: int) -> str:
-        """Cloud masks directory for a resolution."""
-
-    @abstractmethod
-    def user_masks_dir(self, width: int, height: int) -> str:
-        """User-created masks directory for a resolution."""
-
-    @abstractmethod
-    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
-        """Resolve the GUI assets directory for this platform.
-
-        Linux: use package dir directly.
-        Others: copy to ~/.trcc/assets/gui/ to avoid sandboxed paths.
-        Returns the resolved Path.
-        """
-
-
-class PlatformSetup(PathResolver):
-    """Port: platform-specific setup wizard.
-
-    Inherits PathResolver for path methods. Adds setup ops, GUI integration,
-    diagnostics, and instance management.
-
-    Concrete implementations:
-        - LinuxSetup (adapters/system/setup.py)
-        - WindowsSetup (adapters/system/windows/setup.py)
-        - MacOSSetup (adapters/system/macos/setup.py)
-        - BSDSetup (adapters/system/bsd/setup.py)
-    """
-
-    @abstractmethod
-    def get_distro_name(self) -> str:
-        """Human-readable OS/distro name for the setup header."""
-
-    @abstractmethod
-    def get_pkg_manager(self) -> Optional[str]:
-        """Detect the native package manager (dnf, winget, brew, pkg, etc.)."""
-
-    @abstractmethod
-    def check_deps(self) -> list[Any]:
-        """Check all system dependencies. Returns list of DepResult."""
-
-    @abstractmethod
-    def run(self, auto_yes: bool = False) -> int:
-        """Run the full interactive setup wizard. Returns exit code."""
-
-    @abstractmethod
-    def archive_tool_install_help(self) -> str:
-        """Platform-specific instructions for installing 7z/p7zip."""
-
-    @abstractmethod
-    def ffmpeg_install_help(self) -> str:
-        """Platform-specific instructions for installing ffmpeg."""
-
-    def configure_dpi(self) -> None:
-        """Apply platform DPI configuration before QApplication is created.
-
-        Override on platforms that need it (e.g. Windows DPI awareness).
-        Default: no-op.
-        """
-
-    def wire_ipc_raise(self, app: Any, window: Any) -> None:
-        """Wire the IPC signal that raises the window when a second instance starts.
-
-        Unix: installs SIGUSR1 handler via AF_UNIX socketpair + QSocketNotifier.
-        Windows: no-op (IPC raise is handled via named pipe / win32 API).
-        Default: no-op.
-        """
-
-    def get_screencast_capture(
-        self, x: int, y: int, w: int, h: int,
-    ) -> tuple[str, str, list[str]] | None:
-        """Return (fmt, inp, region_args) for ffmpeg screen capture, or None if unsupported.
-
-        fmt       — ffmpeg input format (x11grab, gdigrab, avfoundation, ...)
-        inp       — ffmpeg input source string
-        region_args — extra ffmpeg args to select a sub-region
-        """
-        return None
-
-    def supports_winusb(self) -> bool:
-        """Return True if this platform supports WinUSB driver setup.
-
-        Windows: True.  All other platforms: False.
-        """
-        return False
-
-    # ── First-run auto-setup ──────────────────────────────────────────────────
-    # pip installs don't get udev/SELinux — auto-detect and prompt on first run.
-
-    def needs_setup(self) -> bool:
-        """Check if critical system integration is missing. Default: False."""
-        return False
-
-    def auto_setup(self) -> None:
-        """Prompt and install critical system integration. Default: no-op."""
-
-    # ── Platform-specific setup operations ───────────────────────────────────
-    # Default implementations return 1 (unsupported / no-op).
-    # Each platform override calls its own native implementation.
-
-    def setup_udev(self, dry_run: bool = False) -> int:
-        """Install udev rules for device access. Linux only.
-
-        Returns 0 on success, 1 on failure or unsupported platform.
-        """
-        return 1
-
-    def setup_selinux(self) -> int:
-        """Install SELinux policy module. Linux only.
-
-        Returns 0 on success, 1 on failure or unsupported platform.
-        """
-        return 1
-
-    def setup_polkit(self) -> int:
-        """Install polkit policy for passwordless sensor access. Linux only.
-
-        Returns 0 on success, 1 on failure or unsupported platform.
-        """
-        return 1
-
-    def install_desktop(self) -> int:
-        """Install .desktop menu entry and icon. Linux only.
-
-        Returns 0 on success, 1 on failure or unsupported platform.
-        """
-        return 1
-
-    def setup_winusb(self) -> int:
-        """Guide WinUSB driver installation. Windows only.
-
-        Returns 0 on success, 1 on failure or unsupported platform.
-        """
-        return 1
-
-    def configure_stdout(self) -> None:
-        """Reconfigure stdout/stderr encoding for the CLI entry point.
-
-        Windows: forces UTF-8 so Unicode symbols (─, ℃, etc.) render correctly.
-        All other platforms: no-op.
-        """
-
-    def linux_command_hint(self) -> str | None:
-        """Return a platform-specific hint when a Linux-only command is run.
-
-        Windows: suggests the equivalent Windows command.
-        All other platforms: None.
-        """
-        return None
-
-    @abstractmethod
-    def minimize_on_close(self) -> bool:
-        """Return True if the window should minimize to taskbar on close.
-
-        Windows: True — clicking the taskbar X minimizes, second close exits.
-        All other platforms: False — close hides to tray.
-        """
-
-    @abstractmethod
-    def no_devices_hint(self) -> Optional[str]:
-        """Platform-specific hint printed when no devices are detected.
-
-        Returns a message string, or None if no extra hint is needed.
-        """
-
-    @abstractmethod
-    def check_device_permissions(self, devices: list[Any]) -> list[str]:
-        """Return list of permission warning messages for detected devices.
-
-        Linux: checks udev rules for each device.
-        Other platforms: returns [].
-        """
-
-    @abstractmethod
-    def get_system_files(self) -> list[str]:
-        """Return list of system-level file paths installed by this platform.
-
-        Used by uninstall to remove files that require root.
-        Linux: udev rules, modprobe, polkit policy files.
-        Other platforms: returns [].
-        """
-
-    @abstractmethod
-    def get_doctor_config(self) -> DoctorPlatformConfig:
-        """Return platform-specific constants for the doctor health check."""
-
-    @abstractmethod
-    def get_report_config(self) -> ReportPlatformConfig:
-        """Return platform-specific constants for the diagnostic report."""
-
-    @abstractmethod
-    def acquire_instance_lock(self) -> object | None:
-        """Acquire an exclusive single-instance lock.
-
-        Returns an open file handle on success, or None if another instance
-        already holds the lock.
-        """
-
-    @abstractmethod
-    def raise_existing_instance(self) -> None:
-        """Signal the already-running instance to raise its window.
-
-        Linux/macOS/BSD: sends SIGUSR1 to the PID stored in the lock file.
-        Windows: no-op (user must switch manually — no POSIX signals).
-        """
-
-
-# =========================================================================
-# Autostart Manager ABC — contract for platform-specific autostart mechanisms
+# Autostart Manager ABC — shared ensure() logic, OS-specific mechanisms
 # =========================================================================
 
 
@@ -606,9 +368,9 @@ class AutostartManager(ABC):
     shared across all platforms.
 
     Concrete implementations:
-        - LinuxAutostartManager   (adapters/system/linux/autostart.py)   — XDG .desktop
-        - WindowsAutostartManager (adapters/system/windows/autostart.py) — winreg Run key
-        - MacOSAutostartManager   (adapters/system/macos/autostart.py)   — Launch Agent plist
+        - LinuxAutostartManager   (adapters/system/linux_platform.py)  — XDG .desktop
+        - WindowsAutostartManager (adapters/system/windows_platform.py) — winreg Run key
+        - MacOSAutostartManager   (adapters/system/macos_platform.py)  — Launch Agent plist
         - LinuxAutostartManager   reused for BSD (XDG .desktop)
     """
 
@@ -669,52 +431,214 @@ class AutostartManager(ABC):
         return self.is_enabled()
 
 
-class PlatformAdapter(ABC):
-    """Abstract Factory — single OS boundary.
+# =========================================================================
+# Platform ABC — OS foundation, drop in an OS so devices can speak to it
+# =========================================================================
 
-    One implementation per OS (Linux, macOS, BSD, Windows). Builder
-    instantiates the correct one and injects it everywhere. Nothing
-    outside this class and builder.py ever checks the OS flag.
 
-    Every method returns a fully constructed object or callable ready
-    for injection. Adapters that receive these deps are pure OOP —
-    they hold a reference and call it, with no OS awareness.
+class Platform(ABC):
+    """Port: OS foundation. Shared logic here, each OS overrides what differs.
+
+    One instance per app, DI'd via ControllerBuilder. Devices, services,
+    and views call Platform methods — never touch OS-specific code directly.
 
     Concrete implementations:
-        adapters/system/linux/platform.py   — LinuxPlatform
-        adapters/system/macos/platform.py   — MacOSPlatform
-        adapters/system/bsd/platform.py     — BSDPlatform
-        adapters/system/windows/platform.py — WindowsPlatform
+        adapters/system/linux_platform.py   — LinuxPlatform
+        adapters/system/windows_platform.py — WindowsPlatform
+        adapters/system/macos_platform.py   — MacOSPlatform
+        adapters/system/bsd_platform.py     — BSDPlatform
     """
+
+    def __init__(self) -> None:
+        self._sensor_enum: SensorEnumerator | None = None
+
+    # ── Universal (concrete — same on all OSes) ──────────────────────
+
+    def config_dir(self) -> str:
+        """User config directory (~/.trcc/)."""
+        from trcc.core.paths import USER_CONFIG_DIR
+        return USER_CONFIG_DIR
+
+    def data_dir(self) -> str:
+        """User data directory (~/.trcc/data/)."""
+        from trcc.core.paths import USER_DATA_DIR
+        return USER_DATA_DIR
+
+    def user_content_dir(self) -> str:
+        """User-created content directory (~/.trcc-user/)."""
+        from trcc.core.paths import USER_CONTENT_DIR
+        return USER_CONTENT_DIR
+
+    def web_dir(self, width: int, height: int) -> str:
+        """Cloud theme web directory for a resolution."""
+        from trcc.core.paths import get_web_dir
+        return get_web_dir(width, height)
+
+    def web_masks_dir(self, width: int, height: int) -> str:
+        """Cloud masks directory for a resolution."""
+        from trcc.core.paths import get_web_masks_dir
+        return get_web_masks_dir(width, height)
+
+    def user_masks_dir(self, width: int, height: int) -> str:
+        """User-created masks directory for a resolution."""
+        from trcc.core.paths import get_user_masks_dir
+        return get_user_masks_dir(width, height)
+
+    def create_sensor_enumerator(self) -> SensorEnumerator:
+        """Return the OS-specific sensor enumerator (cached)."""
+        if self._sensor_enum is None:
+            self._sensor_enum = self._make_sensor_enumerator()
+        return self._sensor_enum
+
+    def install_method(self) -> str:
+        """Detect how trcc-linux was installed (pip, pacman, pyinstaller, etc.)."""
+        from trcc.core.platform import detect_install_method
+        return detect_install_method()
+
+    def screen_capture_params(
+        self, x: int, y: int, w: int, h: int,
+    ) -> tuple[str, str, list[str]] | None:
+        """Return (fmt, inp, region_args) for ffmpeg screen capture, or None."""
+        fmt = self._screen_capture_format()
+        if not fmt:
+            return None
+        if fmt == 'gdigrab':
+            region = ['-offset_x', str(x), '-offset_y', str(y),
+                      '-video_size', f'{w}x{h}'] if (w and h) else []
+            return fmt, 'desktop', region
+        if fmt == 'avfoundation':
+            region = ['-video_size', f'{w}x{h}'] if (w and h) else []
+            return fmt, '1:none', region
+        # x11grab (Linux/BSD)
+        import os
+        display = os.environ.get('DISPLAY')
+        if not display:
+            return None
+        inp = f'{display}+{x},{y}' if (w and h) else display
+        region = ['-video_size', f'{w}x{h}'] if (w and h) else []
+        return fmt, inp, region
+
+    # ── Defaults (concrete — override where needed) ──────────────────
+
+    def _screen_capture_format(self) -> str | None:
+        """Screen capture format string. Override per OS."""
+        return None
+
+    def configure_dpi(self) -> None:
+        """Apply DPI config before QApplication. Windows overrides."""
+
+    def configure_stdout(self) -> None:
+        """Reconfigure stdout encoding. Windows overrides for UTF-8."""
+
+    def wire_ipc_raise(self, app: Any, window: Any) -> None:
+        """Wire IPC signal to raise window on second instance. POSIX overrides."""
+
+    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
+        """Resolve GUI assets directory. Non-Linux copies to user dir."""
+        return pkg_assets_dir
+
+    def minimize_on_close(self) -> bool:
+        """Minimize to taskbar on close? Windows overrides -> True."""
+        return False
+
+    def no_devices_hint(self) -> Optional[str]:
+        """Hint when no devices detected. Windows overrides with WinUSB note."""
+        return None
+
+    def install_desktop(self) -> int:
+        """Install .desktop menu entry. Linux overrides."""
+        return 1
+
+    def needs_setup(self) -> bool:
+        """Check if critical system integration is missing."""
+        return False
+
+    def auto_setup(self) -> None:
+        """First-run auto-setup prompt."""
+
+    def check_permissions(self, devices: list[Any]) -> list[str]:
+        """Return permission warning messages. Linux overrides."""
+        return []
+
+    def get_system_files(self) -> list[str]:
+        """System-level file paths installed by this platform."""
+        return []
+
+    # ── Abstract (each OS must implement) ────────────────────────────
+
+    @abstractmethod
+    def _make_sensor_enumerator(self) -> SensorEnumerator:
+        """Create the OS-specific sensor enumerator instance."""
+
+    @abstractmethod
+    def create_scsi_transport(self, path: str,
+                              vid: int = 0, pid: int = 0) -> Any:
+        """Create OS-specific SCSI transport for a device path."""
 
     @abstractmethod
     def create_detect_fn(self) -> Callable[[], List[DetectedDevice]]:
         """Return a device detection callable for this OS."""
 
     @abstractmethod
-    def create_sensor_enumerator(self) -> 'SensorEnumerator':
-        """Return the OS-specific sensor enumerator."""
+    def run_setup(self, auto_yes: bool = False) -> int:
+        """Run the full interactive setup wizard. Returns exit code."""
 
     @abstractmethod
-    def create_autostart_manager(self) -> AutostartManager:
-        """Return the OS-specific autostart manager."""
+    def install_rules(self) -> int:
+        """Install device access rules (udev on Linux, WinUSB guide on Windows)."""
 
     @abstractmethod
-    def create_setup(self) -> PlatformSetup:
-        """Return the OS-specific setup wizard."""
+    def check_deps(self) -> list:
+        """Check all system dependencies. Returns list of DepResult."""
 
     @abstractmethod
-    def get_memory_info_fn(self) -> GetMemoryInfoFn:
-        """Return a callable that returns current memory info."""
+    def get_pkg_manager(self) -> Optional[str]:
+        """Detect the native package manager (dnf, winget, brew, pkg, etc.)."""
 
     @abstractmethod
-    def get_disk_info_fn(self) -> GetDiskInfoFn:
-        """Return a callable that returns current disk info."""
+    def distro_name(self) -> str:
+        """Human-readable OS/distro name."""
 
     @abstractmethod
-    def configure_scsi_protocol(self, factory: Any) -> None:
-        """Wire the OS-specific SCSI protocol into the factory.
+    def doctor_config(self) -> DoctorPlatformConfig:
+        """Return platform-specific constants for the doctor health check."""
 
-        Linux/macOS/BSD: no-op (default SCSI protocol used).
-        Windows: wires WindowsScsiProtocol via DeviceIoControl.
-        """
+    @abstractmethod
+    def report_config(self) -> ReportPlatformConfig:
+        """Return platform-specific constants for the diagnostic report."""
+
+    @abstractmethod
+    def archive_tool_install_help(self) -> str:
+        """Platform-specific instructions for installing 7z/p7zip."""
+
+    @abstractmethod
+    def ffmpeg_install_help(self) -> str:
+        """Platform-specific instructions for installing ffmpeg."""
+
+    @abstractmethod
+    def get_memory_info(self) -> list[dict[str, str]]:
+        """Return DRAM slot info (dmidecode on Linux, WMI on Windows, etc.)."""
+
+    @abstractmethod
+    def get_disk_info(self) -> list[dict[str, str]]:
+        """Return physical disk info (lsblk on Linux, WMI on Windows, etc.)."""
+
+    @abstractmethod
+    def acquire_instance_lock(self) -> object | None:
+        """Acquire exclusive single-instance lock. Returns handle or None."""
+
+    @abstractmethod
+    def raise_existing_instance(self) -> None:
+        """Signal the already-running instance to raise its window."""
+
+    @abstractmethod
+    def autostart_enable(self) -> None:
+        """Enable autostart for the current user."""
+
+    @abstractmethod
+    def autostart_disable(self) -> None:
+        """Disable autostart for the current user."""
+
+    @abstractmethod
+    def autostart_enabled(self) -> bool:
+        """Return True if autostart is currently configured."""

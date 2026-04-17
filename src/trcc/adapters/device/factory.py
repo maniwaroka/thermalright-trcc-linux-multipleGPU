@@ -14,8 +14,8 @@ Usage::
     protocol = DeviceProtocolFactory.get_protocol(device_info)
     protocol.on_send_complete = lambda ok: print(f"sent: {ok}")
     protocol.on_error = lambda msg: print(f"err: {msg}")
-    protocol.send_image(rgb565_data, width, height)      # LCD devices
-    # LED: LedProtocol.send_led_data(colors, is_on, True, 100)
+    protocol.send_data(rgb565_data, width, height)      # LCD devices
+    # LED: LedProtocol.send_data(colors, is_on, True, 100)
 """
 
 import logging
@@ -83,7 +83,7 @@ class DeviceProtocol(ABC):
         self._last_error: Optional[Exception] = None
 
     @abstractmethod
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
+    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
         """Send image data to the LCD device.
 
         Args:
@@ -289,41 +289,69 @@ class UsbProtocol(DeviceProtocol):
 # =========================================================================
 
 class ScsiProtocol(DeviceProtocol):
-    """LCD communication via SCSI protocol (sg_raw).
+    """LCD communication via SCSI protocol — transport-agnostic.
 
-    Wraps scsi_device.py. Uses subprocess per send (stateless transport).
+    Same lifecycle as UsbProtocol: takes (path, vid, pid), lazily creates
+    transport via the Platform-injected factory. ScsiDevice does the
+    handshake and frame chunking, OS-blind.
     """
 
-    def __init__(self, device_path: str):
+    def __init__(self, path: str, vid: int, pid: int):
         super().__init__()
-        self._path = device_path
+        self._path = path
+        self._vid = vid
+        self._pid = pid
+        self._transport = None
+
+    def _ensure_transport(self) -> None:
+        """Lazily create SCSI transport on first use."""
+        if self._transport is None:
+            fn = DeviceProtocolFactory._scsi_transport_fn
+            if fn is None:
+                log.error("SCSI transport factory not injected")
+                return
+            log.debug("Opening SCSI transport: %s", self._path)
+            self._transport = fn(self._path, self._vid, self._pid)
+            self._transport.open()
+            self._notify_state_changed("transport_open", True)
 
     def _do_handshake(self) -> Optional[HandshakeResult]:
-        """Poll SCSI device to discover FBL → resolution."""
         from .scsi import ScsiDevice
-        dev = ScsiDevice(self._path)
+        self._ensure_transport()
+        if self._transport is None:
+            return None
+        dev = ScsiDevice(self._path, self._transport)
         return dev.handshake()
 
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
-        from .scsi import send_image_to_device
+    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
+        from .scsi import ScsiDevice
+        self._ensure_transport()
+        if self._transport is None:
+            return False
         return self._guarded_send(
-            f"SCSI ({self._path})",
-            lambda: send_image_to_device(self._path, image_data, width, height),
+            "SCSI",
+            lambda: ScsiDevice.send_frame_via_transport(
+                self._transport, image_data, width, height),
         )
 
     def close(self) -> None:
-        pass  # SCSI uses subprocess per call, nothing to release
+        if self._transport is not None:
+            try:
+                self._transport.close()
+            except Exception:
+                pass
+            self._transport = None
+            self._notify_state_changed("transport_open", False)
 
     def get_info(self) -> 'ProtocolInfo':
-        import shutil
-        sg_raw = shutil.which("sg_raw") is not None
+        backend = type(self._transport).__name__ if self._transport else "none"
         return ProtocolInfo(
             protocol="scsi",
             device_type=1,
-            protocol_display="SCSI (sg_raw)",
+            protocol_display=f"SCSI ({backend})",
             device_type_display="SCSI RGB565",
-            active_backend="sg_raw" if sg_raw else "none",
-            backends={"sg_raw": sg_raw, "pyusb": False, "hidapi": False},
+            active_backend=backend,
+            backends={backend: True},
         )
 
     @property
@@ -332,11 +360,10 @@ class ScsiProtocol(DeviceProtocol):
 
     @property
     def is_available(self) -> bool:
-        import shutil
-        return shutil.which("sg_raw") is not None
+        return self._transport is not None
 
     def __repr__(self) -> str:
-        return f"ScsiProtocol(path={self._path!r})"
+        return f"ScsiProtocol(transport={type(self._transport).__name__})"
 
 
 # =========================================================================
@@ -380,12 +407,12 @@ class HidProtocol(UsbProtocol):
     def _handshake_label(self) -> str:
         return f"HID {self._vid:04X}:{self._pid:04X} type {self._device_type}"
 
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
+    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
         def _do_send() -> bool:
             from .hid import HidDeviceManager
             self._ensure_transport()
             assert self._transport is not None
-            return HidDeviceManager.send_image(
+            return HidDeviceManager.send_data(
                 self._transport, image_data, self._device_type
             )
         return self._guarded_send("HID", _do_send)
@@ -423,11 +450,11 @@ class LedProtocol(UsbProtocol):
         super().__init__(vid, pid)
         self._sender = None
 
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
+    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
         """No-op — LED devices don't display images."""
         return False
 
-    def send_led_data(
+    def send_data(
         self,
         led_colors: List[Tuple[int, int, int]],
         is_on: Optional[List[bool]] = None,
@@ -457,13 +484,13 @@ class LedProtocol(UsbProtocol):
             )
 
             try:
-                return self._sender.send_led_data(packet)
+                return self._sender.send_data(packet)
             except Exception:
                 log.warning("LED send failed, reconnecting and retrying")
                 self.close()
                 self._handshake_result = None
                 self.handshake()
-                return self._sender.send_led_data(packet)
+                return self._sender.send_data(packet)
 
         return self._guarded_send("LED", _do_send)
 
@@ -548,7 +575,7 @@ class _BulkLikeProtocol(DeviceProtocol):
     def _handshake_label(self) -> str:
         return f"{self._label} {self._vid:04X}:{self._pid:04X}"
 
-    def send_image(self, image_data: bytes, width: int, height: int) -> bool:
+    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
         def _do_send() -> bool:
             self._ensure_device()
             assert self._device is not None
@@ -631,21 +658,18 @@ class DeviceProtocolFactory:
 
         protocol = DeviceProtocolFactory.get_protocol(device_info)
         protocol.on_send_complete = lambda ok: update_ui(ok)
-        protocol.send_image(data, w, h)
+        protocol.send_data(data, w, h)
 
         # When done:
         DeviceProtocolFactory.close_all()
     """
 
     _protocols: Dict[str, DeviceProtocol] = {}
+    _scsi_transport_fn: ClassVar[Optional[Callable]] = None
 
     # Registry map: (protocol, implementation) → factory function.
-    # Looked up by exact match first, then (protocol, '') as fallback.
-    # The SCSI entry defaults to ScsiProtocol (Linux/macOS/BSD).
-    # ControllerBuilder calls configure_scsi() to inject the platform-specific
-    # implementation (e.g. WindowsScsiProtocol) at composition time.
     _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {
-        ('scsi', ''):  lambda di: ScsiProtocol(di.path),
+        ('scsi', ''):  lambda di: ScsiProtocol(di.path, di.vid, di.pid),
         ('bulk', ''):  lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
         ('ly', ''):    lambda di: LyProtocol(vid=di.vid, pid=di.pid),
         ('led', ''):   lambda di: LedProtocol(vid=di.vid, pid=di.pid),
@@ -654,13 +678,13 @@ class DeviceProtocolFactory:
     }
 
     @classmethod
-    def configure_scsi(cls, factory_fn: Callable[..., DeviceProtocol]) -> None:
-        """Inject the platform-specific SCSI factory at composition time.
+    def set_scsi_transport(cls, fn: Callable) -> None:
+        """Inject the OS-specific SCSI transport factory.
 
-        Called by ControllerBuilder before any protocol is created.
-        Same pattern as ImageService.set_renderer() — configured once at startup.
+        Called once at startup by ControllerBuilder with
+        os_platform.create_scsi_transport.
         """
-        cls._PROTOCOL_REGISTRY[('scsi', '')] = factory_fn
+        cls._scsi_transport_fn = fn
 
     @classmethod
     def _device_key(cls, device_info) -> str:
@@ -895,9 +919,4 @@ class ProtocolInfo:
             return True
         return bool(traits.fallback_backend
                     and self.backends.get(traits.fallback_backend, False))
-
-
-# Re-export: WindowsScsiProtocol moved to adapters/device/windows/scsi_protocol.py.
-# Kept here so existing imports (e.g. tests) continue to work.
-from trcc.adapters.device.windows.scsi_protocol import WindowsScsiProtocol as WindowsScsiProtocol  # noqa: E402,F401,I001
 

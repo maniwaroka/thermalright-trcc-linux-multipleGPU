@@ -188,8 +188,8 @@ def _load_saved_identity(
         return None, None
 
 
-# Backward compat — send_image_to_device referenced from scsi.py
-def send_image_to_device(
+# Backward compat — send_data_to_device referenced from scsi.py
+def send_data_to_device(
     device_path: str,
     rgb565_data: bytes,
     width: int,

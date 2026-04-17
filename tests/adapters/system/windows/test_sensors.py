@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.system.windows.sensors'
+MODULE = 'trcc.adapters.system.windows_platform'
 
 
 # ── LHM mock helpers ─────────────────────────────────────────────────
@@ -100,8 +100,8 @@ def mock_win_nvidia(mock_io):
 
 
 def _make_enum():
-    from trcc.adapters.system.windows.sensors import WindowsSensorEnumerator
-    return WindowsSensorEnumerator()
+    from trcc.adapters.system.windows_platform import SensorEnumerator
+    return SensorEnumerator()
 
 
 @pytest.fixture
@@ -297,7 +297,7 @@ class TestPolling:
 class TestLhmTypeMap:
 
     def test_known_types_mapped(self):
-        from trcc.adapters.system.windows.sensors import _LHM_TYPE_MAP
+        from trcc.adapters.system.windows_platform import _LHM_TYPE_MAP
         assert 'Temperature' in _LHM_TYPE_MAP
         assert 'Fan' in _LHM_TYPE_MAP
         assert 'Clock' in _LHM_TYPE_MAP
@@ -305,5 +305,5 @@ class TestLhmTypeMap:
         assert 'Power' in _LHM_TYPE_MAP
 
     def test_unknown_type_not_mapped(self):
-        from trcc.adapters.system.windows.sensors import _LHM_TYPE_MAP
+        from trcc.adapters.system.windows_platform import _LHM_TYPE_MAP
         assert 'Warp' not in _LHM_TYPE_MAP

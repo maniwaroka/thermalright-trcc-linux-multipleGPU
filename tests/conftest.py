@@ -120,11 +120,10 @@ def _mock_builder(mock_platform):
     TrccApp.reset()
 
     mock_builder = MagicMock(spec=ControllerBuilder)
-    mock_builder._platform = mock_platform
-    mock_builder.build_setup.return_value = MagicMock()
+    mock_builder._os = mock_platform
+    mock_builder.os = mock_platform
     mock_builder.build_system.return_value = MagicMock()
     mock_builder.build_device.return_value = MagicMock()
-    mock_builder.build_autostart.return_value = MagicMock()
     mock_builder.build_detect_fn.return_value = MagicMock()
     mock_builder.build_hardware_fns.return_value = (MagicMock(), MagicMock())
     mock_builder.with_renderer.return_value = mock_builder
@@ -436,9 +435,7 @@ def lcd_device(mock_lcd_platform, tmp_config):
     from trcc.conf import init_settings
     from trcc.core.builder import ControllerBuilder
 
-    setup = mock_lcd_platform.create_setup()
-    init_settings(setup)
-    mock_lcd_platform.configure_scsi_protocol(DeviceProtocolFactory)
+    init_settings(mock_lcd_platform)
     builder = ControllerBuilder(mock_lcd_platform).with_renderer(QtRenderer())
     detected = mock_lcd_platform.create_detect_fn()()[0]
     device = builder.build_device(detected)
@@ -453,9 +450,7 @@ def led_device(mock_led_platform, tmp_config):
     from trcc.conf import init_settings
     from trcc.core.builder import ControllerBuilder
 
-    setup = mock_led_platform.create_setup()
-    init_settings(setup)
-    mock_led_platform.configure_scsi_protocol(DeviceProtocolFactory)
+    init_settings(mock_led_platform)
     builder = ControllerBuilder(mock_led_platform)
     detected = mock_led_platform.create_detect_fn()()[0]
     device = builder.build_device(detected)
@@ -541,32 +536,32 @@ def save_test_png(path: str, w: int = 320, h: int = 320) -> None:
 
 @pytest.fixture()
 def linux_builder():
-    """ControllerBuilder wired with the real LinuxPlatform adapter."""
-    from trcc.adapters.system.linux.platform import LinuxPlatform
+    """ControllerBuilder wired with the real LinuxPlatform."""
+    from trcc.adapters.system.linux_platform import LinuxPlatform
     from trcc.core.builder import ControllerBuilder
     return ControllerBuilder(LinuxPlatform())
 
 
 @pytest.fixture()
 def windows_builder():
-    """ControllerBuilder wired with the real WindowsPlatform adapter."""
-    from trcc.adapters.system.windows.platform import WindowsPlatform
+    """ControllerBuilder wired with the real WindowsPlatform."""
+    from trcc.adapters.system.windows_platform import WindowsPlatform
     from trcc.core.builder import ControllerBuilder
     return ControllerBuilder(WindowsPlatform())
 
 
 @pytest.fixture()
 def macos_builder():
-    """ControllerBuilder wired with the real MacOSPlatform adapter."""
-    from trcc.adapters.system.macos.platform import MacOSPlatform
+    """ControllerBuilder wired with the real MacOSPlatform."""
+    from trcc.adapters.system.macos_platform import MacOSPlatform
     from trcc.core.builder import ControllerBuilder
     return ControllerBuilder(MacOSPlatform())
 
 
 @pytest.fixture()
 def bsd_builder():
-    """ControllerBuilder wired with the real BSDPlatform adapter."""
-    from trcc.adapters.system.bsd.platform import BSDPlatform
+    """ControllerBuilder wired with the real BSDPlatform."""
+    from trcc.adapters.system.bsd_platform import BSDPlatform
     from trcc.core.builder import ControllerBuilder
     return ControllerBuilder(BSDPlatform())
 

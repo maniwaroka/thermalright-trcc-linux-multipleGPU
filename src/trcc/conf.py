@@ -34,7 +34,7 @@ from .core.models import LEGACY_TO_ISO, LOCALE_TO_LANG
 from .core.paths import USER_CONFIG_DIR, USER_CONTENT_DATA_DIR, USER_CONTENT_DIR
 
 if TYPE_CHECKING:
-    from .core.ports import PathResolver
+    from .core.ports import Platform
 
 log = logging.getLogger(__name__)
 
@@ -506,7 +506,7 @@ class Settings:
 
     # --- Instance methods and properties ---
 
-    def __init__(self, path_resolver: 'PathResolver') -> None:
+    def __init__(self, path_resolver: 'Platform') -> None:
         if path_resolver is None:
             raise RuntimeError(
                 "Settings requires a path_resolver. "
@@ -628,11 +628,10 @@ def _get_settings() -> Settings:
 settings: Settings = None  # type: ignore[assignment]
 
 
-def init_settings(path_resolver: 'PathResolver') -> Settings:
+def init_settings(path_resolver: 'Platform') -> Settings:
     """Initialize the Settings singleton with a platform path resolver.
 
-    Called by composition roots (CLI, GUI, API) after building the
-    platform adapter via ControllerBuilder.build_setup().
+    Accepts Platform — provides config_dir(), data_dir(), user_content_dir().
     """
     global _settings, settings  # noqa: PLW0603
     _migrate_user_content_themes()

@@ -99,19 +99,19 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_linux_uses_package_dir(self):
         """LinuxSetup returns package dir directly."""
-        from trcc.adapters.system.linux.setup import LinuxSetup
+        from trcc.adapters.system.linux_platform import LinuxPlatform
         from trcc.gui.assets import _PKG_ASSETS_DIR
-        result = LinuxSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
+        result = LinuxPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
         self.assertEqual(result, _PKG_ASSETS_DIR)
 
     def test_windows_copies_to_user_dir(self):
         """WindowsSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.system.windows.setup import WindowsSetup
+        from trcc.adapters.system.windows_platform import WindowsPlatform
         from trcc.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
-            with patch('trcc.adapters.system.windows.setup.Path.home',
+            with patch('trcc.adapters.system.windows_platform.Path.home',
                        return_value=Path(tmpdir)):
-                result = WindowsSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
+                result = WindowsPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
             if _PKG_ASSETS_DIR.exists():
                 user_assets = Path(tmpdir) / '.trcc' / 'assets' / 'gui'
                 self.assertEqual(result, user_assets)
@@ -119,24 +119,24 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_macos_copies_to_user_dir(self):
         """MacOSSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.system.macos.setup import MacOSSetup
+        from trcc.adapters.system.macos_platform import MacOSPlatform
         from trcc.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
-            with patch('trcc.adapters.system.macos.setup.Path.home',
+            with patch('trcc.adapters.system.macos_platform.Path.home',
                        return_value=Path(tmpdir)):
-                result = MacOSSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
+                result = MacOSPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
             if _PKG_ASSETS_DIR.exists():
                 user_assets = Path(tmpdir) / '.trcc' / 'assets' / 'gui'
                 self.assertEqual(result, user_assets)
 
     def test_bsd_copies_to_user_dir(self):
         """BSDSetup copies assets to ~/.trcc/assets/gui/."""
-        from trcc.adapters.system.bsd.setup import BSDSetup
+        from trcc.adapters.system.bsd_platform import BSDPlatform
         from trcc.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
-            with patch('trcc.adapters.system.bsd.setup.Path.home',
+            with patch('trcc.adapters.system.bsd_platform.Path.home',
                        return_value=Path(tmpdir)):
-                result = BSDSetup().resolve_assets_dir(_PKG_ASSETS_DIR)
+                result = BSDPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
             if _PKG_ASSETS_DIR.exists():
                 user_assets = Path(tmpdir) / '.trcc' / 'assets' / 'gui'
                 self.assertEqual(result, user_assets)
@@ -371,10 +371,10 @@ class TestUCThemeLocal(unittest.TestCase):
 # UCAbout helpers
 # ============================================================================
 
-from trcc.adapters.system.linux.autostart import LinuxAutostartManager  # noqa: E402
+from trcc.adapters.system.linux_platform import LinuxAutostartManager  # noqa: E402
 from trcc.gui.uc_about import ensure_autostart  # noqa: E402
 
-_AUTOSTART_MOD = 'trcc.adapters.system.linux.autostart'
+_AUTOSTART_MOD = 'trcc.adapters.system.linux_platform'
 
 
 class TestAutostart(unittest.TestCase):
@@ -426,7 +426,7 @@ class TestAutostart(unittest.TestCase):
 
     def test_set_autostart_real_filesystem(self):
         """Integration test with real temp dir."""
-        import trcc.adapters.system.linux.autostart as mod
+        import trcc.adapters.system.linux_platform as mod
         manager = self._manager()
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

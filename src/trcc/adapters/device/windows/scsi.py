@@ -16,6 +16,8 @@ import ctypes.wintypes  # pyright: ignore[reportMissingImports]
 import logging
 from typing import Optional
 
+from trcc.adapters.device.scsi import ScsiTransport
+
 log = logging.getLogger(__name__)
 
 # Windows IOCTL codes
@@ -86,7 +88,7 @@ class SCSI_PASS_THROUGH(ctypes.Structure):
     ]
 
 
-class WindowsScsiTransport:
+class WindowsScsiTransport(ScsiTransport):
     """Send raw SCSI commands to a USB device on Windows.
 
     Equivalent to Linux's `sg_raw` subprocess calls but using

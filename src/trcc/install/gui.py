@@ -253,7 +253,7 @@ class SetupWizard(QWidget):
         )
         from trcc.core.builder import ControllerBuilder
 
-        config = ControllerBuilder.for_current_os().build_setup().get_doctor_config()
+        config = ControllerBuilder.for_current_os().os.doctor_config()
         info = get_setup_info(config)
 
         # System deps — always (already platform-aware via DoctorPlatformConfig)

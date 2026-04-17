@@ -587,7 +587,7 @@ class HidDeviceManager:
     _device_handlers: dict = {}
 
     @classmethod
-    def send_image(
+    def send_data(
         cls,
         transport: UsbTransport,
         image_data: bytes,

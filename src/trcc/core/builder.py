@@ -1,6 +1,6 @@
 """ControllerBuilder — assembles devices with dependency injection.
 
-PlatformAdapter is injected via constructor. The factory classmethod
+Platform is injected via constructor. The factory classmethod
 for_current_os() is the single OS check — overrideable by subclasses
 for testing or platform extension.
 """
@@ -11,11 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .ports import (
-    AutostartManager,
-    GetDiskInfoFn,
-    GetMemoryInfoFn,
-    PlatformAdapter,
-    PlatformSetup,
+    Platform,
     Renderer,
 )
 
@@ -29,44 +25,48 @@ log = logging.getLogger(__name__)
 class ControllerBuilder:
     """Assembles Device / SystemService with injected deps.
 
-    PlatformAdapter is injected at construction — all build methods use
-    self._platform. No OS checks anywhere except for_current_os().
+    Platform is injected at construction — all build methods use
+    self._os. No OS checks anywhere except for_current_os().
 
     Usage::
 
         builder = ControllerBuilder.for_current_os().with_renderer(renderer)
         device  = builder.build_device(detected)
         system  = builder.build_system()
-        setup   = builder.build_setup()
     """
 
-    def __init__(self, platform: PlatformAdapter) -> None:
-        self._platform = platform
+    def __init__(self, platform: Platform) -> None:
+        self._os = platform
         self._renderer: Renderer | None = None
         self._data_dir: Path | None = None
 
     # ── Factory entry point (overrideable) ─────────────────────────
 
+    _OS_PLATFORMS: dict[str, tuple[str, str]] = {
+        'win32':  ('trcc.adapters.system.windows_platform', 'WindowsPlatform'),
+        'darwin': ('trcc.adapters.system.macos_platform',   'MacOSPlatform'),
+        'linux':  ('trcc.adapters.system.linux_platform',   'LinuxPlatform'),
+        'bsd':    ('trcc.adapters.system.bsd_platform',     'BSDPlatform'),
+    }
+
     @classmethod
     def for_current_os(cls) -> 'ControllerBuilder':
-        """Create a builder with the OS-appropriate platform adapter.
+        """Create a builder with the OS-appropriate Platform.
 
-        Single OS check for the entire application. Overrideable by
-        subclasses to inject a custom or test platform.
+        Dict lookup — OS is data, not a branch.
         """
-        from .platform import BSD, MACOS, WINDOWS
+        import sys
+        from importlib import import_module
 
-        if WINDOWS:
-            from ..adapters.system.windows.platform import WindowsPlatform
-            return cls(WindowsPlatform())
-        if MACOS:
-            from ..adapters.system.macos.platform import MacOSPlatform
-            return cls(MacOSPlatform())
-        if BSD:
-            from ..adapters.system.bsd.platform import BSDPlatform
-            return cls(BSDPlatform())
-        from ..adapters.system.linux.platform import LinuxPlatform
-        return cls(LinuxPlatform())
+        key = sys.platform
+        if 'bsd' in key:
+            key = 'bsd'
+        if key not in cls._OS_PLATFORMS:
+            key = 'linux'
+
+        mod, cls_name = cls._OS_PLATFORMS[key]
+        platform_cls = getattr(import_module(mod), cls_name)
+        return cls(platform_cls())
 
     def bootstrap(self, verbosity: int = 0) -> None:
         """Bootstrap the platform: logging → OS setup → settings.
@@ -78,11 +78,15 @@ class ControllerBuilder:
         from ..conf import init_settings
 
         StandardLoggingConfigurator().configure(verbosity=verbosity)
-        setup = self.build_setup()
-        setup.configure_stdout()
-        init_settings(setup)
+        self._os.configure_stdout()
+        init_settings(self._os)
 
     # ── Fluent setters ─────────────────────────────────────────────
+
+    @property
+    def os(self) -> Platform:
+        """The Platform for this builder."""
+        return self._os
 
     def with_renderer(self, renderer: Renderer) -> ControllerBuilder:
         self._renderer = renderer
@@ -99,9 +103,9 @@ class ControllerBuilder:
         from ..adapters.device.factory import DeviceProtocolFactory
         from ..adapters.device.led import probe_led_model
         from ..services import DeviceService
-        self._platform.configure_scsi_protocol(DeviceProtocolFactory)
+        DeviceProtocolFactory.set_scsi_transport(self._os.create_scsi_transport)
         return DeviceService(
-            detect_fn=self._platform.create_detect_fn(),
+            detect_fn=self._os.create_detect_fn(),
             probe_led_fn=probe_led_model,
             get_protocol=DeviceProtocolFactory.get_protocol,
             get_protocol_info=DeviceProtocolFactory.get_protocol_info,
@@ -181,43 +185,29 @@ class ControllerBuilder:
     def build_system(self) -> SystemService:
         """Build and return a SystemService."""
         from ..services.system import SystemService
-        return SystemService(enumerator=self._platform.create_sensor_enumerator())
-
-    def build_setup(self) -> PlatformSetup:
-        """Return the platform-specific setup wizard."""
-        return self._platform.create_setup()
+        return SystemService(enumerator=self._os.create_sensor_enumerator())
 
     def build_ensure_data_fn(self):
-        """Return DataManager.ensure_all — the data extraction callable.
-
-        Isolated here so core/app.py never imports infra adapters directly.
-        """
+        """Return DataManager.ensure_all — the data extraction callable."""
         from ..adapters.infra.data_repository import DataManager
         return DataManager.ensure_all
 
     def build_download_fns(self):
-        """Return (download_pack, list_available) callables for theme downloads.
-
-        Isolated here so core/app.py never imports infra adapters directly.
-        """
+        """Return (download_pack, list_available) callables for theme downloads."""
         from ..adapters.infra.theme_downloader import download_pack, list_available
         return download_pack, list_available
 
-    def build_autostart(self) -> AutostartManager:
-        """Return the platform-specific autostart manager."""
-        return self._platform.create_autostart_manager()
-
     def build_detect_fn(self):
         """Return the platform-appropriate device detect callable."""
-        return self._platform.create_detect_fn()
+        return self._os.create_detect_fn()
 
     def build_device_svc(self):
         """Build a DeviceService wired with platform-appropriate adapters."""
         return self._build_device_svc()
 
-    def build_hardware_fns(self) -> tuple[GetMemoryInfoFn, GetDiskInfoFn]:
+    def build_hardware_fns(self) -> tuple:
         """Return platform-specific (get_memory_info, get_disk_info) callables."""
-        return self._platform.get_memory_info_fn(), self._platform.get_disk_info_fn()
+        return self._os.get_memory_info, self._os.get_disk_info
 
     def device_from_service(self, device_svc) -> 'Device':
         """Build a Device from an existing DeviceService (API standalone mode)."""
@@ -240,7 +230,8 @@ class ControllerBuilder:
         from ..services import DisplayService, MediaService, OverlayService, ThemeService
         from ..services.image import ImageService
 
-        setup = self.build_setup()
+        # Platform provides path resolution (web_dir, etc.)
+        path_resolver = self._os
 
         def _build(device_svc, renderer=None):
             r = renderer or ImageService._r()
@@ -271,7 +262,7 @@ class ControllerBuilder:
                 device_svc, overlay_svc, media_svc,
                 theme_svc=theme_svc,
                 cpu_percent_fn=_cpu_percent,
-                path_resolver=setup,
+                path_resolver=path_resolver,
             )
             return {
                 'display_svc': display_svc,

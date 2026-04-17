@@ -218,7 +218,7 @@ class DeviceService:
 
         try:
             protocol = self._get_protocol(self._selected)
-            success = protocol.send_image(data, width, height)
+            success = protocol.send_data(data, width, height)
             return success
         except Exception as e:
             log.error("Device send error: %s", e)

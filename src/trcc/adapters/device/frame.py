@@ -16,7 +16,7 @@ Hierarchy:
     │   └── HidDevice (ABC)
     │       ├── HidDeviceType2
     │       └── HidDeviceType3
-    └── LedDevice (ABC) — + send_led_data() + is_sending
+    └── LedDevice (ABC) — + send_data() + is_sending
         └── LedHidSender
 """
 
@@ -63,12 +63,12 @@ class FrameDevice(UsbDevice):
 class LedDevice(UsbDevice):
     """Contract for USB LED devices that send RGB color data.
 
-    Adds send_led_data() and is_sending to the universal contract.
+    Adds send_data() and is_sending to the universal contract.
     Not for LCD frame devices (which send image frames, not LED data).
     """
 
     @abstractmethod
-    def send_led_data(self, packet: bytes) -> bool:
+    def send_data(self, packet: bytes) -> bool:
         """Send an LED data packet to the device.
 
         Args:

@@ -336,7 +336,7 @@ def start_screencast(
             return {"success": False, "error": "ffmpeg not found"}
 
         from trcc.core.app import TrccApp
-        capture = TrccApp.get().build_setup().get_screencast_capture(x, y, w, h)
+        capture = TrccApp.get().os.screen_capture_params(x, y, w, h)
         if capture is None:
             return {"success": False, "error": "Screencast not supported on this platform"}
         fmt, inp, region_args = capture

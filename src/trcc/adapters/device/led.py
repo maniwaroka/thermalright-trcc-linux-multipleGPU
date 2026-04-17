@@ -299,7 +299,7 @@ class LedHidSender(LedDevice):
             f"LED handshake failed after {HANDSHAKE_MAX_RETRIES} attempts"
         )
 
-    def send_led_data(self, packet: bytes) -> bool:
+    def send_data(self, packet: bytes) -> bool:
         """Send an LED data packet, chunked into 64-byte HID reports.
 
         Args:
@@ -309,7 +309,7 @@ class LedHidSender(LedDevice):
             True if all chunks were sent successfully.
         """
         if not self._lock.acquire(blocking=False):
-            log.debug("send_led_data: already sending — skipped")
+            log.debug("send_data: already sending — skipped")
             return False
 
         try:
@@ -372,7 +372,7 @@ def send_led_colors(
         led_colors, is_on, global_on, brightness
     )
     sender = LedHidSender(transport)
-    return sender.send_led_data(packet)
+    return sender.send_data(packet)
 
 
 # =========================================================================

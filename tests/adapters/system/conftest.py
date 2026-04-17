@@ -169,8 +169,8 @@ def mock_io_no_nvidia():
 
 def _make_base_enum():
     """Create lightest subclass (BSD) for base behavior tests."""
-    from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
-    return BSDSensorEnumerator()
+    from trcc.adapters.system.bsd_platform import SensorEnumerator
+    return SensorEnumerator()
 
 
 class TestDiscover:

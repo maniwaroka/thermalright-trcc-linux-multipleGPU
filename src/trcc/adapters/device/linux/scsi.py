@@ -10,6 +10,8 @@ import ctypes
 import logging
 import os
 
+from trcc.adapters.device.scsi import ScsiTransport
+
 log = logging.getLogger(__name__)
 
 # =========================================================================
@@ -53,10 +55,8 @@ class _SgIoHdr(ctypes.Structure):
 _SG_HDR_SIZE = ctypes.sizeof(_SgIoHdr)
 
 
-class LinuxScsiTransport:
+class LinuxScsiTransport(ScsiTransport):
     """Send raw SCSI commands to a /dev/sgX device on Linux via SG_IO ioctl.
-
-    Matches the interface of MacOSScsiTransport and BSDScsiTransport.
 
     Usage:
         transport = LinuxScsiTransport('/dev/sg0')

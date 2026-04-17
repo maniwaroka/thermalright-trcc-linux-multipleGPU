@@ -16,6 +16,8 @@ import logging
 import struct
 from typing import Any, Optional
 
+from trcc.adapters.device.scsi import ScsiTransport
+
 log = logging.getLogger(__name__)
 
 # USB Bulk-Only Transport (BOT) constants
@@ -24,7 +26,7 @@ CBW_SIZE = 31
 CSW_SIZE = 13
 
 
-class BSDScsiTransport:
+class BSDScsiTransport(ScsiTransport):
     """Send raw SCSI commands to a USB mass-storage device on FreeBSD.
 
     Uses pyusb bulk transfers with USB BOT (Bulk-Only Transport) protocol.

@@ -8,61 +8,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from trcc.core.platform import LINUX, detect_install_method, is_root
+from trcc.core.platform import detect_install_method, is_root
 
 log = logging.getLogger(__name__)
 
 
-def _require_linux(command: str) -> int | None:
-    """Return error code if not on Linux, None if OK to proceed."""
-    if not LINUX:
-        log.debug("command '%s' skipped: not on Linux", command)
-        print(f"'{command}' is for Linux only.")
-        from trcc.core.builder import ControllerBuilder
-        hint = ControllerBuilder.for_current_os().build_setup().linux_command_hint()
-        if hint:
-            print(hint)
-        return 1
-    return None
-
-
-def _real_user_home():
-    """Lazy proxy — only available on Linux."""
-    from trcc.adapters.system.linux.setup import _real_user_home as _fn
-    return _fn()
-
-
-def setup_udev(dry_run: bool = False) -> int:
-    """Install udev rules for LCD device access (Linux only)."""
-    log.debug("setup_udev dry_run=%s", dry_run)
-    if (err := _require_linux("setup-udev")) is not None:
-        return err
+def setup(auto_yes: bool = False) -> int:
+    """Run interactive platform setup. OS handles everything."""
     from trcc.core.app import TrccApp
-    return TrccApp.get().setup_udev(dry_run=dry_run)
-
-
-def setup_selinux() -> int:
-    """Install SELinux policy module (Linux only)."""
-    if (err := _require_linux("setup-selinux")) is not None:
-        return err
-    from trcc.core.app import TrccApp
-    return TrccApp.get().setup_selinux()
-
-
-def setup_polkit() -> int:
-    """Install polkit policy for passwordless dmidecode/smartctl (Linux only)."""
-    if (err := _require_linux("setup-polkit")) is not None:
-        return err
-    from trcc.core.app import TrccApp
-    return TrccApp.get().setup_polkit()
-
-
-def install_desktop() -> int:
-    """Install .desktop menu entry and icon (Linux only)."""
-    if (err := _require_linux("install-desktop")) is not None:
-        return err
-    from trcc.core.app import TrccApp
-    return TrccApp.get().install_desktop()
+    return TrccApp.get().setup(auto_yes=auto_yes)
 
 
 def _sudo_run(cmd):
@@ -123,16 +77,6 @@ def show_info(builder=None, *, preview: bool = False, metric: str | None = None)
         return 1
 
 
-def setup_winusb() -> int:
-    """Guide WinUSB driver installation for Thermalright USB devices (Windows only)."""
-    from trcc.core.builder import ControllerBuilder
-    if not ControllerBuilder.for_current_os().build_setup().supports_winusb():
-        print("This command is for Windows only.")
-        print("On Linux, use: trcc setup-udev")
-        return 1
-    from trcc.core.app import TrccApp
-    return TrccApp.get().setup_winusb()
-
 
 
 
@@ -150,11 +94,11 @@ def uninstall(*, yes: bool = False):
     # Clear resolution markers before wiping config dir
     Settings.clear_installed_resolutions()
 
-    home = _real_user_home()
+    home = Path.home()
 
     # Files that require root to remove (platform-specific)
     from trcc.core.builder import ControllerBuilder
-    root_files = ControllerBuilder.for_current_os().build_setup().get_system_files()
+    root_files = ControllerBuilder.for_current_os().os.get_system_files()
 
     # User files/dirs to remove
     user_items = [
@@ -183,9 +127,9 @@ def uninstall(*, yes: bool = False):
 
     # Disable autostart before shutting down logging
     from trcc.core.builder import ControllerBuilder
-    autostart = ControllerBuilder.for_current_os().build_autostart()
-    if autostart.is_enabled():
-        autostart.disable()
+    platform = ControllerBuilder.for_current_os().os
+    if platform.autostart_enabled():
+        platform.autostart_disable()
         removed.append("autostart entry")
 
     # Shut down logging before deleting ~/.trcc — remove file handlers
@@ -244,7 +188,7 @@ def uninstall(*, yes: bool = False):
         subprocess.run(pip_cmd, check=False)
 
     # Clean stale shadow binary from old pip/pipx installs
-    stale_bin = _real_user_home() / ".local" / "bin" / "trcc"
+    stale_bin = Path.home() / ".local" / "bin" / "trcc"
     if stale_bin.exists():
         stale_bin.unlink()
         print(f"Removed stale binary: {stale_bin}")
@@ -304,7 +248,3 @@ def _confirm(prompt: str, auto_yes: bool) -> bool:
         return False
 
 
-def run_setup(auto_yes: bool = False) -> int:
-    """Interactive setup wizard — dispatches to platform-specific adapter."""
-    from trcc.core.app import TrccApp
-    return TrccApp.get().setup_platform(auto_yes=auto_yes)

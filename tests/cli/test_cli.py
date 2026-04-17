@@ -409,9 +409,9 @@ class TestScreencast(unittest.TestCase):
     """Tests for _display.screencast()."""
 
     def _mock_builder(self):
-        """MagicMock builder — screencast uses build_setup().get_screencast_capture()."""
+        """MagicMock builder — screencast uses os.screen_capture_params()."""
         builder = MagicMock()
-        builder.build_setup.return_value.get_screencast_capture.return_value = (
+        builder.os.get_screencast_capture.return_value = (
             'x11grab', ':0', []
         )
         return builder

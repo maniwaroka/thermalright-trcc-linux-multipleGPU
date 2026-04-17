@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Tuple
 
 if TYPE_CHECKING:
-    from ..core.ports import PathResolver
+    from ..core.ports import Platform
 
 from ..core.models import SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP
 from ..core.orientation import Orientation
@@ -43,7 +43,7 @@ class DisplayService:
                  media: MediaService,
                  theme_svc: Any = None,
                  cpu_percent_fn: Callable[[], float] | None = None,
-                 path_resolver: 'PathResolver | None' = None,
+                 path_resolver: 'Platform | None' = None,
                  device_label: str = '') -> None:
         # Per-device child logger — tags every record with device identity
         self.log: logging.Logger = logging.getLogger(f'{__name__}.{device_label}' if device_label else __name__)

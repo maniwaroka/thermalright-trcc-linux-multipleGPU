@@ -22,11 +22,8 @@ if TYPE_CHECKING:
     from .device import Device
     from .models import DetectedDevice
     from .ports import (
-        AutostartManager,
         FindActiveFn,
-        GetDiskInfoFn,
-        GetMemoryInfoFn,
-        PlatformSetup,
+        Platform,
         ProxyFactoryFn,
     )
 
@@ -195,9 +192,8 @@ class TrccApp:
         import trcc.conf as _conf
         self._settings = _conf.settings
 
-        setup = self._builder.build_setup()
-        if setup.needs_setup():
-            setup.auto_setup()
+        if self._builder.os.needs_setup():
+            self._builder.os.auto_setup()
 
         if renderer_factory is not None:
             self.set_renderer(renderer_factory())
@@ -446,29 +442,17 @@ class TrccApp:
         return {"success": True,
                 "message": f"HDD info {'enabled' if enabled else 'disabled'}"}
 
-    def setup_platform(self, auto_yes: bool = False) -> int:
-        """Run interactive platform setup wizard. Returns exit code."""
-        return self._builder.build_setup().run(auto_yes=auto_yes)
+    def setup(self, auto_yes: bool = False) -> int:
+        """Run interactive setup. OS handles everything."""
+        return self._builder.os.run_setup(auto_yes=auto_yes)
 
-    def setup_udev(self, dry_run: bool = False) -> int:
-        """Install udev rules. Returns exit code."""
-        return self._builder.build_setup().setup_udev(dry_run=dry_run)
-
-    def setup_selinux(self) -> int:
-        """Install SELinux policy. Returns exit code."""
-        return self._builder.build_setup().setup_selinux()
-
-    def setup_polkit(self) -> int:
-        """Install polkit policy. Returns exit code."""
-        return self._builder.build_setup().setup_polkit()
+    def install_rules(self) -> int:
+        """Install device access rules. OS handles everything."""
+        return self._builder.os.install_rules()
 
     def install_desktop(self) -> int:
-        """Install .desktop entry. Returns exit code."""
-        return self._builder.build_setup().install_desktop()
-
-    def setup_winusb(self) -> int:
-        """Guide WinUSB installation. Returns exit code."""
-        return self._builder.build_setup().setup_winusb()
+        """Install menu entry. OS handles everything."""
+        return self._builder.os.install_desktop()
 
     def download_themes(self, pack: str = "", force: bool = False) -> int:
         """Download theme packs. Empty pack = list available. Returns exit code."""
@@ -578,17 +562,10 @@ class TrccApp:
         """Build a SystemService wired with OS-appropriate sensor enumerator."""
         return self._builder.build_system()
 
-    def build_setup(self) -> PlatformSetup:
-        """Return the OS-appropriate setup wizard."""
-        return self._builder.build_setup()
-
-    def build_autostart(self) -> AutostartManager:
-        """Return the OS-appropriate autostart manager."""
-        return self._builder.build_autostart()
-
-    def build_hardware_fns(self) -> tuple[GetMemoryInfoFn, GetDiskInfoFn]:
-        """Return (get_memory_info, get_disk_info) for the current OS."""
-        return self._builder.build_hardware_fns()
+    @property
+    def os(self) -> Platform:
+        """The OS platform — paths, setup, autostart, hardware info."""
+        return self._builder.os
 
     def set_renderer(self, renderer: Any) -> None:
         """Inject the renderer into the builder and ImageService."""

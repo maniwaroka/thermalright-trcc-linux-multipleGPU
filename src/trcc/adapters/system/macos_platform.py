@@ -1,44 +1,51 @@
-"""macOS hardware sensor discovery and reading.
-
-Platform-specific sources:
-- IOKit SMC: CPU/GPU temp, fan speed (Intel + Apple Silicon — direct ctypes)
-- powermetrics: GPU active residency, power, clock (Apple Silicon only)
-- psutil: CPU usage/frequency, memory, disk I/O, network I/O
-- pynvml: NVIDIA GPU (rare on Mac, eGPU only)
-
-Sensor IDs follow the same format as Linux for compatibility:
-    smc:{key}              e.g., smc:TC0P (CPU temp)
-    iokit:{sensor}         e.g., iokit:gpu_busy (GPU active residency)
-    psutil:{metric}        e.g., psutil:cpu_percent
-    nvidia:{gpu}:{metric}  e.g., nvidia:0:temp
-    computed:{metric}      e.g., computed:disk_read
-
-Apple Silicon temperature key list derived from iSMC (GPL-3.0):
-    https://github.com/dkorunic/iSMC — smc/sensors.go
-    Copyright (c) Dinko Korunic. Used under GPL-3.0.
-"""
+"""macOS Platform — single file, single class, all macOS logic."""
 from __future__ import annotations
 
 import ctypes
 import ctypes.util
+import json
 import logging
 import platform
 import re
+import shutil
 import struct
 import subprocess
+from pathlib import Path
+from typing import Any, Optional
 
 import psutil
 
 from trcc.adapters.system._base import SensorEnumeratorBase
+from trcc.adapters.system._shared import (
+    _confirm,
+    _copy_assets_to_user_dir,
+    _posix_acquire_instance_lock,
+    _posix_raise_existing_instance,
+    _print_summary,
+)
 from trcc.core.models import SensorInfo
+from trcc.core.ports import (
+    AutostartManager,
+    DoctorPlatformConfig,
+    Platform,
+    ReportPlatformConfig,
+)
 
 log = logging.getLogger(__name__)
 
-# Detect Apple Silicon vs Intel
+
+# =========================================================================
+# Private constants
+# =========================================================================
+
+# ── Autostart ────────────────────────────────────────────────────────
+_LAUNCH_AGENTS_DIR = Path.home() / 'Library' / 'LaunchAgents'
+_LAUNCH_AGENT_FILE = _LAUNCH_AGENTS_DIR / 'com.thermalright.trcc.plist'
+
+# ── Apple Silicon detection ──────────────────────────────────────────
 IS_APPLE_SILICON = platform.machine() == 'arm64'
 
 # ── IOKit framework bindings ─────────────────────────────────────────
-
 _iokit_path = ctypes.util.find_library('IOKit')
 _cf_path = ctypes.util.find_library('CoreFoundation')
 _iokit = ctypes.cdll.LoadLibrary(_iokit_path) if _iokit_path else None
@@ -58,9 +65,7 @@ if _iokit:
     _iokit.IOServiceClose.restype = ctypes.c_int
     _iokit.IOServiceClose.argtypes = [ctypes.c_uint]
 
-
 # ── SMC constants ────────────────────────────────────────────────────
-
 KERNEL_INDEX_SMC = 2
 SMC_CMD_READ_KEYINFO = 9
 SMC_CMD_READ_BYTES = 5
@@ -132,23 +137,9 @@ _AS_TEMP_KEYS: frozenset[str] = frozenset({
 _FNUM_FALLBACK = 4
 
 
-def _as_key_metadata(key: str) -> tuple[str, str, str]:
-    """Derive (name, category, unit) for an Apple Silicon temp key."""
-    suffix = key[2:]
-    match key[:2]:
-        case 'Tp':
-            name = f'CPU P-Core {suffix}' if suffix != 'x' else f'CPU Package {suffix}'
-        case 'Te':
-            name = f'CPU E-Core {suffix}'
-        case 'Tg':
-            name = f'GPU Die {suffix}'
-        case 'Tf':
-            name = f'Die Fabric {suffix}'
-        case 'Tm':
-            name = f'Memory {suffix}'
-        case _:
-            name = f'Sensor {key}'
-    return (name, 'temperature', '°C')
+# =========================================================================
+# Private helper functions
+# =========================================================================
 
 # ── SMC structures ───────────────────────────────────────────────────
 
@@ -197,6 +188,7 @@ class SMCKeyData_t(ctypes.Structure):
 
 # ── SMC byte parsing ────────────────────────────────────────────────
 
+
 def _smc_key_to_int(key: str) -> int:
     """Convert 4-char SMC key to uint32."""
     return struct.unpack('>I', key.encode('ascii'))[0]
@@ -236,10 +228,159 @@ def _parse_smc_bytes(data_type: int, raw: ctypes.Array, size: int) -> float:
             return float(struct.unpack('>H', b[:2])[0]) / 256.0
 
 
-# ── Enumerator ───────────────────────────────────────────────────────
+def _as_key_metadata(key: str) -> tuple[str, str, str]:
+    """Derive (name, category, unit) for an Apple Silicon temp key."""
+    suffix = key[2:]
+    match key[:2]:
+        case 'Tp':
+            name = f'CPU P-Core {suffix}' if suffix != 'x' else f'CPU Package {suffix}'
+        case 'Te':
+            name = f'CPU E-Core {suffix}'
+        case 'Tg':
+            name = f'GPU Die {suffix}'
+        case 'Tf':
+            name = f'Die Fabric {suffix}'
+        case 'Tm':
+            name = f'Memory {suffix}'
+        case _:
+            name = f'Sensor {key}'
+    return (name, 'temperature', '°C')
 
-class MacOSSensorEnumerator(SensorEnumeratorBase):
-    """Discovers and reads hardware sensors on macOS.
+
+# ── Launch Agent plist ───────────────────────────────────────────────
+
+
+def _launch_agent_plist() -> str:
+    """Generate launchd plist content for autostart."""
+    exec_path = AutostartManager.get_exec()
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"\n'
+        '  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        '<dict>\n'
+        '    <key>Label</key>\n'
+        '    <string>com.thermalright.trcc</string>\n'
+        '    <key>ProgramArguments</key>\n'
+        '    <array>\n'
+        f'        <string>{exec_path}</string>\n'
+        '        <string>gui</string>\n'
+        '        <string>--resume</string>\n'
+        '    </array>\n'
+        '    <key>RunAtLoad</key>\n'
+        '    <true/>\n'
+        '    <key>KeepAlive</key>\n'
+        '    <false/>\n'
+        '</dict>\n'
+        '</plist>\n'
+    )
+
+
+# ── Hardware info (system_profiler) ──────────────────────────────────
+
+
+def _run_profiler(data_type: str) -> dict:
+    """Run system_profiler and return parsed JSON."""
+    try:
+        result = subprocess.run(
+            ['system_profiler', data_type, '-json'],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+    except Exception:
+        log.debug("system_profiler %s failed", data_type)
+    return {}
+
+
+def get_memory_info() -> list[dict[str, str]]:
+    """Get DRAM info via system_profiler SPMemoryDataType.
+
+    Returns one dict per populated DIMM slot, matching Linux format:
+        manufacturer, part_number, type, speed, size, form_factor, etc.
+
+    Note: Apple Silicon unified memory reports as a single entry.
+    """
+    slots: list[dict[str, str]] = []
+    data = _run_profiler('SPMemoryDataType')
+    items = data.get('SPMemoryDataType', [])
+
+    for item in items:
+        # Apple Silicon: top-level has 'dimm_type', 'SPMemoryDataType' items
+        # Intel: top-level items contain nested DIMMs
+        dimms = item.get('_items', [item])
+        for dimm in dimms:
+            slot: dict[str, str] = {}
+            slot['manufacturer'] = dimm.get('dimm_manufacturer', 'Apple')
+            slot['part_number'] = dimm.get('dimm_part_number', '')
+            slot['type'] = dimm.get('dimm_type', '')
+            slot['speed'] = dimm.get('dimm_speed', '')
+            slot['size'] = dimm.get('dimm_size', '')
+            slot['form_factor'] = dimm.get('dimm_form_factor', '')
+            slot['locator'] = dimm.get('_name', '')
+            if slot['size']:
+                slots.append(slot)
+
+    # Fallback: psutil total
+    if not slots:
+        mem = psutil.virtual_memory()
+        slots.append({
+            'manufacturer': 'Apple',
+            'part_number': 'Unknown',
+            'type': 'Unified' if IS_APPLE_SILICON else 'Unknown',
+            'speed': 'Unknown',
+            'size': f'{mem.total // (1024 ** 3)} GB',
+            'form_factor': 'Unified' if IS_APPLE_SILICON else 'Unknown',
+            'locator': 'Total',
+        })
+
+    return slots
+
+
+def get_disk_info() -> list[dict[str, str]]:
+    """Get physical disk info via system_profiler SPStorageDataType.
+
+    Returns one dict per disk, matching Linux format:
+        name, model, size, type (SSD/HDD), health.
+    """
+    disks: list[dict[str, str]] = []
+    data = _run_profiler('SPStorageDataType')
+    items = data.get('SPStorageDataType', [])
+
+    for item in items:
+        info: dict[str, str] = {}
+        info['name'] = item.get('bsd_name', '')
+        info['model'] = item.get('physical_drive', {}).get('device_name', '')
+        info['size'] = item.get('size_in_bytes', '')
+        if info['size']:
+            try:
+                b = int(info['size'])
+                if b >= 1024 ** 4:
+                    info['size'] = f'{b / (1024 ** 4):.1f} TB'
+                elif b >= 1024 ** 3:
+                    info['size'] = f'{b / (1024 ** 3):.0f} GB'
+            except (ValueError, TypeError):
+                pass
+        media_type = item.get('physical_drive', {}).get('medium_type', '')
+        if 'solid' in media_type.lower() or 'ssd' in media_type.lower():
+            info['type'] = 'SSD'
+        elif 'rotational' in media_type.lower():
+            info['type'] = 'HDD'
+        else:
+            info['type'] = 'SSD'  # Modern Macs are all SSD
+        info['health'] = item.get('smart_status', 'Unknown')
+        if info['name'] or info['model']:
+            disks.append(info)
+
+    return disks
+
+
+# =========================================================================
+# SensorEnumerator — file-scoped
+# =========================================================================
+
+class SensorEnumerator(SensorEnumeratorBase):
+    """macOS sensor discovery: SMC + powermetrics + psutil + pynvml.
 
     All Macs: reads SMC directly via IOKit for CPU/GPU temp and fan speed.
     Apple Silicon: additionally reads powermetrics for GPU active residency,
@@ -402,7 +543,7 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
         """Discover fan sensors dynamically via the FNum SMC key.
 
         Reads FNum to get the actual fan count, then probes F{i}Ac for
-        each fan. Falls back to probing F0Ac–F3Ac if FNum is unreadable.
+        each fan. Falls back to probing F0Ac-F3Ac if FNum is unreadable.
         """
         fnum_val = self._read_smc_direct('FNum')
         if fnum_val is not None and fnum_val > 0:
@@ -574,12 +715,11 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
         else:
             # Intel Mac: try system_profiler for GPU name
             try:
-                import json as _json
                 result = subprocess.run(
                     ['system_profiler', 'SPDisplaysDataType', '-json'],
                     capture_output=True, text=True, timeout=5,
                 )
-                data = _json.loads(result.stdout)
+                data = json.loads(result.stdout)
                 for item in data.get('SPDisplaysDataType', []):
                     name = item.get('sppci_model', 'Unknown GPU')
                     vram = item.get('sppci_vram', '')
@@ -632,3 +772,204 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
         self._map_fans(mapping, fan_sources=('smc', 'iokit', 'nvidia'))
 
         return mapping
+
+
+# =========================================================================
+# MacOSPlatform — THE one class
+# =========================================================================
+
+class MacOSPlatform(Platform):
+    """macOS Platform — all OS logic inline."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    # ── Sensor factory ───────────────────────────────────────
+
+    def _make_sensor_enumerator(self) -> 'SensorEnumerator':
+        return SensorEnumerator()
+
+    # ── Hardware discovery ────────────────────────────────────
+
+    def create_detect_fn(self):
+        from trcc.adapters.device.detector import DeviceDetector
+        return DeviceDetector.make_detect_fn(scsi_resolver=None)
+
+    # ── Transport creation ────────────────────────────────────
+
+    def create_scsi_transport(self, path: str, vid: int = 0, pid: int = 0) -> Any:
+        from trcc.adapters.device.macos.scsi import MacOSScsiTransport
+        return MacOSScsiTransport(vid=vid, pid=pid)
+
+    # ── Directories ───────────────────────────────────────────
+
+    def resolve_assets_dir(self, pkg_dir: Any) -> Any:
+        return _copy_assets_to_user_dir(pkg_dir)
+
+    # ── Autostart (Launch Agent) ─────────────────────────────
+
+    def autostart_enable(self) -> None:
+        _LAUNCH_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+        _LAUNCH_AGENT_FILE.write_text(_launch_agent_plist())
+        log.info("Autostart enabled: %s", _LAUNCH_AGENT_FILE)
+
+    def autostart_disable(self) -> None:
+        if _LAUNCH_AGENT_FILE.exists():
+            _LAUNCH_AGENT_FILE.unlink()
+        log.info("Autostart disabled")
+
+    def autostart_enabled(self) -> bool:
+        return _LAUNCH_AGENT_FILE.exists()
+
+    def acquire_instance_lock(self) -> object | None:
+        return _posix_acquire_instance_lock(self.config_dir())
+
+    def raise_existing_instance(self) -> None:
+        _posix_raise_existing_instance(self.config_dir())
+
+    def _screen_capture_format(self) -> str | None:
+        return 'avfoundation'
+
+    def wire_ipc_raise(self, app: Any, window: Any) -> None:
+        """Install SIGUSR1 handler via AF_UNIX socketpair + QSocketNotifier."""
+        import signal
+        import socket
+
+        from PySide6.QtCore import QSocketNotifier
+        rsock, wsock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        rsock.setblocking(False)
+        wsock.setblocking(False)
+
+        def _on_sigusr1(signum: Any, frame: Any) -> None:
+            try:
+                wsock.send(b'\x01')
+            except OSError:
+                pass
+
+        signal.signal(signal.SIGUSR1, _on_sigusr1)
+        notifier = QSocketNotifier(rsock.fileno(), QSocketNotifier.Type.Read, app)
+
+        def _raise_window() -> None:
+            try:
+                rsock.recv(1)
+            except OSError:
+                pass
+            window.showNormal()
+            window.raise_()
+            window.activateWindow()
+
+        notifier.activated.connect(_raise_window)
+
+    # ── Administration ────────────────────────────────────────
+
+    def get_pkg_manager(self) -> Optional[str]:
+        return 'brew' if shutil.which('brew') else None
+
+    def check_deps(self) -> list:
+        from trcc.adapters.infra.doctor import check_system_deps
+        return check_system_deps(self.get_pkg_manager())
+
+    def install_rules(self) -> int:
+        return 1  # macOS: no rules to install
+
+    def check_permissions(self, devices: list) -> list[str]:
+        return []
+
+    def get_system_files(self) -> list[str]:
+        return []
+
+    # ── Identity ──────────────────────────────────────────────
+
+    def distro_name(self) -> str:
+        return f"macOS {platform.mac_ver()[0]}"
+
+    def no_devices_hint(self) -> Optional[str]:
+        return None
+
+    def doctor_config(self) -> DoctorPlatformConfig:
+        return DoctorPlatformConfig(
+            distro_name=self.distro_name(),
+            pkg_manager=self.get_pkg_manager(),
+            check_libusb=True,
+            extra_binaries=[],
+            run_gpu_check=False,
+            run_udev_check=False,
+            run_selinux_check=False,
+            run_rapl_check=False,
+            run_polkit_check=False,
+            run_winusb_check=False,
+            enable_ansi=False,
+        )
+
+    def report_config(self) -> ReportPlatformConfig:
+        return ReportPlatformConfig(
+            distro_name=self.distro_name(),
+            collect_lsusb=False,
+            collect_udev=False,
+            collect_selinux=False,
+            collect_rapl=False,
+            collect_device_permissions=False,
+        )
+
+    # ── Setup operations ──────────────────────────────────────
+
+    def run_setup(self, auto_yes: bool = False) -> int:
+        from trcc.adapters.infra.doctor import check_system_deps
+
+        pm = self.get_pkg_manager()
+        print(f"\n  TRCC Setup — {self.distro_name()}\n")
+        actions: list[str] = []
+
+        # Step 1/2: System dependencies
+        print("  Step 1/2: System dependencies")
+        if not pm:
+            print("    [!!]  Homebrew not found — install from https://brew.sh/")
+            print()
+        deps = check_system_deps(pm)
+        for dep in deps:
+            if dep.ok:
+                ver = f" {dep.version}" if dep.version else ""
+                print(f"    [OK]  {dep.name}{ver}")
+            elif dep.required:
+                note = f" ({dep.note})" if dep.note else ""
+                print(f"    [!!]  {dep.name} — MISSING{note}")
+                if dep.install_cmd and pm:
+                    if _confirm(f"Install? -> {dep.install_cmd}", auto_yes):
+                        result = subprocess.run(dep.install_cmd.split())
+                        if result.returncode == 0:
+                            actions.append(f"Installed: {dep.name}")
+                        else:
+                            print(f"    [!!] Install failed (exit {result.returncode})")
+            else:
+                note = f" ({dep.note})" if dep.note else ""
+                print(f"    [--]  {dep.name} — not installed{note}")
+        print()
+
+        # Step 2/2: USB access
+        print("  Step 2/2: USB access")
+        print("    SCSI devices need sudo to detach the kernel driver.")
+        print("    HID devices work without root.")
+        print("    Apple Silicon: sensor reading needs sudo for powermetrics.")
+        print()
+
+        _print_summary(actions)
+        return 0
+
+    # ── Help text ─────────────────────────────────────────────
+
+    def archive_tool_install_help(self) -> str:
+        return (
+            "7z not found. Install via Homebrew:\n"
+            "  brew install p7zip"
+        )
+
+    def ffmpeg_install_help(self) -> str:
+        return "ffmpeg not found. Install:\n  brew install ffmpeg"
+
+    # ── Hardware info ─────────────────────────────────────────
+
+    def get_memory_info(self) -> list[dict[str, str]]:
+        return get_memory_info()
+
+    def get_disk_info(self) -> list[dict[str, str]]:
+        return get_disk_info()

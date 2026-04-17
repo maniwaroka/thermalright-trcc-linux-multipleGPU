@@ -47,25 +47,23 @@ def launch(verbosity: int = 0, decorated: bool = False,
     app = TrccApp.init()
 
     # ── Platform deps (before Qt — configure_dpi must precede QApplication) ──
-    setup     = app.build_setup()
-    autostart = app.build_autostart()
-    mem_fn, disk_fn = app.build_hardware_fns()
+    platform = app.os
 
     # ── Single-instance lock ──────────────────────────────────────────────
-    lock = setup.acquire_instance_lock()
+    lock = platform.acquire_instance_lock()
     if lock is None:
-        setup.raise_existing_instance()
+        platform.raise_existing_instance()
         return 0
 
     # ── Qt bootstrap ──────────────────────────────────────────────────────
     from trcc.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
-    set_assets_dir(setup.resolve_assets_dir(_PKG_ASSETS_DIR))
+    set_assets_dir(platform.resolve_assets_dir(_PKG_ASSETS_DIR))
 
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
     os.environ.pop("QT_QPA_PLATFORM", None)  # clear offscreen set by CLI
 
-    setup.configure_dpi()
+    platform.configure_dpi()
 
     from typing import cast
 
@@ -95,10 +93,7 @@ def launch(verbosity: int = 0, decorated: bool = False,
     from trcc.gui.trcc_app import TRCCApp as _TRCCApp
     window = _TRCCApp(
         system_svc=system_svc,
-        setup=setup,
-        autostart=autostart,
-        mem_fn=mem_fn,
-        disk_fn=disk_fn,
+        platform=platform,
         decorated=decorated,
     )
 
@@ -117,7 +112,7 @@ def launch(verbosity: int = 0, decorated: bool = False,
 
     # ── IPC raise + signals ───────────────────────────────────────────────
     signal.signal(signal.SIGINT, lambda *_: qapp.quit())
-    setup.wire_ipc_raise(qapp, window)
+    platform.wire_ipc_raise(qapp, window)
 
     if not start_hidden:
         window.show()

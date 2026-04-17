@@ -7,6 +7,7 @@ Tests what users actually do: connect, send, brightness, rotate, tick.
 from __future__ import annotations
 
 import os
+from unittest.mock import MagicMock
 
 import pytest
 from mock_platform import MockPlatform
@@ -38,9 +39,7 @@ def _connect_lcd(spec: dict, tmp_path):
     from trcc.conf import init_settings
     from trcc.core.builder import ControllerBuilder
 
-    setup = platform.create_setup()
-    init_settings(setup)
-    platform.configure_scsi_protocol(DeviceProtocolFactory)
+    init_settings(platform)
     builder = ControllerBuilder(platform).with_renderer(QtRenderer())
     detected = platform.create_detect_fn()()[0]
     device = builder.build_device(detected)
@@ -58,9 +57,7 @@ def _connect_led(spec: dict, tmp_path):
     from trcc.conf import init_settings
     from trcc.core.builder import ControllerBuilder
 
-    setup = platform.create_setup()
-    init_settings(setup)
-    platform.configure_scsi_protocol(DeviceProtocolFactory)
+    init_settings(platform)
     builder = ControllerBuilder(platform)
     detected = platform.create_detect_fn()()[0]
     device = builder.build_device(detected)

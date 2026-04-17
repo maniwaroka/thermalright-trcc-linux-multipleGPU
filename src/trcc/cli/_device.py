@@ -104,7 +104,7 @@ def _format(dev, probe=False):
 
 
 @_cli_handler
-def detect(show_all=False, detect_fn=None, platform_setup=None):
+def detect(show_all=False, detect_fn=None, os_platform=None):
     """Detect LCD device."""
     from trcc.conf import Settings
     from trcc.core.builder import ControllerBuilder
@@ -112,14 +112,14 @@ def detect(show_all=False, detect_fn=None, platform_setup=None):
     log.debug("detect called show_all=%s", show_all)
     if detect_fn is None:
         detect_fn = ControllerBuilder.for_current_os().build_detect_fn()
-    if platform_setup is None:
-        platform_setup = ControllerBuilder.for_current_os().build_setup()
+    if os_platform is None:
+        os_platform = ControllerBuilder.for_current_os().os
     devices = detect_fn()
     log.debug("detected %d device(s)", len(devices))
 
     if not devices:
         print("No compatible TRCC LCD device detected.")
-        if (hint := platform_setup.no_devices_hint()):
+        if (hint := os_platform.no_devices_hint()):
             print(hint)
         return 1
 
@@ -133,7 +133,7 @@ def detect(show_all=False, detect_fn=None, platform_setup=None):
     else:
         print(f"Active: {_format(devices[0], probe=True)}")
 
-    for warning in platform_setup.check_device_permissions(devices):
+    for warning in os_platform.check_permissions(devices):
         print(f"\n{warning}")
 
     return 0

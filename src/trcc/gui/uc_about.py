@@ -35,12 +35,19 @@ from .constants import Layout, Sizes, Styles
 
 log = logging.getLogger(__name__)
 
-from trcc.core.ports import AutostartManager  # noqa: E402
+from trcc.core.ports import Platform  # noqa: E402
 
 
-def ensure_autostart(manager: AutostartManager) -> bool:
+def ensure_autostart(platform: Platform) -> bool:
     """Auto-enable autostart on first launch; refresh on subsequent launches."""
-    return manager.ensure()
+    from trcc.conf import load_config, save_config
+    config = load_config()
+    if not config.get('autostart_configured'):
+        platform.autostart_enable()
+        config['autostart_configured'] = True
+        save_config(config)
+        return True
+    return platform.autostart_enabled()
 
 
 _GITHUB_LATEST = (
@@ -151,15 +158,15 @@ class UCAbout(BasePanel):
     _update_available = Signal(str, dict) # (version, {mgr: download_url})
     _upgrade_finished = Signal(bool)     # True=success, False=failure
 
-    def __init__(self, parent=None, autostart_manager: AutostartManager | None = None,
+    def __init__(self, parent=None, platform: Platform | None = None,
                  gpu_list: list[tuple[str, str]] | None = None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
 
-        self._autostart_manager = autostart_manager
+        self._platform = platform
         self._gpu_list = gpu_list or []
         self._lang_buttons: dict[str, QPushButton] = {}  # Legacy — populated by combo in trcc_app
         self._temp_mode = 'C'
-        self._autostart = autostart_manager.is_enabled() if autostart_manager else False
+        self._autostart = platform.autostart_enabled() if platform else False
         from ..conf import settings
         self._read_hdd = settings.hdd_enabled
         self._refresh_interval = settings.refresh_interval
@@ -327,11 +334,11 @@ class UCAbout(BasePanel):
     def _on_startup_clicked(self):
         """Toggle auto-start on login."""
         self._autostart = self.startup_btn.isChecked()
-        if self._autostart_manager:
+        if self._platform:
             if self._autostart:
-                self._autostart_manager.enable()
+                self._platform.autostart_enable()
             else:
-                self._autostart_manager.disable()
+                self._platform.autostart_disable()
         self.startup_changed.emit(self._autostart)
         self.invoke_delegate(self.CMD_STARTUP, self._autostart)
 

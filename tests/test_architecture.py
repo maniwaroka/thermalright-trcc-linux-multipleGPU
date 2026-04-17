@@ -217,12 +217,13 @@ class TestServiceIsolation(unittest.TestCase):
 
     def test_no_qt_in_models(self):
         """Models are pure dataclasses — no Qt."""
-        models_path = SERVICES_DIR.parent / 'core' / 'models.py'
+        models_dir = SERVICES_DIR.parent / 'core' / 'models'
         qt_modules = {'PySide6', 'PyQt6', 'PyQt5'}
-        imports = self._get_imports(models_path)
-        offenders = imports & qt_modules
-        self.assertEqual(offenders, set(),
-                         f"models.py imports Qt: {offenders}")
+        for py_file in models_dir.glob('*.py'):
+            imports = self._get_imports(py_file)
+            offenders = imports & qt_modules
+            self.assertEqual(offenders, set(),
+                             f"models/{py_file.name} imports Qt: {offenders}")
 
     def test_services_init_exports(self):
         """services/__init__.py exports all 6 services."""
@@ -332,52 +333,52 @@ class TestHexagonalBoundary(unittest.TestCase):
         self.assertEqual(violations, [], f"core/ → adapters/ violations: {violations}")
 
 
-class TestPlatformSetupABC(unittest.TestCase):
-    """All platform setup adapters implement the PlatformSetup ABC."""
+class TestPlatformImplementsPlatform(unittest.TestCase):
+    """All platform adapters implement the Platform ABC."""
 
     def test_linux_implements_abc(self):
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        from trcc.core.ports import PlatformSetup
-        self.assertTrue(issubclass(LinuxSetup, PlatformSetup))
+        from trcc.adapters.system.linux_platform import LinuxPlatform
+        from trcc.core.ports import Platform
+        self.assertTrue(issubclass(LinuxPlatform, Platform))
 
     def test_windows_implements_abc(self):
-        from trcc.adapters.system.windows.setup import WindowsSetup
-        from trcc.core.ports import PlatformSetup
-        self.assertTrue(issubclass(WindowsSetup, PlatformSetup))
+        from trcc.adapters.system.windows_platform import WindowsPlatform
+        from trcc.core.ports import Platform
+        self.assertTrue(issubclass(WindowsPlatform, Platform))
 
     def test_macos_implements_abc(self):
-        from trcc.adapters.system.macos.setup import MacOSSetup
-        from trcc.core.ports import PlatformSetup
-        self.assertTrue(issubclass(MacOSSetup, PlatformSetup))
+        from trcc.adapters.system.macos_platform import MacOSPlatform
+        from trcc.core.ports import Platform
+        self.assertTrue(issubclass(MacOSPlatform, Platform))
 
     def test_bsd_implements_abc(self):
-        from trcc.adapters.system.bsd.setup import BSDSetup
-        from trcc.core.ports import PlatformSetup
-        self.assertTrue(issubclass(BSDSetup, PlatformSetup))
+        from trcc.adapters.system.bsd_platform import BSDPlatform
+        from trcc.core.ports import Platform
+        self.assertTrue(issubclass(BSDPlatform, Platform))
 
 
 class TestSensorEnumeratorABC(unittest.TestCase):
     """All platform sensor enumerators implement the SensorEnumerator ABC."""
 
     def test_linux_implements_abc(self):
-        from trcc.adapters.system.linux.sensors import SensorEnumerator
+        from trcc.adapters.system.linux_platform import SensorEnumerator
         from trcc.core.ports import SensorEnumerator as ABC
         self.assertTrue(issubclass(SensorEnumerator, ABC))
 
     def test_windows_implements_abc(self):
-        from trcc.adapters.system.windows.sensors import WindowsSensorEnumerator
+        from trcc.adapters.system.windows_platform import SensorEnumerator
         from trcc.core.ports import SensorEnumerator as ABC
-        self.assertTrue(issubclass(WindowsSensorEnumerator, ABC))
+        self.assertTrue(issubclass(SensorEnumerator, ABC))
 
     def test_macos_implements_abc(self):
-        from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
+        from trcc.adapters.system.macos_platform import SensorEnumerator
         from trcc.core.ports import SensorEnumerator as ABC
-        self.assertTrue(issubclass(MacOSSensorEnumerator, ABC))
+        self.assertTrue(issubclass(SensorEnumerator, ABC))
 
     def test_bsd_implements_abc(self):
-        from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
+        from trcc.adapters.system.bsd_platform import SensorEnumerator
         from trcc.core.ports import SensorEnumerator as ABC
-        self.assertTrue(issubclass(BSDSensorEnumerator, ABC))
+        self.assertTrue(issubclass(SensorEnumerator, ABC))
 
 
 if __name__ == '__main__':

@@ -17,6 +17,8 @@ import logging
 import struct
 from typing import Any, Optional
 
+from trcc.adapters.device.scsi import ScsiTransport
+
 log = logging.getLogger(__name__)
 
 # USB Bulk-Only Transport (BOT) constants
@@ -25,7 +27,7 @@ CBW_SIZE = 31
 CSW_SIZE = 13
 
 
-class MacOSScsiTransport:
+class MacOSScsiTransport(ScsiTransport):
     """Send raw SCSI commands to a USB mass-storage device on macOS.
 
     Uses pyusb bulk transfers with USB BOT (Bulk-Only Transport) protocol.
@@ -162,6 +164,15 @@ class MacOSScsiTransport:
         except Exception:
             log.exception("macOS SCSI transfer failed")
             return False
+
+    def read_cdb(self, cdb: bytes, length: int) -> bytes:
+        """Read response via USB BOT.
+
+        macOS USB BOT read is not yet implemented — returns empty bytes.
+        ScsiDevice.handshake() handles this gracefully via registry FBL fallback.
+        """
+        log.debug("macOS SCSI read_cdb: not implemented, returning empty")
+        return b''
 
     def __enter__(self):
         self.open()

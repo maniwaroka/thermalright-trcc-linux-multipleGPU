@@ -562,7 +562,7 @@ def get_setup_info(doctor_config: 'DoctorPlatformConfig | None' = None) -> Setup
     """Get system info for setup wizard."""
     if doctor_config is None:
         from trcc.core.builder import ControllerBuilder
-        doctor_config = ControllerBuilder.for_current_os().build_setup().get_doctor_config()
+        doctor_config = ControllerBuilder.for_current_os().os.doctor_config()
     v = sys.version_info
     return SetupInfo(
         distro=doctor_config.distro_name,
@@ -578,7 +578,7 @@ def check_system_deps(
     """Check all dependencies and return structured results."""
     if doctor_config is None:
         from trcc.core.builder import ControllerBuilder
-        doctor_config = ControllerBuilder.for_current_os().build_setup().get_doctor_config()
+        doctor_config = ControllerBuilder.for_current_os().os.doctor_config()
     if pm is None:
         pm = doctor_config.pkg_manager
     results: list[DepResult] = []
@@ -803,7 +803,7 @@ def run_doctor(doctor_config: 'DoctorPlatformConfig | None' = None) -> int:
     """Run dependency health check. Returns 0 if all required deps pass."""
     if doctor_config is None:
         from trcc.core.builder import ControllerBuilder
-        doctor_config = ControllerBuilder.for_current_os().build_setup().get_doctor_config()
+        doctor_config = ControllerBuilder.for_current_os().os.doctor_config()
 
     if doctor_config.enable_ansi:
         _enable_ansi_windows()
@@ -1253,10 +1253,10 @@ def led_debug_interactive(test_colors: bool = False) -> int:
             led_count = style.led_count
             for name, color in [("RED", (255, 0, 0)), ("GREEN", (0, 255, 0)),
                                  ("BLUE", (0, 0, 255)), ("WHITE", (255, 255, 255))]:
-                protocol.send_led_data([color] * led_count, brightness=100)
+                protocol.send_data([color] * led_count, brightness=100)
                 print(f"    {name}")
                 time.sleep(1.5)
-            protocol.send_led_data(
+            protocol.send_data(
                 [(0, 0, 0)] * led_count, global_on=False, brightness=0)
             print("    OFF")
 
@@ -1296,7 +1296,7 @@ class DebugReport:
     def _get_config(self) -> 'ReportPlatformConfig':
         if self._config is None:
             from trcc.core.builder import ControllerBuilder
-            self._config = ControllerBuilder.for_current_os().build_setup().get_report_config()
+            self._config = ControllerBuilder.for_current_os().os.report_config()
         return self._config
 
     def _get_detect_fn(self) -> Callable[[], list[Any]]:

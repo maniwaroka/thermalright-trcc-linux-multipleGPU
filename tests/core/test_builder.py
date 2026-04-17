@@ -131,33 +131,22 @@ class TestControllerBuilderDeviceFromService(unittest.TestCase):
 
 
 class TestControllerBuilderSetup(unittest.TestCase):
-    """ControllerBuilder.build_setup() — platform setup adapter."""
+    """ControllerBuilder.os — platform accessed via builder.os property."""
 
     def setUp(self):
-        """Use a real OS builder (bypasses autouse mock) for setup adapter tests."""
-        from trcc.adapters.system.linux.platform import LinuxPlatform
+        from trcc.adapters.system.linux_platform import LinuxPlatform
         self._builder = ControllerBuilder(LinuxPlatform())
 
-    def test_returns_platform_setup(self):
-        from trcc.core.ports import PlatformSetup
-        setup = self._builder.build_setup()
-        self.assertIsInstance(setup, PlatformSetup)
+    def test_returns_os_platform(self):
+        from trcc.core.ports import Platform
+        self.assertIsInstance(self._builder.os, Platform)
 
     def test_has_archive_tool_help(self):
-        setup = self._builder.build_setup()
-        help_text = setup.archive_tool_install_help()
+        help_text = self._builder.os.archive_tool_install_help()
         self.assertIn('7z', help_text.lower())
 
-    def test_has_distro_name(self):
-        setup = self._builder.build_setup()
-        name = setup.get_distro_name()
-        self.assertIsInstance(name, str)
-        self.assertTrue(len(name) > 0)
-
     def test_has_pkg_manager(self):
-        setup = self._builder.build_setup()
-        # May be None on some systems, but the method should exist
-        pm = setup.get_pkg_manager()
+        pm = self._builder.os.get_pkg_manager()
         self.assertTrue(pm is None or isinstance(pm, str))
 
 
@@ -203,33 +192,29 @@ class TestControllerBuilderBootstrap(unittest.TestCase):
 
     def test_bootstrap_calls_logging_configurator(self):
         with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure') as mock_log,
-              patch.object(ControllerBuilder, 'build_setup', return_value=MagicMock()),
               patch('trcc.conf.init_settings')):
             _make_builder().bootstrap()
         mock_log.assert_called_once()
 
     def test_bootstrap_passes_verbosity(self):
         with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure') as mock_log,
-              patch.object(ControllerBuilder, 'build_setup', return_value=MagicMock()),
               patch('trcc.conf.init_settings')):
             _make_builder().bootstrap(verbosity=2)
         mock_log.assert_called_once_with(verbosity=2)
 
     def test_bootstrap_calls_configure_stdout(self):
-        mock_setup = MagicMock()
+        b = _make_builder()
         with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure'),
-              patch.object(ControllerBuilder, 'build_setup', return_value=mock_setup),
               patch('trcc.conf.init_settings')):
-            _make_builder().bootstrap()
-        mock_setup.configure_stdout.assert_called_once()
+            b.bootstrap()
+        b.os.configure_stdout.assert_called_once()
 
-    def test_bootstrap_calls_init_settings_with_setup(self):
-        mock_setup = MagicMock()
+    def test_bootstrap_calls_init_settings_with_os(self):
+        b = _make_builder()
         with (patch('trcc.adapters.infra.logging_setup.StandardLoggingConfigurator.configure'),
-              patch.object(ControllerBuilder, 'build_setup', return_value=mock_setup),
               patch('trcc.conf.init_settings') as mock_init):
-            _make_builder().bootstrap()
-        mock_init.assert_called_once_with(mock_setup)
+            b.bootstrap()
+        mock_init.assert_called_once_with(b.os)
 
 
 class TestControllerBuilderSystem(unittest.TestCase):
@@ -253,18 +238,16 @@ class TestControllerBuilderExtra(unittest.TestCase):
         fn = _make_builder().build_ensure_data_fn()
         self.assertTrue(callable(fn))
 
-    def test_build_autostart_delegates_to_platform(self):
-        platform = MagicMock()
-        ControllerBuilder(platform).build_autostart()
-        platform.create_autostart_manager.assert_called_once()
+    def test_os_has_autostart_methods(self):
+        b = _make_builder()
+        self.assertTrue(hasattr(b.os, 'autostart_enable'))
+        self.assertTrue(hasattr(b.os, 'autostart_disable'))
+        self.assertTrue(hasattr(b.os, 'autostart_enabled'))
 
-    def test_build_hardware_fns_returns_two_callables(self):
-        platform = MagicMock()
-        platform.get_memory_info_fn.return_value = lambda: {}
-        platform.get_disk_info_fn.return_value = lambda: {}
-        mem_fn, disk_fn = ControllerBuilder(platform).build_hardware_fns()
-        self.assertTrue(callable(mem_fn))
-        self.assertTrue(callable(disk_fn))
+    def test_os_has_hardware_info_methods(self):
+        b = _make_builder()
+        self.assertTrue(callable(b.os.get_memory_info))
+        self.assertTrue(callable(b.os.get_disk_info))
 
     def test_build_detect_fn_returns_callable(self):
         fn = _make_builder().build_detect_fn()

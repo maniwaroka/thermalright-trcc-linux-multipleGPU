@@ -199,7 +199,7 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
     assert lcd is not None
     lcd_w, lcd_h = lcd.lcd_size
 
-    capture = builder.build_setup().get_screencast_capture(x, y, w, h)
+    capture = builder.os.screen_capture_params(x, y, w, h)
     if capture is None:
         print("Error: Screencast not supported on this platform.")
         return 1
@@ -274,7 +274,7 @@ def send_image(builder, image_path, device=None, preview=False):
     log.debug("send_image path=%s device=%s", image_path, device)
     if (rc := _connect_or_fail(device)):
         return rc
-    result = TrccApp.get().device(0).send_image(image_path)
+    result = TrccApp.get().device(0).send_data(image_path)
     return _print_result(result, preview=preview)
 
 

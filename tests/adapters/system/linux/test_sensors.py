@@ -13,14 +13,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from trcc.adapters.infra.data_repository import SysUtils
-from trcc.adapters.system.linux.sensors import (
+from trcc.adapters.system.linux_platform import (
     _HWMON_DIVISORS,
     _HWMON_TYPES,
     SensorEnumerator,
     SensorInfo,
 )
 
-MODULE = 'trcc.adapters.system.linux.sensors'
+MODULE = 'trcc.adapters.system.linux_platform'
 
 
 # ── Sysfs mock helpers ───────────────────────────────────────────────
@@ -434,7 +434,7 @@ class TestDiscoverRapl:
 class TestNvmlImport:
 
     def test_ensure_nvml_is_callable(self):
-        from trcc.adapters.system.linux.sensors import _ensure_nvml
+        from trcc.adapters.system.linux_platform import _ensure_nvml
         assert callable(_ensure_nvml)
 
 

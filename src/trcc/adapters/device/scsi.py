@@ -1,40 +1,56 @@
 """SCSI LCD protocol adapter — command blocks, frame chunking, boot animation.
 
-Platform-agnostic SCSI protocol logic. Linux SG_IO ioctl lives in
-bridge_linux.py; this adapter calls it with sg_raw subprocess fallback.
+Platform-agnostic SCSI protocol logic. OS-specific SCSI I/O is injected via
+the ScsiTransport ABC — Linux (SG_IO ioctl), Windows (DeviceIoControl),
+macOS / BSD (pyusb USB BOT).
 """
 from __future__ import annotations
 
 import binascii
 import logging
 import struct
-import subprocess
-import tempfile
 import time
 import zlib
-from typing import Set
+from abc import ABC, abstractmethod
 
 from trcc.adapters.device.frame import FrameDevice
-from trcc.adapters.device.linux.scsi import LinuxScsiTransport
-from trcc.adapters.infra.data_repository import SysUtils
 from trcc.core.models import HandshakeResult, fbl_to_resolution
 
 log = logging.getLogger(__name__)
 
-# Fallback state: None = untested, True/False = tested.
-# Controls whether _scsi_read/_scsi_write try SG_IO or fall back to sg_raw.
-_sg_io_available: bool | None = None
 
-# Per-device transport instances (keyed by /dev/sgX path)
-_transports: dict[str, LinuxScsiTransport] = {}
+# =========================================================================
+# SCSI transport ABC — OS-specific implementations injected via DI
+# =========================================================================
 
 
-def _get_transport(dev: str) -> LinuxScsiTransport:
-    if dev not in _transports:
-        t = LinuxScsiTransport(dev)
-        t.open()
-        _transports[dev] = t
-    return _transports[dev]
+class ScsiTransport(ABC):
+    """Abstract SCSI transport — platform implementations injected via DI.
+
+    Same pattern as UsbTransport in hid.py. Each OS provides a concrete
+    implementation; the protocol logic never knows which OS it's on.
+    """
+
+    @abstractmethod
+    def open(self) -> bool:
+        """Open the device for SCSI I/O."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release device resources."""
+
+    @abstractmethod
+    def send_cdb(self, cdb: bytes, data: bytes) -> bool:
+        """Send a SCSI CDB with data payload. Returns True on success."""
+
+    @abstractmethod
+    def read_cdb(self, cdb: bytes, length: int) -> bytes:
+        """Send a SCSI CDB and read response. Returns response bytes."""
+
+
+# =========================================================================
+# Protocol constants
+# =========================================================================
 
 # Boot signature: device still initializing its display controller
 _BOOT_SIGNATURE = b'\xa1\xa2\xa3\xa4'
@@ -67,23 +83,31 @@ _BOOT_ANIM_RESOLUTIONS = {
 
 
 # =========================================================================
-# SCSI device class
+# SCSI device class — protocol logic, transport-agnostic
 # =========================================================================
 
 
 class ScsiDevice(FrameDevice):
-    """SCSI LCD device handler wrapping sg_raw subprocess calls."""
+    """SCSI LCD device — protocol logic with injected transport."""
 
-    # Track which devices have been initialized (poll + init sent)
-    _initialized_devices: Set[str] = set()
-
-    def __init__(self, device_path: str, width: int = 0, height: int = 0):
+    def __init__(
+        self,
+        device_path: str,
+        transport: ScsiTransport,
+        width: int = 0,
+        height: int = 0,
+        vid: int = 0,
+        pid: int = 0,
+    ):
         self.device_path = device_path
+        self._transport = transport
         self.width = width
         self.height = height
+        self._vid = vid
+        self._pid = pid
         self._initialized = False
 
-    # --- Low-level SCSI helpers (Mode 3 protocol) ---
+    # --- Pure helpers (no transport, used by all platforms) ---
 
     @staticmethod
     def _get_frame_chunks(width: int, height: int) -> list:
@@ -92,11 +116,6 @@ class ScsiDevice(FrameDevice):
         USBLCD.exe uses different chunk sizes per resolution mode:
           Mode 1/2 (≤320x240): 0xE100 (57,600) byte chunks
           Mode 3   (320x320+): 0x10000 (65,536) byte chunks
-
-        For 240x240: 2 chunks (2×0xE100 = 115,200 bytes)
-        For 320x240: 3 chunks (2×0xE100 + 0x9600 = 153,600 bytes)
-        For 320x320: 4 chunks (3×0x10000 + 0x2000 = 204,800 bytes)
-        For 480x480: 8 chunks (7×0x10000 + 0x2800 = 460,800 bytes)
         """
         pixels = width * height
         chunk_size = (_CHUNK_SIZE_SMALL if pixels <= _SMALL_DISPLAY_PIXELS
@@ -125,55 +144,43 @@ class ScsiDevice(FrameDevice):
         return header_16 + struct.pack('<I', crc)
 
     @staticmethod
-    def _scsi_read(dev: str, cdb: bytes, length: int) -> bytes:
-        """Execute SCSI READ via SG_IO ioctl (or sg_raw fallback)."""
-        global _sg_io_available
-        if _sg_io_available is not False:
-            try:
-                result = _get_transport(dev).read_cdb(cdb, length)
-                _sg_io_available = True
-                return result
-            except OSError as e:
-                if _sg_io_available is None:
-                    log.warning("SG_IO read failed (%s: %s), falling back to sg_raw",
-                                type(e).__name__, e)
-                    _sg_io_available = False
+    def send_frame_via_transport(transport, image_data: bytes, width: int, height: int) -> bool:
+        """Send one RGB565 frame via any ScsiTransport. OS-agnostic."""
+        chunks = ScsiDevice._get_frame_chunks(width, height)
+        total_size = sum(size for _, size in chunks)
+        if len(image_data) < total_size:
+            image_data += b'\x00' * (total_size - len(image_data))
 
-        SysUtils.require_sg_raw()
-        cdb_hex = ' '.join(f'{b:02x}' for b in cdb)
-        cmd = ['sg_raw', '-r', str(length), dev] + cdb_hex.split()
-        result = subprocess.run(cmd, capture_output=True, timeout=10)
-        return result.stdout if result.returncode == 0 else b''
+        offset = 0
+        for cmd, size in chunks:
+            header = ScsiDevice._build_header(cmd, size)
+            ok = transport.send_cdb(header[:16], image_data[offset:offset + size])
+            if not ok:
+                return False
+            offset += size
+        return True
 
     @staticmethod
-    def _scsi_write(dev: str, header: bytes, data: bytes) -> bool:
-        """Execute SCSI WRITE via SG_IO ioctl (or sg_raw fallback)."""
-        global _sg_io_available
-        cdb = header[:16]
+    def _build_anim_header(cmd: int, word2: int, compressed_size: int) -> bytes:
+        """Build 20-byte CDB for compressed animation commands (no CRC).
 
-        if _sg_io_available is not False:
-            try:
-                ok = _get_transport(dev).send_cdb(cdb, data)
-                _sg_io_available = True
-                return ok
-            except OSError as e:
-                if _sg_io_available is None:
-                    log.warning("SG_IO ioctl failed (%s: %s), falling back to sg_raw",
-                                type(e).__name__, e)
-                    _sg_io_available = False
+        Layout: [cmd:4][0:4][word2:4][compressed_size:4][0:4]
+        """
+        return struct.pack('<IIIII', cmd, 0, word2, compressed_size, 0)
 
-        SysUtils.require_sg_raw()
-        cdb_hex = ' '.join(f'{b:02x}' for b in cdb)
+    # --- Transport-backed I/O ---
 
-        with tempfile.NamedTemporaryFile(delete=True) as f:
-            f.write(data)
-            f.flush()
-            cmd = ['sg_raw', '-s', str(len(data)), '-i', f.name, dev] + cdb_hex.split()
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            return result.returncode == 0
+    def _scsi_read(self, cdb: bytes, length: int) -> bytes:
+        """Read via injected transport."""
+        return self._transport.read_cdb(cdb, length)
 
-    @staticmethod
-    def _init_device(dev: str) -> tuple[int, bytes]:
+    def _scsi_write(self, header: bytes, data: bytes) -> bool:
+        """Write via injected transport."""
+        return self._transport.send_cdb(header[:16], data)
+
+    # --- Protocol sequences ---
+
+    def _init_device(self) -> tuple[int, bytes]:
         """Poll + init handshake (must be called before first frame send).
 
         Matches USBLCD.exe initialization sequence:
@@ -190,37 +197,45 @@ class ScsiDevice(FrameDevice):
         # Step 1: Poll with boot state check
         response = b''
         for attempt in range(_BOOT_MAX_RETRIES):
-            response = ScsiDevice._scsi_read(dev, poll_header[:16], 0xE100)
+            response = self._scsi_read(poll_header[:16], 0xE100)
             if len(response) >= 8 and response[4:8] == _BOOT_SIGNATURE:
                 log.info("Device %s still booting (attempt %d/%d), waiting %.0fs...",
-                         dev, attempt + 1, _BOOT_MAX_RETRIES, _BOOT_WAIT_SECONDS)
+                         self.device_path, attempt + 1, _BOOT_MAX_RETRIES, _BOOT_WAIT_SECONDS)
                 time.sleep(_BOOT_WAIT_SECONDS)
             else:
                 break
 
-        # Extract FBL from poll response byte[0]
-        if not response:
-            log.warning("SCSI poll returned empty response on %s", dev)
-            raise RuntimeError(
-                f"SCSI poll returned empty response on {dev}. "
-                "Device may not be connected or may need a reboot."
-            )
-        fbl = response[0]
-        log.debug("SCSI poll byte[0] = %d (FBL)", fbl)
+        # Extract FBL from poll response byte[0], or fall back to registry
+        if response:
+            fbl = response[0]
+            log.debug("SCSI poll byte[0] = %d (FBL)", fbl)
+        else:
+            fbl = self._fbl_from_registry()
+            log.warning("SCSI poll returned empty on %s — using registry FBL %d",
+                        self.device_path, fbl)
 
         # Step 2: Init
         init_header = ScsiDevice._build_header(0x1F5, 0xE100)
-        ScsiDevice._scsi_write(dev, init_header, b'\x00' * 0xE100)
+        self._scsi_write(init_header, b'\x00' * 0xE100)
 
         # Step 3: Brief delay to let display controller settle
         time.sleep(_POST_INIT_DELAY)
 
         return fbl, response[:64]
 
-    @staticmethod
-    def _send_frame(dev: str, rgb565_data: bytes, width: int, height: int):
+    def _fbl_from_registry(self) -> int:
+        """Look up FBL from device registry when poll returns empty."""
+        from trcc.core.models import SCSI_DEVICES
+        entry = SCSI_DEVICES.get((self._vid, self._pid))
+        if entry is not None:
+            return entry.fbl
+        log.warning("Device %04X:%04X not in SCSI registry, defaulting to FBL 100",
+                    self._vid, self._pid)
+        return 100  # Default: 320x320 RGB565
+
+    def _send_frame_data(self, rgb565_data: bytes) -> None:
         """Send one RGB565 frame in SCSI chunks sized for the resolution."""
-        chunks = ScsiDevice._get_frame_chunks(width, height)
+        chunks = ScsiDevice._get_frame_chunks(self.width, self.height)
         total_size = sum(size for _, size in chunks)
         if len(rgb565_data) < total_size:
             rgb565_data += b'\x00' * (total_size - len(rgb565_data))
@@ -228,25 +243,13 @@ class ScsiDevice(FrameDevice):
         offset = 0
         for cmd, size in chunks:
             header = ScsiDevice._build_header(cmd, size)
-            ScsiDevice._scsi_write(dev, header, rgb565_data[offset:offset + size])
+            self._scsi_write(header, rgb565_data[offset:offset + size])
             offset += size
 
-    @staticmethod
-    def _build_anim_header(cmd: int, word2: int, compressed_size: int) -> bytes:
-        """Build 20-byte CDB for compressed animation commands (no CRC).
-
-        Layout: [cmd:4][0:4][word2:4][compressed_size:4][0:4]
-        Used for 0x201F5 (first frame) and 0x301F5 (carousel frames).
-        """
-        return struct.pack('<IIIII', cmd, 0, word2, compressed_size, 0)
-
-    @staticmethod
     def _send_boot_animation(
-        dev: str,
+        self,
         frames: list[bytes],
         delays: list[int],
-        width: int,
-        height: int,
     ) -> bool:
         """Send multi-frame boot animation to device flash via SCSI.
 
@@ -254,19 +257,9 @@ class ScsiDevice(FrameDevice):
         1. Compress first frame with zlib, send with 0x201F5 (frame_count in CDB[8])
         2. For each subsequent frame, compress and send with 0x301F5
            (delay in CDB[3], frame_index in CDB[8])
-
-        Args:
-            dev: SCSI device path (/dev/sgX).
-            frames: List of RGB565 byte arrays (one per animation frame).
-            delays: Per-frame delays in centiseconds (from GIF metadata).
-            width: Frame width in pixels.
-            height: Frame height in pixels.
-
-        Returns:
-            True if all frames sent successfully.
         """
-        if (width, height) not in _BOOT_ANIM_RESOLUTIONS:
-            log.warning("Boot animation not supported for %dx%d", width, height)
+        if (self.width, self.height) not in _BOOT_ANIM_RESOLUTIONS:
+            log.warning("Boot animation not supported for %dx%d", self.width, self.height)
             return False
 
         n = len(frames)
@@ -277,7 +270,7 @@ class ScsiDevice(FrameDevice):
         # Phase 1: Compress and send first frame
         compressed = zlib.compress(frames[0], _ANIM_COMPRESS_LEVEL)
         header = ScsiDevice._build_anim_header(_ANIM_FIRST_FRAME, n, len(compressed))
-        if not ScsiDevice._scsi_write(dev, header, compressed):
+        if not self._scsi_write(header, compressed):
             log.error("Boot animation: failed to send first frame")
             return False
         log.info("Boot animation: sent first frame (%d bytes compressed, %d frames total)",
@@ -287,12 +280,11 @@ class ScsiDevice(FrameDevice):
         # Phase 2: Send each carousel frame
         for i in range(n):
             compressed = zlib.compress(frames[i], _ANIM_COMPRESS_LEVEL)
-            # Delay: centiseconds * 10 → milliseconds, capped at 250
             delay_raw = delays[i] if i < len(delays) else 10
             delay_byte = min(delay_raw * 10, 250) & 0xFF
             cmd = _ANIM_CAROUSEL | (delay_byte << 24)
             header = ScsiDevice._build_anim_header(cmd, i, len(compressed))
-            if not ScsiDevice._scsi_write(dev, header, compressed):
+            if not self._scsi_write(header, compressed):
                 log.error("Boot animation: failed to send frame %d", i)
                 return False
             time.sleep(_ANIM_FRAME_DELAY_S)
@@ -300,7 +292,7 @@ class ScsiDevice(FrameDevice):
         log.info("Boot animation: all %d frames sent successfully", n)
         return True
 
-    # --- Instance methods ---
+    # --- FrameDevice interface ---
 
     def handshake(self) -> HandshakeResult:
         """Poll + init the SCSI device.
@@ -308,45 +300,33 @@ class ScsiDevice(FrameDevice):
         Reads FBL from poll response byte[0] and resolves
         the actual LCD resolution via fbl_to_resolution().
         """
-        fbl, raw = ScsiDevice._init_device(self.device_path)
+        fbl, raw = self._init_device()
         resolution = fbl_to_resolution(fbl)
         self.width, self.height = resolution
         self._initialized = True
         log.info("SCSI handshake OK: FBL=%d, resolution=%s", fbl, resolution)
-        return HandshakeResult(resolution=resolution, model_id=fbl, raw_response=raw)
+        return HandshakeResult(
+            resolution=resolution, model_id=fbl,
+            pm_byte=fbl, sub_byte=0,
+            raw_response=raw,
+        )
 
     def send_frame(self, rgb565_data: bytes) -> bool:
         """Send one RGB565 frame."""
         if not self._initialized:
             self.handshake()
-        ScsiDevice._send_frame(self.device_path, rgb565_data, self.width, self.height)
+        self._send_frame_data(rgb565_data)
         return True
 
     def send_boot_animation(
         self, frames: list[bytes], delays: list[int],
     ) -> bool:
-        """Send boot animation to device flash.
-
-        Args:
-            frames: List of RGB565 byte arrays (one per frame).
-            delays: Per-frame delays in centiseconds (from GIF metadata).
-        """
+        """Send boot animation to device flash."""
         if not self._initialized:
             self.handshake()
-        return ScsiDevice._send_boot_animation(
-            self.device_path, frames, delays, self.width, self.height,
-        )
+        return self._send_boot_animation(frames, delays)
 
     def close(self) -> None:
-        """Mark as uninitialized (no persistent resources to release)."""
+        """Close transport and mark as uninitialized."""
         self._initialized = False
-        ScsiDevice._initialized_devices.discard(self.device_path)
-
-
-# Detection functions moved to adapters/detection/facade_linux.py.
-# Re-exported here for backward compatibility.
-from trcc.adapters.device.linux.detector import (  # noqa: F401,E402
-    _load_saved_identity,
-    find_lcd_devices,
-    send_image_to_device,
-)
+        self._transport.close()

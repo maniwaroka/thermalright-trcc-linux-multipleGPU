@@ -1,58 +1,49 @@
-"""Contract tests for LinuxPlatform — verifies it fulfils PlatformAdapter.
+"""Contract tests for LinuxPlatform — verifies it fulfils Platform.
 
 All methods are exercised on Linux directly (no mocking needed — the
 concrete Linux adapters are available in the test environment).
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-from trcc.adapters.system.linux.platform import LinuxPlatform
-from trcc.core.ports import (
-    AutostartManager,
-    PlatformAdapter,
-    PlatformSetup,
-    SensorEnumerator,
-)
+from trcc.adapters.system.linux_platform import LinuxPlatform
+from trcc.core.ports import Platform, SensorEnumerator
 
 
-class TestLinuxPlatformIsAdapter:
-    def test_is_platform_adapter(self):
-        assert isinstance(LinuxPlatform(), PlatformAdapter)
+class TestLinuxPlatformIsPlatform:
+    def test_is_os_platform(self):
+        assert isinstance(LinuxPlatform(), Platform)
 
 
 class TestLinuxPlatformContract:
-    """Each factory method returns the correct port type."""
+    """Platform interface methods exist and return correct types."""
 
     def setup_method(self):
         self._p = LinuxPlatform()
 
     def test_create_detect_fn_returns_callable(self):
-        fn = self._p.create_detect_fn()
-        assert callable(fn)
+        assert callable(self._p.create_detect_fn())
 
     def test_create_sensor_enumerator_returns_sensor_enumerator(self):
-        result = self._p.create_sensor_enumerator()
-        assert isinstance(result, SensorEnumerator)
+        assert isinstance(self._p.create_sensor_enumerator(), SensorEnumerator)
 
-    def test_create_autostart_manager_returns_autostart_manager(self):
-        result = self._p.create_autostart_manager()
-        assert isinstance(result, AutostartManager)
+    def test_create_scsi_transport_returns_object(self):
+        # Can't create without a real device, but method exists
+        assert hasattr(self._p, 'create_scsi_transport')
 
-    def test_create_setup_returns_platform_setup(self):
-        result = self._p.create_setup()
-        assert isinstance(result, PlatformSetup)
+    def test_get_memory_info_returns_list(self):
+        assert isinstance(self._p.get_memory_info(), list)
 
-    def test_get_memory_info_fn_returns_callable(self):
-        fn = self._p.get_memory_info_fn()
-        assert callable(fn)
+    def test_get_disk_info_returns_list(self):
+        assert isinstance(self._p.get_disk_info(), list)
 
-    def test_get_disk_info_fn_returns_callable(self):
-        fn = self._p.get_disk_info_fn()
-        assert callable(fn)
+    def test_autostart_methods_exist(self):
+        assert callable(self._p.autostart_enable)
+        assert callable(self._p.autostart_disable)
+        assert callable(self._p.autostart_enabled)
 
-    def test_configure_scsi_protocol_is_noop(self):
-        """Linux uses default SCSI — factory.configure_scsi must NOT be called."""
-        factory = MagicMock()
-        self._p.configure_scsi_protocol(factory)
-        factory.configure_scsi.assert_not_called()
+    def test_config_dir_returns_string(self):
+        assert isinstance(self._p.config_dir(), str)
+
+    def test_distro_name_returns_string(self):
+        assert isinstance(self._p.distro_name(), str)
+        assert len(self._p.distro_name()) > 0

@@ -11,11 +11,12 @@
 - **Views** (`gui/`): PySide6 GUI adapter. `TRCCApp` (thin shell) + `LCDHandler`/`LEDHandler` (one per device).
 - **CLI** (`cli/`): Typer CLI adapter (package: `__init__.py` + 8 submodules). Thin wrappers over `LCDDevice`/`LEDDevice`.
 - **API** (`api/`): FastAPI REST adapter (package: `__init__.py` + 7 submodules). 49 endpoints. WebSocket preview stream + cloud themes + export. Uses `LCDDevice`/`LEDDevice` from core/.
-- **Config** (`conf.py`): `Settings(path_resolver)` receives `PlatformSetup` via constructor. `init_settings(resolver)` called by composition roots. Single source of truth for mutable app state.
-- **Entry**: `cli/` → `trcc_app.py` (TRCCApp) → builder.build_lcd()/build_led()
-- **Protocols**: SCSI (LCD frames), HID (handshake/resolution), LED (RGB effects + segment displays)
-- **Platform** (`core/platform.py`): `WINDOWS`, `LINUX`, `MACOS`, `BSD` flags. `builder.py` routes to platform-specific adapters.
-- **Platform adapters** (`adapters/{device,system}/{windows,macos,bsd}/`): Each has detector, SCSI transport, sensor enumerator, hardware info. Same interface as Linux adapters.
+- **Config** (`conf.py`): `Settings` singleton. `init_settings(platform)` called by composition roots. Single source of truth for mutable app state.
+- **Entry**: `cli/` → `trcc_app.py` (TrccApp) → builder.build_device()
+- **Protocols**: All protocols implement `send_data()` — SCSI (LCD frames), HID (handshake/resolution), LED (RGB effects + segment displays)
+- **Platform** (`core/ports.py`): `OSConfig` dataclass + `Platform` class. OS is data (config), not architecture (class hierarchy). One `Platform` object DI'd everywhere via `builder.os`.
+- **OS files** (`adapters/system/{os}_platform.py`): Each exports an `OSConfig` instance (`LINUX_OS`, `WINDOWS_OS`, etc.) + OS-specific functions. ~200 lines each, not 1300.
+- **Sensors** (`adapters/system/_base.py`): One `SensorEnumerator` with plugin discovery — tries hwmon, LHM, SMC, sysctl, psutil, pynvml. Each plugin self-guards at runtime.
 - **CI**: `release.yml` (Linux RPM/DEB/Arch), `windows.yml` (PyInstaller + Inno Setup), `macos.yml` (PyInstaller + create-dmg)
 - **On-demand download**: Theme/Web/Mask archives fetched from GitHub at runtime via `data_repository.py`
 
@@ -51,8 +52,7 @@ UsbDevice (ABC) — handshake() + close()
 #### Adapter Layer (`adapters/device/abstract_factory.py`)
 ```
 DeviceProtocol (ABC) — Template Method: handshake() concrete, _do_handshake() abstract
-├── LCDMixin — send_image() (abstract, ISP)
-├── LEDMixin — send_led_data() (abstract, ISP)
+├── send_data() — unified method, payload is protocol-specific
 │
 ├── ScsiProtocol  (DeviceProtocol + LCDMixin, wraps ScsiDevice)
 ├── HidProtocol   (UsbProtocol + LCDMixin, wraps HidDevice)

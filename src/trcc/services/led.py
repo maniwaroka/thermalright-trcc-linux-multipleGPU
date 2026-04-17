@@ -401,7 +401,7 @@ class LEDService:
         is_on = None if self._segment_mode else self.state.segment_on
 
         try:
-            return self._protocol.send_led_data(
+            return self._protocol.send_data(
                 send_colors, is_on, self.state.global_on, self.state.brightness
             )
         except Exception as e:

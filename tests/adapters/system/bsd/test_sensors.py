@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.system.bsd.sensors'
+MODULE = 'trcc.adapters.system.bsd_platform'
 
 SYSCTL_OUTPUT = (
     "dev.cpu.0.temperature: 45.0C\n"
@@ -33,8 +33,8 @@ def mock_bsd(mock_io_no_nvidia):
 @pytest.fixture
 def enum(mock_bsd):
     """Discovered BSD enumerator — ready for read_all/map_defaults."""
-    from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
-    e = BSDSensorEnumerator()
+    from trcc.adapters.system.bsd_platform import SensorEnumerator
+    e = SensorEnumerator()
     e.discover()
     return e
 
@@ -60,8 +60,8 @@ class TestDiscover:
     def test_sysctl_failure_degrades_gracefully(self, mock_io_no_nvidia):
         with patch(f'{MODULE}.subprocess') as sub:
             sub.run.side_effect = RuntimeError("no sysctl")
-            from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
-            e = BSDSensorEnumerator()
+            from trcc.adapters.system.bsd_platform import SensorEnumerator
+            e = SensorEnumerator()
             sensors = e.discover()
             assert not any(s.source == 'sysctl' for s in sensors)
             assert any(s.source == 'psutil' for s in sensors)
@@ -88,8 +88,8 @@ class TestReadAll:
     def test_sysctl_failure_returns_base_readings_only(self, mock_io_no_nvidia):
         with patch(f'{MODULE}.subprocess') as sub:
             sub.run.side_effect = RuntimeError("sysctl died")
-            from trcc.adapters.system.bsd.sensors import BSDSensorEnumerator
-            e = BSDSensorEnumerator()
+            from trcc.adapters.system.bsd_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
             readings = e.read_all()
             assert 'psutil:cpu_percent' in readings

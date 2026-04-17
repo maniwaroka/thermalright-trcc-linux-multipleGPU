@@ -403,9 +403,9 @@ def _run_device_benchmarks_inner(
         report.record_device(f"LCD encode {w}x{h}", encode_s, 0.010)
 
         # Send-only timing (warm up first)
-        protocol.send_image(data, w, h)
+        protocol.send_data(data, w, h)
         t0 = time.perf_counter()
-        protocol.send_image(data, w, h)
+        protocol.send_data(data, w, h)
         send_s = time.perf_counter() - t0
         report.record_device("LCD send frame", send_s, 0.150)
 
@@ -414,7 +414,7 @@ def _run_device_benchmarks_inner(
         t0 = time.perf_counter()
         data2 = ImageService.encode_for_device(
             img2, ep[0], resolution, fbl, use_jpeg)
-        protocol.send_image(data2, w, h)
+        protocol.send_data(data2, w, h)
         pipeline_s = time.perf_counter() - t0
         report.record_device("LCD encode+send pipeline", pipeline_s, 0.200)
 
@@ -430,7 +430,7 @@ def _run_device_benchmarks_inner(
         duration = 3.0
         t_start = time.perf_counter()
         while time.perf_counter() - t_start < duration:
-            protocol.send_image(
+            protocol.send_data(
                 frames_data[frame_count % len(frames_data)], w, h)
             frame_count += 1
 
@@ -467,10 +467,10 @@ def _run_device_benchmarks_inner(
 
         colors = [(255, 0, 0)] * led_count
         # Warm up
-        led_protocol.send_led_data(colors, brightness=100)
+        led_protocol.send_data(colors, brightness=100)
 
         t0 = time.perf_counter()
-        led_protocol.send_led_data(colors, brightness=100)
+        led_protocol.send_data(colors, brightness=100)
         send_s = time.perf_counter() - t0
         report.record_device("LED send data", send_s, 0.050)
 
@@ -480,7 +480,7 @@ def _run_device_benchmarks_inner(
         while time.perf_counter() - t_start < 3.0:
             r_val = (update_count * 4) % 256
             led_colors = [(r_val, 0, 255 - r_val)] * led_count
-            led_protocol.send_led_data(led_colors, brightness=100)
+            led_protocol.send_data(led_colors, brightness=100)
             update_count += 1
 
         elapsed = time.perf_counter() - t_start

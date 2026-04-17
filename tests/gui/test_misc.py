@@ -541,7 +541,7 @@ class TestVideoCutWidget:
 # ============================================================================
 
 
-_AUTOSTART_MOD = "trcc.adapters.system.linux.autostart"
+_AUTOSTART_MOD = "trcc.adapters.system.linux_platform"
 
 
 class TestAboutAutostart:
@@ -552,7 +552,7 @@ class TestAboutAutostart:
             f"{_AUTOSTART_MOD}._AUTOSTART_FILE",
             tmp_path / "nonexistent.desktop",
         )
-        from trcc.adapters.system.linux.autostart import LinuxAutostartManager
+        from trcc.adapters.system.linux_platform import LinuxAutostartManager
 
         assert LinuxAutostartManager().is_enabled() is False
 
@@ -560,7 +560,7 @@ class TestAboutAutostart:
         f = tmp_path / "trcc-linux.desktop"
         f.write_text("[Desktop Entry]\nExec=trcc\n")
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_FILE", f)
-        from trcc.adapters.system.linux.autostart import LinuxAutostartManager
+        from trcc.adapters.system.linux_platform import LinuxAutostartManager
 
         assert LinuxAutostartManager().is_enabled() is True
 
@@ -569,7 +569,7 @@ class TestAboutAutostart:
         autostart_file = autostart_dir / "trcc-linux.desktop"
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_DIR", autostart_dir)
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_FILE", autostart_file)
-        from trcc.adapters.system.linux.autostart import LinuxAutostartManager
+        from trcc.adapters.system.linux_platform import LinuxAutostartManager
 
         LinuxAutostartManager().enable()
         assert autostart_file.exists()
@@ -581,7 +581,7 @@ class TestAboutAutostart:
         autostart_file.write_text("test")
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_DIR", autostart_dir)
         monkeypatch.setattr(f"{_AUTOSTART_MOD}._AUTOSTART_FILE", autostart_file)
-        from trcc.adapters.system.linux.autostart import LinuxAutostartManager
+        from trcc.adapters.system.linux_platform import LinuxAutostartManager
 
         LinuxAutostartManager().disable()
         assert not autostart_file.exists()
@@ -600,10 +600,10 @@ class TestAboutWidget:
     @pytest.fixture
     def widget(self, tmp_config):
         from unittest.mock import MagicMock
-        mock_manager = MagicMock()
-        mock_manager.is_enabled.return_value = False
+        mock_platform = MagicMock()
+        mock_platform.autostart_enabled.return_value = False
         with patch("trcc.gui.uc_about.Thread"):
-            w = UCAbout(autostart_manager=mock_manager)
+            w = UCAbout(platform=mock_platform)
         return w
 
     def test_construction(self, widget):

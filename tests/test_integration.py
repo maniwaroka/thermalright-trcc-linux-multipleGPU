@@ -46,11 +46,13 @@ class TestCLISendPipeline(unittest.TestCase):
 
     @staticmethod
     def _real_builder():
-        from trcc.adapters.system.linux.platform import LinuxPlatform
+        from trcc.adapters.system.linux_platform import LinuxPlatform
+
+        # conftest.py already wired the renderer at session scope — reuse it
+        from trcc.adapters.system.linux_platform import LinuxPlatform as LinuxOs
         from trcc.core.builder import ControllerBuilder
         from trcc.services.image import ImageService
-        # conftest.py already wired the renderer at session scope — reuse it
-        return ControllerBuilder(LinuxPlatform()).with_renderer(ImageService._r())
+        return ControllerBuilder(LinuxPlatform(), LinuxOs()).with_renderer(ImageService._r())
 
     @patch("trcc.adapters.device.factory.DeviceProtocolFactory.get_protocol")
     @patch("trcc.core.builder.ControllerBuilder.build_detect_fn")

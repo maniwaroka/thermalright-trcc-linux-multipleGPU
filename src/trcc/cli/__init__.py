@@ -240,7 +240,7 @@ def _cmd_send(
 ) -> int:
     """Send image to LCD."""
     from trcc.core.app import TrccApp
-    return _display.send_image(TrccApp.get(), image, device=device, preview=preview)
+    return _display.send_data(TrccApp.get(), image, device=device, preview=preview)
 
 
 @app.command("color", rich_help_panel="LCD Display")
@@ -831,39 +831,6 @@ def _cmd_reset(
     return _display.reset(TrccApp.get(), device=device, preview=preview)
 
 
-@app.command("setup-udev", rich_help_panel="System")
-def _cmd_setup_udev(
-    dry_run: Annotated[bool, typer.Option(
-        "--dry-run", "-n", help="Print rules without installing",
-    )] = False,
-) -> int:
-    """Install udev rules for LCD device access."""
-    return _system.setup_udev(dry_run=dry_run)
-
-
-@app.command("setup-selinux", rich_help_panel="System")
-def _cmd_setup_selinux() -> int:
-    """Install SELinux policy module for USB device access."""
-    return _system.setup_selinux()
-
-
-@app.command("setup-polkit", rich_help_panel="System")
-def _cmd_setup_polkit() -> int:
-    """Install polkit policy for passwordless dmidecode/smartctl."""
-    return _system.setup_polkit()
-
-
-@app.command("setup-winusb", rich_help_panel="System")
-def _cmd_setup_winusb() -> int:
-    """Install WinUSB driver for Thermalright USB devices (Windows only)."""
-    return _system.setup_winusb()
-
-
-@app.command("install-desktop", rich_help_panel="System")
-def _cmd_install_desktop() -> int:
-    """Install application menu entry and icon."""
-    return _system.install_desktop()
-
 
 @app.command("resume", rich_help_panel="LCD Display")
 def _cmd_resume() -> int:
@@ -962,7 +929,7 @@ def _cmd_setup(
     )] = False,
 ) -> int:
     """Interactive setup wizard — check deps, install packages, configure system."""
-    return _system.run_setup(auto_yes=yes)
+    return _system.setup(auto_yes=yes)
 
 
 @app.command("setup-gui", rich_help_panel="Interfaces")
@@ -1294,12 +1261,10 @@ resume = _display.resume
 show_info = _system.show_info
 hid_debug = _diag.device_debug
 led_debug = _diag.led_debug_interactive
-setup_udev = _system.setup_udev
-install_desktop = _system.install_desktop
+setup = _system.setup
 uninstall = _system.uninstall
 report = _system.report
 download_themes = _system.download_themes
-run_setup = _system.run_setup
 _hex_dump = _diag._hex_dump
 _hid_debug_lcd = _diag._hid_debug_lcd
 _hid_debug_led = _diag._hid_debug_led

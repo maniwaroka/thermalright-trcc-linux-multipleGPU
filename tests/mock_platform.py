@@ -11,9 +11,15 @@ Usage in tests:
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Callable
+
+from trcc.core.ports import (
+    DoctorPlatformConfig,
+    Platform,
+    ReportPlatformConfig,
+    SensorEnumerator,
+)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Noop protocols — the only fake at the USB boundary
@@ -39,7 +45,7 @@ class NoopLCDProtocol:
             sub_byte=self._sub,
         )
 
-    def send_image(self, data: bytes, width: int, height: int) -> bool:
+    def send_data(self, data: bytes, width: int, height: int) -> bool:
         return True
 
     def close(self) -> None:
@@ -53,7 +59,7 @@ class NoopLEDProtocol:
         self._pm = pm
         self._sub = sub
 
-    def send_led_data(self, colors, segment_on, global_on, brightness) -> bool:
+    def send_data(self, colors, segment_on, global_on, brightness) -> bool:
         return True
 
     def handshake(self):
@@ -75,90 +81,59 @@ class NoopLEDProtocol:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# MockSetup — PlatformSetup pointing all paths to a temp directory
+# MockPlatform — real Platform subclass, noop USB, configurable paths
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-class MockSetup:
-    """PlatformSetup pointing all paths to a configurable root.
+class MockPlatform(Platform):
+    """Platform subclass for tests — noop USB, real sensors, temp paths.
 
-    Delegates to real LinuxSetup for everything not overridden.
+    Same DI flow as production: builder gets a Platform, injects it.
+    The only difference: detect_fn returns mock devices, protocols are noop.
     """
 
-    def __init__(self, root: Path | None = None):
-        from trcc.adapters.system.linux.setup import LinuxSetup
-        self._real = LinuxSetup()
-        self._root = root or Path(os.environ.get('TRCC_CONFIG_DIR', '/tmp/.trcc-test'))
-        self._data = self._root / 'data'
-        self._user = self._root.parent / '.trcc-user'
+    def __init__(self, device_specs: list[dict],
+                 root: Path | None = None) -> None:
+        super().__init__()
+        self._specs = device_specs
+        self._root = root or Path('/tmp/.trcc-test')
+        self._register_noop_protocols()
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._real, name)
+    # ── Path overrides (point to temp dir for test isolation) ─────────
 
     def config_dir(self) -> str:
         return str(self._root)
 
     def data_dir(self) -> str:
-        return str(self._data)
+        return str(self._root / 'data')
 
     def user_content_dir(self) -> str:
-        return str(self._user)
+        return str(self._root.parent / '.trcc-user')
 
     def web_dir(self, width: int, height: int) -> str:
         from trcc.core.paths import web_dir_name
-        return str(self._data / 'web' / web_dir_name(width, height))
+        return str(self._root / 'data' / 'web' / web_dir_name(width, height))
 
     def web_masks_dir(self, width: int, height: int) -> str:
         from trcc.core.paths import masks_dir_name
-        return str(self._data / 'web' / masks_dir_name(width, height))
+        return str(self._root / 'data' / 'web' / masks_dir_name(width, height))
 
     def user_masks_dir(self, width: int, height: int) -> str:
         from trcc.core.paths import masks_dir_name
-        return str(self._user / 'data' / 'web' / masks_dir_name(width, height))
+        return str(self._root.parent / '.trcc-user' / 'data' / 'web'
+                   / masks_dir_name(width, height))
 
-    def theme_dir(self, width: int, height: int) -> str:
-        from trcc.core.paths import theme_dir_name
-        return str(self._data / theme_dir_name(width, height))
+    # ── Abstract implementations ─────────────────────────────────────
 
-    def resolve_assets_dir(self, pkg_assets_dir: Any) -> Any:
-        return pkg_assets_dir
+    def _make_sensor_enumerator(self) -> SensorEnumerator:
+        from trcc.adapters.system.linux_platform import (
+            SensorEnumerator as LinuxSensors,
+        )
+        return LinuxSensors()
 
-    def acquire_instance_lock(self) -> str:
-        return "mock-lock"
-
-    def raise_existing_instance(self) -> None:
-        pass
-
-    def configure_dpi(self) -> None:
-        pass
-
-    def wire_ipc_raise(self, app: Any, window: Any) -> None:
-        pass
-
-    def minimize_on_close(self) -> bool:
-        return False
-
-    def configure_stdout(self) -> None:
-        pass
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# MockPlatform — PlatformAdapter returning fake devices + noop protocols
-# ═════════════════════════════════════════════════════════════════════════════
-
-
-class MockPlatform:
-    """Platform adapter that injects fake devices and noop protocols.
-
-    The only difference from LinuxPlatform: detect_fn returns mock devices,
-    protocols are noop. Sensors, hardware info, autostart — all real.
-    """
-
-    def __init__(self, device_specs: list[dict], root: Path | None = None):
-        self._specs = device_specs
-        self._root = root
-        from trcc.adapters.system.linux.platform import LinuxPlatform
-        self._real = LinuxPlatform()
+    def create_scsi_transport(self, path: str,
+                              vid: int = 0, pid: int = 0) -> Any:
+        return None  # noop — protocols handle everything
 
     def create_detect_fn(self) -> Callable[[], list]:
         from trcc.core.models import ALL_DEVICES, DetectedDevice
@@ -201,25 +176,71 @@ class MockPlatform:
 
         return lambda: devices
 
-    def create_sensor_enumerator(self):
-        return self._real.create_sensor_enumerator()
+    def run_setup(self, auto_yes: bool = False) -> int:
+        return 0
 
-    def create_autostart_manager(self):
-        from unittest.mock import MagicMock
-        mgr = MagicMock()
-        mgr.is_enabled.return_value = False
-        return mgr
+    def install_rules(self) -> int:
+        return 0
 
-    def create_setup(self):
-        return MockSetup(self._root)
+    def check_deps(self) -> list:
+        return []
 
-    def get_memory_info_fn(self):
-        return self._real.get_memory_info_fn()
+    def get_pkg_manager(self) -> str | None:
+        return None
 
-    def get_disk_info_fn(self):
-        return self._real.get_disk_info_fn()
+    def distro_name(self) -> str:
+        return 'Mock Linux'
 
-    def configure_scsi_protocol(self, factory: Any) -> None:
+    def doctor_config(self) -> DoctorPlatformConfig:
+        return DoctorPlatformConfig(
+            distro_name='Mock', pkg_manager=None,
+            check_libusb=False, extra_binaries=[],
+            run_gpu_check=False, run_udev_check=False,
+            run_selinux_check=False, run_rapl_check=False,
+            run_polkit_check=False, run_winusb_check=False,
+            enable_ansi=False,
+        )
+
+    def report_config(self) -> ReportPlatformConfig:
+        return ReportPlatformConfig(
+            distro_name='Mock',
+            collect_lsusb=False, collect_udev=False,
+            collect_selinux=False, collect_rapl=False,
+            collect_device_permissions=False,
+        )
+
+    def archive_tool_install_help(self) -> str:
+        return '7z not found'
+
+    def ffmpeg_install_help(self) -> str:
+        return 'ffmpeg not found'
+
+    def get_memory_info(self) -> list[dict[str, str]]:
+        return [{'size': '16 GB', 'type': 'DDR4'}]
+
+    def get_disk_info(self) -> list[dict[str, str]]:
+        return [{'name': 'mock0', 'model': 'Mock SSD', 'size': '1 TB', 'type': 'SSD'}]
+
+    def acquire_instance_lock(self) -> object | None:
+        return 'mock-lock'
+
+    def raise_existing_instance(self) -> None:
+        pass
+
+    def autostart_enable(self) -> None:
+        pass
+
+    def autostart_disable(self) -> None:
+        pass
+
+    def autostart_enabled(self) -> bool:
+        return False
+
+    # ── Noop protocol registration ───────────────────────────────────
+
+    def _register_noop_protocols(self) -> None:
+        from trcc.adapters.device.factory import DeviceProtocolFactory
+        factory = DeviceProtocolFactory
         specs = self._specs
 
         def _make_lcd_protocol(device_info):

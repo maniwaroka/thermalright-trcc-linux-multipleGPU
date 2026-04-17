@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-MODULE = 'trcc.adapters.system.macos.sensors'
+MODULE = 'trcc.adapters.system.macos_platform'
 
 # powermetrics --samplers gpu_power output (no smc sampler — Tahoe compatible)
 POWERMETRICS_GPU_OUTPUT = (
@@ -230,8 +230,8 @@ def mock_macos_intel(mock_io_no_nvidia, mock_iokit_intel):
 @pytest.fixture
 def enum_no_smc(mock_macos_no_smc):
     """Discovered macOS enumerator without SMC access."""
-    from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-    e = MacOSSensorEnumerator()
+    from trcc.adapters.system.macos_platform import SensorEnumerator
+    e = SensorEnumerator()
     e.discover()
     return e
 
@@ -239,8 +239,8 @@ def enum_no_smc(mock_macos_no_smc):
 @pytest.fixture
 def enum_intel(mock_macos_intel):
     """Discovered macOS Intel enumerator with IOKit SMC."""
-    from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-    e = MacOSSensorEnumerator()
+    from trcc.adapters.system.macos_platform import SensorEnumerator
+    e = SensorEnumerator()
     e.discover()
     return e
 
@@ -304,8 +304,8 @@ class TestAppleSiliconDiscovery:
                 if not attr.startswith('_'):
                     setattr(mock_ctypes_mod, attr, getattr(mc, attr))
             sub.run.side_effect = _make_subprocess_side_effect()
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
 
         ids = [s.id for s in e.get_sensors()]
@@ -332,8 +332,8 @@ class TestAppleSiliconDiscovery:
                 if not attr.startswith('_'):
                     setattr(mock_ctypes_mod, attr, getattr(mc, attr))
             sub.run.side_effect = _make_subprocess_side_effect()
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
 
         fan_ids = [s.id for s in e.get_sensors() if s.category == 'fan']
@@ -358,8 +358,8 @@ class TestAppleSiliconDiscovery:
                 if not attr.startswith('_'):
                     setattr(mock_ctypes_mod, attr, getattr(mc, attr))
             sub.run.side_effect = _make_subprocess_side_effect()
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
 
         fan_ids = [s.id for s in e.get_sensors() if s.category == 'fan']
@@ -381,8 +381,8 @@ class TestAppleSiliconDiscovery:
                 if not attr.startswith('_'):
                     setattr(mock_ctypes_mod, attr, getattr(mc, attr))
             sub.run.side_effect = _make_subprocess_side_effect()
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
             readings = e.read_all()
 
@@ -418,8 +418,8 @@ class TestReadAll:
                     return MagicMock(stdout="GPU Power: 150 mW\n")
                 return MagicMock(stdout='')
             sub.run.side_effect = _run
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
             readings = e.read_all()
             assert readings['iokit:gpu_power'] == 0.15
@@ -433,8 +433,8 @@ class TestReadAll:
                     raise RuntimeError("no root")
                 return MagicMock(stdout='')
             sub.run.side_effect = _run
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
             readings = e.read_all()
             assert 'psutil:cpu_percent' in readings
@@ -451,8 +451,8 @@ class TestReadAll:
                 return MagicMock(stdout=POWERMETRICS_GPU_OUTPUT)
             sub.run.side_effect = _run
             mac_psutil.disk_usage.return_value = MagicMock(percent=55.0)
-            from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
-            e = MacOSSensorEnumerator()
+            from trcc.adapters.system.macos_platform import SensorEnumerator
+            e = SensorEnumerator()
             e.discover()
             readings = e.read_all()
             assert readings['computed:disk_percent'] == 55.0
@@ -482,7 +482,7 @@ class TestSMCParsing:
     """_parse_smc_bytes handles all SMC data types."""
 
     def test_sp78_temperature(self):
-        from trcc.adapters.system.macos.sensors import _parse_smc_bytes
+        from trcc.adapters.system.macos_platform import _parse_smc_bytes
         dt = struct.unpack('>I', b'sp78')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('>h', int(45.5 * 256))
@@ -491,7 +491,7 @@ class TestSMCParsing:
         assert abs(result - 45.5) < 0.01
 
     def test_fpe2_fan_speed(self):
-        from trcc.adapters.system.macos.sensors import _parse_smc_bytes
+        from trcc.adapters.system.macos_platform import _parse_smc_bytes
         dt = struct.unpack('>I', b'fpe2')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('>H', int(1200 * 4))
@@ -501,7 +501,7 @@ class TestSMCParsing:
 
     def test_flt_little_endian(self):
         """flt type uses little-endian IEEE 754 on all Macs."""
-        from trcc.adapters.system.macos.sensors import _parse_smc_bytes
+        from trcc.adapters.system.macos_platform import _parse_smc_bytes
         dt = struct.unpack('>I', b'flt ')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('<f', 1337.5)
@@ -512,7 +512,7 @@ class TestSMCParsing:
 
     def test_flt_fan_rpm(self):
         """Fan RPM via flt type (Apple Silicon pattern)."""
-        from trcc.adapters.system.macos.sensors import _parse_smc_bytes
+        from trcc.adapters.system.macos_platform import _parse_smc_bytes
         dt = struct.unpack('>I', b'flt ')[0]
         raw = (ctypes.c_uint8 * 32)()
         val = struct.pack('<f', 1200.0)
@@ -526,32 +526,32 @@ class TestASKeyMetadata:
     """_as_key_metadata derives names from Apple Silicon key prefixes."""
 
     def test_cpu_pcore(self):
-        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        from trcc.adapters.system.macos_platform import _as_key_metadata
         name, cat, unit = _as_key_metadata('Tp0a')
         assert 'CPU P-Core' in name
         assert cat == 'temperature'
         assert unit == '°C'
 
     def test_cpu_ecore(self):
-        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        from trcc.adapters.system.macos_platform import _as_key_metadata
         name, cat, unit = _as_key_metadata('Te04')
         assert 'CPU E-Core' in name
         assert cat == 'temperature'
 
     def test_gpu_die(self):
-        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        from trcc.adapters.system.macos_platform import _as_key_metadata
         name, cat, unit = _as_key_metadata('Tg0K')
         assert 'GPU Die' in name
         assert cat == 'temperature'
 
     def test_die_fabric(self):
-        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        from trcc.adapters.system.macos_platform import _as_key_metadata
         name, cat, unit = _as_key_metadata('Tf14')
         assert 'Die Fabric' in name
         assert cat == 'temperature'
 
     def test_memory(self):
-        from trcc.adapters.system.macos.sensors import _as_key_metadata
+        from trcc.adapters.system.macos_platform import _as_key_metadata
         name, cat, unit = _as_key_metadata('Tm1p')
         assert 'Memory' in name
         assert cat == 'temperature'
