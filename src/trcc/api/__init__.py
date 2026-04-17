@@ -605,6 +605,7 @@ def pair_device(code: str):
 
 # ── Register routers ──────────────────────────────────────────────────
 
+from trcc.api.control_center import router as control_center_router  # noqa: E402
 from trcc.api.devices import router as devices_router  # noqa: E402
 from trcc.api.display import router as display_router  # noqa: E402
 from trcc.api.i18n import router as i18n_router  # noqa: E402
@@ -612,6 +613,7 @@ from trcc.api.led import router as led_router  # noqa: E402
 from trcc.api.system import router as system_router  # noqa: E402
 from trcc.api.themes import router as themes_router  # noqa: E402
 
+app.include_router(control_center_router)
 app.include_router(devices_router)
 app.include_router(display_router)
 app.include_router(i18n_router)

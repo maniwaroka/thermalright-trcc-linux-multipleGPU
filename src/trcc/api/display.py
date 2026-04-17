@@ -45,67 +45,77 @@ def _get_display():
 
 
 
+def _result(result) -> dict:
+    """Return asdict(result) or raise HTTPException on failure."""
+    from dataclasses import asdict
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error or 'failed')
+    return asdict(result)
+
+
 @router.post("/color")
-def set_color(body: HexColorRequest) -> dict:
+def set_color(body: HexColorRequest, lcd: int = 0) -> dict:
     """Send solid color to LCD."""
     from trcc.api import stop_overlay_loop, stop_video_playback
+    from trcc.api._boot import get_trcc
 
     stop_video_playback()
     stop_overlay_loop()
     r, g, b = parse_hex_or_400(body.hex)
-    return dispatch_result(_get_display().send_color(r, g, b))
+    return _result(get_trcc().lcd.send_color(lcd, r, g, b))
 
 
 @router.post("/brightness")
-def set_brightness(body: BrightnessRequest) -> dict:
+def set_brightness(body: BrightnessRequest, lcd: int = 0) -> dict:
     """Set display brightness (1=25%, 2=50%, 3=100%). Persists to config."""
-    return dispatch_result(_get_display().set_brightness(body.level))
+    from trcc.api._boot import get_trcc
+    return _result(get_trcc().lcd.set_brightness(lcd, body.level))
 
 
 @router.post("/rotation")
-def set_rotation(body: RotationRequest) -> dict:
+def set_rotation(body: RotationRequest, lcd: int = 0) -> dict:
     """Set display rotation (0, 90, 180, 270). Persists to config."""
-    return dispatch_result(_get_display().set_rotation(body.degrees))
+    from trcc.api._boot import get_trcc
+    return _result(get_trcc().lcd.set_rotation(lcd, body.degrees))
 
 
 @router.post("/split")
-def set_split(body: SplitRequest) -> dict:
+def set_split(body: SplitRequest, lcd: int = 0) -> dict:
     """Set split mode (0=off, 1-3=Dynamic Island). Persists to config."""
-    return dispatch_result(_get_display().set_split_mode(body.mode))
+    from trcc.api._boot import get_trcc
+    return _result(get_trcc().lcd.set_split_mode(lcd, body.mode))
 
 
 @router.post("/reset")
-def reset_display() -> dict:
+def reset_display(lcd: int = 0) -> dict:
     """Reset device by sending solid red frame."""
     from trcc.api import stop_overlay_loop, stop_video_playback
+    from trcc.api._boot import get_trcc
 
     stop_video_playback()
     stop_overlay_loop()
-    return dispatch_result(_get_display().reset())
+    return _result(get_trcc().lcd.reset(lcd))
 
 
 @router.post("/mask")
-async def load_mask(image: UploadFile) -> dict:
+async def load_mask(image: UploadFile, lcd: int = 0) -> dict:
     """Upload and apply mask overlay (PNG)."""
     import tempfile
     from pathlib import Path
 
-    _get_display()
+    from trcc.api._boot import get_trcc
 
     data = await image.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Mask image exceeds 10 MB limit")
 
-    # Write to temp file for dispatcher (expects path)
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
         tmp.write(data)
-        tmp_path = tmp.name
-
+        tmp_path = Path(tmp.name)
     try:
-        result = _get_display().load_mask_standalone(tmp_path)
-        return dispatch_result(result)
+        return _result(get_trcc().lcd.apply_mask(lcd, tmp_path))
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
 
 
 @router.post("/overlay")

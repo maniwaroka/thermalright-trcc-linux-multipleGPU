@@ -1,19 +1,36 @@
-"""LCD display CLI commands — thin wrappers over Device.
+"""LCD display CLI commands.
 
-Presentation-only: builder injected by _cmd_* boundary functions, call method, print result.
+Simple command-and-exit wrappers call the universal Trcc command layer via
+`_boot.trcc()`. Long-running / streaming commands (test loop, play_video,
+screencast, render_overlay) still go through the legacy Device path — they
+get migrated in phase 8 once EventBus streams frames.
 """
 from __future__ import annotations
 
 import logging
 import os
 
+import typer
+
 from trcc.cli import _cli_handler
+from trcc.cli._boot import trcc
 from trcc.core.models import parse_hex_color as _parse_hex
 
 log = logging.getLogger(__name__)
 
+
+def _emit(result) -> int:
+    """Print the Result's one-line format + return its exit code."""
+    if result.exit_code == 0:
+        typer.echo(result.format())
+    else:
+        typer.echo(result.format(), err=True)
+    return result.exit_code
+
+
 # =========================================================================
-# CLI presentation helpers
+# Legacy helpers — still used by long-running commands below.
+# Migrate when those move to Trcc + EventBus in phase 8.
 # =========================================================================
 
 def _connect_or_fail(device: str | None = None) -> int:
@@ -264,84 +281,44 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
 
 
 # =========================================================================
-# CLI functions — thin wrappers over LCDDevice capabilities
+# Simple commands — migrated to Trcc.
+# Each is a 3-liner: call → format → exit code.
 # =========================================================================
 
-@_cli_handler
-def send_image(builder, image_path, device=None, preview=False):
+def send_image(image_path, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
     """Send image to LCD."""
-    from trcc.core.app import TrccApp
-    log.debug("send_image path=%s device=%s", image_path, device)
-    if (rc := _connect_or_fail(device)):
-        return rc
-    result = TrccApp.get().device(0).send_data(image_path)
-    return _print_result(result, preview=preview)
+    from pathlib import Path
+    return _emit(trcc().lcd.send_image(lcd, Path(image_path)))
 
 
-@_cli_handler
-def send_color(builder, hex_color, device=None, preview=False):
+def send_color(hex_color, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
     """Send solid color to LCD."""
-    from trcc.core.app import TrccApp
-    log.debug("send_color hex=%s device=%s", hex_color, device)
     if not (rgb := _parse_hex(hex_color)):
-        print("Error: Invalid hex color. Use format: ff0000")
+        typer.echo("Error: Invalid hex color. Use format: ff0000", err=True)
         return 1
-    if (rc := _connect_or_fail(device)):
-        return rc
     r, g, b = rgb
-    result = TrccApp.get().device(0).send_color(r, g, b)
-    return _print_result(result, preview=preview)
+    return _emit(trcc().lcd.send_color(lcd, r, g, b))
 
 
-@_cli_handler
-def set_brightness(builder, level, *, device=None):
+def set_brightness(level, *, lcd: int = 0, device=None):  # noqa: ARG001
     """Set display brightness level (1=25%, 2=50%, 3=100%)."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail(device)):
-        return rc
-    try:
-        result = TrccApp.get().device(0).set_brightness(level)
-    except ValueError:
-        result = None
-    if not result or not result.get("success"):
-        error = result.get("error", "invalid brightness level") if result else "invalid brightness level"
-        print(f"Error: {error}")
-        print("  1 = 25%  (dim)")
-        print("  2 = 50%  (medium)")
-        print("  3 = 100% (full)")
-        return 1
-    print(result["message"])
-    return 0
+    return _emit(trcc().lcd.set_brightness(lcd, level))
 
 
-@_cli_handler
-def set_rotation(builder, degrees, *, device=None):
+def set_rotation(degrees, *, lcd: int = 0, device=None):  # noqa: ARG001
     """Set display rotation (0, 90, 180, 270)."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail(device)):
-        return rc
-    result = TrccApp.get().device(0).set_rotation(degrees)
-    return _print_result(result)
+    return _emit(trcc().lcd.set_rotation(lcd, degrees))
 
 
-@_cli_handler
-def set_split_mode(builder, mode, *, device=None, preview=False):
+def set_split_mode(mode, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
     """Set split mode (Dynamic Island) for widescreen displays."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail(device)):
-        return rc
-    result = TrccApp.get().device(0).set_split_mode(mode)
-    return _print_result(result, preview=preview)
+    return _emit(trcc().lcd.set_split_mode(lcd, mode))
 
 
-@_cli_handler
-def load_mask(builder, mask_path, *, device=None, preview=False):
+def load_mask(mask_path, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
     """Load mask overlay from file/directory and send composited image."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail(device)):
-        return rc
-    result = TrccApp.get().device(0).load_mask_standalone(mask_path)
-    return _print_result(result, preview=preview)
+    from pathlib import Path
+    return _emit(trcc().lcd.apply_mask(lcd, Path(mask_path)))
 
 
 @_cli_handler
@@ -374,16 +351,9 @@ def render_overlay(builder, dc_path, *, device=None, send=False, output=None,
     return 0
 
 
-@_cli_handler
-def reset(builder, device=None, *, preview=False):
+def reset(*, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
     """Reset/reinitialize the LCD device."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail(device)):
-        return rc
-    lcd = TrccApp.get().device(0)
-    print(f"  Device: {lcd.device_path}")
-    result = lcd.reset()
-    return _print_result(result, preview=preview)
+    return _emit(trcc().lcd.reset(lcd))
 
 
 @_cli_handler

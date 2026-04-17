@@ -46,7 +46,6 @@ class Trcc:
         platform: Platform,
         *,
         renderer: Renderer | None = None,
-        gpu_list: list[tuple[str, str]] | None = None,
     ) -> None:
         self._platform = platform
         self._renderer = renderer
@@ -57,18 +56,35 @@ class Trcc:
         self.events = EventBus()
         self.lcd = LCDCommands(self._lcd_devices, self.events)
         self.led = LEDCommands(self._led_devices, self.events)
-        self.control_center = ControlCenterCommands(
-            platform, self.events, gpu_list=gpu_list,
-        )
+        self.control_center = ControlCenterCommands(platform, self.events)
 
-    # ── Factory entry point ──────────────────────────────────────────
+    # ── Factory entry points ─────────────────────────────────────────
 
     @classmethod
     def for_current_os(cls) -> Trcc:
-        """Build a Trcc wired with the OS-appropriate Platform."""
+        """Build a Trcc wired with the OS-appropriate Platform.
+
+        Low-level factory. UI adapters (CLI, API, GUI) extend this with
+        their own bootstrap flow — see `cli/_boot.py`, `api/_boot.py`,
+        and `Trcc.for_gui`.
+        """
         from .builder import ControllerBuilder
         builder = ControllerBuilder.for_current_os()
         return cls(builder.os)
+
+    @classmethod
+    def for_gui(cls, renderer: Renderer) -> Trcc:
+        """Trcc wired for the GUI.
+
+        GUI owns its own `QApplication` and provides its own renderer.
+        Discovery is deferred — the GUI calls `discover()` when the user
+        triggers a device scan. Pure factory (Renderer is a port, not an
+        adapter import).
+        """
+        trcc = cls.for_current_os()
+        trcc.bootstrap()
+        trcc.with_renderer(renderer)
+        return trcc
 
     # ── Lifecycle ────────────────────────────────────────────────────
 

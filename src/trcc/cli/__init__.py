@@ -94,6 +94,7 @@ def _cli_handler(func):
 # =========================================================================
 
 from trcc.cli import (  # noqa: E402
+    _control_center,
     _device,
     _diag,
     _display,
@@ -215,6 +216,92 @@ def _cmd_status(
     return _status.status(json_output=json_output)
 
 
+# =========================================================================
+# Control Center commands — app-level settings + updates
+# =========================================================================
+
+@app.command("app-snapshot", rich_help_panel="Control Center")
+def _cmd_app_snapshot(
+    json_output: Annotated[bool, typer.Option(
+        "--json", help="Emit JSON instead of human text",
+    )] = False,
+) -> int:
+    """Show app-level Control Center state."""
+    return _control_center.app_snapshot(json_output=json_output)
+
+
+@app.command("temp-unit", rich_help_panel="Control Center")
+def _cmd_temp_unit(
+    unit: Annotated[str, typer.Argument(help="C or F")],
+) -> int:
+    """Set app-wide temperature unit (°C or °F)."""
+    return _control_center.set_temp_unit(unit)
+
+
+@app.command("language", rich_help_panel="Control Center")
+def _cmd_language(
+    lang: Annotated[str, typer.Argument(help="ISO code: en, de, zh, fr, …")],
+) -> int:
+    """Set app language."""
+    return _control_center.set_language(lang)
+
+
+@app.command("autostart", rich_help_panel="Control Center")
+def _cmd_autostart(
+    enabled: Annotated[bool, typer.Argument(help="true to enable, false to disable")],
+) -> int:
+    """Enable or disable autostart on login."""
+    return _control_center.set_autostart(enabled)
+
+
+@app.command("hdd", rich_help_panel="Control Center")
+def _cmd_hdd(
+    enabled: Annotated[bool, typer.Argument(help="true to enable, false to disable")],
+) -> int:
+    """Enable or disable HDD metrics collection."""
+    return _control_center.set_hdd_enabled(enabled)
+
+
+@app.command("refresh", rich_help_panel="Control Center")
+def _cmd_refresh(
+    seconds: Annotated[int, typer.Argument(help="Interval 1-100s")],
+) -> int:
+    """Set the metrics refresh interval."""
+    return _control_center.set_refresh_interval(seconds)
+
+
+@app.command("gpu", rich_help_panel="Control Center")
+def _cmd_gpu(
+    gpu_key: Annotated[str, typer.Argument(help="GPU device key (from 'trcc gpus')")],
+) -> int:
+    """Set which GPU's metrics to display."""
+    return _control_center.set_gpu_device(gpu_key)
+
+
+@app.command("gpus", rich_help_panel="Control Center")
+def _cmd_gpus() -> int:
+    """List available GPUs."""
+    return _control_center.list_gpus()
+
+
+@app.command("sensors", rich_help_panel="Control Center")
+def _cmd_sensors() -> int:
+    """List discovered hardware sensors."""
+    return _control_center.list_sensors()
+
+
+@app.command("update-check", rich_help_panel="Control Center")
+def _cmd_update_check() -> int:
+    """Check GitHub for a newer TRCC release."""
+    return _control_center.check_update()
+
+
+@app.command("update", rich_help_panel="Control Center")
+def _cmd_update() -> int:
+    """Install the latest release via the detected package manager."""
+    return _control_center.run_update()
+
+
 @app.command("select", rich_help_panel="Device")
 def _cmd_select(
     number: Annotated[int, typer.Argument(help="Device number from 'trcc detect --all'")],
@@ -242,16 +329,15 @@ def _cmd_test(
 @app.command("send", rich_help_panel="LCD Display")
 def _cmd_send(
     image: Annotated[str, typer.Argument(help="Image file to send")],
-    device: Annotated[Optional[str], typer.Option(
-        "--device", "-d", help="Device path",
-    )] = None,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Send image to LCD."""
-    from trcc.core.app import TrccApp
-    return _display.send_data(TrccApp.get(), image, device=device, preview=preview)
+    return _display.send_image(image, lcd=lcd, preview=preview)
 
 
 @app.command("color", rich_help_panel="LCD Display")
@@ -259,16 +345,15 @@ def _cmd_color(
     hex_color: Annotated[str, typer.Argument(
         metavar="HEX", help="Hex color code (e.g., ff0000 for red)",
     )],
-    device: Annotated[Optional[str], typer.Option(
-        "--device", "-d", help="Device path",
-    )] = None,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Display solid color."""
-    from trcc.core.app import TrccApp
-    return _display.send_color(TrccApp.get(), hex_color, device=device, preview=preview)
+    return _display.send_color(hex_color, lcd=lcd, preview=preview)
 
 
 @app.command("video", rich_help_panel="LCD Display")
@@ -363,25 +448,23 @@ def _cmd_theme(
 @app.command("brightness", rich_help_panel="LCD Display")
 def _cmd_brightness(
     level: Annotated[int, typer.Argument(help="Brightness level: 1=25%, 2=50%, 3=100%")],
-    device: Annotated[Optional[str], typer.Option(
-        "--device", "-d", help="Device path",
-    )] = None,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
 ) -> int:
     """Set display brightness."""
-    from trcc.core.app import TrccApp
-    return _display.set_brightness(TrccApp.get(), level, device=device)
+    return _display.set_brightness(level, lcd=lcd)
 
 
 @app.command("rotation", rich_help_panel="LCD Display")
 def _cmd_rotation(
     degrees: Annotated[int, typer.Argument(help="Rotation: 0, 90, 180, or 270")],
-    device: Annotated[Optional[str], typer.Option(
-        "--device", "-d", help="Device path",
-    )] = None,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
 ) -> int:
     """Set display rotation."""
-    from trcc.core.app import TrccApp
-    return _display.set_rotation(TrccApp.get(), degrees, device=device)
+    return _display.set_rotation(degrees, lcd=lcd)
 
 
 @app.command("screencast", rich_help_panel="LCD Display")
@@ -420,14 +503,12 @@ def _cmd_mask(
     )] = False,
 ) -> int:
     """Load mask overlay and send to LCD."""
-    from trcc.core.app import TrccApp
-    builder = TrccApp.get()
     if clear:
-        return _display.send_color(builder, "#000000", device=device, preview=preview)
+        return _display.send_color("#000000", preview=preview)
     if not path:
         typer.echo("Error: Provide a mask path or use --clear")
         raise typer.Exit(1)
-    return _display.load_mask(builder, path, device=device, preview=preview)
+    return _display.load_mask(path, preview=preview)
 
 
 @app.command("overlay", rich_help_panel="LCD Display")
@@ -495,13 +576,15 @@ def _cmd_led_color(
     hex_color: Annotated[str, typer.Argument(
         metavar="HEX", help="Hex color (e.g., ff0000 for red)",
     )],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Set LED static color."""
-    from trcc.core.app import TrccApp
-    return _led.set_color(TrccApp.get(), hex_color, preview=preview)
+    return _led.set_color(hex_color, led=led, preview=preview)
 
 
 @app.command("led-mode", rich_help_panel="LED")
@@ -509,32 +592,39 @@ def _cmd_led_mode(
     mode: Annotated[str, typer.Argument(
         help="Effect: static, breathing, colorful, rainbow",
     )],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Set LED effect mode."""
-    from trcc.core.app import TrccApp
-    return _led.set_mode(TrccApp.get(), mode, preview=preview)
+    return _led.set_mode(mode, led=led, preview=preview)
 
 
 @app.command("led-brightness", rich_help_panel="LED")
 def _cmd_led_brightness(
     level: Annotated[int, typer.Argument(help="Brightness 0-100")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Set LED brightness."""
-    from trcc.core.app import TrccApp
-    return _led.set_led_brightness(TrccApp.get(), level, preview=preview)
+    return _led.set_led_brightness(level, led=led, preview=preview)
 
 
 @app.command("led-off", rich_help_panel="LED")
-def _cmd_led_off() -> int:
+def _cmd_led_off(
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+) -> int:
     """Turn LEDs off."""
-    from trcc.core.app import TrccApp
-    return _led.led_off(TrccApp.get())
+    return _led.led_off(led=led)
 
 
 @app.command("led-sensor", rich_help_panel="LED")
@@ -542,10 +632,12 @@ def _cmd_led_sensor(
     source: Annotated[str, typer.Argument(
         help="Sensor source: cpu or gpu",
     )],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
 ) -> int:
     """Set LED sensor source for temp/load linked modes."""
-    from trcc.core.app import TrccApp
-    return _led.set_sensor_source(TrccApp.get(), source)
+    return _led.set_sensor_source(source, led=led)
 
 
 @app.command("led-zone-color", rich_help_panel="LED")
@@ -554,13 +646,15 @@ def _cmd_led_zone_color(
     hex_color: Annotated[str, typer.Argument(
         metavar="HEX", help="Hex color (e.g., ff0000)",
     )],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Set color for a specific LED zone."""
-    from trcc.core.app import TrccApp
-    return _led.set_zone_color(TrccApp.get(), zone, hex_color, preview=preview)
+    return _led.set_zone_color(zone, hex_color, led=led, preview=preview)
 
 
 @app.command("led-zone-mode", rich_help_panel="LED")
@@ -569,76 +663,87 @@ def _cmd_led_zone_mode(
     mode: Annotated[str, typer.Argument(
         help="Effect: static, breathing, colorful, rainbow",
     )],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Set effect mode for a specific LED zone."""
-    from trcc.core.app import TrccApp
-    return _led.set_zone_mode(TrccApp.get(), zone, mode, preview=preview)
+    return _led.set_zone_mode(zone, mode, led=led, preview=preview)
 
 
 @app.command("led-zone-brightness", rich_help_panel="LED")
 def _cmd_led_zone_brightness(
     zone: Annotated[int, typer.Argument(help="Zone index (0-based)")],
     level: Annotated[int, typer.Argument(help="Brightness 0-100")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Set brightness for a specific LED zone."""
-    from trcc.core.app import TrccApp
-    return _led.set_zone_brightness(TrccApp.get(), zone, level, preview=preview)
+    return _led.set_zone_brightness(zone, level, led=led, preview=preview)
 
 
 @app.command("led-zone-toggle", rich_help_panel="LED")
 def _cmd_led_zone_toggle(
     zone: Annotated[int, typer.Argument(help="Zone index (0-based)")],
     on: Annotated[bool, typer.Argument(help="true/false")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
 ) -> int:
     """Toggle a specific LED zone on/off."""
-    from trcc.core.app import TrccApp
-    return _led.toggle_zone(TrccApp.get(), zone, on)
+    return _led.toggle_zone(zone, on, led=led)
 
 
 @app.command("led-zone-sync", rich_help_panel="LED")
 def _cmd_led_zone_sync(
     enabled: Annotated[bool, typer.Argument(help="true/false")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
     interval: Annotated[Optional[int], typer.Option(
         "--interval", "-i", help="Sync interval in seconds",
     )] = None,
 ) -> int:
     """Enable/disable LED zone sync (circulate/select-all)."""
-    from trcc.core.app import TrccApp
-    return _led.set_zone_sync(TrccApp.get(), enabled, interval=interval)
+    return _led.set_zone_sync(enabled, led=led, interval=interval)
 
 
 @app.command("led-segment", rich_help_panel="LED")
 def _cmd_led_segment(
     index: Annotated[int, typer.Argument(help="Segment index (0-based)")],
     on: Annotated[bool, typer.Argument(help="true/false")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
 ) -> int:
     """Toggle a specific LED segment on/off."""
-    from trcc.core.app import TrccApp
-    return _led.toggle_segment(TrccApp.get(), index, on)
+    return _led.toggle_segment(index, on, led=led)
 
 
 @app.command("led-clock", rich_help_panel="LED")
 def _cmd_led_clock(
     is_24h: Annotated[bool, typer.Argument(help="true=24h, false=12h")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
 ) -> int:
     """Set LED segment display clock format."""
-    from trcc.core.app import TrccApp
-    return _led.set_clock_format(TrccApp.get(), is_24h)
+    return _led.set_clock_format(is_24h, led=led)
 
 
 @app.command("led-temp-unit", rich_help_panel="LED")
 def _cmd_led_temp_unit(
     unit: Annotated[str, typer.Argument(help="C or F")],
 ) -> int:
-    """Set LED segment display temperature unit."""
-    from trcc.core.app import TrccApp
-    return _led.set_temp_unit(TrccApp.get(), unit)
+    """Set app-wide temperature unit (affects LED segments + LCD overlay)."""
+    return _led.set_temp_unit(unit)
 
 
 @app.command("gpu-list", rich_help_panel="System")
@@ -709,13 +814,12 @@ def _cmd_split(
     mode: Annotated[int, typer.Argument(
         help="Split mode: 0=off, 1-3=Dynamic Island style",
     )],
-    device: Annotated[Optional[str], typer.Option(
-        "--device", "-d", help="Device path",
-    )] = None,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
 ) -> int:
     """Set split mode (Dynamic Island) for widescreen displays."""
-    from trcc.core.app import TrccApp
-    return _display.set_split_mode(TrccApp.get(), mode, device=device)
+    return _display.set_split_mode(mode, lcd=lcd)
 
 
 @app.command("test-led", rich_help_panel="Diagnostics")
@@ -830,16 +934,15 @@ def _cmd_info(
 
 @app.command("reset", rich_help_panel="LCD Display")
 def _cmd_reset(
-    device: Annotated[Optional[str], typer.Option(
-        "--device", "-d", help="Device path (e.g., /dev/sg0)",
-    )] = None,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
 ) -> int:
     """Reset/reinitialize LCD device."""
-    from trcc.core.app import TrccApp
-    return _display.reset(TrccApp.get(), device=device, preview=preview)
+    return _display.reset(lcd=lcd, preview=preview)
 
 
 

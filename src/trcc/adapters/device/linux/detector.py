@@ -187,22 +187,3 @@ def _load_saved_identity(
     except Exception:
         return None, None
 
-
-# Backward compat — send_data_to_device referenced from scsi.py
-def send_data_to_device(
-    device_path: str,
-    rgb565_data: bytes,
-    width: int,
-    height: int,
-) -> bool:
-    from trcc.adapters.device.scsi import ScsiDevice
-    try:
-        if device_path not in ScsiDevice._initialized_devices:
-            ScsiDevice._init_device(device_path)
-            ScsiDevice._initialized_devices.add(device_path)
-        ScsiDevice._send_frame(device_path, rgb565_data, width, height)
-        return True
-    except Exception as e:
-        log.error("SCSI send failed (%s): %s", device_path, e)
-        ScsiDevice._initialized_devices.discard(device_path)
-        return False

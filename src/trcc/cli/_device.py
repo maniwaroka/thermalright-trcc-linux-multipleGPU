@@ -141,10 +141,21 @@ def detect(show_all=False, detect_fn=None, os_platform=None):
 
 @_cli_handler
 def select(number, detect_fn=None):
-    """Select a device by number."""
+    """Select a device by number.
+
+    DEPRECATED: CLI now auto-discovers every invocation. Use --lcd N /
+    --led N on per-command flags to target a specific device.
+    """
+    import sys
+
     from trcc.conf import Settings
     from trcc.core.builder import ControllerBuilder
 
+    print(
+        "Note: 'trcc select' is deprecated — auto-discovery replaces it. "
+        "Use --lcd N or --led N on per-command flags.",
+        file=sys.stderr,
+    )
     log.debug("select device number=%d", number)
     if detect_fn is None:
         detect_fn = ControllerBuilder.for_current_os().build_detect_fn()

@@ -371,17 +371,28 @@ class TestUCThemeLocal(unittest.TestCase):
 # UCAbout helpers
 # ============================================================================
 
-from trcc.adapters.system.linux_platform import LinuxAutostartManager  # noqa: E402
+from trcc.adapters.system.linux_platform import (  # noqa: E402
+    LinuxAutostartManager,
+    LinuxPlatform,
+)
 from trcc.gui.uc_about import ensure_autostart  # noqa: E402
 
 _AUTOSTART_MOD = 'trcc.adapters.system.linux_platform'
 
 
 class TestAutostart(unittest.TestCase):
-    """Tests for LinuxAutostartManager and ensure_autostart wrapper."""
+    """Tests for LinuxAutostartManager and ensure_autostart wrapper.
+
+    `_manager()` — tests the XDG-desktop-entry details directly.
+    `_platform()` — tests the ensure_autostart wrapper through the Platform
+                    interface (autostart_enable/disable/enabled).
+    """
 
     def _manager(self) -> LinuxAutostartManager:
         return LinuxAutostartManager()
+
+    def _platform(self) -> LinuxPlatform:
+        return LinuxPlatform()
 
     # --- is_enabled ---
 
@@ -483,8 +494,7 @@ class TestAutostart(unittest.TestCase):
     def test_ensure_autostart_first_launch(self, mock_load, mock_save,
                                             mock_dir, mock_file):
         mock_file.exists.return_value = False
-        manager = self._manager()
-        result = ensure_autostart(manager)
+        result = ensure_autostart(self._platform())
         self.assertTrue(result)
         mock_dir.mkdir.assert_called_once()
         mock_file.write_text.assert_called_once()
@@ -499,7 +509,7 @@ class TestAutostart(unittest.TestCase):
                                                              mock_save,
                                                              mock_dir, mock_file):
         mock_file.exists.return_value = False
-        ensure_autostart(self._manager())
+        ensure_autostart(self._platform())
         saved = mock_save.call_args[0][0]
         self.assertEqual(saved['other_key'], 'val')
         self.assertTrue(saved['autostart_configured'])
@@ -512,7 +522,7 @@ class TestAutostart(unittest.TestCase):
     def test_ensure_autostart_subsequent_enabled(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = "old content"
-        result = ensure_autostart(self._manager())
+        result = ensure_autostart(self._platform())
         self.assertTrue(result)
         mock_save.assert_not_called()
 
@@ -521,7 +531,7 @@ class TestAutostart(unittest.TestCase):
     @patch('trcc.conf.load_config', return_value={'autostart_configured': True})
     def test_ensure_autostart_subsequent_disabled(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = False
-        result = ensure_autostart(self._manager())
+        result = ensure_autostart(self._platform())
         self.assertFalse(result)
 
     # --- refresh (path change) ---
@@ -532,10 +542,9 @@ class TestAutostart(unittest.TestCase):
     def test_ensure_autostart_refreshes_stale_path(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = '[Desktop Entry]\nExec=/old/path\n'
-        manager = self._manager()
         with patch.object(LinuxAutostartManager, '_desktop_entry',
                           return_value='[Desktop Entry]\nExec=/new/path\n'):
-            result = ensure_autostart(manager)
+            result = ensure_autostart(self._platform())
         self.assertTrue(result)
         mock_file.write_text.assert_called_once_with('[Desktop Entry]\nExec=/new/path\n')
 
@@ -545,10 +554,9 @@ class TestAutostart(unittest.TestCase):
     def test_ensure_autostart_no_refresh_when_same(self, mock_load, mock_save, mock_file):
         mock_file.exists.return_value = True
         mock_file.read_text.return_value = '[Desktop Entry]\nExec=/same/path\n'
-        manager = self._manager()
         with patch.object(LinuxAutostartManager, '_desktop_entry',
                           return_value='[Desktop Entry]\nExec=/same/path\n'):
-            ensure_autostart(manager)
+            ensure_autostart(self._platform())
         mock_file.write_text.assert_not_called()
 
 

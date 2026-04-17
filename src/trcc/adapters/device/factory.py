@@ -450,10 +450,6 @@ class LedProtocol(UsbProtocol):
         super().__init__(vid, pid)
         self._sender = None
 
-    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
-        """No-op — LED devices don't display images."""
-        return False
-
     def send_data(
         self,
         led_colors: List[Tuple[int, int, int]],

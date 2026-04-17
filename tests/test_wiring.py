@@ -9,7 +9,6 @@ Cycles through all 4 OS platforms × all protocol types.
 from __future__ import annotations
 
 import pytest
-
 from noop_transports import (
     NoopScsiTransport,
     NoopUsbTransport,
@@ -17,6 +16,7 @@ from noop_transports import (
     build_hid_type3_response,
     build_led_response,
 )
+
 from trcc.adapters.device.factory import DeviceProtocolFactory
 from trcc.adapters.system.bsd_platform import BSDPlatform
 from trcc.adapters.system.linux_platform import LinuxPlatform
@@ -24,13 +24,10 @@ from trcc.adapters.system.macos_platform import MacOSPlatform
 from trcc.adapters.system.windows_platform import WindowsPlatform
 from trcc.core.builder import ControllerBuilder
 from trcc.core.models import (
-    ALL_DEVICES,
-    BULK_DEVICES,
-    DetectedDevice,
     HID_LCD_DEVICES,
     LED_DEVICES,
-    LY_DEVICES,
     SCSI_DEVICES,
+    DetectedDevice,
     fbl_to_resolution,
 )
 from trcc.core.ports import Platform

@@ -12,12 +12,8 @@ Usage:
 """
 from __future__ import annotations
 
-import struct
-from typing import Any
-
 from trcc.adapters.device.hid import UsbTransport
 from trcc.adapters.device.scsi import ScsiTransport
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SCSI — canned poll response, accepts writes

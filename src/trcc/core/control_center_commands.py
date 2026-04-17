@@ -51,11 +51,10 @@ def _parse_version(v: str) -> tuple[int, ...]:
 class ControlCenterCommands:
     """Command surface for app-level settings and updates."""
 
-    def __init__(self, platform: Platform, events: EventBus,
-                 gpu_list: list[tuple[str, str]] | None = None) -> None:
+    def __init__(self, platform: Platform, events: EventBus) -> None:
         self._platform = platform
         self._events = events
-        self._gpu_list = gpu_list or []
+        self._sensor_enum = None   # lazy — discover on first GPU/sensor query
 
     # ── Settings ─────────────────────────────────────────────────────
 
@@ -219,7 +218,13 @@ class ControlCenterCommands:
     # ── Listing ──────────────────────────────────────────────────────
 
     def list_gpus(self) -> list[tuple[str, str]]:
-        return list(self._gpu_list)
+        try:
+            if self._sensor_enum is None:
+                self._sensor_enum = self._platform.create_sensor_enumerator()
+            return list(self._sensor_enum.get_gpu_list())
+        except Exception as e:
+            log.warning('list_gpus: %s', e)
+            return []
 
     def list_fonts(self) -> list[str]:
         # Phase 5: delegate to renderer's font enumeration.
@@ -228,8 +233,9 @@ class ControlCenterCommands:
 
     def list_sensors(self) -> list[SensorInfo]:
         try:
-            enumerator = self._platform.create_sensor_enumerator()
-            return list(enumerator.get_sensors())
+            if self._sensor_enum is None:
+                self._sensor_enum = self._platform.create_sensor_enumerator()
+            return list(self._sensor_enum.get_sensors())
         except Exception as e:
             log.warning('list_sensors: %s', e)
             return []
@@ -258,7 +264,7 @@ class ControlCenterCommands:
             hdd_enabled=s.hdd_enabled,
             refresh_interval=s.refresh_interval,
             gpu_device=s.gpu_device or None,
-            gpu_list=list(self._gpu_list),
+            gpu_list=self.list_gpus(),
             install_method=install_info.get('method', 'pip'),
             distro=install_info.get('distro', 'unknown'),
         )

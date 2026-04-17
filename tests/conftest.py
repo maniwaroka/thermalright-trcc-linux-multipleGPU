@@ -430,7 +430,6 @@ def mock_led_platform(tmp_path):
 @pytest.fixture
 def lcd_device(mock_lcd_platform, tmp_config):
     """Connected LCD Device through real builder flow."""
-    from trcc.adapters.device.factory import DeviceProtocolFactory
     from trcc.adapters.render.qt import QtRenderer
     from trcc.conf import init_settings
     from trcc.core.builder import ControllerBuilder
@@ -446,7 +445,6 @@ def lcd_device(mock_lcd_platform, tmp_config):
 @pytest.fixture
 def led_device(mock_led_platform, tmp_config):
     """Connected LED Device through real builder flow."""
-    from trcc.adapters.device.factory import DeviceProtocolFactory
     from trcc.conf import init_settings
     from trcc.core.builder import ControllerBuilder
 

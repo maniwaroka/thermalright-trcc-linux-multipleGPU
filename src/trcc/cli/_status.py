@@ -13,13 +13,9 @@ import typer
 
 def status(json_output: bool = False) -> int:
     """Print a full overview: app state + every connected device."""
-    from trcc.cli import _make_cli_renderer
-    from trcc.core.trcc import Trcc
+    from trcc.cli._boot import trcc as boot
 
-    trcc = Trcc.for_current_os()
-    trcc.bootstrap()
-    trcc.with_renderer(_make_cli_renderer())
-
+    trcc = boot()
     app_snap = trcc.control_center.snapshot()
     discovery = trcc.discover()
     lcd_snaps = [trcc.lcd.snapshot(i) for i in range(len(discovery.lcd_devices))]

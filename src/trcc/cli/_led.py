@@ -1,203 +1,149 @@
-"""LED CLI commands — thin wrappers over Device.
+"""LED CLI commands — thin wrappers over Trcc.led.
 
-Presentation-only: builder injected by _cmd_* boundary functions, call method, print result.
+Every command builds a Trcc via `_boot.trcc()`, calls the corresponding
+command method, prints `result.format()`, and returns `result.exit_code`.
+Same surface GUI and API use — see doc/TRCC_CONTRACT.md.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from trcc.cli import _cli_handler
-from trcc.core.models import parse_hex_color as _parse_hex
+import typer
+
+from trcc.cli._boot import trcc
+from trcc.core.models import parse_hex_color
 
 log = logging.getLogger(__name__)
 
-# =========================================================================
-# CLI presentation helpers
-# =========================================================================
 
-def _connect_or_fail() -> int:
-    """Connect device via discover(). Returns exit code (0 = success)."""
-    from trcc.cli._connect import connect_device
-    return connect_device()
-
-
-def _print_result(result: dict, *, preview: bool = False) -> int:
-    """Print result message + optional ANSI preview. Returns exit code."""
-    from trcc.cli._connect import print_result
-    return print_result(result, preview=preview)
-
-
-def _led_call(method_name: str, preview: bool = False, **kwargs) -> int:
-    """Connect LED, call a method on the device, print result."""
-    log.debug("LED call method=%s kwargs=%s", method_name, kwargs)
-    if (rc := _connect_or_fail()):
-        return rc
-    from trcc.core.app import TrccApp
-    led = TrccApp.get().device(0)
-    result = getattr(led, method_name)(**kwargs)
-    return _print_result(result, preview=preview)
-
-
-# =========================================================================
-# CLI functions (thin wrappers — print + exit code)
-# =========================================================================
-
-@_cli_handler
-def set_color(builder, hex_color, *, preview=False):
-    """Set LED static color."""
-    from trcc.core.app import TrccApp
-    log.debug("set_color hex=%s", hex_color)
-    if not (rgb := _parse_hex(hex_color)):
-        print("Error: Invalid hex color. Use format: ff0000")
-        return 1
-    if (rc := _connect_or_fail()):
-        return rc
-    r, g, b = rgb
-    result = TrccApp.get().device(0).set_color(r, g, b)
-    return _print_result(result, preview=preview)
-
-
-@_cli_handler
-def set_mode(builder, mode_name, *, preview=False):
-    """Set LED effect mode."""
-    log.debug("set_mode mode=%s", mode_name)
-    if (rc := _connect_or_fail()):
-        return rc
-    from trcc.core.app import TrccApp
-    led = TrccApp.get().device(0)
-    result = led.set_mode(mode_name)
-    if not result["success"]:
-        print(f"Error: {result['error']}")
-        if result.get("available"):
-            print(f"Available: {', '.join(result['available'])}")
-        return 1
-
-    if result["animated"]:
-        import threading
-
-        from trcc.cli import _ensure_system
-        from trcc.core.app import AppEvent, AppObserver
-
-        _ensure_system(builder)
-        app = TrccApp.get()
-        app.start_metrics_loop()
-        print(f"LED mode: {mode_name} (running, Ctrl+C to stop)")
-        done = threading.Event()
-
-        class _CliLedObserver(AppObserver):
-            def on_app_event(self, event: AppEvent, data: Any) -> None:
-                if not preview or event != AppEvent.FRAME_RENDERED:
-                    return
-                colors = data.get('image', {}).get('colors')
-                if colors and data.get('path') == led.device_path:
-                    from trcc.services import LEDService
-                    print(LEDService.zones_to_ansi(colors), end='\r', flush=True)
-
-        observer = _CliLedObserver()
-        app.register(observer)
-        try:
-            done.wait()  # blocks until Ctrl+C
-        except KeyboardInterrupt:
-            pass
-        app.unregister(observer)
-        app.stop_metrics_loop()
-        print("\nStopped.")
+def _emit(result) -> int:
+    """Print the result's one-line format and return its exit code."""
+    if result.exit_code == 0:
+        typer.echo(result.format())
     else:
-        print(result["message"])
-        if preview and result.get("colors"):
-            from trcc.services import LEDService
-            print(LEDService.zones_to_ansi(result["colors"]))
-
-    return 0
-
-
-@_cli_handler
-def set_led_brightness(builder, level, *, preview=False):
-    """Set LED brightness (0-100)."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail()):
-        return rc
-    result = TrccApp.get().device(0).set_brightness(level)
-    return _print_result(result, preview=preview)
-
-
-@_cli_handler
-def led_off(builder):
-    """Turn LEDs off."""
-    return _led_call('toggle_global', on=False)
-
-
-@_cli_handler
-def set_sensor_source(builder, source):
-    """Set CPU/GPU sensor source for temp/load linked LED modes."""
-    from trcc.core.app import TrccApp
-    if (rc := _connect_or_fail()):
-        return rc
-    result = TrccApp.get().device(0).set_sensor_source(source)
-    return _print_result(result)
-
-
-@_cli_handler
-def set_zone_color(builder, zone: int, hex_color: str, *, preview: bool = False):
-    """Set color for a specific LED zone."""
-    from trcc.core.app import TrccApp
-    if not (rgb := _parse_hex(hex_color)):
-        print("Error: Invalid hex color. Use format: ff0000")
-        return 1
-    if (rc := _connect_or_fail()):
-        return rc
-    r, g, b = rgb
-    result = TrccApp.get().device(0).set_zone_color(zone, r, g, b)
-    return _print_result(result, preview=preview)
-
-
-@_cli_handler
-def set_zone_mode(builder, zone: int, mode_name: str, *, preview: bool = False):
-    """Set effect mode for a specific LED zone."""
-    return _led_call('set_zone_mode', preview=preview, zone=zone, mode=mode_name)
-
-
-@_cli_handler
-def set_zone_brightness(builder, zone: int, level: int, *, preview: bool = False):
-    """Set brightness for a specific LED zone (0-100)."""
-    return _led_call('set_zone_brightness', preview=preview, zone=zone, level=level)
-
-
-@_cli_handler
-def toggle_zone(builder, zone: int, on: bool):
-    """Toggle a specific LED zone on/off."""
-    return _led_call('toggle_zone', zone=zone, on=on)
-
-
-@_cli_handler
-def set_zone_sync(builder, enabled: bool, *, interval: int | None = None):
-    """Enable/disable zone sync (circulate or select-all depending on style)."""
-    return _led_call('set_zone_sync', enabled=enabled, interval=interval)
-
-
-@_cli_handler
-def toggle_segment(builder, index: int, on: bool):
-    """Toggle a specific LED segment on/off."""
-    return _led_call('toggle_segment', index=index, on=on)
-
-
-@_cli_handler
-def set_clock_format(builder, is_24h: bool):
-    """Set LED segment display clock format (12h/24h)."""
-    return _led_call('set_clock_format', is_24h=is_24h)
-
-
-@_cli_handler
-def set_temp_unit(builder, unit: int | str):
-    """Set LED segment display temperature unit (0=Celsius, 1=Fahrenheit)."""
-    if isinstance(unit, str):
-        unit = 1 if unit.upper() == "F" else 0
-    return _led_call('set_temp_unit', unit=unit)
+        typer.echo(result.format(), err=True)
+    return result.exit_code
 
 
 # =========================================================================
-# Developer test commands (no device needed)
+# Color / mode / brightness (global)
+# =========================================================================
+
+def set_color(hex_color: str, *, led: int = 0, preview: bool = False) -> int:
+    """Set LED static color from a hex string like 'ff0000'."""
+    if not (rgb := parse_hex_color(hex_color)):
+        typer.echo("Error: Invalid hex color. Use format: ff0000", err=True)
+        return 1
+    r, g, b = rgb
+    result = trcc().led.set_color(led, r, g, b)
+    if preview and result.display_colors:
+        from trcc.services import LEDService
+        typer.echo(LEDService.zones_to_ansi(result.display_colors))
+    return _emit(result)
+
+
+def set_mode(mode_name: str, *, led: int = 0, preview: bool = False) -> int:
+    """Set LED effect mode (static, breathing, colorful, rainbow, …)."""
+    result = trcc().led.set_mode(led, mode_name)
+    if preview and result.display_colors:
+        from trcc.services import LEDService
+        typer.echo(LEDService.zones_to_ansi(result.display_colors))
+    return _emit(result)
+
+
+def set_led_brightness(level: int, *, led: int = 0, preview: bool = False) -> int:
+    """Set LED brightness (0-100)."""
+    result = trcc().led.set_brightness(led, level)
+    if preview and result.display_colors:
+        from trcc.services import LEDService
+        typer.echo(LEDService.zones_to_ansi(result.display_colors))
+    return _emit(result)
+
+
+def led_off(*, led: int = 0) -> int:
+    """Turn LEDs off."""
+    return _emit(trcc().led.toggle(led, False))
+
+
+def set_sensor_source(source: str, *, led: int = 0) -> int:
+    """Set CPU/GPU sensor source for temp/load linked LED modes."""
+    return _emit(trcc().led.set_sensor_source(led, source))
+
+
+# =========================================================================
+# Zones
+# =========================================================================
+
+def set_zone_color(zone: int, hex_color: str,
+                   *, led: int = 0, preview: bool = False) -> int:
+    """Set color for a specific LED zone."""
+    if not (rgb := parse_hex_color(hex_color)):
+        typer.echo("Error: Invalid hex color. Use format: ff0000", err=True)
+        return 1
+    r, g, b = rgb
+    result = trcc().led.set_color(led, r, g, b, zone=zone)
+    if preview and result.display_colors:
+        from trcc.services import LEDService
+        typer.echo(LEDService.zones_to_ansi(result.display_colors))
+    return _emit(result)
+
+
+def set_zone_mode(zone: int, mode_name: str,
+                  *, led: int = 0, preview: bool = False) -> int:
+    """Set effect mode for a specific LED zone."""
+    result = trcc().led.set_mode(led, mode_name, zone=zone)
+    if preview and result.display_colors:
+        from trcc.services import LEDService
+        typer.echo(LEDService.zones_to_ansi(result.display_colors))
+    return _emit(result)
+
+
+def set_zone_brightness(zone: int, level: int,
+                        *, led: int = 0, preview: bool = False) -> int:
+    """Set brightness for a specific LED zone (0-100)."""
+    result = trcc().led.set_brightness(led, level, zone=zone)
+    if preview and result.display_colors:
+        from trcc.services import LEDService
+        typer.echo(LEDService.zones_to_ansi(result.display_colors))
+    return _emit(result)
+
+
+def toggle_zone(zone: int, on: bool, *, led: int = 0) -> int:
+    """Toggle a specific LED zone on/off."""
+    return _emit(trcc().led.toggle(led, on, zone=zone))
+
+
+def set_zone_sync(enabled: bool, *, led: int = 0,
+                  interval: int | None = None) -> int:
+    """Enable/disable zone sync (circulate or select-all depending on style)."""
+    return _emit(trcc().led.set_zone_sync(led, enabled, interval_s=interval))
+
+
+# =========================================================================
+# Segments + display modes
+# =========================================================================
+
+def toggle_segment(index: int, on: bool, *, led: int = 0) -> int:
+    """Toggle a specific LED segment on/off."""
+    return _emit(trcc().led.toggle_segment(led, index, on))
+
+
+def set_clock_format(is_24h: bool, *, led: int = 0) -> int:
+    """Set LED segment display clock format (12h/24h)."""
+    return _emit(trcc().led.set_clock_format(led, is_24h))
+
+
+def set_temp_unit(unit) -> int:
+    """Set app-wide temperature unit (affects LED segments + LCD overlay)."""
+    if isinstance(unit, int):
+        unit_str = 'F' if unit else 'C'
+    else:
+        unit_str = str(unit).upper()
+    return _emit(trcc().control_center.set_temp_unit(unit_str))
+
+
+# =========================================================================
+# Developer test commands (no device needed) — unchanged
 # =========================================================================
 
 def test_led(builder, *, mode: str | None = None, segments: int = 64,

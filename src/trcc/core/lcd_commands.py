@@ -164,6 +164,18 @@ class LCDCommands:
             error=r.get('error'),
         )
 
+    def send_image(self, lcd: int, path: Path) -> FrameResult:
+        """Open an image file, resize to the device, and push it immediately."""
+        dev = self._get(lcd)
+        if dev is None:
+            return FrameResult(success=False, error=f'LCD {lcd} not found')
+        r = dev.send_image(str(path))
+        return FrameResult(
+            success=r.get('success', False),
+            message=r.get('message', ''),
+            error=r.get('error'),
+        )
+
     def save_theme(self, lcd: int, name: str) -> OpResult:
         dev = self._get(lcd)
         if dev is None:

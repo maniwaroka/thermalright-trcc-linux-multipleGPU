@@ -13,10 +13,14 @@ from trcc.core.platform import detect_install_method, is_root
 log = logging.getLogger(__name__)
 
 
-def setup(auto_yes: bool = False) -> int:
+def run_setup(auto_yes: bool = False) -> int:
     """Run interactive platform setup. OS handles everything."""
     from trcc.core.app import TrccApp
     return TrccApp.get().setup(auto_yes=auto_yes)
+
+
+# Backward-compat alias — _system.setup() call sites in cli/__init__.py
+setup = run_setup
 
 
 def _sudo_run(cmd):
