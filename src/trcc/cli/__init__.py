@@ -99,6 +99,7 @@ from trcc.cli import (  # noqa: E402
     _display,
     _i18n,
     _led,
+    _status,
     _system,
     _theme,
 )
@@ -202,6 +203,16 @@ def _cmd_detect(
 ) -> int:
     """Detect LCD device."""
     return _device.detect(show_all=all_devices)
+
+
+@app.command("status", rich_help_panel="Device")
+def _cmd_status(
+    json_output: Annotated[bool, typer.Option(
+        "--json", help="Emit JSON instead of human text",
+    )] = False,
+) -> int:
+    """Show unified state: app + every LCD + every LED (via Trcc)."""
+    return _status.status(json_output=json_output)
 
 
 @app.command("select", rich_help_panel="Device")
