@@ -397,6 +397,21 @@ def render_and_send(send: bool = True, *, lcd: int = 0):
     return _emit(trcc().lcd.render_and_send(lcd, send=send))
 
 
+def export_config(path, *, lcd: int = 0):
+    """Export the current theme/config as a .tr archive at PATH."""
+    from pathlib import Path
+    return _emit(trcc().lcd.export_config(lcd, Path(path)))
+
+
+def import_config(path, *, lcd: int = 0):
+    """Import a .tr archive from PATH and load its theme."""
+    from pathlib import Path
+
+    from trcc.conf import settings as _settings
+    data_dir = Path(_settings.user_data_dir) if _settings else Path.home() / '.trcc'
+    return _emit(trcc().lcd.import_config(lcd, Path(path), data_dir))
+
+
 @_cli_handler
 def video_status():
     """Show current video playback status."""

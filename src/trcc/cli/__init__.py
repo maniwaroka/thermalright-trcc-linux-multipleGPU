@@ -319,6 +319,28 @@ def _cmd_render(
     return _display.render_and_send(send=not no_send, lcd=lcd)
 
 
+@app.command("export-config", rich_help_panel="Themes")
+def _cmd_export_config(
+    path: Annotated[str, typer.Argument(help="Destination .tr archive path")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Export the current theme config to a .tr archive (shareable)."""
+    return _display.export_config(path, lcd=lcd)
+
+
+@app.command("import-config", rich_help_panel="Themes")
+def _cmd_import_config(
+    path: Annotated[str, typer.Argument(help="Source .tr archive path")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Import a .tr archive and load its theme."""
+    return _display.import_config(path, lcd=lcd)
+
+
 @app.command("led-snapshot", rich_help_panel="LED")
 def _cmd_led_snapshot(
     led: Annotated[int, typer.Option(
