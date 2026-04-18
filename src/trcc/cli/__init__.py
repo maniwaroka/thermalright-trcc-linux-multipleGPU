@@ -911,6 +911,61 @@ def _cmd_led_temp_unit(
     return _led.set_temp_unit(unit)
 
 
+@app.command("led-week-start", rich_help_panel="LED")
+def _cmd_led_week_start(
+    sunday: Annotated[bool, typer.Argument(help="true=Sunday, false=Monday")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+) -> int:
+    """Set week-start day for LED segment displays."""
+    return _led.set_week_start(sunday, led=led)
+
+
+@app.command("led-memory-ratio", rich_help_panel="LED")
+def _cmd_led_memory_ratio(
+    ratio: Annotated[int, typer.Argument(help="DDR multiplier: 1, 2, or 4")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+) -> int:
+    """Set DDR memory multiplier for LC1 memory mode."""
+    return _led.set_memory_ratio(ratio, led=led)
+
+
+@app.command("led-disk-index", rich_help_panel="LED")
+def _cmd_led_disk_index(
+    index: Annotated[int, typer.Argument(help="Disk index (0-based)")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+) -> int:
+    """Select which disk the LF11 segment display tracks."""
+    return _led.set_disk_index(index, led=led)
+
+
+@app.command("led-test-mode", rich_help_panel="LED")
+def _cmd_led_test_mode(
+    enabled: Annotated[bool, typer.Argument(help="true to enable, false to disable")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+) -> int:
+    """Cycle LEDs through white/red/green/blue for hardware verification."""
+    return _led.set_test_mode(enabled, led=led)
+
+
+@app.command("led-select-zone", rich_help_panel="LED")
+def _cmd_led_select_zone(
+    zone: Annotated[int, typer.Argument(help="Zone index (0-based)")],
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+) -> int:
+    """Set which zone is 'active' for subsequent per-zone commands."""
+    return _led.select_zone(zone, led=led)
+
+
 @app.command("gpu-list", rich_help_panel="System")
 @_cli_handler
 def _cmd_gpu_list() -> int:

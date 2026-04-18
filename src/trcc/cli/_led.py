@@ -142,6 +142,31 @@ def set_temp_unit(unit) -> int:
     return _emit(trcc().control_center.set_temp_unit(unit_str))
 
 
+def set_week_start(sunday: bool, *, led: int = 0) -> int:
+    """Set week-start day for LED segment displays (LC2-family)."""
+    return _emit(trcc().led.set_week_start(led, sunday))
+
+
+def set_memory_ratio(ratio: int, *, led: int = 0) -> int:
+    """Set DDR memory multiplier (1, 2, or 4) for LC1 memory mode."""
+    return _emit(trcc().led.set_memory_ratio(led, ratio))
+
+
+def set_disk_index(index: int, *, led: int = 0) -> int:
+    """Select which physical disk the LF11 segment display tracks."""
+    return _emit(trcc().led.set_disk_index(led, index))
+
+
+def set_test_mode(enabled: bool, *, led: int = 0) -> int:
+    """Toggle LED test mode (cycles through white/red/green/blue)."""
+    return _emit(trcc().led.set_test_mode(led, enabled))
+
+
+def select_zone(zone: int, *, led: int = 0) -> int:
+    """Set which zone is 'active' for subsequent per-zone commands."""
+    return _emit(trcc().led.select_zone(led, zone))
+
+
 # =========================================================================
 # Developer test commands (no device needed) — unchanged
 # =========================================================================
