@@ -142,19 +142,30 @@ async def render_overlay(dc_path: str, send: bool = True) -> dict:
 
 
 @router.get("/status")
-def display_status() -> dict:
-    """Get current display state — resolution, device path, connection."""
-    from trcc.api import _device_dispatcher
+def display_status(lcd: int = 0) -> dict:
+    """Backward-compat status — connected + resolution + device path.
 
-    if not _device_dispatcher or not _device_dispatcher.connected:
-        return {"connected": False, "resolution": [0, 0], "device_path": None}
-
-    lcd = _device_dispatcher
+    New callers should use /display/snapshot for the full typed state.
+    """
+    from trcc.api._boot import get_trcc
+    snap = get_trcc().lcd.snapshot(lcd)
+    # pylint: disable=protected-access
+    dev = get_trcc()._lcd_devices[lcd] if lcd < len(get_trcc()._lcd_devices) else None
+    device_path = dev.device_path if dev else None
     return {
-        "connected": True,
-        "resolution": lcd.resolution,
-        "device_path": lcd.device_path,
+        "connected": snap.connected,
+        "resolution": list(snap.resolution),
+        "device_path": device_path,
     }
+
+
+@router.get("/snapshot")
+def display_snapshot(lcd: int = 0) -> dict:
+    """Full LCD snapshot via Trcc — all state in one call."""
+    from dataclasses import asdict
+
+    from trcc.api._boot import get_trcc
+    return asdict(get_trcc().lcd.snapshot(lcd))
 
 
 # ── Video playback endpoints ──────────────────────────────────────────
