@@ -567,34 +567,84 @@ class LCDCommands:
     # ── Listing ──────────────────────────────────────────────────────
 
     def list_themes(self, lcd: int, *, source: str = 'all') -> list[ThemeInfo]:
+        """List themes for this LCD's current resolution.
+
+        source:
+            'local' — default shipped themes
+            'user'  — themes saved by the user
+            'cloud' — remote video catalog
+            'all'   — local+user merged (excludes cloud)
+        """
         dev = self._get(lcd)
         if dev is None:
             return []
         if source not in ('all', 'local', 'user', 'cloud'):
             log.warning('Unknown theme source: %s', source)
             return []
-        # Phase 5: delegate to ThemeService.discover_* methods.
-        log.debug('list_themes lcd=%d source=%s (phase-3 stub)', lcd, source)
-        return []
+
+        from ..services.theme import ThemeService
+        o = dev.orientation
+        w, h = dev.lcd_size
+
+        if source == 'cloud':
+            web_dir = getattr(o, 'web_dir', None)
+            if not web_dir:
+                return []
+            return ThemeService.discover_cloud(Path(web_dir))
+
+        td = o.theme_dir
+        if not td or not td.path.exists():
+            return []
+        user_dir = getattr(o, 'user_theme_dir', None)
+        filter_mode = {'local': 'default', 'user': 'user', 'all': 'all'}[source]
+        return ThemeService.discover_local_merged(
+            td.path,
+            Path(user_dir) if user_dir else None,
+            (w, h),
+            filter_mode=filter_mode,
+        )
 
     def list_masks(self, lcd: int, *, source: str = 'all') -> list[MaskInfo]:
+        """List available masks for this LCD.
+
+        source: 'builtin' / 'custom' / 'all'.
+        """
         dev = self._get(lcd)
         if dev is None:
             return []
         if source not in ('all', 'builtin', 'custom'):
             log.warning('Unknown mask source: %s', source)
             return []
-        # Phase 5: delegate to ThemeService.discover_masks.
-        log.debug('list_masks lcd=%d source=%s (phase-3 stub)', lcd, source)
-        return []
+
+        from ..conf import settings as _settings
+        from ..services.theme import ThemeService
+        o = dev.orientation
+        cloud = o.masks_dir
+        user = _settings.user_masks_dir() if _settings else None
+
+        cloud_arg = Path(cloud) if cloud and source != 'custom' else None
+        user_arg = Path(user) if user and source != 'builtin' else None
+        return ThemeService.discover_masks(
+            cloud_masks_dir=cloud_arg,
+            user_masks_dir=user_arg,
+        )
 
     def list_backgrounds(self, lcd: int) -> list[BackgroundInfo]:
+        """List user-uploaded background images."""
         dev = self._get(lcd)
         if dev is None:
             return []
-        # Phase 5: scan user-uploaded background dir.
-        log.debug('list_backgrounds lcd=%d (phase-3 stub)', lcd)
-        return []
+        from ..conf import settings as _settings
+        if _settings is None:
+            return []
+        bg_dir = Path(_settings.user_data_dir) / 'backgrounds'
+        if not bg_dir.exists():
+            return []
+        return [
+            BackgroundInfo(name=p.name, path=p)
+            for p in sorted(bg_dir.iterdir())
+            if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp'}
+        ]
 
     # ── Snapshot ─────────────────────────────────────────────────────
 

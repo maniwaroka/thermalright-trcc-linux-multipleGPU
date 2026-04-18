@@ -67,30 +67,25 @@ def init_theme_data(resolution: str) -> dict:
 
 
 @router.get("")
-def list_themes(resolution: str) -> list[ThemeResponse]:
-    """List available local themes for a given resolution."""
-    w, h = _parse_resolution(resolution)
+def list_themes(resolution: str, lcd: int = 0,
+                source: str = "all") -> list[ThemeResponse]:
+    """List themes for a given resolution via Trcc.
 
-    from pathlib import Path
-
-    from trcc.api import _device_dispatcher
-    from trcc.conf import settings as _settings
-    from trcc.core.paths import resolve_theme_dir
-
-    o = _device_dispatcher.orientation if _device_dispatcher else None
-    td = o.theme_dir if o else None
-    theme_dir = td.path if td else Path(resolve_theme_dir(w, h))
-    ucd = getattr(_settings, 'user_content_dir', None)
-    user_data_dir = ucd / 'data' if ucd else None
-    themes = ThemeService.discover_local_merged(
-        theme_dir, user_data_dir, (w, h))
+    Query params:
+        resolution: 'WxH' e.g. '320x320'
+        lcd: device index (default 0)
+        source: 'all' | 'local' | 'user' | 'cloud'
+    """
+    _parse_resolution(resolution)   # validate format
+    from trcc.api._boot import get_trcc
+    themes = get_trcc().lcd.list_themes(lcd, source=source)
     return [
         ThemeResponse(
             name=t.name,
             category=t.category or "",
             is_animated=t.is_animated,
             has_config=t.config_path is not None,
-            preview_url=_preview_url(t.name, str(theme_dir)),
+            preview_url=_preview_url(t.name, str(t.path) if t.path else ""),
         )
         for t in themes
     ]
@@ -194,19 +189,18 @@ def download_web_theme(
 
 
 @router.get("/masks")
-def list_masks(resolution: str) -> list[MaskResponse]:
-    """List available mask overlays for a given resolution."""
-    w, h = _parse_resolution(resolution)
+def list_masks(resolution: str, lcd: int = 0,
+               source: str = "all") -> list[MaskResponse]:
+    """List mask overlays via Trcc.
 
-    from pathlib import Path
-
-    from trcc.adapters.infra.data_repository import DataManager
-    from trcc.conf import settings as _settings
-
-    cloud_masks_dir = Path(DataManager.get_web_masks_dir(w, h))
-    user_masks_dir = _settings.user_masks_dir(w, h)
-
-    masks = ThemeService.discover_masks(cloud_masks_dir, user_masks_dir)
+    Query params:
+        resolution: 'WxH' (validated; not used — Trcc knows the device res)
+        lcd: device index (default 0)
+        source: 'all' | 'builtin' | 'custom'
+    """
+    _parse_resolution(resolution)   # validate format
+    from trcc.api._boot import get_trcc
+    masks = get_trcc().lcd.list_masks(lcd, source=source)
     return [
         MaskResponse(
             name=m.name,

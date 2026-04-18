@@ -59,31 +59,37 @@ def get_metrics_by_category(category: str) -> dict:
 
 @router.get("/gpu")
 def get_gpu_list() -> dict:
-    """List available GPUs and current selection."""
-    svc = _get_system_svc()
-    gpu_list = svc.enumerator.get_gpu_list()
-    from trcc.conf import settings
+    """List available GPUs and current selection via Trcc."""
+    from trcc.api._boot import get_trcc
+    snap = get_trcc().control_center.snapshot()
     return {
-        "gpus": [{"key": k, "name": n} for k, n in gpu_list],
-        "selected": settings.gpu_device,
+        "gpus": [{"key": k, "name": n} for k, n in snap.gpu_list],
+        "selected": snap.gpu_device,
     }
 
 
 @router.put("/gpu")
 def set_gpu(gpu_key: str) -> dict:
-    """Set the active GPU for metrics."""
+    """Set the active GPU for metrics via Trcc."""
     from fastapi import HTTPException
 
-    svc = _get_system_svc()
-    valid_keys = [k for k, _ in svc.enumerator.get_gpu_list()]
+    from trcc.api._boot import get_trcc
+    t = get_trcc()
+    valid_keys = {k for k, _ in t.control_center.list_gpus()}
     if gpu_key not in valid_keys:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown GPU '{gpu_key}'. Available: {', '.join(valid_keys)}",
+            detail=f"Unknown GPU '{gpu_key}'. Available: {', '.join(sorted(valid_keys))}",
         )
-    from trcc.conf import settings
-    settings.set_gpu_device(gpu_key)
-    svc.enumerator.set_preferred_gpu(gpu_key)
+    result = t.control_center.set_gpu_device(gpu_key)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error)
+    # Also tell the running system service to use this GPU going forward
+    try:
+        svc = _get_system_svc()
+        svc.enumerator.set_preferred_gpu(gpu_key)
+    except Exception as e:
+        log.warning("Could not update system service GPU preference: %s", e)
     log.info("API: GPU set to %s", gpu_key)
     return {"selected": gpu_key}
 

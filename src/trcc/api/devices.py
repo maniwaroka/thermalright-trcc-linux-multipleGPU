@@ -41,21 +41,28 @@ def _get_device_by_id(device_id: int):
 
 # ── Endpoints ──────────────────────────────────────────────────────────
 
+def _all_devices_via_trcc():
+    """Return discovered devices via Trcc (LCDs first, then LEDs)."""
+    from trcc.api._boot import get_trcc
+    t = get_trcc()
+    # pylint: disable=protected-access
+    return list(t._lcd_devices) + list(t._led_devices)
+
+
 @router.get("/devices")
 def list_devices() -> list[DeviceResponse]:
-    """List currently known devices."""
-    from trcc.api import _device_svc
-
-    return [_device_to_response(i, d) for i, d in enumerate(_device_svc.devices)]
+    """List currently discovered devices (via Trcc)."""
+    devs = _all_devices_via_trcc()
+    return [_device_to_response(i, d.device_info) for i, d in enumerate(devs)
+            if d.device_info is not None]
 
 
 @router.post("/devices/detect")
 def detect_devices() -> list[DeviceResponse]:
-    """Rescan USB for LCD devices."""
-    from trcc.api import _device_svc
-
-    _device_svc.detect()
-    return [_device_to_response(i, d) for i, d in enumerate(_device_svc.devices)]
+    """Rescan USB for devices via Trcc.discover()."""
+    from trcc.api._boot import get_trcc
+    get_trcc().discover()
+    return list_devices()
 
 
 @router.post("/devices/{device_id}/select")

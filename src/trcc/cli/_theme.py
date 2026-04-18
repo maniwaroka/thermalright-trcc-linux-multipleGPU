@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import logging
 
+import typer
+
 from trcc.cli import _cli_handler
+from trcc.cli._boot import trcc
 
 log = logging.getLogger(__name__)
 
@@ -18,87 +21,60 @@ def _get_device_cfg() -> dict | None:
     return cfg
 
 
-@_cli_handler
-def list_themes():
-    """List local themes for the current device resolution."""
-    from pathlib import Path
-
-    from trcc.conf import settings
-    from trcc.services import ThemeService
-
-    if not (cfg := _get_device_cfg()):
-        print("No device configured. Connect your device first.")
-        return 1
-
-    w, h = cfg['w'], cfg['h']
-    theme_dir = cfg.get('theme_dir')
-    if not theme_dir or not Path(theme_dir).exists():
-        print(f"No local themes for {w}x{h}.")
+def list_themes(*, lcd: int = 0, source: str = 'all') -> int:
+    """List themes for the LCD's current resolution."""
+    app = trcc()
+    themes = app.lcd.list_themes(lcd, source=source)
+    snap = app.lcd.snapshot(lcd)
+    w, h = snap.resolution
+    label = {
+        'local': 'Local (default)',
+        'user':  'User-saved',
+        'cloud': 'Cloud',
+        'all':   'All',
+    }.get(source, source.title())
+    if not themes:
+        typer.echo(f'{label} themes ({w}x{h}): 0')
         return 0
-    themes = ThemeService.discover_local_merged(
-        Path(theme_dir), settings.user_content_dir / 'data', (w, h))
-    print(f"Local themes ({w}x{h}): {len(themes)}")
+    typer.echo(f'{label} themes ({w}x{h}): {len(themes)}')
     for t in themes:
-        kind = "video" if t.is_animated else "static"
-        user = " [user]" if t.name.startswith(('Custom_', 'User')) else ""
-        print(f"  {t.name} ({kind}){user}")
-
+        kind = 'video' if t.is_animated else 'static'
+        user = ' [user]' if t.name.startswith(('Custom_', 'User')) else ''
+        typer.echo(f'  {t.name} ({kind}){user}')
     return 0
 
 
-@_cli_handler
-def list_backgrounds(category=None):
-    """List cloud backgrounds for the current device resolution."""
-    from pathlib import Path
-
-    from trcc.services import ThemeService
-
-    log.debug("list_backgrounds category=%s", category)
-    if not (cfg := _get_device_cfg()):
-        print("No device configured. Connect your device first.")
-        return 1
-
-    w, h = cfg['w'], cfg['h']
-    web_dir = cfg.get('web_dir')
-    if not web_dir or not Path(web_dir).exists():
-        print(f"No cloud backgrounds for {w}x{h}.")
+def list_backgrounds(category=None, *, lcd: int = 0) -> int:
+    """List cloud backgrounds for the LCD's current resolution."""
+    app = trcc()
+    themes = app.lcd.list_themes(lcd, source='cloud')
+    if category and category != 'all':
+        themes = [t for t in themes if t.category == category]
+    snap = app.lcd.snapshot(lcd)
+    w, h = snap.resolution
+    if not themes:
+        typer.echo(f'No cloud backgrounds for {w}x{h}.')
         return 0
-    themes = ThemeService.discover_cloud(Path(web_dir), category)
-    print(f"Cloud backgrounds ({w}x{h}): {len(themes)}")
+    typer.echo(f'Cloud backgrounds ({w}x{h}): {len(themes)}')
     for t in themes:
-        cat = f" [{t.category}]" if t.category else ""
-        print(f"  {t.name}{cat}")
-
+        cat = f' [{t.category}]' if t.category else ''
+        typer.echo(f'  {t.name}{cat}')
     return 0
 
 
-@_cli_handler
-def list_masks():
-    """List available mask overlays for the current device resolution."""
-    from pathlib import Path
-
-    from trcc.conf import settings
-    from trcc.services import ThemeService
-
-    if not (cfg := _get_device_cfg()):
-        print("No device configured. Connect your device first.")
-        return 1
-
-    w, h = cfg['w'], cfg['h']
-    masks_dir = cfg.get('masks_dir')
-
-    masks = ThemeService.discover_masks(
-        cloud_masks_dir=Path(masks_dir) if masks_dir else None,
-        user_masks_dir=settings.user_masks_dir(),
-    )
+def list_masks(*, lcd: int = 0, source: str = 'all') -> int:
+    """List available masks for the LCD's current resolution."""
+    app = trcc()
+    masks = app.lcd.list_masks(lcd, source=source)
+    snap = app.lcd.snapshot(lcd)
+    w, h = snap.resolution
     if not masks:
-        print(f"No masks for {w}x{h}.")
+        typer.echo(f'No masks for {w}x{h}.')
         return 0
-
-    print(f"Masks ({w}x{h}): {len(masks)}")
+    typer.echo(f'Masks ({w}x{h}): {len(masks)}')
     for m in masks:
-        tag = " [custom]" if m.is_custom else ""
-        print(f"  {m.name}{tag}")
+        tag = ' [custom]' if m.is_custom else ''
+        typer.echo(f'  {m.name}{tag}')
     return 0
 
 

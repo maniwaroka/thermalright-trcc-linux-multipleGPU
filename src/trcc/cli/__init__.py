@@ -535,25 +535,42 @@ def _cmd_overlay(
 
 
 @app.command("theme-list", rich_help_panel="Themes")
-def _cmd_theme_list() -> int:
-    """List local themes."""
-    return _theme.list_themes()
+def _cmd_theme_list(
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+    source: Annotated[str, typer.Option(
+        "--source", help="Filter: all (default), local, user, cloud",
+    )] = "all",
+) -> int:
+    """List themes for the LCD's current resolution."""
+    return _theme.list_themes(lcd=lcd, source=source)
 
 
 @app.command("mask-list", rich_help_panel="Themes")
-def _cmd_mask_list() -> int:
+def _cmd_mask_list(
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+    source: Annotated[str, typer.Option(
+        "--source", help="Filter: all (default), builtin, custom",
+    )] = "all",
+) -> int:
     """List cloud masks."""
-    return _theme.list_masks()
+    return _theme.list_masks(lcd=lcd, source=source)
 
 
 @app.command("background-list", rich_help_panel="Themes")
 def _cmd_background_list(
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
     category: Annotated[Optional[str], typer.Option(
         "--category", help="Filter by category (a=Gallery, b=Tech, c=HUD, etc.)",
     )] = None,
 ) -> int:
     """List cloud backgrounds."""
-    return _theme.list_backgrounds(category=category)
+    return _theme.list_backgrounds(category=category, lcd=lcd)
 
 
 @app.command("theme-load", rich_help_panel="Themes")
