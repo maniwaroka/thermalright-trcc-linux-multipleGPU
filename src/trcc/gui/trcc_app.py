@@ -281,6 +281,13 @@ class TRCCApp(QMainWindow):
         self._platform = platform
         self._minimize_on_close = platform.minimize_on_close()
 
+        # Universal command facade — Control Center settings go through
+        # self._trcc.control_center.* so CLI/API/GUI share one code path.
+        # Device handlers still use the legacy Device chain (phase 6d cont.).
+        from trcc.core.trcc import Trcc
+        from trcc.services import ImageService
+        self._trcc = Trcc.for_gui(ImageService._r())
+
         # Apply saved GPU selection to sensor enumerator
         from ..conf import settings
         if settings.gpu_device:
@@ -1749,22 +1756,23 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(f"Temperature: °{unit}")
 
     def _on_hdd_toggle_changed(self, on: bool) -> None:
-        from ..core.app import TrccApp
-        TrccApp.get().set_hdd_enabled(on)
-        self.uc_preview.set_status(f"HDD info: {'Enabled' if on else 'Disabled'}")
+        log.debug("_on_hdd_toggle_changed: on=%s", on)
+        result = self._trcc.control_center.set_hdd_enabled(on)
+        # Same side effect as the legacy path: poll loop re-reads the flag
+        self.uc_preview.set_status(result.format())
 
     def _on_refresh_changed(self, interval: int) -> None:
         log.debug("_on_refresh_changed: interval=%s", interval)
-        from ..core.app import TrccApp
-        TrccApp.get().set_metrics_refresh(interval)
-        self.uc_preview.set_status(f"Refresh: {interval}s")
+        result = self._trcc.control_center.set_metrics_refresh(interval)
+        # Poll loop re-reads settings.refresy_interval each tick
+        self.uc_preview.set_status(result.format())
 
     def _on_gpu_changed(self, gpu_key: str) -> None:
         log.debug("_on_gpu_changed: gpu_key=%s", gpu_key)
-        from ..conf import settings
-        settings.set_gpu_device(gpu_key)
+        result = self._trcc.control_center.set_gpu_device(gpu_key)
+        # Tell the live enumerator to switch GPUs for subsequent metrics
         self._system_svc.enumerator.set_preferred_gpu(gpu_key)
-        self.uc_preview.set_status(f"GPU: {gpu_key}")
+        self.uc_preview.set_status(result.format())
 
     def _set_language(self, lang: str) -> None:
         from ..core.app import TrccApp
