@@ -229,6 +229,60 @@ def _cmd_lcd_snapshot(
     return _status.lcd_snapshot(lcd=lcd, json_output=json_output)
 
 
+@app.command("load-theme", rich_help_panel="Themes")
+def _cmd_load_theme(
+    path: Annotated[str, typer.Argument(help="Theme directory path")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Load a theme by directory path."""
+    return _display.load_theme_by_path(path, lcd=lcd)
+
+
+@app.command("save-theme", rich_help_panel="Themes")
+def _cmd_save_theme(
+    name: Annotated[str, typer.Argument(help="Theme name to save as")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Save the LCD's current state as a named theme."""
+    return _display.save_theme_by_name(name, lcd=lcd)
+
+
+@app.command("restore-theme", rich_help_panel="Themes")
+def _cmd_restore_theme(
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Restore the last theme applied to this LCD."""
+    return _display.restore_last_theme(lcd=lcd)
+
+
+@app.command("overlay-toggle", rich_help_panel="LCD Display")
+def _cmd_overlay_toggle(
+    enabled: Annotated[bool, typer.Argument(help="true=on, false=off")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Enable or disable the overlay."""
+    return _display.enable_overlay(enabled, lcd=lcd)
+
+
+@app.command("fit-mode", rich_help_panel="LCD Display")
+def _cmd_fit_mode(
+    mode: Annotated[str, typer.Argument(help="'width' or 'height'")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Set video fit mode."""
+    return _display.set_fit_mode(mode, lcd=lcd)
+
+
 @app.command("led-snapshot", rich_help_panel="LED")
 def _cmd_led_snapshot(
     led: Annotated[int, typer.Option(

@@ -356,6 +356,32 @@ def reset(*, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
     return _emit(trcc().lcd.reset(lcd))
 
 
+def load_theme_by_path(path, *, lcd: int = 0):
+    """Load a theme from a directory path via Trcc."""
+    from pathlib import Path
+    return _emit(trcc().lcd.load_theme(lcd, Path(path)))
+
+
+def save_theme_by_name(name, *, lcd: int = 0):
+    """Save current LCD state as a named theme via Trcc."""
+    return _emit(trcc().lcd.save_theme(lcd, name))
+
+
+def restore_last_theme(*, lcd: int = 0):
+    """Restore the last theme applied to this LCD (device reset → re-apply)."""
+    return _emit(trcc().lcd.restore_last_theme(lcd))
+
+
+def enable_overlay(enabled: bool, *, lcd: int = 0):
+    """Enable or disable the overlay on this LCD."""
+    return _emit(trcc().lcd.enable_overlay(lcd, enabled))
+
+
+def set_fit_mode(mode, *, lcd: int = 0):
+    """Set video fit mode ('width' or 'height')."""
+    return _emit(trcc().lcd.set_fit_mode(lcd, mode))
+
+
 @_cli_handler
 def video_status():
     """Show current video playback status."""
