@@ -120,3 +120,24 @@ def run_upgrade() -> dict:
     if not result.success:
         raise HTTPException(status_code=500, detail=result.error)
     return asdict(result)
+
+
+@router.get('/status')
+def unified_status() -> dict:
+    """Unified snapshot — app + every connected LCD + every connected LED.
+
+    Mirrors the `trcc status --json` CLI command.
+    """
+    t = get_trcc()
+    # pylint: disable=protected-access
+    return {
+        'app': asdict(t.control_center.snapshot()),
+        'lcd_devices': [
+            asdict(t.lcd.snapshot(i))
+            for i in range(len(t._lcd_devices))
+        ],
+        'led_devices': [
+            asdict(t.led.snapshot(i))
+            for i in range(len(t._led_devices))
+        ],
+    }

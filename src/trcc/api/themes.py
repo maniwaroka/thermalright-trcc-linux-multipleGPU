@@ -6,6 +6,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from trcc.api.models import (
     MaskResponse,
@@ -301,6 +302,57 @@ def save_theme(body: ThemeSaveRequest, lcd: int = 0) -> dict:
             detail=result.error or 'Save failed — no image loaded',
         )
     return {"success": True, "message": result.message, "name": body.name}
+
+
+@router.delete("/{name}")
+def delete_theme(name: str, lcd: int = 0) -> dict:
+    """Delete a user theme directory via Trcc."""
+
+    from trcc.api._boot import get_trcc
+
+    # Resolve name → path from the orientation's theme_dir
+    t = get_trcc()
+    # pylint: disable=protected-access
+    if not (0 <= lcd < len(t._lcd_devices)):
+        raise HTTPException(status_code=404, detail=f"LCD {lcd} not found")
+    dev = t._lcd_devices[lcd]
+    o = dev.orientation
+    td = o.theme_dir
+    if not td:
+        raise HTTPException(status_code=404, detail="No theme directory")
+    path = td.path / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Theme not found: {name}")
+    result = t.lcd.delete_theme(lcd, path)
+    if not result.success:
+        raise HTTPException(status_code=500, detail=result.error)
+    return {"success": True, "message": result.message, "name": name}
+
+
+class SlideshowRequest(BaseModel):
+    """Configure the slideshow."""
+    themes: list[str]
+    interval_s: int
+
+
+@router.post("/slideshow/configure")
+def configure_slideshow(body: SlideshowRequest, lcd: int = 0) -> dict:
+    """Set which themes cycle and at what interval (persists)."""
+    from trcc.api._boot import get_trcc
+    result = get_trcc().lcd.configure_slideshow(lcd, body.themes, body.interval_s)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error)
+    return {"success": True, "message": result.message}
+
+
+@router.post("/slideshow/toggle")
+def set_slideshow(enabled: bool, lcd: int = 0) -> dict:
+    """Turn the slideshow on or off."""
+    from trcc.api._boot import get_trcc
+    result = get_trcc().lcd.set_slideshow(lcd, enabled)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error)
+    return {"success": True, "message": result.message, "enabled": enabled}
 
 
 @router.post("/export")
