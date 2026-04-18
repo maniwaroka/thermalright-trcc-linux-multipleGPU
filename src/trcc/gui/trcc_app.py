@@ -759,7 +759,7 @@ class TRCCApp(QMainWindow):
         gpu_list = self._system_svc.enumerator.get_gpu_list()
         self.uc_about = UCAbout(
             parent=central, platform=self._platform,
-            gpu_list=gpu_list)
+            gpu_list=gpu_list, trcc=self._trcc)
         self.uc_about.setGeometry(*Layout.FORM_CONTAINER)
         self.uc_about.setVisible(False)
 
@@ -1742,8 +1742,9 @@ class TRCCApp(QMainWindow):
         log.debug("_on_temp_unit_changed: unit=%s", unit)
         temp_unit = 1 if unit == 'F' else 0
 
-        from trcc.core.app import TrccApp
-        TrccApp.get().apply_temp_unit(temp_unit)
+        # Persist via Trcc — same code path as CLI `trcc temp-unit` and
+        # API `PUT /app/temp-unit`. Side effects below stay GUI-only.
+        self._trcc.control_center.set_temp_unit(unit)
 
         # GUI-only: re-render each LCD handler's preview
         for handler in self._handlers.values():
@@ -1775,8 +1776,10 @@ class TRCCApp(QMainWindow):
         self.uc_preview.set_status(result.format())
 
     def _set_language(self, lang: str) -> None:
-        from ..core.app import TrccApp
-        TrccApp.get().set_language(lang)
+        log.debug("_set_language: %s", lang)
+        # Persist via Trcc — same code path as CLI `trcc language` and
+        # API `PUT /app/language`. GUI side effects follow.
+        self._trcc.control_center.set_language(lang)
         self._apply_settings_backgrounds()
         self.uc_about.sync_language()
         self.uc_led_control.apply_localized_background()

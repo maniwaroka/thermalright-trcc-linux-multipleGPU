@@ -21,7 +21,6 @@ import logging
 import shutil
 import sys
 import webbrowser
-from pathlib import Path
 from threading import Thread
 from urllib.request import urlopen
 
@@ -159,10 +158,12 @@ class UCAbout(BasePanel):
     _upgrade_finished = Signal(bool)     # True=success, False=failure
 
     def __init__(self, parent=None, platform: Platform | None = None,
-                 gpu_list: list[tuple[str, str]] | None = None):
+                 gpu_list: list[tuple[str, str]] | None = None,
+                 trcc=None):
         super().__init__(parent, width=Sizes.FORM_W, height=Sizes.FORM_H)
 
         self._platform = platform
+        self._trcc = trcc            # optional — set by TRCCApp for update flow
         self._gpu_list = gpu_list or []
         self._lang_buttons: dict[str, QPushButton] = {}  # Legacy — populated by combo in trcc_app
         self._temp_mode = 'C'
@@ -448,7 +449,12 @@ class UCAbout(BasePanel):
     }
 
     def _check_for_update(self):
-        """Background thread: query GitHub releases and emit result via signal."""
+        """Background thread: query GitHub via Trcc (if wired) else legacy helper."""
+        if self._trcc is not None:
+            r = self._trcc.control_center.check_for_update()
+            if r.success and r.update_available and r.latest_version:
+                self._update_available.emit(r.latest_version, r.assets)
+            return
         if (result := _check_latest_release()):
             ver, assets = result
             self._update_available.emit(ver, assets)
@@ -475,55 +481,17 @@ class UCAbout(BasePanel):
         Thread(target=self._run_upgrade, daemon=True).start()
 
     def _run_upgrade(self):
-        """Background thread: run upgrade via pip/pipx/package manager."""
-        import subprocess
-        import tempfile
-
-        from trcc.core.platform import SUBPROCESS_NO_WINDOW as _no_window
-        method = self._install_method
-        ver = self._latest_version or ""
-
-        if method == 'pipx':
-            cmd = ['pipx', 'upgrade', 'trcc-linux']
-        elif method == 'pip':
-            cmd = [sys.executable, '-m', 'pip', 'install',
-                   '--upgrade', 'trcc-linux']
-        elif method in self._PKG_INSTALL:
-            # Download package from GitHub release, install via pkexec
-            if not (url := getattr(self, '_pkg_assets', {}).get(method)):
-                log.error("No %s package in release assets", method)
-                self._upgrade_finished.emit(False)
-                return
-            raw_name = url.rsplit('/', 1)[-1]
-            # Sanitize: strip path separators, reject traversal attempts
-            filename = Path(raw_name).name
-            if not filename or '..' in filename:
-                log.error("Unsafe filename in release URL: %s", raw_name)
-                self._upgrade_finished.emit(False)
-                return
-            pkg_path = Path(tempfile.mkdtemp(prefix='trcc_pkg_')) / filename
-            try:
-                from urllib.request import urlretrieve
-                log.info("Downloading %s", url)
-                urlretrieve(url, pkg_path)
-            except Exception:
-                log.error("Failed to download %s", url)
-                self._upgrade_finished.emit(False)
-                return
-            cmd = [*self._PKG_INSTALL[method], str(pkg_path)]
-        else:
-            log.error("Unknown install method: %s", method)
+        """Background thread: run upgrade via Trcc (same path as CLI/API)."""
+        if self._trcc is None:
+            log.error("_run_upgrade: no Trcc — widget constructed without it")
             self._upgrade_finished.emit(False)
             return
-
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True,
-                           creationflags=_no_window)
-            log.info("Upgrade to %s successful — restart to apply", ver)
-            self._upgrade_finished.emit(True)
-        except subprocess.CalledProcessError as e:
-            log.error("Upgrade failed: %s", e.stderr)
-            self._upgrade_finished.emit(False)
+        result = self._trcc.control_center.run_upgrade()
+        if result.success:
+            log.info("%s", result.format())
+        else:
+            log.error("Upgrade failed: %s", result.error)
+        self._upgrade_finished.emit(result.success)
 
     def _on_upgrade_done(self, success: bool):
         """Post-upgrade: show restart message or re-enable button on failure."""
