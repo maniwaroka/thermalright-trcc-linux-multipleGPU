@@ -291,21 +291,16 @@ def load_theme(body: ThemeLoadRequest) -> dict:
 
 
 @router.post("/save")
-def save_theme(body: ThemeSaveRequest) -> dict:
-    """Save current device display as a named theme."""
-    import trcc.api as api
-
-    dev = api._device_dispatcher
-    if not dev or not dev.connected or not dev.current_image:
+def save_theme(body: ThemeSaveRequest, lcd: int = 0) -> dict:
+    """Save current device display as a named theme via Trcc."""
+    from trcc.api._boot import get_trcc
+    result = get_trcc().lcd.save_theme(lcd, body.name)
+    if not result.success:
         raise HTTPException(
             status_code=409,
-            detail="No image loaded. Load a theme or send an image first.",
+            detail=result.error or 'Save failed — no image loaded',
         )
-
-    result = dev.save(body.name)
-    if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("message", "Save failed"))
-    return {"success": True, "message": result["message"], "name": body.name}
+    return {"success": True, "message": result.message, "name": body.name}
 
 
 @router.post("/export")

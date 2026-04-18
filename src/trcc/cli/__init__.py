@@ -283,6 +283,42 @@ def _cmd_fit_mode(
     return _display.set_fit_mode(mode, lcd=lcd)
 
 
+@app.command("mask-position", rich_help_panel="LCD Display")
+def _cmd_mask_position(
+    x: Annotated[int, typer.Argument(help="Mask X coordinate")],
+    y: Annotated[int, typer.Argument(help="Mask Y coordinate")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Move the active mask on the LCD."""
+    return _display.set_mask_position(x, y, lcd=lcd)
+
+
+@app.command("mask-visible", rich_help_panel="LCD Display")
+def _cmd_mask_visible(
+    visible: Annotated[bool, typer.Argument(help="true=show, false=hide")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Show or hide the active mask without unloading it."""
+    return _display.set_mask_visible(visible, lcd=lcd)
+
+
+@app.command("render", rich_help_panel="LCD Display")
+def _cmd_render(
+    no_send: Annotated[bool, typer.Option(
+        "--no-send", help="Render only (no send to device)",
+    )] = False,
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Force a render (useful for debugging overlay state)."""
+    return _display.render_and_send(send=not no_send, lcd=lcd)
+
+
 @app.command("led-snapshot", rich_help_panel="LED")
 def _cmd_led_snapshot(
     led: Annotated[int, typer.Option(

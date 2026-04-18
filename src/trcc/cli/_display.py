@@ -382,6 +382,21 @@ def set_fit_mode(mode, *, lcd: int = 0):
     return _emit(trcc().lcd.set_fit_mode(lcd, mode))
 
 
+def set_mask_position(x: int, y: int, *, lcd: int = 0):
+    """Move the active mask to (x, y) on the canvas."""
+    return _emit(trcc().lcd.set_mask_position(lcd, x, y))
+
+
+def set_mask_visible(visible: bool, *, lcd: int = 0):
+    """Show or hide the active mask without unloading it."""
+    return _emit(trcc().lcd.set_mask_visible(lcd, visible))
+
+
+def render_and_send(send: bool = True, *, lcd: int = 0):
+    """Force a render. With --no-send, only updates the preview cache."""
+    return _emit(trcc().lcd.render_and_send(lcd, send=send))
+
+
 @_cli_handler
 def video_status():
     """Show current video playback status."""
