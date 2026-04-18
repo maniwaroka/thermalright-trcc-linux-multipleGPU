@@ -216,6 +216,42 @@ def _cmd_status(
     return _status.status(json_output=json_output)
 
 
+@app.command("lcd-snapshot", rich_help_panel="LCD Display")
+def _cmd_lcd_snapshot(
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+    json_output: Annotated[bool, typer.Option(
+        "--json", help="Emit JSON",
+    )] = False,
+) -> int:
+    """Show a single LCD's current state."""
+    return _status.lcd_snapshot(lcd=lcd, json_output=json_output)
+
+
+@app.command("led-snapshot", rich_help_panel="LED")
+def _cmd_led_snapshot(
+    led: Annotated[int, typer.Option(
+        "--led", help="LED device index (default 0)",
+    )] = 0,
+    json_output: Annotated[bool, typer.Option(
+        "--json", help="Emit JSON",
+    )] = False,
+) -> int:
+    """Show a single LED's current state."""
+    return _status.led_snapshot(led=led, json_output=json_output)
+
+
+@app.command("led-styles", rich_help_panel="LED")
+def _cmd_led_styles(
+    json_output: Annotated[bool, typer.Option(
+        "--json", help="Emit JSON",
+    )] = False,
+) -> int:
+    """List every supported LED device style + capabilities."""
+    return _status.led_styles(json_output=json_output)
+
+
 # =========================================================================
 # Control Center commands — app-level settings + updates
 # =========================================================================
