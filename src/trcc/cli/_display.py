@@ -412,6 +412,22 @@ def import_config(path, *, lcd: int = 0):
     return _emit(trcc().lcd.import_config(lcd, Path(path), data_dir))
 
 
+def delete_theme(path, *, lcd: int = 0):
+    """Delete a theme directory or file at PATH."""
+    from pathlib import Path
+    return _emit(trcc().lcd.delete_theme(lcd, Path(path)))
+
+
+def configure_slideshow(themes: list[str], interval_s: int, *, lcd: int = 0):
+    """Configure which themes cycle and at what interval."""
+    return _emit(trcc().lcd.configure_slideshow(lcd, themes, interval_s))
+
+
+def set_slideshow(enabled: bool, *, lcd: int = 0):
+    """Enable or disable slideshow cycling (uses last-configured themes)."""
+    return _emit(trcc().lcd.set_slideshow(lcd, enabled))
+
+
 @_cli_handler
 def video_status():
     """Show current video playback status."""

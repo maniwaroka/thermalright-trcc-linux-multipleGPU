@@ -341,6 +341,40 @@ def _cmd_import_config(
     return _display.import_config(path, lcd=lcd)
 
 
+@app.command("delete-theme", rich_help_panel="Themes")
+def _cmd_delete_theme(
+    path: Annotated[str, typer.Argument(help="Theme directory or file to delete")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Delete a theme directory or file."""
+    return _display.delete_theme(path, lcd=lcd)
+
+
+@app.command("slideshow-config", rich_help_panel="Themes")
+def _cmd_slideshow_config(
+    interval: Annotated[int, typer.Argument(help="Cycle interval in seconds")],
+    themes: Annotated[list[str], typer.Argument(help="Theme names to cycle through")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Configure the theme slideshow (cycle interval + theme set)."""
+    return _display.configure_slideshow(themes, interval, lcd=lcd)
+
+
+@app.command("slideshow", rich_help_panel="Themes")
+def _cmd_slideshow_toggle(
+    enabled: Annotated[bool, typer.Argument(help="true=on, false=off")],
+    lcd: Annotated[int, typer.Option(
+        "--lcd", help="LCD device index (default 0)",
+    )] = 0,
+) -> int:
+    """Turn the theme slideshow on or off."""
+    return _display.set_slideshow(enabled, lcd=lcd)
+
+
 @app.command("led-snapshot", rich_help_panel="LED")
 def _cmd_led_snapshot(
     led: Annotated[int, typer.Option(
