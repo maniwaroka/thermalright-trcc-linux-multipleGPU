@@ -20,6 +20,7 @@ from PySide6.QtGui import QIcon, QPixmap
 
 from trcc.conf import Settings
 
+from ...core._logging import tagged_logger
 from ...core.device.lcd import LCDDevice
 from ...core.models import (
     DEFAULT_BRIGHTNESS_LEVEL,
@@ -106,10 +107,8 @@ class LCDHandler(BaseHandler):
         self._device_key = Settings.device_config_key(
             device.device_index, device.vid, device.pid)
         # Per-device child logger — tags handler logs with device index
-        label = f'lcd:{device.device_index}'
-        self.log: logging.Logger = logging.getLogger(f'{__name__}.{label}')
-        if hasattr(self.log, 'dev'):
-            setattr(self.log, 'dev', label)
+        self.log: logging.Logger = tagged_logger(
+            __name__, f'lcd:{device.device_index}')
         Settings.save_device_settings(self._device_key, w=w, h=h)
         self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
         self._refresh(w, h)

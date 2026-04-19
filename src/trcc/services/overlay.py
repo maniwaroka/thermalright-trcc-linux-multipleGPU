@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..core._logging import tagged_logger
 from ..core.models import HardwareMetrics
 from ..core.ports import Renderer
 from .system import SystemService
@@ -38,9 +39,7 @@ class OverlayService:
                  dc_config_cls: Any = None,
                  device_label: str = '') -> None:
         # Per-device child logger
-        self.log: logging.Logger = logging.getLogger(f'{__name__}.{device_label}' if device_label else __name__)
-        if hasattr(self.log, 'dev'):
-            setattr(self.log, 'dev', device_label or '-')
+        self.log: logging.Logger = tagged_logger(__name__, device_label)
 
         # Rendering backend (Strategy pattern) — must be injected
         if renderer is None:

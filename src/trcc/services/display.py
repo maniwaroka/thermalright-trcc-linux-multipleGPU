@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable, Tuple
 if TYPE_CHECKING:
     from ..core.ports import Platform
 
+from ..core._logging import tagged_logger
 from ..core.models import SPLIT_MODE_RESOLUTIONS, SPLIT_OVERLAY_MAP
 from ..core.orientation import Orientation
 from ..core.paths import RESOURCES_DIR, has_themes, theme_dir_name
@@ -46,9 +47,7 @@ class DisplayService:
                  path_resolver: 'Platform | None' = None,
                  device_label: str = '') -> None:
         # Per-device child logger — tags every record with device identity
-        self.log: logging.Logger = logging.getLogger(f'{__name__}.{device_label}' if device_label else __name__)
-        if hasattr(self.log, 'dev'):
-            setattr(self.log, 'dev', device_label or '-')
+        self.log: logging.Logger = tagged_logger(__name__, device_label)
 
         # Sub-services (injected)
         self.devices = devices

@@ -12,8 +12,8 @@ import functools
 import logging
 from typing import Any
 
+from .._logging import tagged_logger
 from ..models import LEDMode
-from ._logging import tagged_logger
 
 log = logging.getLogger(__name__)
 

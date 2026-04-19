@@ -13,10 +13,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .._logging import tagged_logger
 from ..models import DEFAULT_BRIGHTNESS_LEVEL, ThemeInfo, ThemeType
 from ..orientation import Orientation
 from ..paths import masks_dir_name, resolve_theme_dir, theme_dir_name, web_dir_name
-from ._logging import tagged_logger
 
 log = logging.getLogger(__name__)
 
