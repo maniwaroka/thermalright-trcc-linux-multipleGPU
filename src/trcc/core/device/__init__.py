@@ -1,12 +1,12 @@
 """Device package — LCD and LED device facades.
 
-Two concrete classes live in their own modules:
-  trcc.core.device.lcd::LCDDevice — pixel frames, themes, overlays, video
-  trcc.core.device.led::LEDDevice — RGB color arrays, zones, segments
+Concrete classes live in their submodules; import them directly:
 
-`Device` is the Union alias for code that accepts either flavor (builder
-return type, Trcc facade lists). Callers that are LCD-only or LED-only
-should import the concrete class directly.
+    from trcc.core.device.lcd import LCDDevice
+    from trcc.core.device.led import LEDDevice
+
+`Device` is exposed here as a type-alias for collections that hold
+either flavor. It is the only name re-exported from this package.
 """
 from __future__ import annotations
 
@@ -15,4 +15,4 @@ from .led import LEDDevice
 
 Device = LCDDevice | LEDDevice
 
-__all__ = ['Device', 'LCDDevice', 'LEDDevice']
+__all__ = ['Device']

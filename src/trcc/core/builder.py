@@ -17,7 +17,7 @@ from .ports import (
 
 if TYPE_CHECKING:
     from ..services.system import SystemService
-    from .device import Device  # Union[LCDDevice, LEDDevice]
+    from .device import Device
     from .device.lcd import LCDDevice
 
 log = logging.getLogger(__name__)
