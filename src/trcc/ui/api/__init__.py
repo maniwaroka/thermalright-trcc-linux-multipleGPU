@@ -194,7 +194,7 @@ def start_overlay_loop(
 
     from trcc.services.image import ImageService
     overlay = OverlayService(
-        width, height, renderer=ImageService._r(),
+        width, height, renderer=ImageService.renderer(),
         load_config_json_fn=load_config_json,
         dc_config_cls=DcConfig,
     )

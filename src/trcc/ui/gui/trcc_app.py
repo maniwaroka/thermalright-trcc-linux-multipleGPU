@@ -286,7 +286,7 @@ class TRCCApp(QMainWindow):
         # Device handlers still use the legacy Device chain (phase 6d cont.).
         from trcc.core.trcc import Trcc
         from trcc.services import ImageService
-        self._trcc = Trcc.for_gui(ImageService._r())
+        self._trcc = Trcc.for_gui(ImageService.renderer())
 
         # Apply saved GPU selection to sensor enumerator
         from ...conf import settings

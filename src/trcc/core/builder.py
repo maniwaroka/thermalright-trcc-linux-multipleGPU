@@ -235,7 +235,7 @@ class ControllerBuilder:
         path_resolver = self._os
 
         def _build(device_svc, renderer=None):
-            r = renderer or ImageService._r()
+            r = renderer or ImageService.renderer()
             overlay_svc = OverlayService(
                 renderer=r,
                 load_config_json_fn=load_config_json,

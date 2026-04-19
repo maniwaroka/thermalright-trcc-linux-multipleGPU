@@ -105,7 +105,7 @@ class VideoFrameCache:
             return
 
         from .image import ImageService
-        r = ImageService._r()
+        r = ImageService.renderer()
 
         # Convert frames to native surfaces if needed
         from ..core.ports import RawFrame
@@ -190,7 +190,7 @@ class VideoFrameCache:
             return  # L3 hit — pure list lookup
 
         from .image import ImageService
-        r = ImageService._r()
+        r = ImageService.renderer()
 
         surface = r.copy_surface(self._masked_frames[index])
 
@@ -224,7 +224,7 @@ class VideoFrameCache:
             return
 
         from .image import ImageService
-        r = ImageService._r()
+        r = ImageService.renderer()
         mask_rgba = r.convert_to_rgba(mask)
         self._masked_frames = []
         for frame in frames:

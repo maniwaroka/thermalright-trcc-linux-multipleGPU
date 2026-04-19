@@ -21,7 +21,7 @@ class ImageService:
         cls._renderer = renderer
 
     @classmethod
-    def _r(cls) -> Renderer:
+    def renderer(cls) -> Renderer:
         """Get the active renderer (must be set via set_renderer first)."""
         if cls._renderer is None:
             raise RuntimeError(
@@ -34,42 +34,42 @@ class ImageService:
     @staticmethod
     def to_rgb565(img: Any, byte_order: str = '>') -> bytes:
         """Encode surface to RGB565 bytes."""
-        return ImageService._r().encode_rgb565(img, byte_order)
+        return ImageService.renderer().encode_rgb565(img, byte_order)
 
     @staticmethod
     def to_jpeg(img: Any, quality: int = 95,
                 max_size: int = JPEG_MAX_BYTES) -> bytes:
         """Encode surface to JPEG bytes with size constraint."""
-        return ImageService._r().encode_jpeg(img, quality, max_size)
+        return ImageService.renderer().encode_jpeg(img, quality, max_size)
 
     # ── Adjustments (hot path) ────────────────────────────────────
 
     @staticmethod
     def apply_rotation(image: Any, rotation: int) -> Any:
         """Apply display rotation (0/90/180/270)."""
-        return ImageService._r().apply_rotation(image, rotation)
+        return ImageService.renderer().apply_rotation(image, rotation)
 
     @staticmethod
     def apply_brightness(image: Any, percent: int) -> Any:
         """Apply brightness (0-100, 100 = unchanged)."""
-        return ImageService._r().apply_brightness(image, percent)
+        return ImageService.renderer().apply_brightness(image, percent)
 
     # ── Surface creation ──────────────────────────────────────────
 
     @staticmethod
     def solid_color(r: int, g: int, b: int, w: int, h: int) -> Any:
         """Create a solid-color surface."""
-        return ImageService._r().create_surface(w, h, (r, g, b))
+        return ImageService.renderer().create_surface(w, h, (r, g, b))
 
     @staticmethod
     def resize(img: Any, w: int, h: int) -> Any:
         """Resize surface to target dimensions."""
-        return ImageService._r().resize(img, w, h)
+        return ImageService.renderer().resize(img, w, h)
 
     @staticmethod
     def open_and_resize(path: Any, w: int, h: int) -> Any:
         """Open image file, resize to target dimensions."""
-        rnd = ImageService._r()
+        rnd = ImageService.renderer()
         img = rnd.open_image(path)
         return rnd.resize(img, w, h)
 
@@ -89,7 +89,7 @@ class ImageService:
         """Apply device-level pre-rotation for non-square displays."""
         if resolution in ImageService._SQUARE_NO_ROTATE:
             return image
-        return ImageService._r().apply_rotation(image, 90)
+        return ImageService.renderer().apply_rotation(image, 90)
 
     @staticmethod
     def encode_for_device(img: Any, protocol: str,
@@ -107,7 +107,7 @@ class ImageService:
         """
         from ..core.models import get_profile
 
-        rnd = ImageService._r()
+        rnd = ImageService.renderer()
         profile = get_profile(fbl) if fbl is not None else None
 
         # Device encode rotation — converts canvas to device orientation.
@@ -139,7 +139,7 @@ class ImageService:
     @staticmethod
     def to_ansi(img: Any, cols: int = 60) -> str:
         """Render surface as ANSI true-color block art for terminal preview."""
-        rnd = ImageService._r()
+        rnd = ImageService.renderer()
         w, h = rnd.surface_size(img)
         rows = max(1, int(cols * h / w))
         rows += rows % 2
@@ -200,7 +200,7 @@ class ImageService:
         h = max(40, padding + total_lines * line_h + padding)
         w = int(cols * 2.5)
 
-        rnd = ImageService._r()
+        rnd = ImageService.renderer()
         font_label = rnd.get_font(13, bold=True)
         font_value = rnd.get_font(12)
         surf = rnd.create_surface(w, h, (10, 10, 30))

@@ -454,7 +454,7 @@ class ThemeService:
 
             # Thumbnail from rendered preview (with overlay)
             from .image import ImageService
-            r = ImageService._r()
+            r = ImageService.renderer()
             thumb_src = preview or background
             src_w, src_h = r.surface_size(thumb_src)
             scale = min(120 / src_w, 120 / src_h, 1.0)
@@ -639,7 +639,7 @@ class ThemeService:
             return
         try:
             from .image import ImageService
-            r = ImageService._r()
+            r = ImageService.renderer()
             mask_img = r.open_image(str(mask_file))
             mask_w, mask_h = r.surface_size(mask_img)
             position = self._parse_mask_position(

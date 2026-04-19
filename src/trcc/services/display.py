@@ -307,7 +307,7 @@ class DisplayService:
         frames = self.media._frames
         if not frames:
             return
-        r = ImageService._r()
+        r = ImageService.renderer()
         first = frames[0]
         if isinstance(first, RawFrame):
             self.media._frames = [r.from_raw_rgb24(f) for f in frames]
@@ -419,7 +419,7 @@ class DisplayService:
         else:
             mask_file = mask_path
 
-        r = ImageService._r()
+        r = ImageService.renderer()
         mask_img = r.convert_to_rgba(r.open_image(mask_file))
         mask_w, mask_h = r.surface_size(mask_img)
         dc_path = mask_dir / 'config1.dc'
@@ -544,7 +544,7 @@ class DisplayService:
             return image
 
         try:
-            r = ImageService._r()
+            r = ImageService.renderer()
             image = r.convert_to_rgba(image)
             img_w, img_h = r.surface_size(image)
             ovl_w, ovl_h = r.surface_size(overlay)
@@ -562,7 +562,7 @@ class DisplayService:
         try:
             path = os.path.join(RESOURCES_DIR, asset_name)
             if os.path.exists(path):
-                r = ImageService._r()
+                r = ImageService.renderer()
                 img = r.open_image(path)
                 return r.convert_to_rgba(img)
             log.warning("Split overlay not found: %s", path)
@@ -599,7 +599,7 @@ class DisplayService:
             if surface is not None:
                 # Composite text overlay (same surface for all frames)
                 if self._cache.has_text:
-                    r = ImageService._r()
+                    r = ImageService.renderer()
                     surface = r.copy_surface(surface)
                     surface = r.composite(surface, self._cache.text_overlay, (0, 0))
                 protocol, resolution, fbl, use_jpeg, enc_angle = self._cache.encoding_params

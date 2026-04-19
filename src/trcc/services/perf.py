@@ -56,7 +56,7 @@ def run_benchmarks() -> PerfReport:
     from ..services.overlay import OverlayService
 
     report = PerfReport()
-    r = ImageService._r()
+    r = ImageService.renderer()
 
     # Benchmark profiles — representative device resolutions from FBL_PROFILES
     _p320 = FBL_PROFILES[100]   # 320×320 RGB565 big-endian
@@ -381,7 +381,7 @@ def _run_device_benchmarks_inner(
             svc._discover_resolution(lcd_dev)
         protocol = get_protocol(lcd_dev)
         w, h = lcd_dev.resolution or (320, 320)
-        r = ImageService._r()
+        r = ImageService.renderer()
 
         # Handshake time (reconnect)
         protocol.close()

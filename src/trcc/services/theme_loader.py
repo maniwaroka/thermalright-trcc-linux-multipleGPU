@@ -238,7 +238,7 @@ class ThemeLoader:
         """Load mask image with position from DC config."""
         try:
             from .image import ImageService
-            r = ImageService._r()
+            r = ImageService.renderer()
             mask_img = r.open_image(mask_path)
             mask_w, mask_h = r.surface_size(mask_img)
             position = self._parse_mask_position(

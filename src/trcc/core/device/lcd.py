@@ -766,7 +766,7 @@ class LCDDevice:
                     "message": f"Mask: {p.name}"}
         from ...services.image import ImageService
         from ...services.overlay import OverlayService
-        r = ImageService._r()
+        r = ImageService.renderer()
         w, h = self.lcd_size
         mask_img = OverlayService.load_mask_from_path(p, r, w, h)
         if mask_img is None:
