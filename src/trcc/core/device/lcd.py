@@ -183,21 +183,7 @@ class LCDDevice:
         dev = svc.selected
         self._info = dev
 
-        # Tag logger with full device identity from handshake
-        vid = int(dev.vid) if isinstance(dev.vid, int) else 0
-        pid = int(dev.pid) if isinstance(dev.pid, int) else 0
-        label = f'lcd:{dev.device_index} [{vid:04X}:{pid:04X} FBL={dev.fbl_code} PM={dev.pm_byte} SUB={dev.sub_byte}]'
-        self.log = logging.getLogger(f'{__name__}.{label}')
-        if hasattr(self.log, 'dev'):
-            self.log.dev = label  # type: ignore[attr-defined]
-        if self._display_svc:
-            self._display_svc.log = logging.getLogger(f'trcc.services.display.{label}')
-            if hasattr(self._display_svc.log, 'dev'):
-                self._display_svc.log.dev = label  # type: ignore[attr-defined]
-            if self._display_svc.overlay:
-                self._display_svc.overlay.log = logging.getLogger(f'trcc.services.overlay.{label}')
-                if hasattr(self._display_svc.overlay.log, 'dev'):
-                    self._display_svc.overlay.log.dev = label  # type: ignore[attr-defined]
+        self._tag_loggers_with_device(dev)
         self.log.info("connected: %s [%04X:%04X] %dx%d FBL=%s PM=%d SUB=%d",
                       dev.path, dev.vid, dev.pid, *dev.resolution,
                       dev.fbl_code, dev.pm_byte, dev.sub_byte)
@@ -212,6 +198,28 @@ class LCDDevice:
             "resolution": dev.resolution,
             "device_path": dev.path,
         }
+
+    def _tag_loggers_with_device(self, dev: Any) -> None:
+        """Re-tag this device's loggers with full identity from handshake."""
+        vid = int(dev.vid) if isinstance(dev.vid, int) else 0
+        pid = int(dev.pid) if isinstance(dev.pid, int) else 0
+        label = (f'lcd:{dev.device_index} [{vid:04X}:{pid:04X} '
+                 f'FBL={dev.fbl_code} PM={dev.pm_byte} SUB={dev.sub_byte}]')
+        self.log = self._make_tagged_logger(__name__, label)
+        if self._display_svc:
+            self._display_svc.log = self._make_tagged_logger(
+                'trcc.services.display', label)
+            if self._display_svc.overlay:
+                self._display_svc.overlay.log = self._make_tagged_logger(
+                    'trcc.services.overlay', label)
+
+    @staticmethod
+    def _make_tagged_logger(namespace: str, label: str) -> logging.Logger:
+        """Get a child logger and stamp the device label on its `.dev` attr."""
+        log_obj = logging.getLogger(f'{namespace}.{label}')
+        if hasattr(log_obj, 'dev'):
+            setattr(log_obj, 'dev', label)
+        return log_obj
 
     def _build_services(self, device_svc: Any) -> None:
         """Wire up all services from a DeviceService via injected factory."""
