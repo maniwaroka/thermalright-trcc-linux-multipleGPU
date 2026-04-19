@@ -430,9 +430,8 @@ class TrccApp:
 
         # Fetch fresh metrics with new unit applied
         fresh = None
-        if self._system_svc is not None:
-            raw = self._system_svc.all_metrics  # type: ignore[union-attr]
-            fresh = HardwareMetrics.with_temp_unit(raw, unit)
+        if (svc := self._system_svc) is not None:
+            fresh = HardwareMetrics.with_temp_unit(svc.all_metrics, unit)
             self._current_metrics = fresh
 
         # Push to all connected devices
@@ -503,6 +502,7 @@ class TrccApp:
                 "TrccApp.set_system() must be called before start_metrics_loop().")
         self.stop_metrics_loop()
         self._metrics_stop.clear()
+        sys_svc = self._system_svc  # capture for closure narrowing
 
         def _loop() -> None:
             from .models import HardwareMetrics
@@ -515,9 +515,8 @@ class TrccApp:
                     metrics_every = max(1, int(poll_interval / self._TICK_INTERVAL))
                     if tick_count % metrics_every == 0:
                         try:
-                            raw = self._system_svc.all_metrics  # type: ignore[union-attr]
                             metrics = HardwareMetrics.with_temp_unit(
-                                raw, self._settings.temp_unit)
+                                sys_svc.all_metrics, self._settings.temp_unit)
                             self._current_metrics = metrics
                             for device in list(self._devices.values()):
                                 try:
