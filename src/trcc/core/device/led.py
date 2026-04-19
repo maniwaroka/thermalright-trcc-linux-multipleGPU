@@ -191,11 +191,6 @@ class LEDDevice:
         return self._init_status
 
     @property
-    def service(self) -> Any:
-        """Direct LEDService access."""
-        return self._led_svc
-
-    @property
     def state(self) -> Any:
         """Current LEDState."""
         return self._led_svc.state if self._led_svc else None
@@ -358,12 +353,6 @@ class LEDDevice:
         return {"success": True, "message": f"LEDs {'on' if on else 'off'}"}
 
     @_forward_to_proxy
-    def off(self) -> dict:
-        self._led_svc.toggle_global(False)
-        self._led_send_and_save()
-        return {"success": True, "message": "LEDs turned off"}
-
-    @_forward_to_proxy
     def set_sensor_source(self, source: str) -> dict:
         source = source.lower()
         if source not in ('cpu', 'gpu'):
@@ -427,10 +416,6 @@ class LEDDevice:
 
     def set_zone_sync_zone(self, zone: int, selected: bool) -> dict:
         self._led_svc.set_zone_sync_zone(zone, selected)
-        return {"success": True}
-
-    def set_zone_sync_interval(self, seconds: int) -> dict:
-        self._led_svc.set_zone_sync_interval(seconds)
         return {"success": True}
 
     def set_selected_zone(self, zone: int) -> dict:
