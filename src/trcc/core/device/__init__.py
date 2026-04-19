@@ -10,9 +10,10 @@ should import the concrete class directly.
 """
 from __future__ import annotations
 
+from ._logging import tagged_logger
 from .lcd import LCDDevice
 from .led import LEDDevice
 
 Device = LCDDevice | LEDDevice
 
-__all__ = ['Device', 'LCDDevice', 'LEDDevice']
+__all__ = ['Device', 'LCDDevice', 'LEDDevice', 'tagged_logger']

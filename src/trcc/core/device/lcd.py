@@ -16,6 +16,7 @@ from typing import Any
 from ..models import DEFAULT_BRIGHTNESS_LEVEL, ThemeInfo, ThemeType
 from ..orientation import Orientation
 from ..paths import masks_dir_name, resolve_theme_dir, theme_dir_name, web_dir_name
+from ._logging import tagged_logger
 
 log = logging.getLogger(__name__)
 
@@ -205,21 +206,12 @@ class LCDDevice:
         pid = int(dev.pid) if isinstance(dev.pid, int) else 0
         label = (f'lcd:{dev.device_index} [{vid:04X}:{pid:04X} '
                  f'FBL={dev.fbl_code} PM={dev.pm_byte} SUB={dev.sub_byte}]')
-        self.log = self._make_tagged_logger(__name__, label)
+        self.log = tagged_logger(__name__, label)
         if self._display_svc:
-            self._display_svc.log = self._make_tagged_logger(
-                'trcc.services.display', label)
+            self._display_svc.log = tagged_logger('trcc.services.display', label)
             if self._display_svc.overlay:
-                self._display_svc.overlay.log = self._make_tagged_logger(
+                self._display_svc.overlay.log = tagged_logger(
                     'trcc.services.overlay', label)
-
-    @staticmethod
-    def _make_tagged_logger(namespace: str, label: str) -> logging.Logger:
-        """Get a child logger and stamp the device label on its `.dev` attr."""
-        log_obj = logging.getLogger(f'{namespace}.{label}')
-        if hasattr(log_obj, 'dev'):
-            setattr(log_obj, 'dev', label)
-        return log_obj
 
     def _build_services(self, device_svc: Any) -> None:
         """Wire up all services from a DeviceService via injected factory."""

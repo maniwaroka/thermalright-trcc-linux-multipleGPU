@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 from ..models import LEDMode
+from ._logging import tagged_logger
 
 log = logging.getLogger(__name__)
 
@@ -159,9 +160,7 @@ class LEDDevice:
         vid = int(self._info.vid) if isinstance(self._info.vid, int) else 0
         pid = int(self._info.pid) if isinstance(self._info.pid, int) else 0
         label = f'led:{getattr(self._info, "device_index", 0)} [{vid:04X}:{pid:04X} PM={pm} SUB={sub}]'
-        self.log = logging.getLogger(f'{__name__}.{label}')
-        if hasattr(self.log, 'dev'):
-            setattr(self.log, 'dev', label)
+        self.log = tagged_logger(__name__, label)
         self.log.info("LED connected: %s style=%s", self._info.path, self._init_status)
         return {"success": True, "status": self._init_status or ""}
 
