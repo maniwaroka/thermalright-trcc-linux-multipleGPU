@@ -29,7 +29,7 @@ def bare_trcc_app(qapp):
 
     Resets the singleton before and after — safe for parallel test workers.
     """
-    from trcc.gui.trcc_app import TRCCApp
+    from trcc.ui.gui.trcc_app import TRCCApp
 
     TRCCApp._instance = None
     with patch.object(TRCCApp, '__init__', lambda self, *a, **kw: None):
@@ -146,7 +146,7 @@ def mock_lcd_device():
 @pytest.fixture
 def lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path):
     """Default LCDHandler with all dependencies wired from fixtures."""
-    from trcc.gui.lcd_handler import LCDHandler
+    from trcc.ui.gui.lcd_handler import LCDHandler
     return LCDHandler(
         lcd=mock_lcd_device,
         widgets=mock_lcd_widgets,
@@ -163,7 +163,7 @@ def make_lcd_handler(mock_lcd_device, mock_lcd_widgets, make_timer_fn, tmp_path)
         h = make_lcd_handler(lcd=custom_lcd)
         h = make_lcd_handler(make_timer=tracking_timer)
     """
-    from trcc.gui.lcd_handler import LCDHandler
+    from trcc.ui.gui.lcd_handler import LCDHandler
 
     def _factory(**overrides) -> LCDHandler:
         lcd = overrides.pop('lcd', mock_lcd_device)

@@ -207,9 +207,8 @@ def main():
     app._list_available_fn = dl_list
 
     # ── Qt bootstrap ─────────────────────────────────────────────────────
-    from trcc.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
-    setup = platform.create_setup()
-    set_assets_dir(setup.resolve_assets_dir(_PKG_ASSETS_DIR))
+    from trcc.ui.gui.assets import _PKG_ASSETS_DIR, set_assets_dir
+    set_assets_dir(platform.resolve_assets_dir(_PKG_ASSETS_DIR))
 
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
@@ -225,10 +224,6 @@ def main():
         font = QFont("Sans Serif", 10)
     qapp.setFont(font)
 
-    # ── Register noop protocols BEFORE scan ─────────────────────────────
-    from trcc.adapters.device.factory import DeviceProtocolFactory
-    platform.configure_scsi_protocol(DeviceProtocolFactory)
-
     # ── Bootstrap — THE REAL FLOW ────────────────────────────────────────
     from trcc.adapters.render.qt import QtRenderer
     app.init_platform(verbosity=verbosity, renderer_factory=lambda: QtRenderer())
@@ -243,15 +238,10 @@ def main():
     set_instance(system_svc)
 
     # ── GUI — production TRCCApp, injected deps ──────────────────────────
-    mem_fn, disk_fn = builder.build_hardware_fns()
-
-    from trcc.gui.trcc_app import TRCCApp as _TRCCApp
+    from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
     window = _TRCCApp(
         system_svc=system_svc,
-        setup=cast(Any, setup),
-        autostart=platform.create_autostart_manager(),
-        mem_fn=mem_fn,
-        disk_fn=disk_fn,
+        platform=platform,
         decorated=decorated,
     )
 

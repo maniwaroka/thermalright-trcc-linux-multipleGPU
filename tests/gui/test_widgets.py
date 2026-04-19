@@ -32,7 +32,7 @@ from tests.conftest import make_test_surface  # noqa: E402
 # ============================================================================
 # Assets
 # ============================================================================
-from trcc.gui.assets import _ASSETS_DIR, Assets  # noqa: E402
+from trcc.ui.gui.assets import _ASSETS_DIR, Assets  # noqa: E402
 
 
 class TestAssets(unittest.TestCase):
@@ -100,14 +100,14 @@ class TestResolveAssetsDir(unittest.TestCase):
     def test_linux_uses_package_dir(self):
         """LinuxSetup returns package dir directly."""
         from trcc.adapters.system.linux_platform import LinuxPlatform
-        from trcc.gui.assets import _PKG_ASSETS_DIR
+        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
         result = LinuxPlatform().resolve_assets_dir(_PKG_ASSETS_DIR)
         self.assertEqual(result, _PKG_ASSETS_DIR)
 
     def test_windows_copies_to_user_dir(self):
         """WindowsSetup copies assets to ~/.trcc/assets/gui/."""
         from trcc.adapters.system.windows_platform import WindowsPlatform
-        from trcc.gui.assets import _PKG_ASSETS_DIR
+        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
             with patch('trcc.adapters.system.windows_platform.Path.home',
                        return_value=Path(tmpdir)):
@@ -120,7 +120,7 @@ class TestResolveAssetsDir(unittest.TestCase):
     def test_macos_copies_to_user_dir(self):
         """MacOSSetup copies assets to ~/.trcc/assets/gui/."""
         from trcc.adapters.system.macos_platform import MacOSPlatform
-        from trcc.gui.assets import _PKG_ASSETS_DIR
+        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
             with patch('trcc.adapters.system.macos_platform.Path.home',
                        return_value=Path(tmpdir)):
@@ -132,7 +132,7 @@ class TestResolveAssetsDir(unittest.TestCase):
     def test_bsd_copies_to_user_dir(self):
         """BSDSetup copies assets to ~/.trcc/assets/gui/."""
         from trcc.adapters.system.bsd_platform import BSDPlatform
-        from trcc.gui.assets import _PKG_ASSETS_DIR
+        from trcc.ui.gui.assets import _PKG_ASSETS_DIR
         with TemporaryDirectory() as tmpdir:
             with patch('trcc.adapters.system.bsd_platform.Path.home',
                        return_value=Path(tmpdir)):
@@ -143,8 +143,8 @@ class TestResolveAssetsDir(unittest.TestCase):
 
     def test_set_assets_dir(self):
         """set_assets_dir updates the module-level _ASSETS_DIR."""
-        from trcc.gui import assets as assets_mod
-        from trcc.gui.assets import set_assets_dir
+        from trcc.ui.gui import assets as assets_mod
+        from trcc.ui.gui.assets import set_assets_dir
         original = assets_mod._ASSETS_DIR
         try:
             test_path = Path('/tmp/test_assets')
@@ -158,7 +158,7 @@ class TestResolveAssetsDir(unittest.TestCase):
 # UCPreview
 # ============================================================================
 
-from trcc.gui.uc_preview import UCPreview  # noqa: E402
+from trcc.ui.gui.uc_preview import UCPreview  # noqa: E402
 
 
 class TestUCPreview(unittest.TestCase):
@@ -223,7 +223,7 @@ class TestUCPreview(unittest.TestCase):
 # UCDevice
 # ============================================================================
 
-from trcc.gui.uc_device import (  # noqa: E402
+from trcc.ui.gui.uc_device import (  # noqa: E402
     DEVICE_IMAGE_MAP,
     UCDevice,
     _get_device_images,
@@ -299,7 +299,7 @@ class TestUCDevice(unittest.TestCase):
 # UCThemeLocal
 # ============================================================================
 
-from trcc.gui.uc_theme_local import UCThemeLocal  # noqa: E402
+from trcc.ui.gui.uc_theme_local import UCThemeLocal  # noqa: E402
 
 
 class TestUCThemeLocal(unittest.TestCase):
@@ -375,7 +375,7 @@ from trcc.adapters.system.linux_platform import (  # noqa: E402
     LinuxAutostartManager,
     LinuxPlatform,
 )
-from trcc.gui.uc_about import ensure_autostart  # noqa: E402
+from trcc.ui.gui.uc_about import ensure_autostart  # noqa: E402
 
 _AUTOSTART_MOD = 'trcc.adapters.system.linux_platform'
 

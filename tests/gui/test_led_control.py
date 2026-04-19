@@ -15,8 +15,8 @@ import pytest
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QPixmap
 
-from trcc.gui.uc_color_wheel import UCColorWheel
-from trcc.gui.uc_led_control import (
+from trcc.ui.gui.uc_color_wheel import UCColorWheel
+from trcc.ui.gui.uc_led_control import (
     BRIGHT_W,
     BRIGHT_X,
     MODE_H,
@@ -28,7 +28,7 @@ from trcc.gui.uc_led_control import (
     UCInfoImage,
     UCLedControl,
 )
-from trcc.gui.uc_screen_led import (
+from trcc.ui.gui.uc_screen_led import (
     _DECO,
     _POS_1,
     _POS_2,

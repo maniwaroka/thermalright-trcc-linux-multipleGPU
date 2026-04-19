@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from trcc.cli._theme import (
+from trcc.ui.cli._theme import (
     export_theme,
     import_theme,
     list_backgrounds,

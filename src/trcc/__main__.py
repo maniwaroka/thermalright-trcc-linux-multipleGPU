@@ -44,10 +44,10 @@ if sys.platform == 'win32':
 try:
     # Auto-launch GUI when invoked as trcc-gui.exe (windowed PyInstaller build)
     if os.path.basename(sys.executable).lower().startswith('trcc-gui'):
-        from trcc.cli import gui
+        from trcc.ui.cli import gui
         sys.exit(gui() or 0)
     else:
-        from trcc.cli import main
+        from trcc.ui.cli import main
         sys.exit(main())
 except Exception:
     log.critical("Fatal startup error", exc_info=True)

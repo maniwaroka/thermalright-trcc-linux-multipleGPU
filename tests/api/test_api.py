@@ -13,11 +13,11 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 
-import trcc.api as api_module
-from trcc.api import _device_svc, app, configure_auth
-from trcc.api.models import dispatch_result, parse_hex_or_400
+import trcc.ui.api as api_module
 from trcc.core.models import FBL_PROFILES, SCSI_DEVICES, DeviceInfo
 from trcc.ipc import DisplayProxy, IPCTransport, LEDProxy
+from trcc.ui.api import _device_svc, app, configure_auth
+from trcc.ui.api.models import dispatch_result, parse_hex_or_400
 
 
 class TestHealthEndpoint(unittest.TestCase):
@@ -800,7 +800,7 @@ class TestWebThemeEndpoints(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         # Video playback should have been started with the downloaded file
-        from trcc.api import start_video_playback
+        from trcc.ui.api import start_video_playback
         start_video_playback.assert_called_once()  # type: ignore[union-attr]
         api_module._device_dispatcher = None
 
@@ -1340,7 +1340,7 @@ class TestPersistentToken:
 
     def test_serve_uses_persistent_token(self):
         """trcc serve with no --token uses persistent config token."""
-        from trcc.cli import _cmd_serve
+        from trcc.ui.cli import _cmd_serve
 
         captured_token = None
 
@@ -1359,8 +1359,8 @@ class TestPersistentToken:
 
     def test_serve_explicit_token_saves_to_config(self):
         """trcc serve --token saves the explicit token to config."""
-        from trcc.cli import _cmd_serve
         from trcc.conf import Settings
+        from trcc.ui.cli import _cmd_serve
 
         with patch('trcc.api.configure_auth'):
             with patch('trcc.api.set_pairing_code'):
@@ -1372,7 +1372,7 @@ class TestPersistentToken:
 
     def test_serve_generates_pairing_code_when_no_explicit_token(self):
         """trcc serve without --token generates a 6-char pairing code."""
-        from trcc.cli import _cmd_serve
+        from trcc.ui.cli import _cmd_serve
 
         captured_code = None
 
@@ -1391,7 +1391,7 @@ class TestPersistentToken:
 
     def test_serve_no_pairing_code_with_explicit_token(self):
         """trcc serve --token skips pairing code generation."""
-        from trcc.cli import _cmd_serve
+        from trcc.ui.cli import _cmd_serve
 
         with patch('trcc.api.configure_auth'):
             with patch('trcc.api.set_pairing_code') as mock_code:
@@ -2167,7 +2167,7 @@ class TestStaticMountEdgeCases(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_mount_static_dirs_nonexistent_web_dir_skipped(self) -> None:
-        from trcc.api import _mounted_routes, mount_static_dirs
+        from trcc.ui.api import _mounted_routes, mount_static_dirs
 
         with patch("trcc.core.paths.resolve_theme_dir") as mock_td, \
              patch("trcc.adapters.infra.data_repository.DataManager.get_web_dir",
@@ -2183,7 +2183,7 @@ class TestStaticMountEdgeCases(unittest.TestCase):
         self.assertNotIn("/static/masks", _mounted_routes)
 
     def test_mount_static_dirs_clears_old_routes(self) -> None:
-        from trcc.api import _mounted_routes, mount_static_dirs
+        from trcc.ui.api import _mounted_routes, mount_static_dirs
 
         with patch("trcc.core.paths.resolve_theme_dir") as mock_td, \
              patch("trcc.adapters.infra.data_repository.DataManager.get_web_dir",
@@ -3062,9 +3062,9 @@ def test_select_device_calls_discover_resolution(no_device_app):
     """
     from starlette.testclient import TestClient as SyncClient
 
-    from trcc.api import _device_svc
-    from trcc.api import app as fastapi_app
     from trcc.core.models import SCSI_DEVICES
+    from trcc.ui.api import _device_svc
+    from trcc.ui.api import app as fastapi_app
 
     _app, _mock_lcd = no_device_app
     vid_pid = next(iter(SCSI_DEVICES))
@@ -3095,9 +3095,9 @@ def test_select_device_standalone_calls_ensure_all(lcd_only_app):
     """
     from starlette.testclient import TestClient as SyncClient
 
-    from trcc.api import _device_svc
-    from trcc.api import app as fastapi_app
     from trcc.core.models import FBL_PROFILES, SCSI_DEVICES
+    from trcc.ui.api import _device_svc
+    from trcc.ui.api import app as fastapi_app
 
     app, mock_lcd = lcd_only_app
     vid_pid = next(iter(SCSI_DEVICES))
@@ -3128,10 +3128,10 @@ def test_select_led_device_failed_connect_clears_dispatcher(no_device_app):
     """
     from starlette.testclient import TestClient as SyncClient
 
-    import trcc.api as api_module
-    from trcc.api import _device_svc
-    from trcc.api import app as fastapi_app
+    import trcc.ui.api as api_module
     from trcc.core.models import LED_DEVICES
+    from trcc.ui.api import _device_svc
+    from trcc.ui.api import app as fastapi_app
 
     _app, _mock_lcd = no_device_app
     vid_pid = next(iter(LED_DEVICES))

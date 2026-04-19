@@ -58,9 +58,9 @@ class TestCLISendPipeline(unittest.TestCase):
     @patch("trcc.core.builder.ControllerBuilder.build_detect_fn")
     def test_cli_send_image(self, mock_build_detect_fn, mock_get_protocol):
         """trcc send image.png end-to-end via DeviceService."""
-        from trcc.cli import send_image
         from trcc.core.app import TrccApp
         from trcc.core.models import HandshakeResult
+        from trcc.ui.cli import send_image
 
         mock_build_detect_fn.return_value = lambda: [_make_device()]
         mock_protocol = MagicMock()
@@ -88,7 +88,7 @@ class TestCLISendPipeline(unittest.TestCase):
 
     def test_cli_send_missing_file(self):
         """send_image with nonexistent file returns 1."""
-        from trcc.cli import send_image
+        from trcc.ui.cli import send_image
         result = send_image("/nonexistent/image.png")
         self.assertEqual(result, 1)
 
@@ -96,9 +96,9 @@ class TestCLISendPipeline(unittest.TestCase):
     @patch("trcc.core.builder.ControllerBuilder.build_detect_fn")
     def test_cli_send_color(self, mock_build_detect_fn, mock_get_protocol):
         """trcc color ff0000 end-to-end via DeviceService."""
-        from trcc.cli import send_color
         from trcc.core.app import TrccApp
         from trcc.core.models import HandshakeResult
+        from trcc.ui.cli import send_color
 
         mock_build_detect_fn.return_value = lambda: [_make_device()]
         mock_protocol = MagicMock()
@@ -119,7 +119,7 @@ class TestCLISendPipeline(unittest.TestCase):
 
     def test_cli_send_color_invalid_hex(self):
         """send_color with invalid hex returns 1."""
-        from trcc.cli import send_color
+        from trcc.ui.cli import send_color
         result = send_color("xyz")
         self.assertEqual(result, 1)
 
@@ -131,8 +131,8 @@ class TestCLIResumePipeline(unittest.TestCase):
 
     def test_resume_with_saved_theme(self):
         """resume() calls lcd.restore_last_theme when device is available."""
-        from trcc.cli import resume
         from trcc.core.app import TrccApp
+        from trcc.ui.cli import resume
 
         mock_app = TrccApp._instance
         mock_app.has_lcd = True
@@ -146,7 +146,7 @@ class TestCLIResumePipeline(unittest.TestCase):
     @patch("trcc.core.builder.ControllerBuilder.build_detect_fn")
     def test_resume_no_devices(self, mock_build_detect_fn):
         """resume() with no devices returns 1."""
-        from trcc.cli import resume
+        from trcc.ui.cli import resume
         mock_build_detect_fn.return_value = lambda: []
         result = resume()
         self.assertEqual(result, 1)
@@ -156,7 +156,7 @@ class TestCLIResumePipeline(unittest.TestCase):
     @patch("trcc.conf.Settings.device_config_key")
     def test_resume_no_saved_theme(self, mock_key, mock_cfg, mock_build_detect_fn):
         """resume() with no saved theme returns 1."""
-        from trcc.cli import resume
+        from trcc.ui.cli import resume
 
         mock_build_detect_fn.return_value = lambda: [_make_device()]
         mock_key.return_value = "0"
@@ -179,7 +179,7 @@ class TestCLIDetectPipeline(unittest.TestCase):
 
     def test_detect_shows_device(self):
         """detect() with a device returns 0 and formats output."""
-        from trcc.cli import detect
+        from trcc.ui.cli import detect
 
         dev = _make_device()
         with patch("trcc.conf.Settings.get_selected_device", return_value="/dev/sg0"):
@@ -189,13 +189,13 @@ class TestCLIDetectPipeline(unittest.TestCase):
 
     def test_detect_no_devices(self):
         """detect() with no devices returns 1."""
-        from trcc.cli import detect
+        from trcc.ui.cli import detect
         result = detect(detect_fn=lambda: [], platform_setup=self._mock_setup())
         self.assertEqual(result, 1)
 
     def test_detect_multiple_devices(self):
         """detect --all with multiple devices lists all."""
-        from trcc.cli import detect
+        from trcc.ui.cli import detect
 
         devs = [
             _make_device(scsi="/dev/sg0"),

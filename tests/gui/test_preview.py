@@ -22,12 +22,12 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtGui import QPixmap
 
-from trcc.gui.uc_device import (
+from trcc.ui.gui.uc_device import (
     DEVICE_IMAGE_MAP,
     UCDevice,
     _get_device_images,
 )
-from trcc.gui.uc_preview import UCPreview
+from trcc.ui.gui.uc_preview import UCPreview
 
 # ============================================================================
 # Helpers

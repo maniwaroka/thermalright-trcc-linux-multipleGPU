@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from trcc.cli._device import (
+from trcc.ui.cli._device import (
     _format,
     _probe,
     detect,

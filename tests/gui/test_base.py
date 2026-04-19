@@ -28,7 +28,7 @@ _app = QApplication.instance() or QApplication(sys.argv)
 from PySide6.QtGui import QImage, QPixmap  # noqa: E402
 
 from trcc.core.models import ThemeItem  # noqa: E402
-from trcc.gui.base import (  # noqa: E402
+from trcc.ui.gui.base import (  # noqa: E402
     BasePanel,
     BaseThumbnail,
     ClickableFrame,
@@ -36,7 +36,7 @@ from trcc.gui.base import (  # noqa: E402
     create_image_button,
     set_background_pixmap,
 )
-from trcc.gui.constants import Sizes  # noqa: E402
+from trcc.ui.gui.constants import Sizes  # noqa: E402
 
 
 class TestBasePanel(unittest.TestCase):

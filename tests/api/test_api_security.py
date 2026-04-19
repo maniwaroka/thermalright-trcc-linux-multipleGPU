@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-import trcc.api as api_module
 import trcc.conf as _conf
-from trcc.api import app, configure_auth
+import trcc.ui.api as api_module
+from trcc.ui.api import app, configure_auth
 
 
 class _ApiSecurityBase(unittest.TestCase):

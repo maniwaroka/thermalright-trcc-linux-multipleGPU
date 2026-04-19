@@ -80,13 +80,13 @@ Repository = "https://github.com/Lexonight1/thermalright-trcc-linux"
 Issues = "https://github.com/Lexonight1/thermalright-trcc-linux/issues"
 
 [project.scripts]
-trcc = "trcc.cli:main"
-trcc-gui = "trcc.cli:gui"
-trcc-detect = "trcc.cli:detect"
-trcc-test = "trcc.cli:test_display"
+trcc = "trcc.ui.cli:main"
+trcc-gui = "trcc.ui.cli:gui"
+trcc-detect = "trcc.ui.cli:detect"
+trcc-test = "trcc.ui.cli:test_display"
 
 [project.gui-scripts]
-trcc-lcd = "trcc.cli:gui"
+trcc-lcd = "trcc.ui.cli:gui"
 
 [tool.hatch.build.targets.sdist]
 include = [

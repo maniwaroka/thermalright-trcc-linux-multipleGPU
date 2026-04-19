@@ -23,7 +23,7 @@ from trcc.adapters.system.linux_platform import (
 from trcc.adapters.system.linux_platform import (
     sudo_reexec as _sudo_reexec,
 )
-from trcc.cli._system import (
+from trcc.ui.cli._system import (
     _confirm,
     _sudo_run,
     download_themes,
@@ -1482,7 +1482,7 @@ class TestIsExternallyManaged:
         """Returns True when EXTERNALLY-MANAGED exists in stdlib dir."""
         import os as real_os
 
-        from trcc.cli._system import _is_externally_managed
+        from trcc.ui.cli._system import _is_externally_managed
         fake_stdlib = tmp_path / "lib" / "python3.14"
         fake_stdlib.mkdir(parents=True)
         (fake_stdlib / "EXTERNALLY-MANAGED").write_text(
@@ -1499,7 +1499,7 @@ class TestIsExternallyManaged:
         """Returns False when no EXTERNALLY-MANAGED in stdlib dir."""
         import os as real_os
 
-        from trcc.cli._system import _is_externally_managed
+        from trcc.ui.cli._system import _is_externally_managed
         fake_stdlib = tmp_path / "lib" / "python3.14"
         fake_stdlib.mkdir(parents=True)
         original = real_os.__file__
@@ -2301,7 +2301,7 @@ class TestPerfCommand:
         mock_report.record_cpu("test_bench", 0.001, 0.01)
 
         with patch("trcc.services.perf.run_benchmarks", return_value=mock_report):
-            from trcc.cli import _cmd_perf
+            from trcc.ui.cli import _cmd_perf
             rc = _cmd_perf(device=False)
 
         assert rc == 0
@@ -2314,7 +2314,7 @@ class TestPerfCommand:
 
         with patch("trcc.services.perf.run_device_benchmarks",
                     return_value=PerfReport()):
-            from trcc.cli import _cmd_perf
+            from trcc.ui.cli import _cmd_perf
             rc = _cmd_perf(device=True)
 
         assert rc == 1
@@ -2331,7 +2331,7 @@ class TestPerfCommand:
 
         with patch("trcc.services.perf.run_device_benchmarks",
                     return_value=report):
-            from trcc.cli import _cmd_perf
+            from trcc.ui.cli import _cmd_perf
             rc = _cmd_perf(device=True)
 
         assert rc == 0
@@ -2348,7 +2348,7 @@ class TestPerfCommand:
 
         with patch("trcc.services.perf.run_device_benchmarks",
                     return_value=report):
-            from trcc.cli import _cmd_perf
+            from trcc.ui.cli import _cmd_perf
             rc = _cmd_perf(device=True)
 
         assert rc == 1

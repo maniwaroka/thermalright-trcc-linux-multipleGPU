@@ -31,7 +31,7 @@ from trcc.adapters.system.config import (
     SysInfoConfig,
 )
 from trcc.core.models import LEDMode, LEDZoneState
-from trcc.gui.uc_system_info import (
+from trcc.ui.gui.uc_system_info import (
     COLUMNS,
     PAGE_NEXT_POS,
     PAGE_PREV_POS,
@@ -642,7 +642,7 @@ class TestLEDHandler:
     @pytest.fixture
     def handler(self, qapp, mock_panel, make_led_state):
         """Create a LEDHandler with a real QWidget for QTimer parent."""
-        from trcc.gui.led_handler import LEDHandler
+        from trcc.ui.gui.led_handler import LEDHandler
 
         # QTimer needs a real QObject parent, so pass QWidget as panel.
         # led=None keeps _connect_signals() a no-op; swap _panel after.
@@ -1194,7 +1194,7 @@ class TestScreencastHandler:
 
     @pytest.fixture
     def handler(self, qapp):
-        from trcc.gui.trcc_app import ScreencastHandler
+        from trcc.ui.gui.trcc_app import ScreencastHandler
 
         parent = QWidget()
         on_frame = MagicMock()
@@ -1326,7 +1326,7 @@ class TestDevicePollLEDAutoSelect:
     def test_auto_select_led_calls_show(self, mock_settings, bare_trcc_app):
         """When _activate_device selects an LED path, handler.show() is called
         if the handler is not yet active."""
-        from trcc.gui.led_handler import LEDHandler
+        from trcc.ui.gui.led_handler import LEDHandler
 
         mock_info = MagicMock()
         mock_info.path = 'led_path'
@@ -1359,7 +1359,7 @@ class TestActivateDeviceLCDGuard:
     """
 
     def _make_lcd_handler(self, device_key: str = ''):
-        from trcc.gui.lcd_handler import LCDHandler
+        from trcc.ui.gui.lcd_handler import LCDHandler
 
         info = MagicMock()
         info.resolution = (320, 320)
@@ -1440,7 +1440,7 @@ class TestRebuildAllHandlersRestore:
     """_rebuild_all_handlers restores last active device from config."""
 
     def _make_lcd_handler(self, device_index: int, device_key: str = ''):
-        from trcc.gui.lcd_handler import LCDHandler
+        from trcc.ui.gui.lcd_handler import LCDHandler
 
         info = MagicMock()
         info.resolution = (320, 320)
@@ -1540,7 +1540,7 @@ class TestHandshakeDoneGuard:
     """
 
     def _make_handler(self, device_key: str):
-        from trcc.gui.lcd_handler import LCDHandler
+        from trcc.ui.gui.lcd_handler import LCDHandler
 
         device = MagicMock()
         device.path = 'lcd_path'

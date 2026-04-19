@@ -60,7 +60,7 @@ jobs:
             --windowed \
             --icon src/trcc/assets/icons/app.icns \
             --add-data "src/trcc/assets:trcc/assets" \
-            --add-data "src/trcc/gui/assets:trcc/gui/assets" \
+            --add-data "src/trcc/ui/gui/assets:trcc/ui/gui/assets" \
             --hidden-import PySide6.QtSvg \
             --hidden-import pynvml \
             --collect-submodules trcc \

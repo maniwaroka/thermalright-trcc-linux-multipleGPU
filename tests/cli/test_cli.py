@@ -24,13 +24,13 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
-from trcc.cli import (
+from trcc.ui.cli import (
     _display,
     gui,
     main,
 )
-from trcc.cli import test_display as cli_test_display
-from trcc.cli._diag import device_debug, led_debug_interactive
+from trcc.ui.cli import test_display as cli_test_display
+from trcc.ui.cli._diag import device_debug, led_debug_interactive
 
 # =========================================================================
 # main() dispatch — verifies argument parsing routes to correct functions
@@ -121,7 +121,7 @@ class TestMainEntryPoint(unittest.TestCase):
 
     def test_non_gui_command_gets_cli_renderer(self):
         """Non-gui subcommands must receive _make_cli_renderer as renderer_factory."""
-        from trcc.cli import _make_cli_renderer
+        from trcc.ui.cli import _make_cli_renderer
         init_calls = []
 
         with patch('sys.argv', ['trcc', 'detect']), \
@@ -733,7 +733,7 @@ class TestI18nCommands(unittest.TestCase):
     def test_get_languages_lists_all(self):
         buf = io.StringIO()
         with redirect_stdout(buf):
-            from trcc.cli._i18n import get_languages
+            from trcc.ui.cli._i18n import get_languages
             result = get_languages()
         self.assertEqual(result, 0)
         output = buf.getvalue()
@@ -747,7 +747,7 @@ class TestI18nCommands(unittest.TestCase):
         mock_settings.lang = 'ja'
         buf = io.StringIO()
         with redirect_stdout(buf):
-            from trcc.cli._i18n import get_language
+            from trcc.ui.cli._i18n import get_language
             result = get_language()
         self.assertEqual(result, 0)
         output = buf.getvalue()
@@ -760,7 +760,7 @@ class TestI18nCommands(unittest.TestCase):
         mock_app.set_language.return_value = {"success": True, "message": "Language set to de"}
         buf = io.StringIO()
         with patch.object(TrccApp, 'get', return_value=mock_app), redirect_stdout(buf):
-            from trcc.cli._i18n import set_language
+            from trcc.ui.cli._i18n import set_language
             result = set_language('de')
         self.assertEqual(result, 0)
         self.assertIn("Deutsch", buf.getvalue())
@@ -773,7 +773,7 @@ class TestI18nCommands(unittest.TestCase):
         mock_app.set_language.return_value = {"success": False, "error": "Unknown language code: zzz"}
         buf = io.StringIO()
         with patch.object(TrccApp, 'get', return_value=mock_app), redirect_stdout(buf):
-            from trcc.cli._i18n import set_language
+            from trcc.ui.cli._i18n import set_language
             result = set_language('zzz')
         self.assertEqual(result, 1)
         self.assertIn("Unknown", buf.getvalue())
@@ -784,7 +784,7 @@ class TestMakeCliRenderer(unittest.TestCase):
 
     def test_qt_app_stored_when_created(self):
         """QApplication created by _make_cli_renderer must be held in _qt_app."""
-        import trcc.cli as cli_mod
+        import trcc.ui.cli as cli_mod
 
         original_qt_app = cli_mod._qt_app
         try:
@@ -797,7 +797,7 @@ class TestMakeCliRenderer(unittest.TestCase):
 
             with patch('trcc.adapters.render.qt.QtRenderer'), \
                  patch('PySide6.QtWidgets.QApplication', mock_qapp_cls):
-                from trcc.cli import _make_cli_renderer
+                from trcc.ui.cli import _make_cli_renderer
                 _make_cli_renderer()
 
             self.assertIsNotNone(
@@ -809,7 +809,7 @@ class TestMakeCliRenderer(unittest.TestCase):
 
     def test_no_new_app_when_instance_exists(self):
         """If a QApplication already exists, _qt_app is not overwritten."""
-        import trcc.cli as cli_mod
+        import trcc.ui.cli as cli_mod
 
         original_qt_app = cli_mod._qt_app
         try:
@@ -819,7 +819,7 @@ class TestMakeCliRenderer(unittest.TestCase):
             with patch('trcc.adapters.render.qt.QtRenderer'), \
                  patch('PySide6.QtWidgets.QApplication.instance',
                        return_value=MagicMock()):
-                from trcc.cli import _make_cli_renderer
+                from trcc.ui.cli import _make_cli_renderer
                 _make_cli_renderer()
 
             self.assertIs(cli_mod._qt_app, sentinel,

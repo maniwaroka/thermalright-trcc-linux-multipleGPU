@@ -676,7 +676,7 @@ class TestQtWidgetMemory:
         """BasePanel subclass create/delete has no uncollectable cycles."""
         from PySide6.QtWidgets import QLabel
 
-        from trcc.gui.base import BasePanel
+        from trcc.ui.gui.base import BasePanel
 
         class TestPanel(BasePanel):
             def _setup_ui(self):
@@ -696,7 +696,7 @@ class TestQtWidgetMemory:
     def test_preview_widget_image_released(self, settings_with_resolution):
         """UCPreview releases its pixmap on destruction."""
         from trcc.conf import settings
-        from trcc.gui.uc_preview import UCPreview
+        from trcc.ui.gui.uc_preview import UCPreview
 
         preview = UCPreview(settings.width, settings.height)
         # Set an image
@@ -716,7 +716,7 @@ class TestQtWidgetMemory:
     def test_repeated_set_image_bounded(self, request, settings_with_resolution):
         """50 set_image() calls on UCPreview stay within memory bounds."""
         from trcc.conf import settings
-        from trcc.gui.uc_preview import UCPreview
+        from trcc.ui.gui.uc_preview import UCPreview
 
         preview = UCPreview(settings.width, settings.height)
 
