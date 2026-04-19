@@ -534,7 +534,7 @@ class LCDDevice:
             return None
 
         self.log.info("_reload_mask_for_rotation: %s → %s", old_mask_dir, new_mask_dir)
-        if self.orientation._is_rotated():
+        if self.orientation.is_rotated():
             ow, oh = svc.output_resolution
             svc.overlay.set_resolution(ow, oh)
             self.log.info("_reload_mask_for_rotation: portrait → overlay %dx%d", ow, oh)
@@ -833,7 +833,7 @@ class LCDDevice:
 
         result = self._display_svc.apply_standalone_mask(
             Path(mask_path), self._dc_config_cls,
-            is_rotated=self.orientation._is_rotated(),
+            is_rotated=self.orientation.is_rotated(),
         )
         if not result.get("success"):
             return result

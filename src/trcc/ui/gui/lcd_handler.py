@@ -620,7 +620,7 @@ class LCDHandler(BaseHandler):
         ow, oh = o.output_resolution
         self.log.info("set_rotation: orientation.rotation=%d output=%dx%d "
                  "masks_dir=%s web_dir=%s rotated=%s",
-                 o.rotation, ow, oh, o.masks_dir, o.web_dir, o._is_rotated())
+                 o.rotation, ow, oh, o.masks_dir, o.web_dir, o.is_rotated())
         # Resolution BEFORE image — ImageLabel.set_image() scales to widget dims
         self._w['preview'].set_resolution(ow, oh)
         if image:
@@ -784,7 +784,7 @@ class LCDHandler(BaseHandler):
                   "web_dir=%s masks_dir=%s rotated=%s",
                   ow, oh,
                   o.theme_dir.path if o.theme_dir else None,
-                  o.web_dir, o.masks_dir, o._is_rotated())
+                  o.web_dir, o.masks_dir, o.is_rotated())
         td = o.theme_dir
         if td and td.path.exists():
             self._w['theme_local'].set_theme_directory(td.path)

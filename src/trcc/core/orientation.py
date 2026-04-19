@@ -50,7 +50,7 @@ class Orientation:
 
     # ── Resolution helpers ─────────────────────────────────────────
 
-    def _is_rotated(self) -> bool:
+    def is_rotated(self) -> bool:
         """True when rotation is 90/270 on a non-square device."""
         w, h = self.native
         return w != h and self.rotation in (90, 270)
@@ -58,7 +58,7 @@ class Orientation:
     def _rotated_res(self) -> tuple[int, int]:
         """Resolution with w,h swapped if rotated."""
         w, h = self.native
-        return (h, w) if self._is_rotated() else (w, h)
+        return (h, w) if self.is_rotated() else (w, h)
 
     # ── Resolution properties ──────────────────────────────────────
 
@@ -70,7 +70,7 @@ class Orientation:
     @property
     def canvas_resolution(self) -> tuple[int, int]:
         """Internal rendering resolution — only swaps when portrait themes exist."""
-        if self.has_portrait_themes and self._is_rotated():
+        if self.has_portrait_themes and self.is_rotated():
             w, h = self.native
             return (h, w)
         return self.native
@@ -82,7 +82,7 @@ class Orientation:
         0 when portrait theme dirs handle orientation (content already portrait).
         Actual degrees when pixel rotation is needed.
         """
-        if self.has_portrait_themes and self._is_rotated():
+        if self.has_portrait_themes and self.is_rotated():
             return 0
         return self.rotation
 
