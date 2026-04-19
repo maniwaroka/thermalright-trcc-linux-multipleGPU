@@ -285,113 +285,23 @@ class UsbProtocol(DeviceProtocol):
 
 
 # =========================================================================
-# ScsiProtocol — SCSI command framing + transport lifecycle (merged).
-# Absorbs the former adapters/device/scsi.py::ScsiDevice class so SCSI
-# lives as one unified protocol, parallel to HID/Bulk/Ly/LED.
+# ScsiProtocol — SCSI/sg_raw implementation
 # =========================================================================
-
-import binascii  # noqa: E402
-import struct  # noqa: E402
-import time  # noqa: E402
-import zlib  # noqa: E402
-from typing import TYPE_CHECKING  # noqa: E402
-
-if TYPE_CHECKING:
-    from trcc.adapters.device.scsi import ScsiTransport
-
 
 class ScsiProtocol(DeviceProtocol):
     """LCD communication via SCSI protocol — transport-agnostic.
 
-    Takes (path, vid, pid), lazily creates transport via the
-    Platform-injected factory, then owns the full SCSI protocol:
-    handshake (poll + init), frame chunking with CRC32 headers, and
-    optional boot-animation upload.
+    Same lifecycle as UsbProtocol: takes (path, vid, pid), lazily creates
+    transport via the Platform-injected factory. ScsiDevice does the
+    handshake and frame chunking, OS-blind.
     """
 
-    # --- Protocol constants (mirrored from adapters/device/scsi.py) ---
-    _BOOT_SIGNATURE = b'\xa1\xa2\xa3\xa4'
-    _BOOT_WAIT_SECONDS = 3.0
-    _BOOT_MAX_RETRIES = 5
-    _POST_INIT_DELAY = 0.1
-    _FRAME_CMD_BASE = 0x101F5
-    _CHUNK_SIZE_LARGE = 0x10000
-    _CHUNK_SIZE_SMALL = 0xE100
-    _SMALL_DISPLAY_PIXELS = 76800
-    _ANIM_FIRST_FRAME = 0x000201F5
-    _ANIM_CAROUSEL = 0x000301F5
-    _ANIM_COMPRESS_LEVEL = 3
-    _ANIM_FIRST_DELAY_S = 0.5
-    _ANIM_FRAME_DELAY_S = 0.01
-    _ANIM_MAX_FRAMES = 249
-    _BOOT_ANIM_RESOLUTIONS = {(240, 240), (240, 320), (320, 240), (320, 320)}
-
-    def __init__(self, path: str, vid: int, pid: int,
-                 transport: 'ScsiTransport | None' = None):
+    def __init__(self, path: str, vid: int, pid: int):
         super().__init__()
         self._path = path
         self._vid = vid
         self._pid = pid
-        # `transport` may be pre-injected (tests) or left None for lazy
-        # platform-backed creation on first use.
-        self._transport = transport
-        self.width = 0
-        self.height = 0
-
-    # --- Pure helpers (no transport needed) ---
-
-    @staticmethod
-    def _get_frame_chunks(width: int, height: int) -> list:
-        pixels = width * height
-        chunk_size = (ScsiProtocol._CHUNK_SIZE_SMALL
-                      if pixels <= ScsiProtocol._SMALL_DISPLAY_PIXELS
-                      else ScsiProtocol._CHUNK_SIZE_LARGE)
-        total = pixels * 2
-        chunks = []
-        offset = 0
-        idx = 0
-        while offset < total:
-            size = min(chunk_size, total - offset)
-            cmd = ScsiProtocol._FRAME_CMD_BASE | (idx << 24)
-            chunks.append((cmd, size))
-            offset += size
-            idx += 1
-        return chunks
-
-    @staticmethod
-    def _crc32(data: bytes) -> int:
-        return binascii.crc32(data) & 0xFFFFFFFF
-
-    @staticmethod
-    def _build_header(cmd: int, size: int) -> bytes:
-        """20-byte SCSI header: cmd(4) + zeros(8) + size(4) + crc32(4)."""
-        header_16 = struct.pack('<I', cmd) + b'\x00' * 8 + struct.pack('<I', size)
-        crc = ScsiProtocol._crc32(header_16)
-        return header_16 + struct.pack('<I', crc)
-
-    @staticmethod
-    def _build_anim_header(cmd: int, word2: int, compressed_size: int) -> bytes:
-        """20-byte CDB for compressed animation commands (no CRC)."""
-        return struct.pack('<IIIII', cmd, 0, word2, compressed_size, 0)
-
-    @staticmethod
-    def send_frame_via_transport(transport, image_data: bytes,
-                                 width: int, height: int) -> bool:
-        """Send one RGB565 frame via any ScsiTransport. OS-agnostic."""
-        chunks = ScsiProtocol._get_frame_chunks(width, height)
-        total_size = sum(size for _, size in chunks)
-        if len(image_data) < total_size:
-            image_data += b'\x00' * (total_size - len(image_data))
-        offset = 0
-        for cmd, size in chunks:
-            header = ScsiProtocol._build_header(cmd, size)
-            ok = transport.send_cdb(header[:16], image_data[offset:offset + size])
-            if not ok:
-                return False
-            offset += size
-        return True
-
-    # --- Transport lifecycle ---
+        self._transport = None
 
     def _ensure_transport(self) -> None:
         """Lazily create SCSI transport on first use."""
@@ -405,146 +315,24 @@ class ScsiProtocol(DeviceProtocol):
             self._transport.open()
             self._notify_state_changed("transport_open", True)
 
-    # --- Transport-backed I/O (delegate to transport) ---
-
-    def _scsi_read(self, cdb: bytes, length: int) -> bytes:
-        assert self._transport is not None, "SCSI transport not initialized"
-        return self._transport.read_cdb(cdb, length)
-
-    def _scsi_write(self, header: bytes, data: bytes) -> bool:
-        assert self._transport is not None, "SCSI transport not initialized"
-        return self._transport.send_cdb(header[:16], data)
-
-    # --- Protocol sequences ---
-
-    def _init_device(self) -> tuple[int, bytes]:
-        """Poll + init handshake (must be called before first frame send)."""
-        poll_header = ScsiProtocol._build_header(0xF5, 0xE100)
-        response = b''
-        for attempt in range(ScsiProtocol._BOOT_MAX_RETRIES):
-            response = self._scsi_read(poll_header[:16], 0xE100)
-            if (len(response) >= 8
-                    and response[4:8] == ScsiProtocol._BOOT_SIGNATURE):
-                log.info("Device %s still booting (attempt %d/%d), waiting %.0fs...",
-                         self._path, attempt + 1,
-                         ScsiProtocol._BOOT_MAX_RETRIES,
-                         ScsiProtocol._BOOT_WAIT_SECONDS)
-                time.sleep(ScsiProtocol._BOOT_WAIT_SECONDS)
-            else:
-                break
-
-        if response:
-            fbl = response[0]
-            log.debug("SCSI poll byte[0] = %d (FBL)", fbl)
-        else:
-            fbl = self._fbl_from_registry()
-            log.warning("SCSI poll returned empty on %s — using registry FBL %d",
-                        self._path, fbl)
-
-        init_header = ScsiProtocol._build_header(0x1F5, 0xE100)
-        self._scsi_write(init_header, b'\x00' * 0xE100)
-        time.sleep(ScsiProtocol._POST_INIT_DELAY)
-        return fbl, response[:64]
-
-    def _fbl_from_registry(self) -> int:
-        from trcc.core.models import SCSI_DEVICES
-        entry = SCSI_DEVICES.get((self._vid, self._pid))
-        if entry is not None:
-            return entry.fbl
-        log.warning("Device %04X:%04X not in SCSI registry, defaulting to FBL 100",
-                    self._vid, self._pid)
-        return 100
-
-    def _send_frame_data(self, rgb565_data: bytes) -> None:
-        chunks = ScsiProtocol._get_frame_chunks(self.width, self.height)
-        total_size = sum(size for _, size in chunks)
-        if len(rgb565_data) < total_size:
-            rgb565_data += b'\x00' * (total_size - len(rgb565_data))
-        offset = 0
-        for cmd, size in chunks:
-            header = ScsiProtocol._build_header(cmd, size)
-            self._scsi_write(header, rgb565_data[offset:offset + size])
-            offset += size
-
-    def _send_boot_animation(self, frames: list[bytes],
-                             delays: list[int]) -> bool:
-        if (self.width, self.height) not in ScsiProtocol._BOOT_ANIM_RESOLUTIONS:
-            log.warning("Boot animation not supported for %dx%d",
-                        self.width, self.height)
-            return False
-        n = len(frames)
-        if n == 0 or n >= ScsiProtocol._ANIM_MAX_FRAMES:
-            log.warning("Boot animation frame count %d out of range (1-%d)",
-                        n, ScsiProtocol._ANIM_MAX_FRAMES - 1)
-            return False
-
-        compressed = zlib.compress(frames[0], ScsiProtocol._ANIM_COMPRESS_LEVEL)
-        header = ScsiProtocol._build_anim_header(
-            ScsiProtocol._ANIM_FIRST_FRAME, n, len(compressed))
-        if not self._scsi_write(header, compressed):
-            log.error("Boot animation: failed to send first frame")
-            return False
-        log.info("Boot animation: sent first frame (%d bytes compressed, %d frames total)",
-                 len(compressed), n)
-        time.sleep(ScsiProtocol._ANIM_FIRST_DELAY_S)
-
-        for i in range(n):
-            compressed = zlib.compress(frames[i], ScsiProtocol._ANIM_COMPRESS_LEVEL)
-            delay_raw = delays[i] if i < len(delays) else 10
-            delay_byte = min(delay_raw * 10, 250) & 0xFF
-            cmd = ScsiProtocol._ANIM_CAROUSEL | (delay_byte << 24)
-            header = ScsiProtocol._build_anim_header(cmd, i, len(compressed))
-            if not self._scsi_write(header, compressed):
-                log.error("Boot animation: failed to send frame %d", i)
-                return False
-            time.sleep(ScsiProtocol._ANIM_FRAME_DELAY_S)
-
-        log.info("Boot animation: all %d frames sent successfully", n)
-        return True
-
-    # --- DeviceProtocol interface ---
-
     def _do_handshake(self) -> Optional[HandshakeResult]:
-        from trcc.core.models import fbl_to_resolution
+        from .scsi import ScsiDevice
         self._ensure_transport()
         if self._transport is None:
             return None
-        fbl, raw = self._init_device()
-        resolution = fbl_to_resolution(fbl)
-        self.width, self.height = resolution
-        log.info("SCSI handshake OK: FBL=%d, resolution=%s", fbl, resolution)
-        return HandshakeResult(
-            resolution=resolution, model_id=fbl,
-            pm_byte=fbl, sub_byte=0,
-            raw_response=raw,
-        )
+        dev = ScsiDevice(self._path, self._transport)
+        return dev.handshake()
 
     def send_data(self, image_data: bytes, width: int, height: int) -> bool:
+        from .scsi import ScsiDevice
         self._ensure_transport()
         if self._transport is None:
             return False
         return self._guarded_send(
             "SCSI",
-            lambda: ScsiProtocol.send_frame_via_transport(
+            lambda: ScsiDevice.send_frame_via_transport(
                 self._transport, image_data, width, height),
         )
-
-    def send_frame(self, rgb565_data: bytes) -> bool:
-        """Send one RGB565 frame using the handshake-stored resolution.
-
-        Called by `Device.send_frame_data` on the Trcc side; public for
-        legacy/test callers that used ScsiDevice.send_frame directly.
-        """
-        if self._handshake_result is None:
-            self.handshake()
-        self._send_frame_data(rgb565_data)
-        return True
-
-    def send_boot_animation(self, frames: list[bytes],
-                            delays: list[int]) -> bool:
-        if self._handshake_result is None:
-            self.handshake()
-        return self._send_boot_animation(frames, delays)
 
     def close(self) -> None:
         if self._transport is not None:
@@ -554,8 +342,6 @@ class ScsiProtocol(DeviceProtocol):
                 pass
             self._transport = None
             self._notify_state_changed("transport_open", False)
-        # Reset handshake so re-open re-handshakes
-        self._handshake_result = None
 
     def get_info(self) -> 'ProtocolInfo':
         backend = type(self._transport).__name__ if self._transport else "none"
