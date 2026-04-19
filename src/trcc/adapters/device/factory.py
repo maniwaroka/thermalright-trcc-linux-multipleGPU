@@ -21,7 +21,7 @@ Usage::
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Callable, ClassVar, Dict, Optional, Tuple
 
 from trcc.core.models import (
     DEVICE_TYPE_NAMES,
@@ -284,361 +284,6 @@ class UsbProtocol(DeviceProtocol):
         return backends["pyusb"] or backends["hidapi"]
 
 
-# =========================================================================
-# ScsiProtocol — SCSI/sg_raw implementation
-# =========================================================================
-
-class ScsiProtocol(DeviceProtocol):
-    """LCD communication via SCSI protocol — transport-agnostic.
-
-    Same lifecycle as UsbProtocol: takes (path, vid, pid), lazily creates
-    transport via the Platform-injected factory. ScsiDevice does the
-    handshake and frame chunking, OS-blind.
-    """
-
-    def __init__(self, path: str, vid: int, pid: int):
-        super().__init__()
-        self._path = path
-        self._vid = vid
-        self._pid = pid
-        self._transport = None
-
-    def _ensure_transport(self) -> None:
-        """Lazily create SCSI transport on first use."""
-        if self._transport is None:
-            fn = DeviceProtocolFactory._scsi_transport_fn
-            if fn is None:
-                log.error("SCSI transport factory not injected")
-                return
-            log.debug("Opening SCSI transport: %s", self._path)
-            self._transport = fn(self._path, self._vid, self._pid)
-            self._transport.open()
-            self._notify_state_changed("transport_open", True)
-
-    def _do_handshake(self) -> Optional[HandshakeResult]:
-        from .scsi import ScsiDevice
-        self._ensure_transport()
-        if self._transport is None:
-            return None
-        dev = ScsiDevice(self._path, self._transport)
-        return dev.handshake()
-
-    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
-        from .scsi import ScsiDevice
-        self._ensure_transport()
-        if self._transport is None:
-            return False
-        return self._guarded_send(
-            "SCSI",
-            lambda: ScsiDevice.send_frame_via_transport(
-                self._transport, image_data, width, height),
-        )
-
-    def close(self) -> None:
-        if self._transport is not None:
-            try:
-                self._transport.close()
-            except Exception:
-                pass
-            self._transport = None
-            self._notify_state_changed("transport_open", False)
-
-    def get_info(self) -> 'ProtocolInfo':
-        backend = type(self._transport).__name__ if self._transport else "none"
-        return ProtocolInfo(
-            protocol="scsi",
-            device_type=1,
-            protocol_display=f"SCSI ({backend})",
-            device_type_display="SCSI RGB565",
-            active_backend=backend,
-            backends={backend: True},
-        )
-
-    @property
-    def protocol_name(self) -> str:
-        return "scsi"
-
-    @property
-    def is_available(self) -> bool:
-        return self._transport is not None
-
-    def __repr__(self) -> str:
-        return f"ScsiProtocol(transport={type(self._transport).__name__})"
-
-
-# =========================================================================
-# HidProtocol — HID/USB bulk implementation
-# =========================================================================
-
-class HidProtocol(UsbProtocol):
-    """LCD communication via HID USB bulk protocol (pyusb or hidapi).
-
-    Wraps hid_device.py. Transport opens lazily on first send.
-    Prefers pyusb, falls back to hidapi.
-    """
-
-    def __init__(self, vid: int, pid: int, device_type: int):
-        super().__init__(vid, pid)
-        self._device_type = device_type
-
-    def _do_handshake(self) -> Optional[HandshakeResult]:
-        """Open HID transport and perform type-specific handshake."""
-        self._ensure_transport()
-        assert self._transport is not None
-
-        from .hid import HidDeviceType2, HidDeviceType3
-        if self._device_type == 2:
-            handler = HidDeviceType2(self._transport)
-        elif self._device_type == 3:
-            handler = HidDeviceType3(self._transport)
-        else:
-            log.warning("Unknown HID device type: %d", self._device_type)
-            return None
-
-        if (result := handler.handshake()):
-            log.info("HID handshake OK: PM=%s, FBL=%s, resolution=%s",
-                     result.mode_byte_1, result.fbl, result.resolution)
-        else:
-            log.warning("HID handshake returned None")
-        self._notify_state_changed("handshake_complete", True)
-        return result
-
-    @property
-    def _handshake_label(self) -> str:
-        return f"HID {self._vid:04X}:{self._pid:04X} type {self._device_type}"
-
-    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
-        def _do_send() -> bool:
-            from .hid import HidDeviceManager
-            self._ensure_transport()
-            assert self._transport is not None
-            return HidDeviceManager.send_data(
-                self._transport, image_data, self._device_type
-            )
-        return self._guarded_send("HID", _do_send)
-
-    def get_info(self) -> 'ProtocolInfo':
-        return self._build_usb_protocol_info(
-            "hid", self._device_type, "HID (USB bulk)",
-            DEVICE_TYPE_NAMES.get(self._device_type, f"Type {self._device_type}"),
-            self._transport is not None and getattr(self._transport, 'is_open', False),
-        )
-
-    @property
-    def protocol_name(self) -> str:
-        return "hid"
-
-    def __repr__(self) -> str:
-        return (
-            f"HidProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x}, "
-            f"type={self._device_type})"
-        )
-
-
-# =========================================================================
-# LedProtocol — HID LED RGB controller
-# =========================================================================
-
-class LedProtocol(UsbProtocol):
-    """LED device communication via HID 64-byte reports (FormLED equivalent).
-
-    Unlike HidProtocol (LCD images), LedProtocol sends LED color arrays
-    for RGB LED effects. Uses the same UsbTransport as HidProtocol.
-    """
-
-    def __init__(self, vid: int, pid: int):
-        super().__init__(vid, pid)
-        self._sender = None
-
-    def send_data(
-        self,
-        led_colors: List[Tuple[int, int, int]],
-        is_on: Optional[List[bool]] = None,
-        global_on: bool = True,
-        brightness: int = 100,
-    ) -> bool:
-        """Send LED color data to the device."""
-        def _do_send() -> bool:
-            self._ensure_transport()
-            assert self._transport is not None
-
-            if self._sender is None:
-                from .led import LedHidSender
-                self._sender = LedHidSender(self._transport)
-
-            from .led import LedPacketBuilder, remap_led_colors
-
-            hr = self._handshake_result
-            style = getattr(hr, 'style', None) if hr else None
-            style_sub = getattr(hr, 'style_sub', 0) if hr else 0
-            remapped = remap_led_colors(
-                led_colors, style.style_id, style_sub,
-            ) if style else led_colors
-
-            packet = LedPacketBuilder.build_led_packet(
-                remapped, is_on, global_on, brightness
-            )
-
-            try:
-                return self._sender.send_data(packet)
-            except Exception:
-                log.warning("LED send failed, reconnecting and retrying")
-                self.close()
-                self._handshake_result = None
-                self.handshake()
-                return self._sender.send_data(packet)
-
-        return self._guarded_send("LED", _do_send)
-
-    def _do_handshake(self) -> Optional[HandshakeResult]:
-        """LED handshake — cached after first call (firmware ignores re-handshakes)."""
-        if self._handshake_result is not None:
-            return self._handshake_result
-
-        self._ensure_transport()
-        assert self._transport is not None
-
-        if self._sender is None:
-            from .led import LedHidSender
-            self._sender = LedHidSender(self._transport)
-
-        result = self._sender.handshake()
-        self._notify_state_changed("handshake_complete", True)
-        return result
-
-    def close(self) -> None:
-        self._close_transport()
-        self._sender = None
-
-    def get_info(self) -> 'ProtocolInfo':
-        return self._build_usb_protocol_info(
-            "led", 1, "LED (HID 64-byte)", "RGB LED Controller",
-            self._transport is not None and getattr(self._transport, 'is_open', False),
-        )
-
-    @property
-    def protocol_name(self) -> str:
-        return "led"
-
-    @property
-    def is_led(self) -> bool:
-        return True
-
-    def __repr__(self) -> str:
-        return f"LedProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x})"
-
-
-# =========================================================================
-# BulkProtocol — raw USB bulk (USBLCDNew) implementation
-# =========================================================================
-
-class _BulkLikeProtocol(DeviceProtocol):
-    """Shared base for BulkProtocol + LyProtocol (identical lifecycle)."""
-
-    _label: str = ""  # "Bulk" or "LY" — set by subclass
-
-    def __init__(self, vid: int, pid: int):
-        super().__init__()
-        self._vid = vid
-        self._pid = pid
-        self._device: Optional[Any] = None
-
-    @staticmethod
-    def _make_device(vid: int, pid: int) -> Any:
-        raise NotImplementedError
-
-    def _ensure_device(self) -> None:
-        if self._device is None:
-            log.debug("%s: creating device %04X:%04X", self._label, self._vid, self._pid)
-            self._device = self._make_device(self._vid, self._pid)
-            assert self._device is not None
-            log.debug("%s: starting handshake", self._label)
-            result = self._device.handshake()
-            self._handshake_result = result
-            if result.resolution:
-                self._notify_state_changed("handshake_complete", True)
-                log.info("%s handshake OK: PM=%d, resolution=%s",
-                         self._label, result.model_id, result.resolution)
-            else:
-                log.warning("%s handshake: no resolution detected (result=%s)",
-                            self._label, result)
-
-    def _do_handshake(self) -> Optional[HandshakeResult]:
-        self._ensure_device()
-        return self._handshake_result
-
-    @property
-    def _handshake_label(self) -> str:
-        return f"{self._label} {self._vid:04X}:{self._pid:04X}"
-
-    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
-        def _do_send() -> bool:
-            self._ensure_device()
-            assert self._device is not None
-            return self._device.send_frame(image_data)
-        return self._guarded_send(self._label, _do_send)
-
-    def close(self) -> None:
-        if self._device is not None:
-            try:
-                self._device.close()
-            except Exception:
-                pass
-            self._device = None
-
-    @property
-    def is_available(self) -> bool:
-        backends = DeviceProtocolFactory._get_hid_backends()
-        return backends["pyusb"]
-
-
-class BulkProtocol(_BulkLikeProtocol):
-    """LCD via raw USB bulk (USBLCDNew, 87AD:70DB)."""
-
-    _label = "Bulk"
-
-    @staticmethod
-    def _make_device(vid: int, pid: int) -> Any:
-        from .bulk import BulkDevice
-        return BulkDevice(vid, pid)
-
-    def get_info(self) -> 'ProtocolInfo':
-        return self._build_usb_protocol_info(
-            "bulk", 4, "USB Bulk (USBLCDNew)", "Raw USB Bulk LCD",
-            self._device is not None, pyusb_only=True,
-        )
-
-    @property
-    def protocol_name(self) -> str:
-        return "bulk"
-
-    def __repr__(self) -> str:
-        return f"BulkProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x})"
-
-
-class LyProtocol(_BulkLikeProtocol):
-    """LCD via LY USB bulk (0416:5408 / 0416:5409)."""
-
-    _label = "LY"
-
-    @staticmethod
-    def _make_device(vid: int, pid: int) -> Any:
-        from .ly import LyDevice
-        return LyDevice(vid, pid)
-
-    def get_info(self) -> 'ProtocolInfo':
-        return self._build_usb_protocol_info(
-            "ly", 5, "USB Bulk LY", "USB Bulk LY LCD",
-            self._device is not None, pyusb_only=True,
-        )
-
-    @property
-    def protocol_name(self) -> str:
-        return "ly"
-
-    def __repr__(self) -> str:
-        return f"LyProtocol(vid=0x{self._vid:04x}, pid=0x{self._pid:04x})"
-
 
 # =========================================================================
 # Factory
@@ -664,14 +309,9 @@ class DeviceProtocolFactory:
     _scsi_transport_fn: ClassVar[Optional[Callable]] = None
 
     # Registry map: (protocol, implementation) → factory function.
-    _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {
-        ('scsi', ''):  lambda di: ScsiProtocol(di.path, di.vid, di.pid),
-        ('bulk', ''):  lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
-        ('ly', ''):    lambda di: LyProtocol(vid=di.vid, pid=di.pid),
-        ('led', ''):   lambda di: LedProtocol(vid=di.vid, pid=di.pid),
-        ('hid', ''):   lambda di: HidProtocol(vid=di.vid, pid=di.pid,
-                           device_type=getattr(di, 'device_type', 2)),
-    }
+    # Populated at module bottom after concrete Protocol classes import —
+    # avoids the circular (factory ⇄ protocol files) at class-body time.
+    _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {}
 
     @classmethod
     def set_scsi_transport(cls, fn: Callable) -> None:
@@ -916,3 +556,25 @@ class ProtocolInfo:
         return bool(traits.fallback_backend
                     and self.backends.get(traits.fallback_backend, False))
 
+
+
+# =========================================================================
+# Register concrete Protocol classes
+# Imports are at the bottom to avoid the circular dependency (each protocol
+# module imports DeviceProtocol/UsbProtocol/ProtocolInfo from this module).
+# =========================================================================
+
+from .bulk_protocol import BulkProtocol  # noqa: E402
+from .hid_protocol import HidProtocol  # noqa: E402
+from .led_protocol import LedProtocol  # noqa: E402
+from .ly_protocol import LyProtocol  # noqa: E402
+from .scsi_protocol import ScsiProtocol  # noqa: E402
+
+DeviceProtocolFactory._PROTOCOL_REGISTRY = {
+    ('scsi', ''):  lambda di: ScsiProtocol(di.path, di.vid, di.pid),
+    ('bulk', ''):  lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
+    ('ly', ''):    lambda di: LyProtocol(vid=di.vid, pid=di.pid),
+    ('led', ''):   lambda di: LedProtocol(vid=di.vid, pid=di.pid),
+    ('hid', ''):   lambda di: HidProtocol(vid=di.vid, pid=di.pid,
+                       device_type=getattr(di, 'device_type', 2)),
+}

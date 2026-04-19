@@ -993,8 +993,8 @@ def _debug_scsi_interactive(dev: Any) -> None:
 
 def _debug_hid_lcd_interactive(dev: Any, test_frame: bool = False) -> None:
     """Interactive HID LCD handshake diagnostic."""
-    from trcc.adapters.device.factory import HidProtocol
     from trcc.adapters.device.hid import HidHandshakeInfo, get_button_image
+    from trcc.adapters.device.hid_protocol import HidProtocol
     from trcc.core.models import FBL_TO_RESOLUTION, JPEG_MODE_FBLS, fbl_to_resolution, pm_to_fbl
 
     protocol = HidProtocol(vid=dev.vid, pid=dev.pid, device_type=dev.device_type)
@@ -1041,8 +1041,8 @@ def _debug_hid_lcd_interactive(dev: Any, test_frame: bool = False) -> None:
 
 def _debug_hid_led_interactive(dev: Any) -> None:
     """Interactive HID LED handshake diagnostic."""
-    from trcc.adapters.device.factory import LedProtocol
     from trcc.adapters.device.led import LedHandshakeInfo, PmRegistry
+    from trcc.adapters.device.led_protocol import LedProtocol
 
     protocol = LedProtocol(vid=dev.vid, pid=dev.pid)
     info = protocol.handshake()
@@ -1082,7 +1082,7 @@ def _debug_hid_led_interactive(dev: Any) -> None:
 
 def _debug_bulk_interactive(dev: Any, test_frame: bool = False) -> None:
     """Interactive Bulk protocol handshake diagnostic."""
-    from trcc.adapters.device.factory import BulkProtocol
+    from trcc.adapters.device.bulk_protocol import BulkProtocol
 
     protocol = BulkProtocol(vid=dev.vid, pid=dev.pid)
     try:
@@ -1111,7 +1111,7 @@ def _debug_bulk_interactive(dev: Any, test_frame: bool = False) -> None:
 
 def _debug_ly_interactive(dev: Any, test_frame: bool = False) -> None:
     """Interactive LY protocol handshake diagnostic."""
-    from trcc.adapters.device.factory import LyProtocol
+    from trcc.adapters.device.ly_protocol import LyProtocol
 
     protocol = LyProtocol(vid=dev.vid, pid=dev.pid)
     try:
@@ -1211,8 +1211,8 @@ def led_debug_interactive(test_colors: bool = False) -> int:
     try:
         import time
 
-        from trcc.adapters.device.factory import LedProtocol
         from trcc.adapters.device.led import LED_PID, LED_VID, LedHandshakeInfo, PmRegistry
+        from trcc.adapters.device.led_protocol import LedProtocol
 
         print("LED Device Diagnostic")
         print("=" * 50)

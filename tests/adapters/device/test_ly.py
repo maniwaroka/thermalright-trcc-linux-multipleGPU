@@ -296,7 +296,8 @@ class TestLyDeviceClose(unittest.TestCase):
 
 class TestLyProtocol(unittest.TestCase):
     def test_create_via_factory(self):
-        from trcc.adapters.device.factory import DeviceProtocolFactory, LyProtocol
+        from trcc.adapters.device.factory import DeviceProtocolFactory
+        from trcc.adapters.device.ly_protocol import LyProtocol
 
         device_info = MagicMock()
         device_info.protocol = 'ly'
@@ -311,7 +312,7 @@ class TestLyProtocol(unittest.TestCase):
         proto.close()
 
     def test_protocol_info(self):
-        from trcc.adapters.device.factory import LyProtocol
+        from trcc.adapters.device.ly_protocol import LyProtocol
 
         proto = LyProtocol(0x0416, _PID_LY)
         info = proto.get_info()

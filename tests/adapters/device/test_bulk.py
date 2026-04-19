@@ -743,7 +743,8 @@ class TestBulkProtocol(unittest.TestCase):
 
     def test_create_via_factory(self):
         """Factory routes protocol='bulk' to BulkProtocol."""
-        from trcc.adapters.device.factory import BulkProtocol, DeviceProtocolFactory
+        from trcc.adapters.device.bulk_protocol import BulkProtocol
+        from trcc.adapters.device.factory import DeviceProtocolFactory
 
         device_info = MagicMock()
         device_info.protocol = 'bulk'
@@ -758,7 +759,7 @@ class TestBulkProtocol(unittest.TestCase):
         proto.close()
 
     def test_protocol_info(self):
-        from trcc.adapters.device.factory import BulkProtocol
+        from trcc.adapters.device.bulk_protocol import BulkProtocol
 
         proto = BulkProtocol(0x87AD, 0x70DB)
         info = proto.get_info()
@@ -768,7 +769,7 @@ class TestBulkProtocol(unittest.TestCase):
         proto.close()
 
     def test_is_not_led(self):
-        from trcc.adapters.device.factory import BulkProtocol
+        from trcc.adapters.device.bulk_protocol import BulkProtocol
 
         proto = BulkProtocol(0x87AD, 0x70DB)
         self.assertFalse(proto.is_led)
