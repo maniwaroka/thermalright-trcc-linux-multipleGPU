@@ -363,6 +363,11 @@ class OverlayService:
                         dc_path, e)
         return centered
 
+    def set_mask_position(self, position: tuple[int, int]) -> None:
+        """Update theme-mask top-left position and invalidate render cache."""
+        self.theme_mask_position = position
+        self._invalidate_cache()
+
     def set_mask_visible(self, visible: bool) -> None:
         """Toggle mask visibility without destroying it (Windows SetDrawMengBan)."""
         self.theme_mask_visible = visible

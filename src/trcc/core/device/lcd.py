@@ -858,8 +858,7 @@ class LCDDevice:
 
     def set_mask_position(self, x: int, y: int) -> dict:
         if self._display_svc and self._display_svc.overlay:
-            self._display_svc.overlay.theme_mask_position = (x, y)
-            self._display_svc.overlay._invalidate_cache()
+            self._display_svc.overlay.set_mask_position((x, y))
         return {"success": True, "message": f"Mask position: ({x}, {y})"}
 
     def render_and_send(self) -> dict:
