@@ -567,100 +567,23 @@ class LCDDevice:
         if not dev or not self._lcd_config:
             return {"success": False, "error": "No device selected"}
         cfg = self._lcd_config.get_config(dev)
+        cfg = self._lcd_config.normalize_legacy_theme(cfg)
 
-        theme_name = cfg.get("theme_name")
-        theme_type = cfg.get("theme_type", "local")
-
-        if not theme_name:
-            if not (old_path := cfg.get("theme_path")):
-                return {"success": False, "error": "No saved theme"}
-            self.log.info("restore_last_theme: migrating old config theme_path=%s", old_path)
-            video_exts = {'.mp4', '.avi', '.mkv', '.webm'}
-            image_exts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif'}
-            suffix = Path(old_path).suffix.lower()
-            if suffix in video_exts:
-                theme_name = Path(old_path).stem
-                theme_type = "cloud"
-            elif suffix in image_exts:
-                theme_name = Path(old_path).name
-                theme_type = "image"
-            else:
-                theme_name = Path(old_path).name
-                theme_type = "local"
-            self.log.info("restore_last_theme: migrated → name=%s type=%s", theme_name, theme_type)
-
-        w, h = self.lcd_size
-        svc = self._display_svc
-        if theme_type == "cloud":
-            if not svc or not svc.web_dir:
-                return {"success": False, "error": "No cloud theme directory"}
-            path = svc.web_dir / f"{theme_name}.mp4"
-            if not path.exists():
-                return {"success": False, "error": f"Cloud theme not found: {theme_name}"}
-            preview = path.parent / f"{theme_name}.png"
-            theme = ThemeInfo.from_video(path, preview if preview.exists() else None)
-        elif theme_type == "image":
-            old_path = cfg.get("theme_path", "")
-            if not old_path or not Path(old_path).exists():
-                return {"success": False, "error": "Image not found"}
-            result = self.load_image(old_path)
-            return {**result, "overlay_config": None,
-                    "overlay_enabled": False, "is_animated": False}
-        else:
-            td = self.orientation.theme_dir
-            if not td:
-                return {"success": False, "error": "No theme directory"}
-            path = td.path / theme_name
-            if not path.exists():
-                utd = self.orientation.user_theme_dir
-                if utd:
-                    user_path = utd / theme_name
-                    if user_path.exists():
-                        self.log.info("restore_last_theme: found in user content dir: %s", user_path)
-                        path = user_path
-                if not path.exists():
-                    return {"success": False, "error": f"Theme not found: {theme_name}"}
-            theme = self._theme_info_from_dir_fn(path, (w, h))
+        resolved = self._resolve_restore_theme(cfg)
+        if "error" in resolved:
+            return resolved
+        if "early_return" in resolved:
+            return resolved["early_return"]
+        theme = resolved["theme"]
+        theme_path = resolved["path"]
 
         result = self.select(theme)
         if not result.get("success"):
             return {**result, "overlay_config": None,
                     "overlay_enabled": False, "is_animated": False}
 
-        # Mask
-        if not (mask_id := cfg.get("mask_id") or ""):
-            if (old_path := cfg.get("mask_path")):
-                mask_id = Path(old_path).name
-        overlay_enabled = False
-        overlay_config = None
-        if mask_id:
-            is_custom = cfg.get("mask_custom", False)
-            o = self.orientation
-            base = o.user_masks_dir if is_custom else o.masks_dir
-            mask_dir = Path(base) / mask_id if base else None
-            if mask_dir and mask_dir.exists():
-                svc = self._display_svc
-                if not (svc and svc.mask_source_dir == mask_dir):
-                    self.load_mask_standalone(str(mask_dir))
-                # Mask's config1.dc defines overlay element positions —
-                # use it instead of the saved overlay config.
-                mask_overlay = self.load_overlay_config_from_dir(str(mask_dir))
-                if mask_overlay:
-                    overlay_config = mask_overlay
-                    overlay_enabled = True
-                    self.set_config(overlay_config)
-                    self.enable_overlay(True)
+        overlay_config, overlay_enabled = self._restore_mask_and_overlay(cfg)
 
-        # Overlay — saved config is fallback when no mask DC was loaded
-        if not overlay_config:
-            if (overlay_cfg := cfg.get("overlay", {})):
-                overlay_enabled = overlay_cfg.get("enabled", False)
-                overlay_config = overlay_cfg.get("config") or None
-                if overlay_config:
-                    self.set_config(overlay_config)
-                self.enable_overlay(overlay_enabled)
-
-        # Send
         image = result.get("image")
         is_animated = result.get("is_animated", False)
         if not is_animated and self.connected:
@@ -673,8 +596,83 @@ class LCDDevice:
             "is_animated": is_animated,
             "overlay_config": overlay_config,
             "overlay_enabled": overlay_enabled,
-            "message": f"Restored theme: {path.name}",
+            "message": f"Restored theme: {theme_path.name}",
         }
+
+    def _resolve_restore_theme(self, cfg: dict) -> dict:
+        """Resolve saved cfg to a ThemeInfo + path, or short-circuit return."""
+        theme_name = cfg.get("theme_name")
+        theme_type = cfg.get("theme_type", "local")
+        if not theme_name:
+            return {"error": "No saved theme", "success": False}
+
+        w, h = self.lcd_size
+        svc = self._display_svc
+
+        if theme_type == "cloud":
+            if not svc or not svc.web_dir:
+                return {"error": "No cloud theme directory", "success": False}
+            path = svc.web_dir / f"{theme_name}.mp4"
+            if not path.exists():
+                return {"error": f"Cloud theme not found: {theme_name}", "success": False}
+            preview = path.parent / f"{theme_name}.png"
+            return {"theme": ThemeInfo.from_video(
+                path, preview if preview.exists() else None), "path": path}
+
+        if theme_type == "image":
+            old_path = cfg.get("theme_path", "")
+            if not old_path or not Path(old_path).exists():
+                return {"error": "Image not found", "success": False}
+            result = self.load_image(old_path)
+            return {"early_return": {**result, "overlay_config": None,
+                                     "overlay_enabled": False, "is_animated": False}}
+
+        td = self.orientation.theme_dir
+        if not td:
+            return {"error": "No theme directory", "success": False}
+        path = td.path / theme_name
+        if not path.exists():
+            utd = self.orientation.user_theme_dir
+            if utd and (user_path := utd / theme_name).exists():
+                self.log.info("restore_last_theme: found in user content dir: %s", user_path)
+                path = user_path
+            if not path.exists():
+                return {"error": f"Theme not found: {theme_name}", "success": False}
+        return {"theme": self._theme_info_from_dir_fn(path, (w, h)), "path": path}
+
+    def _restore_mask_and_overlay(self, cfg: dict) -> tuple[dict | None, bool]:
+        """Restore mask + overlay state from saved cfg. Returns (config, enabled)."""
+        if not (mask_id := cfg.get("mask_id") or ""):
+            if (old_path := cfg.get("mask_path")):
+                mask_id = Path(old_path).name
+
+        overlay_config: dict | None = None
+        overlay_enabled = False
+
+        if mask_id:
+            base = (self.orientation.user_masks_dir if cfg.get("mask_custom", False)
+                    else self.orientation.masks_dir)
+            mask_dir = Path(base) / mask_id if base else None
+            if mask_dir and mask_dir.exists():
+                svc = self._display_svc
+                if not (svc and svc.mask_source_dir == mask_dir):
+                    self.load_mask_standalone(str(mask_dir))
+                # Mask's config1.dc defines overlay element positions —
+                # use it instead of the saved overlay config.
+                if (mask_overlay := self.load_overlay_config_from_dir(str(mask_dir))):
+                    overlay_config = mask_overlay
+                    overlay_enabled = True
+                    self.set_config(overlay_config)
+                    self.enable_overlay(True)
+
+        if not overlay_config and (overlay_cfg := cfg.get("overlay", {})):
+            overlay_enabled = overlay_cfg.get("enabled", False)
+            overlay_config = overlay_cfg.get("config") or None
+            if overlay_config:
+                self.set_config(overlay_config)
+            self.enable_overlay(overlay_enabled)
+
+        return overlay_config, overlay_enabled
 
     def select(self, theme: Any) -> dict:
         """Select and load a theme (local or cloud)."""
