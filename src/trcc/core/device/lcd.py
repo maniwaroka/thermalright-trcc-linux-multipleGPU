@@ -787,7 +787,7 @@ class LCDDevice:
     def render_overlay_from_dc(self, dc_path: str, *, send: bool = False,
                                output: str | None = None,
                                metrics: Any = None) -> dict:
-        from ...services import ImageService, OverlayService
+        from ...services import OverlayService
 
         if not os.path.exists(dc_path):
             return {"success": False, "error": f"Path not found: {dc_path}"}
@@ -796,22 +796,14 @@ class LCDDevice:
         if not self._display_svc:
             return {"success": False, "error": "Display service not initialized"}
         w, h = self._display_svc.canvas_size
-        overlay = OverlayService(
-            w, h, renderer=self._renderer,
+        result_img, elements, display_opts = OverlayService.render_dc_standalone(
+            Path(dc_path),
+            width=w, height=h,
+            renderer=self._renderer,
             load_config_json_fn=self._load_config_json_fn,
             dc_config_cls=self._dc_config_cls,
+            metrics=metrics,
         )
-        p = Path(dc_path)
-        dc_file = p / "config1.dc" if p.is_dir() else p
-        display_opts = overlay.load_from_dc(dc_file)
-
-        if metrics is not None:
-            overlay.update_metrics(metrics)
-        overlay.enabled = True
-
-        bg = ImageService.solid_color(0, 0, 0, w, h)
-        overlay.set_background(bg)
-        result_img = overlay.render()
 
         messages = []
         if output:
@@ -821,12 +813,11 @@ class LCDDevice:
             self.send(result_img)
             messages.append(f"Sent overlay to {self.device_path}")
 
-        elements = len(overlay.config) if overlay.config else 0
         return {
             "success": True,
             "image": result_img,
             "elements": elements,
-            "display_opts": display_opts or {},
+            "display_opts": display_opts,
             "message": "; ".join(messages) if messages else
                        f"Overlay config loaded: {elements} elements ({w}x{h})",
         }

@@ -297,6 +297,41 @@ class OverlayService:
             return None
         return renderer.resize(img, width, height)
 
+    @classmethod
+    def render_dc_standalone(
+        cls,
+        dc_path: Path,
+        *,
+        width: int,
+        height: int,
+        renderer: Renderer,
+        load_config_json_fn: Any,
+        dc_config_cls: Any,
+        metrics: HardwareMetrics | None = None,
+    ) -> tuple[Any, int, dict]:
+        """Render a DC config standalone — fresh OverlayService, black bg.
+
+        Returns ``(image, element_count, display_opts)``. Used by CLI/API
+        ``overlay render-from-dc`` to preview a DC file without disturbing
+        the active display state.
+        """
+        from .image import ImageService
+
+        overlay = cls(
+            width, height, renderer=renderer,
+            load_config_json_fn=load_config_json_fn,
+            dc_config_cls=dc_config_cls,
+        )
+        dc_file = dc_path / "config1.dc" if dc_path.is_dir() else dc_path
+        display_opts = overlay.load_from_dc(dc_file)
+        if metrics is not None:
+            overlay.update_metrics(metrics)
+        overlay.enabled = True
+        overlay.set_background(ImageService.solid_color(0, 0, 0, width, height))
+        image = overlay.render()
+        elements = len(overlay.config) if overlay.config else 0
+        return image, elements, display_opts or {}
+
     @staticmethod
     def calculate_mask_position(
         dc_config_cls: Any,
