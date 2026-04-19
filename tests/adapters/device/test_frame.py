@@ -112,7 +112,7 @@ class TestLedDevice:
             def handshake(self):
                 return HandshakeResult()
 
-            def send_led_data(self, packet):
+            def send_data(self, packet):
                 return True
 
             @property
@@ -124,7 +124,7 @@ class TestLedDevice:
 
         dev = StubLed()
         assert dev.is_sending is False
-        assert dev.send_led_data(b'\xff') is True
+        assert dev.send_data(b'\xff') is True
 
 
 # =========================================================================
@@ -135,11 +135,15 @@ class TestLedDevice:
 class TestHierarchy:
     """Verify real device classes are in the correct ABC hierarchy."""
 
-    def test_scsi_is_frame_device(self):
-        from trcc.adapters.device.scsi import ScsiDevice
+    def test_scsi_is_device_protocol(self):
+        """SCSI protocol class conforms to the DeviceProtocol ABC.
 
-        assert issubclass(ScsiDevice, FrameDevice)
-        assert issubclass(ScsiDevice, UsbDevice)
+        Note: ScsiProtocol now lives in factory.py (merged from the old
+        ScsiDevice in scsi.py) and inherits DeviceProtocol directly — the
+        old FrameDevice/UsbDevice hierarchy no longer applies to SCSI.
+        """
+        from trcc.adapters.device.factory import DeviceProtocol, ScsiProtocol
+        assert issubclass(ScsiProtocol, DeviceProtocol)
 
     def test_bulk_is_frame_device(self):
         from trcc.adapters.device.bulk import BulkDevice
