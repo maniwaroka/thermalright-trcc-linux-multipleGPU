@@ -1350,7 +1350,7 @@ class TRCCApp(QMainWindow):
                 self._on_load_video_clicked()
             case UCThemeSetting.CMD_MASK_TOGGLE | UCThemeSetting.CMD_MASK_VISIBILITY:
                 if h:
-                    h.display.set_overlay_mask_visible(info)
+                    h.display.set_mask_visible(info)
                     h._render_and_send()
             case UCThemeSetting.CMD_MASK_UPLOAD:
                 self._on_mask_upload_clicked()
@@ -1400,7 +1400,7 @@ class TRCCApp(QMainWindow):
             return
         if enabled:
             h.deactivate()
-            h.display.stop_video()
+            h.display.stop()
             h.is_background_active = False
             w, hw = h.display.lcd_size
             self._screencast.set_lcd_size(w, hw)
@@ -1413,9 +1413,9 @@ class TRCCApp(QMainWindow):
         if not h:
             return
         if not enabled:
-            if h.display.video_has_frames():
+            if h.display.has_frames:
                 h._animation_timer.stop()
-                h.display.stop_video()
+                h.display.stop()
                 self.uc_preview.set_playing(False)
                 self.uc_preview.show_video_controls(False)
             if (last_path := h.display.current_theme_path):
@@ -1455,13 +1455,13 @@ class TRCCApp(QMainWindow):
         self._screencast.toggle(False)
         h.is_background_active = False
         h._animation_timer.stop()
-        h.display.stop_video()
-        h.display.enable(False)
-        result = h.display.load_video(path)
+        h.display.stop()
+        h.display.enable_overlay(False)
+        result = h.display.load(path)
         if not result.get("success"):
             self.uc_preview.set_status(f"Error: {result.get('error', 'Failed to load video')}")
             return
-        h.display.play_video()
+        h.display.play()
         h._animation_timer.start(h.display.interval)
         self.uc_preview.set_playing(True)
         self.uc_preview.show_video_controls(True)
@@ -1550,7 +1550,7 @@ class TRCCApp(QMainWindow):
             self._save_and_apply_custom_mask(result)
         else:
             h.stop_video()
-            h.display.set_overlay_background(result)
+            h.display.set_background(result)
             h._render_and_send()
             self.uc_preview.set_status("Image loaded")
         self._cut_mode = 'background'
@@ -1616,8 +1616,8 @@ class TRCCApp(QMainWindow):
         self._hide_cutters()
         h = self._active_lcd()
         if zt_path and h:
-            h.display.load_video(Path(zt_path))
-            h.display.play_video()
+            h.display.load(Path(zt_path))
+            h.display.play()
             h._animation_timer.start(h.display.interval)
             self.uc_preview.set_playing(True)
             self.uc_preview.show_video_controls(True)

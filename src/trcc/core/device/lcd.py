@@ -671,7 +671,7 @@ class LCDDevice:
                     overlay_config = mask_overlay
                     overlay_enabled = True
                     self.set_config(overlay_config)
-                    self.enable(True)
+                    self.enable_overlay(True)
 
         # Overlay — saved config is fallback when no mask DC was loaded
         if not overlay_config:
@@ -680,7 +680,7 @@ class LCDDevice:
                 overlay_config = overlay_cfg.get("config") or None
                 if overlay_config:
                     self.set_config(overlay_config)
-                self.enable(overlay_enabled)
+                self.enable_overlay(overlay_enabled)
 
         # Send
         image = result.get("image")
@@ -697,9 +697,6 @@ class LCDDevice:
             "overlay_enabled": overlay_enabled,
             "message": f"Restored theme: {path.name}",
         }
-
-    def load_last_theme(self) -> dict:
-        return self.restore_last_theme()
 
     def collect_other_device_resolutions(self) -> list[tuple[int, int]]:
         if not self._device_svc:
@@ -988,13 +985,10 @@ class LCDDevice:
             self.send(image)
         return {"success": True, "image": image}
 
-    def enable(self, on: bool) -> dict:
+    def enable_overlay(self, on: bool) -> dict:
         self._display_svc.overlay.enabled = on
         return {"success": True, "enabled": on,
                 "message": f"Overlay: {'on' if on else 'off'}"}
-
-    def enable_overlay(self, on: bool) -> dict:
-        return self.enable(on)
 
     def set_config(self, config: dict) -> dict:
         ovl = self._display_svc.overlay
@@ -1026,11 +1020,6 @@ class LCDDevice:
     def render(self) -> dict:
         image = self._display_svc.render_overlay()
         return {"success": True, "image": image}
-
-    def apply_mask_dir(self, mask_dir: Any) -> dict:
-        image = self._display_svc.apply_mask(Path(mask_dir))
-        return {"success": True, "image": image,
-                "message": f"Mask: {Path(mask_dir).name}"}
 
     def update_video_cache_text(self, metrics: Any) -> dict:
         self._display_svc.update_video_cache_text(metrics)
@@ -1128,18 +1117,6 @@ class LCDDevice:
     def playing(self) -> bool:
         return self._display_svc.is_video_playing() if self._display_svc else False
 
-    def load_video(self, path: Any) -> dict:
-        return self.load(path)
-
-    def play_video(self) -> dict:
-        return self.play()
-
-    def stop_video(self) -> dict:
-        return self.stop()
-
-    def video_has_frames(self) -> bool:
-        return self.has_frames
-
     def play_video_loop(
         self,
         video_path: Any,
@@ -1181,17 +1158,6 @@ class LCDDevice:
             interval=interval, duration=duration,
             metrics_fn=metrics_fn, on_frame=on_frame,
         )
-
-    # Overlay convenience aliases
-    def set_overlay_background(self, image: Any) -> dict:
-        return self.set_background(image)
-
-    def set_overlay_mask(self, mask: Any,
-                         position: tuple[int, int] | None = None) -> dict:
-        return self.set_mask(mask, position)
-
-    def set_overlay_mask_visible(self, visible: bool) -> dict:
-        return self.set_mask_visible(visible)
 
     # ══════════════════════════════════════════════════════════════════════
     # LCD — lifecycle
