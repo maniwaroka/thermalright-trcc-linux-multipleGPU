@@ -250,11 +250,6 @@ class ThemeLoader:
     def _parse_mask_position(self, dc_path: Path | None,
                              mask_w: int, mask_h: int,
                              lcd_size: tuple[int, int]) -> tuple[int, int] | None:
-        """Parse mask position from DC file, convert center to top-left coords."""
-        if self._theme_svc is None:
-            # Fallback: full-size masks at (0,0), no DC parsing
-            if mask_w >= lcd_size[0] and mask_h >= lcd_size[1]:
-                return (0, 0)
-            return None
-        return self._theme_svc._parse_mask_position(
-            dc_path, mask_w, mask_h, lcd_size[0], lcd_size[1])
+        dc_cls = self._theme_svc._dc_config_cls if self._theme_svc else None
+        return OverlayService.calculate_mask_position(
+            dc_cls, dc_path, (mask_w, mask_h), lcd_size)

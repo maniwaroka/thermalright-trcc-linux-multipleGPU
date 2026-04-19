@@ -297,6 +297,37 @@ class OverlayService:
             return None
         return renderer.resize(img, width, height)
 
+    @staticmethod
+    def calculate_mask_position(
+        dc_config_cls: Any,
+        dc_path: Path | None,
+        mask_size: tuple[int, int],
+        lcd_size: tuple[int, int],
+    ) -> tuple[int, int] | None:
+        """Compute mask top-left position from DC config or center fallback.
+
+        DC files store mask_position as center coordinates (XvalMB, YvalMB);
+        C# draws at (XvalMB - W/2, YvalMB - H/2). Full-size masks → (0, 0).
+        Sub-screen masks without a usable DC entry get centered.
+        """
+        mask_w, mask_h = mask_size
+        lcd_w, lcd_h = lcd_size
+        if mask_w >= lcd_w and mask_h >= lcd_h:
+            return (0, 0)
+        centered = ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
+        if not dc_path or not Path(dc_path).exists() or dc_config_cls is None:
+            return centered
+        try:
+            dc = dc_config_cls(dc_path)
+            if dc.mask_enabled:
+                if (center_pos := dc.mask_settings.get('mask_position')):
+                    return (center_pos[0] - mask_w // 2,
+                            center_pos[1] - mask_h // 2)
+        except Exception as e:
+            log.warning("DC config parse failed for %s — centering mask: %s",
+                        dc_path, e)
+        return centered
+
     def set_mask_visible(self, visible: bool) -> None:
         """Toggle mask visibility without destroying it (Windows SetDrawMengBan)."""
         self.theme_mask_visible = visible

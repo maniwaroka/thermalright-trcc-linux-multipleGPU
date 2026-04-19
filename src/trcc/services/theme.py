@@ -14,6 +14,7 @@ from typing import Any
 from ..core.models import MaskInfo, ThemeData, ThemeDir, ThemeInfo, ThemeType
 from ..core.paths import theme_dir_name
 from .image import ImageService
+from .overlay import OverlayService
 
 log = logging.getLogger(__name__)
 
@@ -621,33 +622,8 @@ class ThemeService:
         lcd_w: int,
         lcd_h: int,
     ) -> tuple[int, int] | None:
-        """Parse mask position from DC file.
-
-        DC files store mask_position as center coordinates (XvalMB, YvalMB).
-        C# draws at (XvalMB - W/2, YvalMB - H/2).
-        Full-size masks go at (0, 0).
-        Sub-screen masks without DC position get centered (C# panel default).
-        """
-        if mask_w >= lcd_w and mask_h >= lcd_h:
-            return (0, 0)
-
-        if not dc_path or not Path(dc_path).exists():
-            return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
-
-        if self._dc_config_cls is None:
-            return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
-
-        try:
-            dc = self._dc_config_cls(dc_path)
-            if dc.mask_enabled:
-                if (center_pos := dc.mask_settings.get('mask_position')):
-                    return (
-                        center_pos[0] - mask_w // 2,
-                        center_pos[1] - mask_h // 2,
-                    )
-        except Exception:
-            pass
-        return ((lcd_w - mask_w) // 2, (lcd_h - mask_h) // 2)
+        return OverlayService.calculate_mask_position(
+            self._dc_config_cls, dc_path, (mask_w, mask_h), (lcd_w, lcd_h))
 
     def _load_mask_into(
         self,
