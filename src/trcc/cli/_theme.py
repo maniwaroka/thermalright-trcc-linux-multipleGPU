@@ -89,7 +89,7 @@ def load_theme(builder, name, *, device=None, preview=False):
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    lcd = TrccApp.get().lcd
     result = lcd.load_theme_by_name(name)
 
     if not result.get("success"):
@@ -202,7 +202,7 @@ def save_theme(name, *, device=None, video=None, background=None,
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    lcd = TrccApp.get().lcd
 
     # --background / --video → load into DisplayService state
     if (bg_source := background or video):
@@ -318,7 +318,7 @@ def import_theme(file_path, *, device=None):
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    lcd = TrccApp.get().lcd
     w, h = lcd.lcd_size
     data_dir = _settings.user_data_dir
 

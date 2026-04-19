@@ -20,7 +20,7 @@ from PySide6.QtGui import QIcon, QPixmap
 
 from trcc.conf import Settings
 
-from ..core.device import Device
+from ..core.device.lcd import LCDDevice
 from ..core.models import (
     DEFAULT_BRIGHTNESS_LEVEL,
     SPLIT_MODE_RESOLUTIONS,
@@ -42,14 +42,14 @@ class _DataReadyNotifier(QObject):
 class LCDHandler(BaseHandler):
     """Handler for a single LCD device — like C# FormCZTV.
 
-    Each LCD device gets its own handler with its own Device.
+    Each LCD device gets its own handler with its own LCDDevice.
     All LCD operations route through here: themes, video, overlay,
     brightness, rotation, slideshow, screencast.
     """
 
     def __init__(
         self,
-        lcd: Device,
+        lcd: LCDDevice,
         widgets: dict[str, Any],
         make_timer: Any,
         data_dir: Path,
@@ -90,14 +90,14 @@ class LCDHandler(BaseHandler):
     # ── Public API ───────────────────────────────────────────────────
 
     @property
-    def display(self) -> Device:
+    def display(self) -> LCDDevice:
         return self._lcd
 
     @property
     def device_key(self) -> str:
         return self._device_key
 
-    # ── Device Config (C# ReadSystemConfiguration) ─────────────────
+    # ── LCDDevice Config (C# ReadSystemConfiguration) ─────────────────
 
     def apply_device_config(self, device: DeviceInfo, w: int, h: int) -> None:
         """First-time device setup + full widget refresh."""
@@ -121,7 +121,7 @@ class LCDHandler(BaseHandler):
     def _refresh(self, w: int, h: int) -> None:
         """Update widgets from the device's current state.
 
-        Device is already configured (resolution + dirs) from connect().
+        LCDDevice is already configured (resolution + dirs) from connect().
         This just syncs the shared GUI widgets to show this device's data.
         """
         self.log.debug("_refresh: device_key=%s resolution=%dx%d", self._device_key, w, h)
@@ -452,7 +452,7 @@ class LCDHandler(BaseHandler):
 
     def play_pause(self) -> None:
         self.log.debug("play_pause")
-        # Video pause toggles Device.media state. Use legacy pause() (returns
+        # Video pause toggles LCDDevice.media state. Use legacy pause() (returns
         # dict with state='playing'|'paused') — pause_video on Trcc is a pure
         # stop, doesn't toggle. Phase 8 adds a toggle_video command.
         result = self._lcd.pause()

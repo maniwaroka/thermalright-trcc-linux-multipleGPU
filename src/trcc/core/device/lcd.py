@@ -8,50 +8,39 @@ CLI, GUI, and API all consume this directly (DIP — core/, not adapter/).
 """
 from __future__ import annotations
 
-import functools
 import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from .models import DEFAULT_BRIGHTNESS_LEVEL, LEDMode, ThemeInfo, ThemeType
-from .orientation import Orientation
-from .paths import masks_dir_name, resolve_theme_dir, theme_dir_name, web_dir_name
+from ..models import DEFAULT_BRIGHTNESS_LEVEL, ThemeInfo, ThemeType
+from ..orientation import Orientation
+from ..paths import masks_dir_name, resolve_theme_dir, theme_dir_name, web_dir_name
 
 log = logging.getLogger(__name__)
 
 
-# ── Proxy decorator (LED set_* methods) ──────────────────────────────────
+class LCDDevice:
+    """A USB LCD device. Discovered, handshaked, passed around.
 
-def _forward_to_proxy(method):
-    """Forward method call to proxy if one is active."""
-    @functools.wraps(method)
-    def wrapper(self, *args, **kwargs):
-        if self._proxy is not None:
-            log.debug("proxy forward: %s → %s", method.__name__, type(self._proxy).__name__)
-            return getattr(self._proxy, method.__name__)(*args, **kwargs)
-        return method(self, *args, **kwargs)
-    return wrapper
-
-
-class Device:
-    """A USB device. Discovered, handshaked, passed around.
-
-    Builder injects services based on device type:
-    - LCD: display_svc, theme_svc, renderer, media (via display_svc)
-    - LED: led_svc (or led_svc_factory for deferred creation)
+    Owns image frames, themes, overlays, masks, video playback, and LCD
+    persistence. Separate from LEDDevice (core/led_device.py) — each has
+    distinct services and method surface.
 
     Construction (via builder — the only correct way):
         device = ControllerBuilder.for_current_os().build_device(detected)
         device.connect(detected)
     """
 
+    # Type query constants — match LEDDevice's shape so handler code can
+    # ask either `is_led` / `is_lcd` uniformly without isinstance checks.
+    is_lcd = True
+    is_led = False
+
     def __init__(
         self,
         *,
         device_svc: Any = None,
-        device_type: bool = True,  # True=LCD, False=LED
-        # LCD services
         display_svc: Any = None,
         theme_svc: Any = None,
         renderer: Any = None,
@@ -60,18 +49,10 @@ class Device:
         theme_info_from_dir_fn: Any = None,
         lcd_config: Any = None,
         build_services_fn: Any = None,
-        # LED services
-        led_svc: Any = None,
-        get_protocol: Any = None,
-        led_svc_factory: Any = None,
-        led_config: Any = None,
-        # IPC
         find_active_fn: Any = None,
         proxy_factory_fn: Any = None,
     ) -> None:
         self._device_svc = device_svc
-        self._device_type = device_type  # True=LCD, False=LED
-        # LCD
         self._display_svc = display_svc
         self._theme_svc = theme_svc
         self._renderer = renderer
@@ -80,35 +61,15 @@ class Device:
         self._theme_info_from_dir_fn = theme_info_from_dir_fn
         self._lcd_config = lcd_config
         self._build_services_fn = build_services_fn
-        # LED
-        self._led_svc = led_svc
-        self._get_protocol = get_protocol
-        self._led_svc_factory = led_svc_factory
-        self._led_config = led_config
-        # IPC
         self._find_active_fn = find_active_fn
         self._proxy_factory_fn = proxy_factory_fn
         self._proxy: Any = None
-        # State — uniform for both LCD and LED
         self._info: Any = None  # DeviceInfo, set during connect()
-        self._init_status: str | None = None
         self.log: logging.Logger = log
         self.orientation = Orientation(0, 0)
 
     # ══════════════════════════════════════════════════════════════════════
-    # Type queries — from data, not class hierarchy
-    # ══════════════════════════════════════════════════════════════════════
-
-    @property
-    def is_lcd(self) -> bool:
-        return self._device_type
-
-    @property
-    def is_led(self) -> bool:
-        return not self._device_type
-
-    # ══════════════════════════════════════════════════════════════════════
-    # Shared lifecycle
+    # Shared lifecycle (proxy routing + DeviceInfo)
     # ══════════════════════════════════════════════════════════════════════
 
     def wire_ipc(self, find_active_fn: Any, proxy_factory_fn: Any) -> None:
@@ -126,12 +87,7 @@ class Device:
         return None
 
     def connect(self, detected: Any = None) -> dict:
-        """Connect to device — handshake via protocol, fill DeviceInfo.
-
-        Returns: {"success": bool, ...}
-        """
-        if self.is_led:
-            return self._connect_led(detected)
+        """Connect to device — handshake via protocol, fill DeviceInfo."""
         return self._connect_lcd(detected)
 
     @property
@@ -139,9 +95,6 @@ class Device:
         if self._proxy is not None:
             return getattr(self._proxy, 'connected', True)
         if self._info is not None:
-            return True
-        # Pre-connect check: service presence means ready
-        if self._led_svc is not None:
             return True
         if self._device_svc is not None and self._device_svc.selected is not None:
             return True
@@ -151,40 +104,27 @@ class Device:
     def device_info(self) -> Any:
         if self._info is not None:
             return self._info
-        # Fallback: LCD device_svc stores selected device before _info is set
         if self._device_svc is not None:
             return self._device_svc.selected
         return None
 
     def tick(self) -> Any:
-        """Core metrics loop hook — called at fixed interval."""
+        """Core metrics loop hook — render overlay + send frame."""
         if self._display_svc:
             return self._tick_lcd()
-        if self._led_svc:
-            return self._tick_led()
         return None
 
     def cleanup(self) -> None:
         if self._display_svc:
             self._display_svc.cleanup()
-        if self._led_svc:
-            self._led_svc.cleanup()
 
     def update_metrics(self, metrics: Any) -> dict:
         if self._display_svc:
             self._display_svc.overlay.update_metrics(metrics)
-        if self._led_svc:
-            self._led_svc.update_metrics(metrics)
         return {"success": True}
 
     def set_temp_unit(self, unit: int) -> dict:
         """Set temperature unit (0=Celsius, 1=Fahrenheit)."""
-        if self._led_svc:
-            unit_str = 'F' if unit else 'C'
-            self._led_svc.set_seg_temp_unit(unit_str)
-            self._led_send_and_save()
-            return {"success": True,
-                    "message": f"Temperature unit set to {unit_str}"}
         if self._display_svc:
             self._display_svc.overlay.set_temp_unit(unit)
         return {"success": True, "message": f"Temp unit: {'F' if unit else 'C'}"}
@@ -289,7 +229,7 @@ class Device:
 
     @classmethod
     def from_service(cls, device_svc: Any, renderer: Any = None,
-                     build_services_fn: Any = None) -> Device:
+                     build_services_fn: Any = None) -> LCDDevice:
         """Create a fully-wired LCD Device from an existing DeviceService."""
         device = cls(renderer=renderer, build_services_fn=build_services_fn)
         device._build_services(device_svc)
@@ -299,53 +239,6 @@ class Device:
         """Route calls through proxy (IPC forwarding)."""
         self._proxy = proxy
 
-    # ══════════════════════════════════════════════════════════════════════
-    # LED connect
-    # ══════════════════════════════════════════════════════════════════════
-
-    def _connect_led(self, detected: Any) -> dict:
-        if self._led_svc:
-            log.debug("LED connect: already connected (status=%s)", self._init_status)
-            return {"success": True, "status": self._init_status or ""}
-
-        proxy_result = self._try_proxy_route(detected)
-        if proxy_result is not None:
-            log.info("LED connect: routing through proxy instance")
-            proxy_result["status"] = f"Connected (via {proxy_result['proxy'].value})"
-            return proxy_result
-
-        if detected is not None and getattr(detected, 'implementation', '') == 'hid_led':
-            from .models import DeviceInfo
-            self._info = DeviceInfo.from_detected(detected)
-            log.info("LED connect: using detected %s", self._info.path)
-        else:
-            if self._device_svc is None:
-                raise RuntimeError(
-                    "Device requires a DeviceService. "
-                    "Use ControllerBuilder.build_device() to wire dependencies.")
-            self._device_svc.detect()
-            self._info = next(
-                (d for d in self._device_svc.devices
-                 if d.implementation == 'hid_led'), None)
-            if not self._info:
-                log.warning("LED connect: no LED device found")
-                return {"success": False, "error": "No LED device found"}
-
-        self._led_svc = self._led_svc_factory(
-            get_protocol=self._get_protocol,
-            led_config=self._led_config,
-        )
-        self._init_status = self._led_svc.initialize(self._info)
-        pm = getattr(self._info, 'pm_byte', 0)
-        sub = getattr(self._info, 'sub_byte', 0)
-        vid = int(self._info.vid) if isinstance(self._info.vid, int) else 0
-        pid = int(self._info.pid) if isinstance(self._info.pid, int) else 0
-        label = f'led:{getattr(self._info, "device_index", 0)} [{vid:04X}:{pid:04X} PM={pm} SUB={sub}]'
-        self.log = logging.getLogger(f'{__name__}.{label}')
-        if hasattr(self.log, 'dev'):
-            self.log.dev = label  # type: ignore[attr-defined]
-        self.log.info("LED connected: %s style=%s", self._info.path, self._init_status)
-        return {"success": True, "status": self._init_status or ""}
 
     # ══════════════════════════════════════════════════════════════════════
     # LCD tick
@@ -368,22 +261,6 @@ class Device:
             self.send(image)
         return new_frame
 
-    # ══════════════════════════════════════════════════════════════════════
-    # LED tick
-    # ══════════════════════════════════════════════════════════════════════
-
-    def _tick_led(self) -> dict | None:
-        """Advance one LED animation frame, send to hardware, return colors."""
-        if not self._led_svc:
-            log.debug("tick: no LED service — skipping")
-            return None
-        colors = self._led_svc.tick()
-        display_colors = self._led_svc.apply_mask(colors)
-        if self._led_svc.has_protocol:
-            ok = self._led_svc.send_colors(colors)
-            if not ok:
-                log.debug("tick: send_colors skipped (concurrent)")
-        return {"colors": colors, "display_colors": display_colors}
 
     # ══════════════════════════════════════════════════════════════════════
     # LCD properties
@@ -436,25 +313,6 @@ class Device:
         """Direct OverlayService access."""
         return self._display_svc.overlay if self._display_svc else None
 
-    # ══════════════════════════════════════════════════════════════════════
-    # LED properties
-    # ══════════════════════════════════════════════════════════════════════
-
-    @property
-    def status(self) -> str | None:
-        return self._init_status
-
-    @property
-    def service(self) -> Any:
-        """Direct service access — LEDService for LED, OverlayService for LCD."""
-        if self._led_svc:
-            return self._led_svc
-        return self._display_svc.overlay if self._display_svc else None
-
-    @property
-    def state(self) -> Any:
-        """Current LEDState (LED only)."""
-        return self._led_svc.state if self._led_svc else None
 
     # ══════════════════════════════════════════════════════════════════════
     # LCD — connection helpers
@@ -487,14 +345,14 @@ class Device:
     def send_image(self, image_path: str) -> dict:
         if not os.path.exists(image_path):
             return {"success": False, "error": f"File not found: {image_path}"}
-        from ..services import ImageService
+        from ...services import ImageService
         w, h = self.lcd_size
         img = ImageService.open_and_resize(image_path, w, h)
         self._device_svc.send_frame(img, w, h)
         return {"success": True, "image": img, "message": f"Sent {image_path}"}
 
     def send_color(self, r: int, g: int, b: int) -> dict:
-        from ..services import ImageService
+        from ...services import ImageService
         w, h = self.lcd_size
         img = ImageService.solid_color(r, g, b, w, h)
         self._device_svc.send_frame(img, w, h)
@@ -528,7 +386,7 @@ class Device:
         return {"success": False, "error": f"Failed to load: {path}"}
 
     def reset(self) -> dict:
-        from ..services import ImageService
+        from ...services import ImageService
         w, h = self.lcd_size
         img = ImageService.solid_color(255, 0, 0, w, h)
         self._device_svc.send_frame(img, w, h)
@@ -585,9 +443,7 @@ class Device:
             self.set_rotation(rotation)
 
     def set_brightness(self, percent: int) -> dict:
-        """Set brightness — routes to LCD display or LED strip."""
-        if self._led_svc:
-            return self._led_set_brightness(percent)
+        """Set LCD brightness."""
         if not 0 <= percent <= 100:
             return {"success": False,
                     "error": f"Brightness must be 0–100, got {percent}"}
@@ -949,8 +805,8 @@ class Device:
             image = self._display_svc.apply_mask(p)
             return {"success": True, "image": image,
                     "message": f"Mask: {p.name}"}
-        from ..services.image import ImageService
-        from ..services.overlay import OverlayService
+        from ...services.image import ImageService
+        from ...services.overlay import OverlayService
         r = ImageService._r()
         w, h = self.lcd_size
         mask_img = OverlayService.load_mask_from_path(p, r, w, h)
@@ -975,7 +831,7 @@ class Device:
     def render_overlay_from_dc(self, dc_path: str, *, send: bool = False,
                                output: str | None = None,
                                metrics: Any = None) -> dict:
-        from ..services import ImageService, OverlayService
+        from ...services import ImageService, OverlayService
 
         if not os.path.exists(dc_path):
             return {"success": False, "error": f"Path not found: {dc_path}"}
@@ -1020,7 +876,7 @@ class Device:
         }
 
     def load_mask_standalone(self, mask_path: str) -> dict:
-        from ..services import ImageService, OverlayService
+        from ...services import ImageService, OverlayService
 
         if not os.path.exists(mask_path):
             return {"success": False, "error": f"Path not found: {mask_path}"}
@@ -1363,281 +1219,3 @@ class Device:
             "message": f"Initialized: {w}x{h}, {len(devices)} device(s)",
         }
 
-    # ══════════════════════════════════════════════════════════════════════
-    # LED — lifecycle (GUI path)
-    # ══════════════════════════════════════════════════════════════════════
-
-    def initialize_led(self, device: Any, led_style: int) -> dict:
-        """Initialize for a known LED device (GUI — device already detected)."""
-        if not self._led_svc:
-            self._led_svc = self._led_svc_factory(
-                get_protocol=self._get_protocol,
-                led_config=self._led_config,
-            )
-        self._info = device
-        self._init_status = self._led_svc.initialize(device, led_style)
-        return {"success": True, "status": self._init_status or "",
-                "style": led_style}
-
-    # ══════════════════════════════════════════════════════════════════════
-    # LED — state-only mutators (GUI — timer handles send)
-    # ══════════════════════════════════════════════════════════════════════
-
-    def update_color(self, r: int, g: int, b: int) -> None:
-        self._led_svc.set_color(r, g, b)
-
-    def update_mode(self, mode: LEDMode | int) -> None:
-        resolved = LEDMode(mode) if isinstance(mode, int) else mode
-        self._led_svc.set_mode(resolved)
-
-    def update_brightness(self, level: int) -> None:
-        self._led_svc.set_brightness(max(0, min(100, level)))
-
-    def update_global_on(self, on: bool) -> None:
-        self._led_svc.toggle_global(on)
-
-    def update_segment(self, index: int, on: bool) -> None:
-        self._led_svc.toggle_segment(index, on)
-
-    def update_zone_color(self, zone: int, r: int, g: int, b: int) -> None:
-        self._led_svc.set_zone_color(zone, r, g, b)
-
-    def update_zone_mode(self, zone: int, mode: LEDMode | int) -> None:
-        resolved = LEDMode(mode) if isinstance(mode, int) else mode
-        self._led_svc.set_zone_mode(zone, resolved)
-
-    def update_zone_brightness(self, zone: int, level: int) -> None:
-        self._led_svc.set_zone_brightness(zone, max(0, min(100, level)))
-
-    def update_zone_on(self, zone: int, on: bool) -> None:
-        self._led_svc.toggle_zone(zone, on)
-
-    def update_zone_sync(self, enabled: bool) -> None:
-        self._led_svc.set_zone_sync(enabled)
-
-    def update_zone_sync_zone(self, zone: int, selected: bool) -> None:
-        self._led_svc.set_zone_sync_zone(zone, selected)
-
-    def update_zone_sync_interval(self, seconds: int) -> None:
-        self._led_svc.set_zone_sync_interval(seconds)
-
-    def update_clock_format(self, is_24h: bool) -> None:
-        self._led_svc.set_clock_format(is_24h)
-
-    def update_week_start(self, is_sunday: bool) -> None:
-        self._led_svc.set_week_start(is_sunday)
-
-    def update_disk_index(self, index: int) -> None:
-        self._led_svc.set_disk_index(index)
-
-    def update_memory_ratio(self, ratio: int) -> None:
-        self._led_svc.set_memory_ratio(ratio)
-
-    def update_test_mode(self, enabled: bool) -> None:
-        self._led_svc.set_test_mode(enabled)
-
-    def update_selected_zone(self, zone: int) -> None:
-        self._led_svc.set_selected_zone(zone)
-
-    # ══════════════════════════════════════════════════════════════════════
-    # LED — command methods (CLI/API — immediate tick/send/save)
-    # ══════════════════════════════════════════════════════════════════════
-
-    def _led_apply_and_send(self) -> list:
-        self._led_svc.toggle_global(True)
-        colors = self._led_svc.tick()
-        self._led_svc.send_colors(colors)
-        self._led_svc.save_config()
-        return colors
-
-    def _led_send_and_save(self) -> None:
-        self._led_svc.send_tick()
-        self._led_svc.save_config()
-
-    def _resolve_mode(self, mode: LEDMode | str | int) -> LEDMode | None:
-        match mode:
-            case LEDMode():
-                return mode
-            case int() if mode in LEDMode._value2member_map_:
-                return LEDMode(mode)
-            case str() if mode.upper() in LEDMode._member_map_:
-                return LEDMode[mode.upper()]
-            case _:
-                return None
-
-    def _validate_zone(self, zone: int) -> dict | None:
-        n = len(self._led_svc.state.zones)
-        if n == 0:
-            return {"success": False, "error": "This LED device has no zones"}
-        if zone < 0 or zone >= n:
-            return {"success": False,
-                    "error": f"Zone {zone} out of range (valid: 0–{n - 1})"}
-        return None
-
-    def _validate_segment(self, index: int) -> dict | None:
-        n = len(self._led_svc.state.segment_on)
-        if n == 0:
-            return {"success": False,
-                    "error": "This LED device has no segments"}
-        if index < 0 or index >= n:
-            return {"success": False,
-                    "error": f"Segment {index} out of range (valid: 0–{n - 1})"}
-        return None
-
-    @_forward_to_proxy
-    def set_color(self, r: int, g: int, b: int) -> dict:
-        self._led_svc.set_mode(LEDMode.STATIC)
-        self._led_svc.set_color(r, g, b)
-        colors = self._led_apply_and_send()
-        return {"success": True, "colors": colors,
-                "message": f"LED color set to #{r:02x}{g:02x}{b:02x}"}
-
-    @_forward_to_proxy
-    def set_mode(self, mode: LEDMode | str | int) -> dict:
-        resolved = self._resolve_mode(mode)
-        if not resolved:
-            return {"success": False, "error": f"Unknown mode '{mode}'",
-                    "available": [m.name.lower() for m in LEDMode]}
-        self._led_svc.set_mode(resolved)
-        colors = self._led_apply_and_send()
-        animated = resolved in (LEDMode.BREATHING, LEDMode.COLORFUL,
-                                LEDMode.RAINBOW, LEDMode.TEMP_LINKED,
-                                LEDMode.LOAD_LINKED)
-        return {"success": True, "colors": colors, "animated": animated,
-                "message": f"LED mode: {resolved.name.lower()}"}
-
-    def _led_set_brightness(self, level: int) -> dict:
-        if level < 0 or level > 100:
-            return {"success": False, "error": "Brightness must be 0-100"}
-        self._led_svc.set_brightness(level)
-        colors = self._led_apply_and_send()
-        return {"success": True, "colors": colors,
-                "message": f"LED brightness set to {level}%"}
-
-    @_forward_to_proxy
-    def toggle_global(self, on: bool) -> dict:
-        self._led_svc.toggle_global(on)
-        self._led_send_and_save()
-        return {"success": True, "message": f"LEDs {'on' if on else 'off'}"}
-
-    @_forward_to_proxy
-    def off(self) -> dict:
-        self._led_svc.toggle_global(False)
-        self._led_send_and_save()
-        return {"success": True, "message": "LEDs turned off"}
-
-    @_forward_to_proxy
-    def set_sensor_source(self, source: str) -> dict:
-        source = source.lower()
-        if source not in ('cpu', 'gpu'):
-            return {"success": False,
-                    "error": "Source must be 'cpu' or 'gpu'"}
-        self._led_svc.set_sensor_source(source)
-        self._led_svc.save_config()
-        return {"success": True,
-                "message": f"LED sensor source set to {source.upper()}"}
-
-    @_forward_to_proxy
-    def set_zone_color(self, zone: int, r: int, g: int, b: int) -> dict:
-        if err := self._validate_zone(zone):
-            return err
-        self._led_svc.set_zone_color(zone, r, g, b)
-        colors = self._led_apply_and_send()
-        return {"success": True, "colors": colors,
-                "message": f"Zone {zone} color set to #{r:02x}{g:02x}{b:02x}"}
-
-    @_forward_to_proxy
-    def set_zone_mode(self, zone: int, mode: LEDMode | str | int) -> dict:
-        if err := self._validate_zone(zone):
-            return err
-        resolved = self._resolve_mode(mode)
-        if not resolved:
-            return {"success": False, "error": f"Unknown mode '{mode}'"}
-        self._led_svc.set_zone_mode(zone, resolved)
-        colors = self._led_apply_and_send()
-        return {"success": True, "colors": colors,
-                "message": f"Zone {zone} mode set to {resolved.name.lower()}"}
-
-    @_forward_to_proxy
-    def set_zone_brightness(self, zone: int, level: int) -> dict:
-        if err := self._validate_zone(zone):
-            return err
-        if level < 0 or level > 100:
-            return {"success": False, "error": "Brightness must be 0-100"}
-        self._led_svc.set_zone_brightness(zone, level)
-        colors = self._led_apply_and_send()
-        return {"success": True, "colors": colors,
-                "message": f"Zone {zone} brightness set to {level}%"}
-
-    @_forward_to_proxy
-    def toggle_zone(self, zone: int, on: bool) -> dict:
-        if err := self._validate_zone(zone):
-            return err
-        self._led_svc.toggle_zone(zone, on)
-        self._led_send_and_save()
-        return {"success": True,
-                "message": f"Zone {zone} {'ON' if on else 'OFF'}"}
-
-    @_forward_to_proxy
-    def set_zone_sync(self, enabled: bool,
-                      interval: int | None = None) -> dict:
-        if interval is not None:
-            self._led_svc.set_zone_sync_interval(interval)
-        self._led_svc.set_zone_sync(enabled)
-        self._led_send_and_save()
-        return {"success": True,
-                "message": f"Zone sync {'enabled' if enabled else 'disabled'}"}
-
-    def set_zone_sync_zone(self, zone: int, selected: bool) -> dict:
-        self._led_svc.set_zone_sync_zone(zone, selected)
-        return {"success": True}
-
-    def set_zone_sync_interval(self, seconds: int) -> dict:
-        self._led_svc.set_zone_sync_interval(seconds)
-        return {"success": True}
-
-    def set_selected_zone(self, zone: int) -> dict:
-        self._led_svc.set_selected_zone(zone)
-        return {"success": True}
-
-    @_forward_to_proxy
-    def toggle_segment(self, index: int, on: bool) -> dict:
-        if err := self._validate_segment(index):
-            return err
-        self._led_svc.toggle_segment(index, on)
-        self._led_send_and_save()
-        return {"success": True,
-                "message": f"Segment {index} {'ON' if on else 'OFF'}"}
-
-    @_forward_to_proxy
-    def set_clock_format(self, is_24h: bool) -> dict:
-        self._led_svc.set_clock_format(is_24h)
-        self._led_send_and_save()
-        return {"success": True,
-                "message": f"Clock format set to {'24h' if is_24h else '12h'}"}
-
-    @_forward_to_proxy
-    def set_week_start(self, is_sunday: bool) -> dict:
-        self._led_svc.set_week_start(is_sunday)
-        self._led_send_and_save()
-        return {"success": True}
-
-    def set_disk_index(self, index: int) -> dict:
-        self._led_svc.set_disk_index(index)
-        return {"success": True}
-
-    def set_memory_ratio(self, ratio: int) -> dict:
-        self._led_svc.set_memory_ratio(ratio)
-        return {"success": True}
-
-    def set_test_mode(self, enabled: bool) -> dict:
-        self._led_svc.set_test_mode(enabled)
-        return {"success": True}
-
-    def save_config(self) -> None:
-        if self._led_svc:
-            self._led_svc.save_config()
-
-    def load_config(self) -> None:
-        if self._led_svc:
-            self._led_svc.load_config()

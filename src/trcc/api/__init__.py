@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from trcc.core.device import Device
+    from trcc.core.device.lcd import LCDDevice
     from trcc.ipc import DeviceProxy
 
 from fastapi import FastAPI, Request
@@ -61,7 +61,7 @@ _device_svc = DeviceService(
 _system_svc: SystemService | None = None
 
 # Lazy-initialized device (set when device is selected)
-_device_dispatcher: Device | DeviceProxy | None = None
+_device_dispatcher: LCDDevice | DeviceProxy | None = None
 
 # Last frame sent to LCD — updated by display/theme endpoints for preview
 _current_image = None  # QImage | None

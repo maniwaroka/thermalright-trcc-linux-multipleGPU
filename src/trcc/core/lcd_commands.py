@@ -28,7 +28,7 @@ from .results import (
 )
 
 if TYPE_CHECKING:
-    from .device import Device
+    from .device.lcd import LCDDevice
     from .events import EventBus
 
 log = logging.getLogger(__name__)
@@ -42,13 +42,13 @@ class LCDCommands:
     performs its action.
     """
 
-    def __init__(self, devices: list[Device], events: EventBus) -> None:
+    def __init__(self, devices: list[LCDDevice], events: EventBus) -> None:
         self._devices = devices
         self._events = events
 
     # ── Internal helpers ─────────────────────────────────────────────
 
-    def _get(self, lcd: int) -> Device | None:
+    def _get(self, lcd: int) -> LCDDevice | None:
         if not 0 <= lcd < len(self._devices):
             log.warning("LCD index %d out of range (have %d)", lcd, len(self._devices))
             return None
@@ -59,7 +59,7 @@ class LCDCommands:
         return {'error': msg, 'success': False}
 
     @staticmethod
-    def _device_key(dev: Device) -> str:
+    def _device_key(dev: LCDDevice) -> str:
         """Resolve the per-device config key. Empty string if device has no info."""
         info = dev.device_info
         if info is None:

@@ -17,7 +17,7 @@ from .models.led import LEDMode
 from .results import DiskInfo, LEDResult, LEDSnapshot, LEDStyleInfo, OpResult
 
 if TYPE_CHECKING:
-    from .device import Device
+    from .device.led import LEDDevice
     from .events import EventBus
 
 log = logging.getLogger(__name__)
@@ -26,11 +26,11 @@ log = logging.getLogger(__name__)
 class LEDCommands:
     """Command surface for LED devices."""
 
-    def __init__(self, devices: list[Device], events: EventBus) -> None:
+    def __init__(self, devices: list[LEDDevice], events: EventBus) -> None:
         self._devices = devices
         self._events = events
 
-    def _get(self, led: int) -> Device | None:
+    def _get(self, led: int) -> LEDDevice | None:
         if not 0 <= led < len(self._devices):
             log.warning('LED index %d out of range (have %d)', led, len(self._devices))
             return None

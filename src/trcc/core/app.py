@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from ..services.system import SystemService
     from .builder import ControllerBuilder
     from .device import Device
+    from .device.lcd import LCDDevice
+    from .device.led import LEDDevice
     from .models import DetectedDevice
     from .ports import (
         FindActiveFn,
@@ -224,11 +226,12 @@ class TrccApp:
         if ensure_fn is None:
             log.warning("_ensure_data_blocking: no ensure_fn injected — skipping")
             return
+        from .device.lcd import LCDDevice
         log.info("_ensure_data_blocking: processing %d device(s)", len(self._devices))
         seen: set[tuple[int, int]] = set()
         for device in self._devices.values():
             path = getattr(device.device_info, 'path', '?') if device.device_info else '?'
-            if not device.is_lcd:
+            if not isinstance(device, LCDDevice):
                 log.debug("_ensure_data_blocking: skip non-LCD %s", path)
                 continue
             info = device.device_info
@@ -245,7 +248,7 @@ class TrccApp:
             device.notify_data_ready()
         log.info("_ensure_data_blocking: done — %d resolution(s) processed", len(seen))
 
-    def _ensure_data_background(self, device: Device, w: int, h: int) -> None:
+    def _ensure_data_background(self, device: LCDDevice, w: int, h: int) -> None:
         """Ensure theme data in a background thread (hotplug path)."""
         ensure_fn = self._ensure_data_fn
         path = getattr(device.device_info, 'path', '?') if device.device_info else '?'
@@ -279,7 +282,8 @@ class TrccApp:
         self._devices[detected.path] = device
         self._wire_device(device)
         # Hotplug: ensure data in background (UI already running, can't block).
-        if device.is_lcd:
+        from .device.lcd import LCDDevice
+        if isinstance(device, LCDDevice):
             w, h = res
             if w and h:
                 log.info("device_connected: triggering data download %dx%d", w, h)
@@ -302,9 +306,10 @@ class TrccApp:
         IPC handlers (set via set_ipc_handlers) are injected here so that
         devices built by scan() can proxy to a running GUI/API instance.
         """
+        from .device.lcd import LCDDevice
         path = getattr(device, 'device_path', '?')
         device.wire_ipc(self._find_active_fn, self._proxy_factory_fn)
-        if self._settings is not None:
+        if self._settings is not None and isinstance(device, LCDDevice):
             device.initialize_pipeline(self._settings)
         else:
             log.warning("_wire_device: settings not initialized — skipping pipeline init for %s", path)
@@ -347,22 +352,26 @@ class TrccApp:
         return self.has_device(lcd=False)
 
     @property
-    def lcd_device(self) -> Device | None:
-        return next((d for d in self._devices.values() if d.is_lcd), None)
+    def lcd_device(self) -> 'LCDDevice | None':
+        from .device.lcd import LCDDevice
+        return next((d for d in self._devices.values()
+                     if isinstance(d, LCDDevice)), None)
 
     @property
-    def led_device(self) -> Device | None:
-        return next((d for d in self._devices.values() if d.is_led), None)
+    def led_device(self) -> 'LEDDevice | None':
+        from .device.led import LEDDevice
+        return next((d for d in self._devices.values()
+                     if isinstance(d, LEDDevice)), None)
 
     @property
-    def lcd(self) -> Device:
+    def lcd(self) -> 'LCDDevice':
         d = self.lcd_device
         if d is None:
             raise RuntimeError("No LCD device connected.")
         return d
 
     @property
-    def led(self) -> Device:
+    def led(self) -> 'LEDDevice':
         d = self.led_device
         if d is None:
             raise RuntimeError("No LED device connected.")
@@ -520,14 +529,14 @@ class TrccApp:
                             log.exception("Metrics poll error")
 
                     # Tick all devices every iteration
+                    from .device.lcd import LCDDevice
                     for path, device in list(self._devices.items()):
                         try:
                             if (result := device.tick()) is not None:
                                 self._notify(AppEvent.FRAME_RENDERED,
                                              {'path': path, 'image': result})
-                            elif getattr(device, 'playing', False):
-                                device.update_video_cache_text(
-                                    self._current_metrics)  # type: ignore[arg-type]
+                            elif isinstance(device, LCDDevice) and device.playing:
+                                device.update_video_cache_text(self._current_metrics)
                         except Exception:
                             log.exception("Device tick error: %s", path)
                 except Exception:

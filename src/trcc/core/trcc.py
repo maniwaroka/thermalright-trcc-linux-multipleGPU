@@ -28,7 +28,8 @@ from .led_commands import LEDCommands
 from .results import DiscoveryResult
 
 if TYPE_CHECKING:
-    from .device import Device
+    from .device.lcd import LCDDevice
+    from .device.led import LEDDevice
     from .ports import Platform, Renderer
 
 log = logging.getLogger(__name__)
@@ -50,8 +51,8 @@ class Trcc:
         self._platform = platform
         self._renderer = renderer
 
-        self._lcd_devices: list[Device] = []
-        self._led_devices: list[Device] = []
+        self._lcd_devices: list[LCDDevice] = []
+        self._led_devices: list[LEDDevice] = []
 
         self.events = EventBus()
         self.lcd = LCDCommands(self._lcd_devices, self.events)
@@ -133,12 +134,14 @@ class Trcc:
             except Exception:
                 log.exception('discover: failed to build/connect device %s', d)
                 continue
-            if traits.is_led:
-                self._led_devices.append(device)
-                led_infos.append(device.device_info)
-            else:
+            from .device.lcd import LCDDevice as _LCD
+            from .device.led import LEDDevice as _LED
+            if traits.is_lcd and isinstance(device, _LCD):
                 self._lcd_devices.append(device)
                 lcd_infos.append(device.device_info)
+            elif traits.is_led and isinstance(device, _LED):
+                self._led_devices.append(device)
+                led_infos.append(device.device_info)
             self.events.publish('device.connected', device.device_info)
 
         log.info('discover: found %d LCD, %d LED', len(lcd_infos), len(led_infos))

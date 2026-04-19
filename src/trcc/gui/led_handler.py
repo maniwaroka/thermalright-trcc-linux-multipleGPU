@@ -18,7 +18,7 @@ from typing import Any
 
 import trcc.conf as _conf
 
-from ..core.device import Device
+from ..core.device.led import LEDDevice
 from ..core.models import LED_STYLES, DeviceInfo
 from .base_handler import BaseHandler
 from .uc_led_control import UCLedControl
@@ -45,7 +45,7 @@ class LEDHandler(BaseHandler):
 
     def __init__(
         self,
-        led: Device,
+        led: LEDDevice,
         panel: UCLedControl,
         on_temp_unit_changed: Any,
     ) -> None:
@@ -87,7 +87,7 @@ class LEDHandler(BaseHandler):
         return self._led is not None
 
     @property
-    def led_port(self) -> Device | None:
+    def led_port(self) -> LEDDevice | None:
         return self._led
 
     def show(self, device: DeviceInfo) -> None:
@@ -112,7 +112,7 @@ class LEDHandler(BaseHandler):
         log.info("LED: show model=%s style=%d, active (metrics-driven)", model, led_style)
 
     def deactivate(self) -> None:
-        """Pause handler — stop panel updates, save config. Device keeps running."""
+        """Pause handler — stop panel updates, save config. LEDDevice keeps running."""
         log.info("LED: deactivate (was active=%s)", self._active)
         self._active = False
         if self._led:

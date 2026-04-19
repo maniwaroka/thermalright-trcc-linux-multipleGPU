@@ -17,7 +17,8 @@ from .ports import (
 
 if TYPE_CHECKING:
     from ..services.system import SystemService
-    from .device import Device
+    from .device import Device  # Union[LCDDevice, LEDDevice]
+    from .device.lcd import LCDDevice
 
 log = logging.getLogger(__name__)
 
@@ -129,7 +130,6 @@ class ControllerBuilder:
         One method, one class. The config tells us what to build.
         """
         from ..adapters.device.factory import DeviceProtocolFactory
-        from .device import Device
         from .models import PROTOCOL_TRAITS
 
         device_svc = self._build_device_svc()
@@ -143,9 +143,9 @@ class ControllerBuilder:
         if is_led:
             from ..services import LEDService
             from ..services.led_config import LEDConfigService
-            return Device(
+            from .device.led import LEDDevice
+            return LEDDevice(
                 device_svc=device_svc,
-                device_type=False,  # LED
                 get_protocol=DeviceProtocolFactory.get_protocol,
                 led_svc_factory=LEDService,
                 led_config=LEDConfigService(**cfg),
@@ -166,8 +166,9 @@ class ControllerBuilder:
             **cfg,
             apply_format_prefs_fn=Settings.apply_format_prefs,
         )
+        from .device.lcd import LCDDevice
         result = build_fn(device_svc, renderer)
-        device = Device(
+        device = LCDDevice(
             device_svc=device_svc,
             display_svc=result['display_svc'],
             theme_svc=result['theme_svc'],
@@ -209,11 +210,11 @@ class ControllerBuilder:
         """Return platform-specific (get_memory_info, get_disk_info) callables."""
         return self._os.get_memory_info, self._os.get_disk_info
 
-    def device_from_service(self, device_svc) -> 'Device':
-        """Build a Device from an existing DeviceService (API standalone mode)."""
-        from .device import Device
+    def device_from_service(self, device_svc) -> 'LCDDevice':
+        """Build an LCDDevice from an existing DeviceService (API standalone)."""
+        from .device.lcd import LCDDevice
         build_fn = self._make_build_services_fn()
-        return Device.from_service(
+        return LCDDevice.from_service(
             device_svc,
             renderer=self._renderer,
             build_services_fn=build_fn,

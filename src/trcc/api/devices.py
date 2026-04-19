@@ -126,7 +126,8 @@ def select_device(device_id: int) -> dict:
         if device is None or not getattr(device, 'connected', False):
             return {"selected": dev.name, "resolution": dev.resolution}
 
-        if device.is_lcd:
+        from trcc.core.device.lcd import LCDDevice
+        if isinstance(device, LCDDevice):
             w_res, h_res = dev.resolution or (0, 0)
 
             # Download/extract theme data for this resolution in background

@@ -61,7 +61,7 @@ def test(device=None, loop=False, preview=False):
         if (rc := _connect_or_fail(device)):
             return rc
 
-        lcd = TrccApp.get().device(0)
+        lcd = TrccApp.get().lcd
         assert lcd is not None
         if lcd.device_path and 'led' in lcd.device_path:
             print("LED controller with segment display — use 'trcc led' commands.")
@@ -218,7 +218,7 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().device(0)
+    lcd = TrccApp.get().lcd
     assert lcd is not None
     lcd_w, lcd_h = lcd.lcd_size
 
@@ -338,7 +338,7 @@ def render_overlay(builder, dc_path, *, device=None, send=False, output=None,
     if (rc := _connect_or_fail(device)):
         return rc
     _ensure_system(builder)
-    result = TrccApp.get().device(0).render_overlay_from_dc(
+    result = TrccApp.get().lcd.render_overlay_from_dc(
         dc_path, send=send, output=output or None,
         metrics=get_all_metrics(),
     )
@@ -466,7 +466,7 @@ def resume(builder):
         print("No compatible TRCC device detected.")
         return 1
 
-    lcd = app.device(0)
+    lcd = app.lcd
     result = lcd.restore_last_theme()
     if not result.get("success"):
         print(f"Error: {result.get('error', 'Unknown error')}")

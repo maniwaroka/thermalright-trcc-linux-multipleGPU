@@ -424,7 +424,12 @@ class ProtocolTraits:
     fallback_backend: Optional[str]      # 'hidapi' for HID/LED, None for others
     requires_reboot: bool                # SCSI needs reboot after udev quirk
     supports_jpeg: bool                  # bulk/ly use JPEG encoding
-    is_led: bool                         # LED protocol (not LCD)
+    is_led: bool                         # LED protocol — original (predates LCD)
+
+    @property
+    def is_lcd(self) -> bool:
+        """LCD protocol — the newer device type (LED came first)."""
+        return not self.is_led
 
 
 PROTOCOL_TRAITS: Dict[str, ProtocolTraits] = {
