@@ -161,7 +161,7 @@ class LEDDevice:
         label = f'led:{getattr(self._info, "device_index", 0)} [{vid:04X}:{pid:04X} PM={pm} SUB={sub}]'
         self.log = logging.getLogger(f'{__name__}.{label}')
         if hasattr(self.log, 'dev'):
-            self.log.dev = label  # type: ignore[attr-defined]
+            setattr(self.log, 'dev', label)
         self.log.info("LED connected: %s style=%s", self._info.path, self._init_status)
         return {"success": True, "status": self._init_status or ""}
 

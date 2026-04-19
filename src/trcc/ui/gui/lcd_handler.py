@@ -109,7 +109,7 @@ class LCDHandler(BaseHandler):
         label = f'lcd:{device.device_index}'
         self.log: logging.Logger = logging.getLogger(f'{__name__}.{label}')
         if hasattr(self.log, 'dev'):
-            self.log.dev = label  # type: ignore[attr-defined]
+            setattr(self.log, 'dev', label)
         Settings.save_device_settings(self._device_key, w=w, h=h)
         self._lcd.set_data_ready_callback(self._data_notifier.ready.emit)
         self._refresh(w, h)

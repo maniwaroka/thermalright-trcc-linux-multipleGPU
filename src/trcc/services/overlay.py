@@ -40,7 +40,7 @@ class OverlayService:
         # Per-device child logger
         self.log: logging.Logger = logging.getLogger(f'{__name__}.{device_label}' if device_label else __name__)
         if hasattr(self.log, 'dev'):
-            self.log.dev = device_label or '-'  # type: ignore[attr-defined]
+            setattr(self.log, 'dev', device_label or '-')
 
         # Rendering backend (Strategy pattern) — must be injected
         if renderer is None:
