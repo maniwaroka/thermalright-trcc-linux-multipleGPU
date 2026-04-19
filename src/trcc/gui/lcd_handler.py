@@ -701,18 +701,26 @@ class LCDHandler(BaseHandler):
     def _update_slideshow_state(self) -> None:
         self.log.debug("_update_slideshow_state")
         local = self._w['theme_local']
-        if local.is_slideshow() and local.get_slideshow_themes():
-            interval_s = local.get_slideshow_interval()
+        enabled = local.is_slideshow()
+        interval_s = local.get_slideshow_interval()
+        themes = local.get_slideshow_themes()
+
+        if enabled and themes:
             self._slideshow_index = 0
             self._slideshow_timer.start(interval_s * 1000)
         else:
             self._slideshow_timer.stop()
 
-        if self._device_key:
-            themes = local.get_slideshow_themes()
+        # Trcc.lcd.configure_slideshow + set_slideshow own carousel persistence.
+        # Legacy: fall back to direct Settings write.
+        if self._app is not None:
+            self._app.lcd.configure_slideshow(
+                self._lcd_idx, [t.name for t in themes], interval_s)
+            self._app.lcd.set_slideshow(self._lcd_idx, enabled)
+        elif self._device_key:
             Settings.save_device_setting(self._device_key, 'carousel', {
-                'enabled': local.is_slideshow(),
-                'interval': local.get_slideshow_interval(),
+                'enabled': enabled,
+                'interval': interval_s,
                 'themes': [t.name for t in themes],
             })
 
