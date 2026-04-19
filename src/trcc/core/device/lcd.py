@@ -206,7 +206,7 @@ class LCDDevice:
         if w and h and self._display_svc:
             self._display_svc.set_resolution(w, h)
             self.orientation = self._display_svc.orientation
-            self.persist_dirs()
+            self._persist_dirs()
         return {
             "success": True,
             "resolution": dev.resolution,
@@ -308,12 +308,6 @@ class LCDDevice:
         """Direct DeviceService access (for IPC frame capture wiring)."""
         return self._device_svc
 
-    @property
-    def overlay_service(self) -> Any:
-        """Direct OverlayService access."""
-        return self._display_svc.overlay if self._display_svc else None
-
-
     # ══════════════════════════════════════════════════════════════════════
     # LCD — connection helpers
     # ══════════════════════════════════════════════════════════════════════
@@ -321,22 +315,6 @@ class LCDDevice:
     def set_data_ready_callback(self, fn: Any) -> None:
         if self._display_svc is not None:
             self._display_svc.on_data_ready = fn
-
-    def detect_devices(self) -> dict:
-        if not self._device_svc:
-            return {"success": False, "error": "Not connected"}
-        devices = self._device_svc.detect()
-        return {
-            "success": True, "devices": devices, "count": len(devices),
-            "message": f"Found {len(devices)} device(s)",
-        }
-
-    def select_device(self, device: Any) -> dict:
-        if not self._device_svc:
-            return {"success": False, "error": "Not connected"}
-        self._device_svc.select(device)
-        return {"success": True, "device": device,
-                "message": f"Selected: {device.path}"}
 
     # ══════════════════════════════════════════════════════════════════════
     # LCD — frame ops
@@ -407,7 +385,7 @@ class LCDDevice:
         self._lcd_config.persist(dev, field, value)
         self.log.debug("_persist: %s = %r", field, value)
 
-    def persist_dirs(self) -> None:
+    def _persist_dirs(self) -> None:
         """Write device's native-resolution dirs to config."""
         o = self.orientation
         if not isinstance(o, Orientation) or not o.data_root:
@@ -427,7 +405,7 @@ class LCDDevice:
         if self._display_svc:
             self._display_svc.refresh_dirs()
             self.orientation = self._display_svc.orientation
-        self.persist_dirs()
+        self._persist_dirs()
 
     def restore_device_settings(self) -> None:
         """Restore brightness + rotation from per-device config."""
@@ -698,21 +676,6 @@ class LCDDevice:
             "message": f"Restored theme: {path.name}",
         }
 
-    def collect_other_device_resolutions(self) -> list[tuple[int, int]]:
-        if not self._device_svc:
-            return []
-        current = self.lcd_size
-        seen: set[tuple[int, int]] = set()
-        for dev in self._device_svc.devices:
-            res = dev.resolution
-            if not res or res == (0, 0) or res == current:
-                continue
-            w, h = res
-            seen.add((w, h))
-            if w != h:
-                seen.add((h, w))
-        return list(seen)
-
     def select(self, theme: Any) -> dict:
         """Select and load a theme (local or cloud)."""
         self.log.debug("select: theme=%s type=%s",
@@ -787,10 +750,6 @@ class LCDDevice:
             self._lcd_config.persist(dev, 'mask_id', '')
 
         return result
-
-    def load_local(self, resolution: tuple[int, int]) -> dict:
-        themes = self._theme_svc.load_local_themes(resolution)
-        return {"success": True, "themes": themes, "count": len(themes)}
 
     def save(self, name: str) -> dict:
         ok, msg = self._display_svc.save_theme(name)
@@ -1013,9 +972,6 @@ class LCDDevice:
         self._display_svc.overlay.set_mask_visible(visible)
         return {"success": True,
                 "message": f"Mask: {'visible' if visible else 'hidden'}"}
-
-    def has_changed(self, metrics: Any) -> bool:
-        return self._display_svc.overlay.would_change(metrics)
 
     def render(self) -> dict:
         image = self._display_svc.render_overlay()
