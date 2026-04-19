@@ -281,7 +281,10 @@ class LCDHandler(BaseHandler):
             self.log.warning("_select_theme_from_path: path does not exist: %s", path)
             return
         self._slideshow_timer.stop()
-        self._lcd.enable_overlay(False)
+        if self._app is not None:
+            self._app.lcd.enable_overlay(self._lcd_idx, False)
+        else:
+            self._lcd.enable_overlay(False)
 
         # Reset overlay to canvas (landscape) dims — local themes pixel-rotate
         svc = self._lcd._display_svc
@@ -340,16 +343,21 @@ class LCDHandler(BaseHandler):
             mask_dir = Path(mask_info.path)
             # DC first — sets overlay resolution + element positions for this mask
             self._load_theme_overlay_config(mask_dir, persist=False)
-            # Then mask PNG composites at the correct dims
-            result = self._lcd.load_mask_standalone(str(mask_dir))
-            image = result.get('image')
+            # Then mask PNG composites at the correct dims.
+            # Trcc.lcd.apply_mask persists mask_id/mask_custom itself.
+            is_custom = getattr(mask_info, 'is_custom', False)
+            if self._app is not None:
+                r = self._app.lcd.apply_mask(self._lcd_idx, mask_dir, is_custom=is_custom)
+                image = r.frame.native if r.frame else None
+            else:
+                result = self._lcd.load_mask_standalone(str(mask_dir))
+                image = result.get('image')
+                if self._device_key:
+                    Settings.save_device_settings(
+                        self._device_key,
+                        mask_id=mask_dir.name, mask_custom=is_custom)
             if image:
                 self._w['preview'].set_image(image)
-            if self._device_key:
-                is_custom = getattr(mask_info, 'is_custom', False)
-                Settings.save_device_settings(
-                    self._device_key,
-                    mask_id=mask_dir.name, mask_custom=is_custom)
         else:
             self._w['preview'].set_status(f"Mask: {mask_info.name}")
 
@@ -427,12 +435,18 @@ class LCDHandler(BaseHandler):
         Settings.apply_format_prefs(overlay_config)
         self._w['theme_setting'].set_overlay_enabled(True)
         self._w['theme_setting'].load_from_overlay_config(overlay_config)
-        self._lcd.set_config(overlay_config)
-        self._lcd.enable_overlay(True)
+        if self._app is not None:
+            # Trcc.lcd.set_overlay_config persists overlay.config; then
+            # enable_overlay persists overlay.enabled. No need for
+            # _save_overlay below when Trcc owns persistence.
+            self._app.lcd.set_overlay_config(self._lcd_idx, overlay_config)
+            self._app.lcd.enable_overlay(self._lcd_idx, True)
+        else:
+            self._lcd.set_config(overlay_config)
+            self._lcd.enable_overlay(True)
+            if persist:
+                self._save_overlay(True, overlay_config)
         self._render_and_send()
-
-        if persist:
-            self._save_overlay(True, overlay_config)
 
     # ── Video (C# ucBoFangQiKongZhi1) ─────────────────────────────
 
@@ -533,18 +547,25 @@ class LCDHandler(BaseHandler):
         self.log.debug("on_overlay_changed: %d elements", len(element_data) if element_data else 0)
         if not element_data:
             return
-        if not self._lcd.enabled:
-            self._lcd.enable_overlay(True)
-        self._lcd.set_config(element_data)
+        if self._app is not None:
+            if not self._lcd.enabled:
+                self._app.lcd.enable_overlay(self._lcd_idx, True)
+            self._app.lcd.set_overlay_config(self._lcd_idx, element_data)
+        else:
+            if not self._lcd.enabled:
+                self._lcd.enable_overlay(True)
+            self._lcd.set_config(element_data)
         if self._lcd.playing and self._lcd.last_metrics is not None:
             self.log.debug("on_overlay_changed: video playing — updating cache text overlay")
             self._lcd.update_video_cache_text(self._lcd.last_metrics)
         else:
             self._render_and_send()
 
-        self._save_overlay(
-            self._w['theme_setting'].overlay_grid.overlay_enabled,
-            element_data)
+        # Legacy path still needs _save_overlay; Trcc persists internally.
+        if self._app is None:
+            self._save_overlay(
+                self._w['theme_setting'].overlay_grid.overlay_enabled,
+                element_data)
 
     def handle_frame(self, image: Any) -> None:
         """Receive rendered frame from tick loop — update preview widget."""
