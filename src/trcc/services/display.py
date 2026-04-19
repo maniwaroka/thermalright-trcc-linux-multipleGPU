@@ -387,6 +387,57 @@ class DisplayService:
             self.log.debug("load_cloud_theme: async cache build started")
         return result
 
+    def apply_standalone_mask(
+        self, mask_path: Path, dc_config_cls: Any, *,
+        is_rotated: bool,
+    ) -> dict:
+        """Apply an arbitrary mask file/dir to the active overlay.
+
+        Resolves the mask file (single PNG or directory's ``01.png``),
+        computes its position from the sibling ``config1.dc`` if any,
+        toggles overlay state, and returns ``{image, mask_file}``.
+        For zt portrait masks the overlay resolution is bumped to the
+        rotated output size before placement.
+        """
+        from .overlay import OverlayService
+
+        mask_dir = mask_path if mask_path.is_dir() else mask_path.parent
+        is_zt = mask_dir.parent.name.startswith('zt')
+        if is_zt and is_rotated:
+            w, h = self.output_resolution
+            self.overlay.set_resolution(w, h)
+            self.log.info("apply_standalone_mask: portrait zt mask → overlay %dx%d", w, h)
+        else:
+            w, h = self.canvas_size
+
+        if mask_path.is_dir():
+            mask_file = mask_path / "01.png"
+            if not mask_file.exists():
+                mask_file = next(mask_path.glob("*.png"), None)
+            if not mask_file:
+                return {"success": False, "error": f"No PNG files in {mask_path}"}
+        else:
+            mask_file = mask_path
+
+        r = ImageService._r()
+        mask_img = r.convert_to_rgba(r.open_image(mask_file))
+        mask_w, mask_h = r.surface_size(mask_img)
+        dc_path = mask_dir / 'config1.dc'
+        position = OverlayService.calculate_mask_position(
+            dc_config_cls, dc_path, (mask_w, mask_h), (w, h))
+
+        self.overlay.set_theme_mask(None)
+        self.overlay.set_mask(mask_img, position)
+        self.overlay.enabled = True
+        self._mask_source_dir = mask_dir
+        self.log.debug("apply_standalone_mask: _mask_source_dir=%s", self._mask_source_dir)
+        bg = self._clean_background or self.current_image \
+            or ImageService.solid_color(0, 0, 0, w, h)
+        self.current_image = bg
+        self.invalidate_video_cache()
+        return {"success": True, "image": self.render_overlay(),
+                "mask_file": mask_file}
+
     def apply_mask(self, mask_dir: Path) -> Any | None:
         """Apply a mask overlay on top of current content."""
         # Restore clean background so old mask isn't baked in

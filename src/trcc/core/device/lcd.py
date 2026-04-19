@@ -823,71 +823,25 @@ class LCDDevice:
         }
 
     def load_mask_standalone(self, mask_path: str) -> dict:
-        from ...services import ImageService, OverlayService
-
         if not os.path.exists(mask_path):
             return {"success": False, "error": f"Path not found: {mask_path}"}
         if not self._display_svc:
             return {"success": False, "error": "Display service not initialized"}
 
-        p = Path(mask_path)
-        mask_dir = p if p.is_dir() else p.parent
-        is_zt = mask_dir.parent.name.startswith('zt')
-        if is_zt and self.orientation._is_rotated():
-            w, h = self._display_svc.output_resolution
-            self._display_svc.overlay.set_resolution(w, h)
-            self.log.info("load_mask_standalone: portrait zt mask → overlay %dx%d", w, h)
-        else:
-            w, h = self._display_svc.canvas_size
-        if p.is_dir():
-            mask_file = p / "01.png"
-            if not mask_file.exists():
-                mask_file = next(p.glob("*.png"), None)
-            if not mask_file:
-                return {"success": False,
-                        "error": f"No PNG files in {mask_path}"}
-        else:
-            mask_file = p
+        result = self._display_svc.apply_standalone_mask(
+            Path(mask_path), self._dc_config_cls,
+            is_rotated=self.orientation._is_rotated(),
+        )
+        if not result.get("success"):
+            return result
 
-        r = ImageService._r()
-        mask_img = r.convert_to_rgba(r.open_image(mask_file))
-
-        mask_w, mask_h = r.surface_size(mask_img)
-        dc_path = (p if p.is_dir() else p.parent) / 'config1.dc'
-        position = OverlayService.calculate_mask_position(
-            self._dc_config_cls, dc_path, (mask_w, mask_h), (w, h))
-
-        if self._display_svc:
-            ovl = self._display_svc.overlay
-            ovl.set_theme_mask(None)
-            ovl.set_mask(mask_img, position)
-            ovl.enabled = True
-            self._display_svc.mask_source_dir = p if p.is_dir() else p.parent
-            self.log.debug("load_mask_standalone: mask_source_dir=%s", self._display_svc.mask_source_dir)
-            bg = self._display_svc.clean_background or \
-                self._display_svc.current_image or \
-                ImageService.solid_color(0, 0, 0, w, h)
-            self._display_svc.current_image = bg
-            self._display_svc.invalidate_video_cache()
-            result_img = self._display_svc.render_overlay()
-        else:
-            ovl = OverlayService(
-                w, h, renderer=self._renderer,
-                load_config_json_fn=self._load_config_json_fn,
-                dc_config_cls=self._dc_config_cls,
-            )
-            ovl.set_mask(mask_img, position)
-            bg = ImageService.solid_color(0, 0, 0, w, h)
-            ovl.set_background(bg)
-            ovl.enabled = True
-            result_img = ovl.render()
-
+        result_img = result["image"]
         if self.connected:
             self.send(result_img)
         return {
             "success": True,
             "image": result_img,
-            "message": f"Sent mask {mask_file.name} to {self.device_path}",
+            "message": f"Sent mask {result['mask_file'].name} to {self.device_path}",
         }
 
     # ══════════════════════════════════════════════════════════════════════
