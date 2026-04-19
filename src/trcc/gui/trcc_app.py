@@ -463,9 +463,16 @@ class TRCCApp(QMainWindow):
                 'video_cut': self.uc_video_cut,
                 'rotation_combo': self.rotation_combo,
             }
+            # Compute LCD index: count LCD handlers created before this one.
+            # Matches Trcc.discover() ordering which iterates in detection order.
+            lcd_idx = sum(
+                1 for h in self._handlers.values()
+                if isinstance(h, LCDHandler)
+            )
             lcd_handler = LCDHandler(
                 device, widgets, self._make_timer, self._data_dir,
-                is_visible_fn=self.is_app_visible)
+                is_visible_fn=self.is_app_visible,
+                app=self._trcc, lcd_idx=lcd_idx)
             self._handlers[path] = lcd_handler
             log.info("LCD handler added: %s", path)
             added = True

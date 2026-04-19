@@ -20,6 +20,7 @@ from .models.overlay import OverlayElement
 from .models.theme import MaskInfo, ThemeInfo
 from .results import (
     BackgroundInfo,
+    Frame,
     FrameResult,
     LCDSnapshot,
     OpResult,
@@ -65,6 +66,18 @@ class LCDCommands:
             return ''
         return Settings.device_config_key(info.device_index, info.vid, info.pid)
 
+    @staticmethod
+    def _frame_from(r: dict) -> Frame | None:
+        """Wrap a Device result's QImage into a Frame for the GUI path.
+
+        `native` carries the QImage passthrough; pixel bytes stay empty
+        until Phase 8 swaps QtRenderer over to produce Frame directly.
+        """
+        img = r.get('image')
+        if img is None:
+            return None
+        return Frame(native=img)
+
     # ── Display settings ─────────────────────────────────────────────
 
     def set_brightness(self, lcd: int, percent: int) -> FrameResult:
@@ -76,6 +89,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=r.get('message', ''),
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def set_rotation(self, lcd: int, degrees: int) -> FrameResult:
@@ -87,6 +101,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=r.get('message', ''),
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def set_split_mode(self, lcd: int, mode: int) -> FrameResult:
@@ -98,6 +113,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=r.get('message', ''),
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def set_fit_mode(self, lcd: int, mode: str) -> FrameResult:
@@ -109,6 +125,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=r.get('message', ''),
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     # ── Themes ───────────────────────────────────────────────────────
@@ -162,6 +179,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=r.get('message', ''),
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def send_image(self, lcd: int, path: Path) -> FrameResult:
@@ -379,6 +397,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=f'Updated element {index}',
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def delete_overlay_element(self, lcd: int, index: int) -> FrameResult:
@@ -391,6 +410,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=f'Deleted element {index}',
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def flash_overlay_element(
@@ -540,6 +560,7 @@ class LCDCommands:
             success=r.get('success', False),
             message=r.get('message', ''),
             error=r.get('error'),
+            frame=self._frame_from(r),
         )
 
     def send_color(self, lcd: int, r: int, g: int, b: int) -> OpResult:

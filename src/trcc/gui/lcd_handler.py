@@ -27,6 +27,7 @@ from ..core.models import (
     DeviceInfo,
     ThemeInfo,
 )
+from ..core.trcc import Trcc
 from ..services.theme import theme_info_from_directory
 from .base_handler import BaseHandler
 
@@ -53,9 +54,13 @@ class LCDHandler(BaseHandler):
         make_timer: Any,
         data_dir: Path,
         is_visible_fn: Any = None,
+        app: Trcc | None = None,
+        lcd_idx: int = 0,
     ) -> None:
         super().__init__(lcd, 'form')
         self._lcd = lcd
+        self._app = app           # Trcc for unified command flow
+        self._lcd_idx = lcd_idx    # Index into Trcc._lcd_devices
         self._w = widgets  # preview, theme_setting, theme_local, etc.
         self._data_dir = data_dir
         self._is_visible = is_visible_fn or (lambda: True)
@@ -149,13 +154,19 @@ class LCDHandler(BaseHandler):
     def _restore_brightness(self, cfg: dict) -> None:
         self._brightness_level = cfg.get('brightness_level', DEFAULT_BRIGHTNESS_LEVEL)
         self.log.info("Restoring brightness: %d%%", self._brightness_level)
-        self._lcd.set_brightness(self._brightness_level)
+        if self._app is not None:
+            self._app.lcd.set_brightness(self._lcd_idx, self._brightness_level)
+        else:
+            self._lcd.set_brightness(self._brightness_level)
 
     def _restore_rotation(self, cfg: dict) -> None:
         rotation_index = cfg.get('rotation', 0) // 90
         rotation = rotation_index * 90
         self.log.debug("_restore_rotation: rotation=%d", rotation)
-        self._lcd.set_rotation(rotation)
+        if self._app is not None:
+            self._app.lcd.set_rotation(self._lcd_idx, rotation)
+        else:
+            self._lcd.set_rotation(rotation)
         self._w['rotation_combo'].blockSignals(True)
         self._w['rotation_combo'].setCurrentIndex(rotation_index)
         self._w['rotation_combo'].blockSignals(False)
@@ -170,9 +181,15 @@ class LCDHandler(BaseHandler):
         if self._ldd_is_split:
             if not self._split_mode:
                 self._split_mode = 2
-            self._lcd.set_split_mode(self._split_mode)
+            if self._app is not None:
+                self._app.lcd.set_split_mode(self._lcd_idx, self._split_mode)
+            else:
+                self._lcd.set_split_mode(self._split_mode)
         else:
-            self._lcd.set_split_mode(0)
+            if self._app is not None:
+                self._app.lcd.set_split_mode(self._lcd_idx, 0)
+            else:
+                self._lcd.set_split_mode(0)
 
     def _restore_carousel(self, cfg: dict) -> None:
         carousel = cfg.get('carousel')
@@ -532,8 +549,12 @@ class LCDHandler(BaseHandler):
     def set_brightness(self, percent: int) -> None:
         self.log.debug("set_brightness: %d%%", percent)
         self._brightness_level = percent
-        result = self._lcd.set_brightness(percent)
-        image = result.get('image')
+        if self._app is not None:
+            r = self._app.lcd.set_brightness(self._lcd_idx, percent)
+            image = r.frame.native if r.frame else None
+        else:
+            result = self._lcd.set_brightness(percent)
+            image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
             if self._lcd.auto_send:
@@ -541,8 +562,12 @@ class LCDHandler(BaseHandler):
 
     def set_rotation(self, degrees: int) -> None:
         self.log.debug("set_rotation: degrees=%d", degrees)
-        result = self._lcd.set_rotation(degrees)  # Handles dir switch + theme reload
-        image = result.get('image')
+        if self._app is not None:
+            r = self._app.lcd.set_rotation(self._lcd_idx, degrees)
+            image = r.frame.native if r.frame else None
+        else:
+            result = self._lcd.set_rotation(degrees)
+            image = result.get('image')
         o = self._lcd.orientation
         ow, oh = o.output_resolution
         self.log.info("set_rotation: orientation.rotation=%d output=%dx%d "
@@ -591,8 +616,12 @@ class LCDHandler(BaseHandler):
     def set_split_mode(self, mode: int) -> None:
         self.log.debug("set_split_mode: mode=%d", mode)
         self._split_mode = mode
-        result = self._lcd.set_split_mode(mode)
-        image = result.get('image')
+        if self._app is not None:
+            r = self._app.lcd.set_split_mode(self._lcd_idx, mode)
+            image = r.frame.native if r.frame else None
+        else:
+            result = self._lcd.set_split_mode(mode)
+            image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
             if self._lcd.auto_send:

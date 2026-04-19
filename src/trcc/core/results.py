@@ -15,7 +15,7 @@ Reuses existing domain types from `core.models` — `ThemeInfo`, `MaskInfo`,
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,10 +31,15 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class Frame:
-    width: int
-    height: int
-    pixels: bytes                      # raw RGBA
+    """Framework-neutral image. Until Phase 8 ships QtRenderer→bytes
+    conversion, `native` holds the raw QImage passthrough for GUI; bytes
+    fields are populated lazily when API/CLI need serialization.
+    """
+    width: int = 0
+    height: int = 0
+    pixels: bytes = b''                # raw RGBA (populated in phase 8)
     encoded: bytes | None = None       # RGB565 pre-encoded for device
+    native: Any = None                 # passthrough for the current Qt path
 
 
 # =============================================================================
