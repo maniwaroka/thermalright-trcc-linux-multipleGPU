@@ -493,6 +493,82 @@ class LCDCommands:
             error=r.get('error'),
         )
 
+    # ── Long-running streaming (blocking; publishes frame events) ────
+
+    def play_video_loop(
+        self, lcd: int, path: Path,
+        *,
+        overlay_config: dict | None = None,
+        mask_path: Path | None = None,
+        metrics_fn: Any = None,
+        loop: bool = True,
+        duration: float = 0,
+    ) -> OpResult:
+        """Play a video with overlay, blocking until stop/duration/error.
+
+        Publishes EventBus events while running:
+          - 'frame'    → (lcd_idx: int, Frame)            one per decoded frame
+          - 'progress' → (lcd_idx: int, percent, cur, tot) periodic
+
+        Any subscriber can print progress, render preview, etc.
+        """
+        dev = self._get(lcd)
+        if dev is None:
+            return OpResult(success=False, error=f'LCD {lcd} not found')
+
+        bus = self._events
+
+        def _emit_frame(img):
+            bus.publish('frame', lcd, Frame(native=img))
+
+        def _emit_progress(pct, cur, tot):
+            bus.publish('progress', lcd, pct, cur, tot)
+
+        r = dev.play_video_loop(
+            path,
+            overlay_config=overlay_config,
+            mask_path=mask_path,
+            metrics_fn=metrics_fn,
+            on_frame=_emit_frame,
+            on_progress=_emit_progress,
+            loop=loop,
+            duration=duration,
+        )
+        return OpResult(
+            success=r.get('success', False),
+            message=r.get('message', ''),
+            error=r.get('error'),
+        )
+
+    def keep_alive_loop(
+        self, lcd: int,
+        *,
+        interval: float = 0.150,
+        duration: float = 0,
+        metrics_fn: Any = None,
+    ) -> OpResult:
+        """Static-theme keepalive — publishes 'frame' events during idle."""
+        dev = self._get(lcd)
+        if dev is None:
+            return OpResult(success=False, error=f'LCD {lcd} not found')
+
+        bus = self._events
+
+        def _emit_frame(img):
+            bus.publish('frame', lcd, Frame(native=img))
+
+        r = dev.keep_alive_loop(
+            interval=interval,
+            duration=duration,
+            metrics_fn=metrics_fn,
+            on_frame=_emit_frame,
+        )
+        return OpResult(
+            success=r.get('success', False),
+            message=r.get('message', ''),
+            error=r.get('error'),
+        )
+
     # ── Screencast + background + slideshow ──────────────────────────
 
     def start_screencast(

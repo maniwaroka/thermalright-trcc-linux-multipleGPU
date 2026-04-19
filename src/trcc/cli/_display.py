@@ -102,29 +102,21 @@ def test(device=None, loop=False, preview=False):
         return 1
 
 
-def play_video(builder, video_path, *, device=None, loop=True, duration=0,
+def play_video(builder, video_path, *, device=None, loop=True, duration=0,  # noqa: ARG001
                preview=False, metrics=None, mask=None,
                font_size=14, color='ffffff', font='Microsoft YaHei',
                font_style='regular', temp_unit=0, time_format=0,
-               date_format=0):
-    """Play video/GIF/ZT on LCD device with optional overlay."""
+               date_format=0, lcd: int = 0):
+    """Play video/GIF/ZT on LCD device with optional overlay (via Trcc)."""
     try:
-        log.debug("play_video path=%s device=%s loop=%s", video_path, device, loop)
-        if not os.path.exists(video_path):
-            log.warning("video file not found: %s", video_path)
-            print(f"Error: File not found: {video_path}")
-            return 1
+        from pathlib import Path
 
-        from trcc.core.app import TrccApp
         from trcc.core.models import build_overlay_config
 
-        if (rc := _connect_or_fail(device)):
-            return rc
-        lcd = TrccApp.get().device(0)
-        assert lcd is not None
-
-        dev_path = lcd.device_path
-        w, h = lcd.lcd_size
+        log.debug("play_video path=%s lcd=%d loop=%s", video_path, lcd, loop)
+        if not os.path.exists(video_path):
+            print(f"Error: File not found: {video_path}")
+            return 1
 
         # Build overlay config from --metric specs
         overlay_config = None
@@ -147,12 +139,20 @@ def play_video(builder, video_path, *, device=None, loop=True, duration=0,
         # Metrics supplier for live overlay updates
         metrics_fn = None
         if overlay_config:
-            from trcc.cli import _ensure_system
             from trcc.services.system import get_all_metrics
-            _ensure_system(builder)
+            try:
+                from trcc.cli import _ensure_system
+                from trcc.core.builder import ControllerBuilder
+                _ensure_system(ControllerBuilder.for_current_os())
+            except Exception:
+                pass
             metrics_fn = get_all_metrics
 
-        print(f"Playing {video_path} on {dev_path} [{w}x{h}]")
+        app = trcc()
+        snap = app.lcd.snapshot(lcd)
+        w, h = snap.resolution
+
+        print(f"Playing {video_path} on LCD {lcd} [{w}x{h}]")
         if overlay_config:
             print(f"  Overlay: {len(overlay_config)} elements")
         if mask:
@@ -163,32 +163,38 @@ def play_video(builder, video_path, *, device=None, loop=True, duration=0,
         if preview:
             print('\033[2J', end='', flush=True)
 
-        def _on_frame(img):
-            lcd.send(img)
-            if preview:
-                from trcc.services import ImageService
+        # Subscribe to EventBus for ANSI preview + progress printing.
+        from trcc.services import ImageService
+
+        def _on_frame(_idx, frame):
+            img = frame.native if frame else None
+            if preview and img is not None:
                 print(ImageService.to_ansi_cursor_home(img), flush=True)
 
-        def _on_progress(pct, cur, total_t):
+        def _on_progress(_idx, pct, cur, total_t):
             if not preview:
                 print(f"\r  {cur} / {total_t} ({pct:.0f}%)",
                       end="", flush=True)
 
-        result = lcd.play_video_loop(
-            video_path,
-            overlay_config=overlay_config,
-            mask_path=mask,
-            metrics_fn=metrics_fn,
-            on_frame=_on_frame,
-            on_progress=_on_progress,
-            loop=loop,
-            duration=duration,
-        )
+        sub_frame = app.events.subscribe('frame', _on_frame)
+        sub_prog = app.events.subscribe('progress', _on_progress)
+        try:
+            result = app.lcd.play_video_loop(
+                lcd, Path(video_path),
+                overlay_config=overlay_config,
+                mask_path=Path(mask) if mask else None,
+                metrics_fn=metrics_fn,
+                loop=loop,
+                duration=duration,
+            )
+        finally:
+            app.events.unsubscribe(sub_frame)
+            app.events.unsubscribe(sub_prog)
 
-        if result["success"]:
-            print(f"\n{result['message']}.")
+        if result.success:
+            print(f"\n{result.message}.")
             return 0
-        print(f"Error: {result.get('error', 'Unknown error')}")
+        print(f"Error: {result.error or 'Unknown error'}")
         return 1
 
     except KeyboardInterrupt:
