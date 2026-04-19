@@ -472,6 +472,21 @@ class LCDDevice:
         return {"success": True, "image": image,
                 "message": f"Rotation set to {degrees}°"}
 
+    def _apply_overlay_from_dir(self, dir_path: str) -> dict | None:
+        """Load + format-prefs + set + enable overlay from a directory.
+
+        Returns the loaded config (or None if no DC/JSON found). When found,
+        format prefs are applied and the overlay is enabled. Caller decides
+        what to do when None is returned.
+        """
+        overlay_cfg = self.load_overlay_config_from_dir(dir_path)
+        if overlay_cfg:
+            if self._lcd_config:
+                self._lcd_config.apply_format_prefs(overlay_cfg)
+            self.set_config(overlay_cfg)
+            self.enable_overlay(True)
+        return overlay_cfg
+
     def _reload_theme_for_rotation(self) -> Any | None:
         current = self.current_theme_path
         if not current:
@@ -485,19 +500,10 @@ class LCDDevice:
             candidate = Path(base) / theme_name
             if candidate.exists():
                 self.log.info("_reload_theme_for_rotation: %s → %s", theme_name, candidate)
-                theme = self._theme_info_from_dir_fn(candidate)
-                result = self.select(theme)
-
-                overlay_cfg = self.load_overlay_config_from_dir(str(candidate))
-                if overlay_cfg:
-                    if self._lcd_config:
-                        self._lcd_config.apply_format_prefs(overlay_cfg)
-                    self.set_config(overlay_cfg)
-                    self.enable_overlay(True)
-                    rendered = svc.render_and_process()
-                    return rendered
-                else:
-                    self.enable_overlay(False)
+                result = self.select(self._theme_info_from_dir_fn(candidate))
+                if self._apply_overlay_from_dir(str(candidate)):
+                    return svc.render_and_process()
+                self.enable_overlay(False)
                 return result.get('image')
         self.log.debug("_reload_theme_for_rotation: theme '%s' not in new dirs", theme_name)
         return None
@@ -512,29 +518,25 @@ class LCDDevice:
             return None
         mask_name = old_mask_dir.name
         new_mask_dir = Path(svc.masks_dir) / mask_name
-        if new_mask_dir.exists():
-            self.log.info("_reload_mask_for_rotation: %s → %s", old_mask_dir, new_mask_dir)
-            if self.orientation._is_rotated():
-                ow, oh = svc.output_resolution
-                svc.overlay.set_resolution(ow, oh)
-                self.log.info("_reload_mask_for_rotation: portrait → overlay %dx%d", ow, oh)
-            else:
-                cw, ch = svc.canvas_size
-                svc.overlay.set_resolution(cw, ch)
-                self.log.info("_reload_mask_for_rotation: landscape → overlay %dx%d", cw, ch)
-            overlay_cfg = self.load_overlay_config_from_dir(str(new_mask_dir))
-            if overlay_cfg:
-                if self._lcd_config:
-                    self._lcd_config.apply_format_prefs(overlay_cfg)
-                self.set_config(overlay_cfg)
-                self.enable_overlay(True)
-            self.load_mask_standalone(str(new_mask_dir))
-            return svc.render_and_process()
-        self.log.debug("_reload_mask_for_rotation: mask '%s' not in new masks dir %s",
-                  mask_name, svc.masks_dir)
-        svc.overlay.set_theme_mask(None)
-        svc.mask_source_dir = None
-        return None
+        if not new_mask_dir.exists():
+            self.log.debug("_reload_mask_for_rotation: mask '%s' not in new masks dir %s",
+                      mask_name, svc.masks_dir)
+            svc.overlay.set_theme_mask(None)
+            svc.mask_source_dir = None
+            return None
+
+        self.log.info("_reload_mask_for_rotation: %s → %s", old_mask_dir, new_mask_dir)
+        if self.orientation._is_rotated():
+            ow, oh = svc.output_resolution
+            svc.overlay.set_resolution(ow, oh)
+            self.log.info("_reload_mask_for_rotation: portrait → overlay %dx%d", ow, oh)
+        else:
+            cw, ch = svc.canvas_size
+            svc.overlay.set_resolution(cw, ch)
+            self.log.info("_reload_mask_for_rotation: landscape → overlay %dx%d", cw, ch)
+        self._apply_overlay_from_dir(str(new_mask_dir))
+        self.load_mask_standalone(str(new_mask_dir))
+        return svc.render_and_process()
 
     def set_split_mode(self, mode: int) -> dict:
         if mode not in (0, 1, 2, 3):
@@ -720,17 +722,12 @@ class LCDDevice:
 
         overlay_config = None
         if match.path:
-            overlay_config = self.load_overlay_config_from_dir(str(match.path))
-            if overlay_config:
-                if self._lcd_config:
-                    self._lcd_config.apply_format_prefs(overlay_config)
-                self.set_config(overlay_config)
-                self.enable_overlay(True)
-                if not is_animated:
-                    rendered = self.render_and_send()
-                    image = rendered.get("image") or image
-                    result["image"] = image
-            else:
+            overlay_config = self._apply_overlay_from_dir(str(match.path))
+            if overlay_config and not is_animated:
+                rendered = self.render_and_send()
+                image = rendered.get("image") or image
+                result["image"] = image
+            elif not overlay_config:
                 self.enable_overlay(False)
                 if image and not is_animated:
                     self.send(image)
