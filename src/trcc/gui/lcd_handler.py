@@ -355,32 +355,46 @@ class LCDHandler(BaseHandler):
 
     def update_mask_position(self, x: int, y: int) -> None:
         """Update mask overlay position and re-render."""
-        self._lcd.set_mask_position(x, y)
+        if self._app is not None:
+            self._app.lcd.set_mask_position(self._lcd_idx, x, y)
+        else:
+            self._lcd.set_mask_position(x, y)
         self._render_and_send()
 
     def save_theme(self, name: str) -> None:
-        result = self._lcd.save(name)
-        self._w['preview'].set_status(result.get('message', ''))
-        if result.get("success"):
+        # Trcc.lcd.save_theme owns theme_name/theme_type persistence now.
+        if self._app is not None:
+            r = self._app.lcd.save_theme(self._lcd_idx, name)
+            self._w['preview'].set_status(r.message or r.format())
+            success = r.success
+        else:
+            result = self._lcd.save(name)
+            self._w['preview'].set_status(result.get('message', ''))
+            success = result.get('success', False)
+        if success:
             td = self._lcd.orientation.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
             self._w['theme_local'].load_themes()
-            if self._device_key and self._lcd.current_theme_path:
-                Settings.save_device_setting(
-                    self._device_key, 'theme_name',
-                    self._lcd.current_theme_path.name)
-                Settings.save_device_setting(
-                    self._device_key, 'theme_type', 'local')
 
     def export_config(self, path: Path) -> None:
-        result = self._lcd.export_config(str(path))
-        self._w['preview'].set_status(result.get('message', ''))
+        if self._app is not None:
+            r = self._app.lcd.export_config(self._lcd_idx, path)
+            self._w['preview'].set_status(r.message or r.format())
+        else:
+            result = self._lcd.export_config(str(path))
+            self._w['preview'].set_status(result.get('message', ''))
 
     def import_config(self, path: Path) -> None:
-        result = self._lcd.import_config(str(path), str(self._data_dir))
-        self._w['preview'].set_status(result.get('message', ''))
-        if result.get("success"):
+        if self._app is not None:
+            r = self._app.lcd.import_config(self._lcd_idx, path, self._data_dir)
+            self._w['preview'].set_status(r.message or r.format())
+            success = r.success
+        else:
+            result = self._lcd.import_config(str(path), str(self._data_dir))
+            self._w['preview'].set_status(result.get('message', ''))
+            success = result.get('success', False)
+        if success:
             td = self._lcd.orientation.theme_dir
             if td:
                 self._w['theme_local'].set_theme_directory(td.path)
@@ -424,6 +438,9 @@ class LCDHandler(BaseHandler):
 
     def play_pause(self) -> None:
         self.log.debug("play_pause")
+        # Video pause toggles Device.media state. Use legacy pause() (returns
+        # dict with state='playing'|'paused') — pause_video on Trcc is a pure
+        # stop, doesn't toggle. Phase 8 adds a toggle_video command.
         result = self._lcd.pause()
         playing = result.get('state') == 'playing'
         self._w['preview'].set_playing(playing)
@@ -434,17 +451,27 @@ class LCDHandler(BaseHandler):
 
     def stop_video(self) -> None:
         self.log.debug("stop_video")
-        self._lcd.stop()
+        if self._app is not None:
+            self._app.lcd.stop_video(self._lcd_idx)
+        else:
+            self._lcd.stop()
         self._animation_timer.stop()
         self._w['preview'].set_playing(False)
         self._w['preview'].show_video_controls(False)
 
     def seek(self, percent: float) -> None:
-        self._lcd.seek(percent)
+        if self._app is not None:
+            self._app.lcd.seek_video(self._lcd_idx, percent)
+        else:
+            self._lcd.seek(percent)
 
     def set_video_fit_mode(self, mode: str) -> None:
-        result = self._lcd.set_fit_mode(mode)
-        image = result.get('image')
+        if self._app is not None:
+            r = self._app.lcd.set_fit_mode(self._lcd_idx, mode)
+            image = r.frame.native if r.frame else None
+        else:
+            result = self._lcd.set_fit_mode(mode)
+            image = result.get('image')
         if image:
             self._w['preview'].set_image(image)
 
