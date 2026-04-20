@@ -18,6 +18,8 @@ from .core.models import Wire
 from .core.ports import Device, Platform
 from .core.registry import find_product
 from .core.results import Result
+from .services.settings import Settings
+from .services.theme import ThemeService
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +51,8 @@ class App:
         self.platform = platform
         self.devices: Dict[str, Device] = {}
         self.events = EventBus()
+        self.settings = Settings(platform.paths())
+        self.themes = ThemeService()
 
     # ── Device lifecycle ──────────────────────────────────────────────
 

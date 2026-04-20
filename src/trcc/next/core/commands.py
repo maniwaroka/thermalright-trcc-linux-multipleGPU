@@ -20,14 +20,18 @@ from .errors import (
     DeviceNotConnectedError,
     DeviceNotFoundError,
     HandshakeError,
+    ThemeError,
     TransportError,
 )
 from .events import (
+    BrightnessChanged,
     DeviceConnected,
     DeviceDisconnected,
     DeviceDiscovered,
     ErrorOccurred,
     FrameSent,
+    OrientationChanged,
+    ThemeLoaded,
 )
 from .registry import find_product
 from .results import (
@@ -185,43 +189,73 @@ class SendFrame(Command):
 
 @dataclass(frozen=True, slots=True)
 class LoadTheme(Command):
-    """Apply a theme to a device.  Stubbed pending Phase 5 services."""
+    """Parse a theme directory and remember it as the device's current theme.
+
+    Actual frame rendering + send lands in Phase 6 (Renderer + DisplayService).
+    This command validates the theme and persists the selection so it
+    survives app restarts.
+    """
     key: str
     path: Path
 
     def execute(self, app: "App") -> ThemeResult:
+        try:
+            theme = app.themes.load(self.path)
+        except ThemeError as e:
+            app.events.publish(ErrorOccurred(message=str(e), kind="theme",
+                                             key=self.key))
+            return ThemeResult(ok=False, key=self.key, message=str(e))
+
+        app.settings.set_current_theme(self.key, theme.name)
+        app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
         return ThemeResult(
-            ok=False, key=self.key,
-            message="LoadTheme not yet implemented (needs Phase 5 services)",
-            theme_name=self.path.name,
+            ok=True, key=self.key, theme_name=theme.name,
+            message=f"Theme '{theme.name}' loaded "
+                    f"(render+send lands with Phase 6)",
         )
 
 
 @dataclass(frozen=True, slots=True)
 class SetOrientation(Command):
-    """Set per-device rotation.  Stubbed pending Phase 5 settings service."""
+    """Set per-device rotation (0 / 90 / 180 / 270).
+
+    Validates against the product registry — device need not be
+    connected yet (users often configure before plugging in).
+    """
     key: str
     degrees: int
 
     def execute(self, app: "App") -> OrientationResult:
         try:
-            device = app.get(self.key)
-        except DeviceNotFoundError as e:
-            return OrientationResult(ok=False, key=self.key, message=str(e))
-        if self.degrees not in device.info.orientations:
+            vid_str, pid_str = self.key.split(":")
+            vid, pid = int(vid_str, 16), int(pid_str, 16)
+        except ValueError:
             return OrientationResult(
                 ok=False, key=self.key, degrees=self.degrees,
-                message=f"Unsupported orientation: {self.degrees}",
+                message=f"Invalid device key: {self.key!r}",
             )
+        info = find_product(vid, pid)
+        if info is None:
+            return OrientationResult(
+                ok=False, key=self.key, degrees=self.degrees,
+                message=f"Unknown device: {self.key}",
+            )
+        if self.degrees not in info.orientations:
+            return OrientationResult(
+                ok=False, key=self.key, degrees=self.degrees,
+                message=f"Unsupported orientation for {self.key}: {self.degrees}",
+            )
+        app.settings.set_orientation(self.key, self.degrees)
+        app.events.publish(OrientationChanged(key=self.key, degrees=self.degrees))
         return OrientationResult(
             ok=True, key=self.key, degrees=self.degrees,
-            message="Orientation persistence pending Phase 5 settings service",
+            message=f"Orientation set to {self.degrees}°",
         )
 
 
 @dataclass(frozen=True, slots=True)
 class SetBrightness(Command):
-    """Set per-device brightness (0–100).  Stubbed pending Phase 5."""
+    """Set per-device display brightness (0–100)."""
     key: str
     percent: int
 
@@ -231,9 +265,11 @@ class SetBrightness(Command):
                 ok=False, key=self.key, percent=self.percent,
                 message="Brightness out of range (0–100)",
             )
+        app.settings.set_brightness(self.key, self.percent)
+        app.events.publish(BrightnessChanged(key=self.key, percent=self.percent))
         return BrightnessResult(
             ok=True, key=self.key, percent=self.percent,
-            message="Brightness persistence pending Phase 5 settings service",
+            message=f"Brightness set to {self.percent}%",
         )
 
 
