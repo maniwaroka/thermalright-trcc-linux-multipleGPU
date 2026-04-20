@@ -1,8 +1,9 @@
 """HID Protocol adapter — DeviceProtocol ABC conformance for HID LCD devices.
 
-Delegates raw I/O to `hid.py::HidDeviceType2/Type3/HidDeviceManager`.
-Transport lifecycle is inherited from `UsbProtocol` (lazy open via the
-Platform-injected `DeviceProtocolFactory.create_usb_transport`).
+Owns its HidDeviceType2/Type3 handler; the factory caches the protocol,
+the protocol caches its device handler.  Transport lifecycle inherited
+from UsbProtocol (lazy open via the Platform-injected
+DeviceProtocolFactory.create_usb_transport).
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from typing import Optional
 from trcc.core.models import DEVICE_TYPE_NAMES, HandshakeResult
 
 from .factory import ProtocolInfo, UsbProtocol
+from .hid import HidDevice, HidDeviceType2, HidDeviceType3
 
 log = logging.getLogger(__name__)
 
@@ -26,22 +28,26 @@ class HidProtocol(UsbProtocol):
     def __init__(self, vid: int, pid: int, device_type: int):
         super().__init__(vid, pid)
         self._device_type = device_type
+        self._handler: Optional[HidDevice] = None
+
+    def _build_handler(self) -> Optional[HidDevice]:
+        """Instantiate the Type 2 or Type 3 device handler."""
+        assert self._transport is not None
+        if self._device_type == 2:
+            return HidDeviceType2(self._transport)
+        if self._device_type == 3:
+            return HidDeviceType3(self._transport)
+        log.warning("Unknown HID device type: %d", self._device_type)
+        return None
 
     def _do_handshake(self) -> Optional[HandshakeResult]:
         """Open HID transport and perform type-specific handshake."""
         self._ensure_transport()
-        assert self._transport is not None
-
-        from .hid import HidDeviceType2, HidDeviceType3
-        if self._device_type == 2:
-            handler = HidDeviceType2(self._transport)
-        elif self._device_type == 3:
-            handler = HidDeviceType3(self._transport)
-        else:
-            log.warning("Unknown HID device type: %d", self._device_type)
+        self._handler = self._build_handler()
+        if self._handler is None:
             return None
 
-        if (result := handler.handshake()):
+        if (result := self._handler.handshake()):
             log.info("HID handshake OK: PM=%s, FBL=%s, resolution=%s",
                      result.mode_byte_1, result.fbl, result.resolution)
         else:
@@ -55,13 +61,23 @@ class HidProtocol(UsbProtocol):
 
     def send_data(self, image_data: bytes, width: int, height: int) -> bool:
         def _do_send() -> bool:
-            from .hid import HidDeviceManager
             self._ensure_transport()
-            assert self._transport is not None
-            return HidDeviceManager.send_data(
-                self._transport, image_data, self._device_type
-            )
+            if self._handler is None:
+                self._handler = self._build_handler()
+                if self._handler is None:
+                    return False
+                self._handler.handshake()
+            try:
+                return self._handler.send_frame(image_data)
+            except Exception:
+                # Drop cached handler so next send re-handshakes
+                self._handler = None
+                raise
         return self._guarded_send("HID", _do_send)
+
+    def close(self) -> None:
+        self._handler = None
+        super().close()
 
     def get_info(self) -> ProtocolInfo:
         return self._build_usb_protocol_info(

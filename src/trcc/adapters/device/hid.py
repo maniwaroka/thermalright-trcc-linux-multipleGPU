@@ -22,7 +22,7 @@ import logging
 import struct
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Set
+from typing import Any, Optional
 
 import usb.core
 import usb.util
@@ -570,64 +570,6 @@ class HidDeviceType3(HidDevice):
         # C#: usbEndpointReader.Read(first, 0, 16, 100, out transferLength2)
         ack = self.transport.read(EP_READ_01, TYPE3_ACK_SIZE, DEFAULT_TIMEOUT_MS)
         return len(ack) > 0
-
-
-# =========================================================================
-# HidDeviceManager — stateful send API (mirrors ScsiDevice pattern)
-# =========================================================================
-
-class HidDeviceManager:
-    """Manages HID device state: handshake caching and frame sending.
-
-    Tracks which transports have been initialized so handshake is only
-    performed once per transport lifetime.
-    """
-
-    _initialized_transports: Set[int] = set()
-    _device_handlers: dict = {}
-
-    @classmethod
-    def send_data(
-        cls,
-        transport: UsbTransport,
-        image_data: bytes,
-        device_type: int,
-    ) -> bool:
-        """Send image data to a HID LCD device.
-
-        Performs handshake on first call per transport, then sends frames.
-
-        Args:
-            transport: Open USB transport to the device.
-            image_data: Raw image bytes (JPEG or device-native format).
-            device_type: 2 for "H" variant, 3 for "ALi" variant.
-
-        Returns:
-            True if the send succeeded.
-        """
-        transport_id = id(transport)
-
-        try:
-            if transport_id not in cls._initialized_transports:
-                if device_type == 2:
-                    handler = HidDeviceType2(transport)
-                elif device_type == 3:
-                    handler = HidDeviceType3(transport)
-                else:
-                    raise ValueError(f"Unknown HID device type: {device_type}")
-
-                handler.handshake()
-                cls._device_handlers[transport_id] = handler
-                cls._initialized_transports.add(transport_id)
-
-            handler = cls._device_handlers[transport_id]
-            return handler.send_frame(image_data)
-
-        except Exception as e:
-            log.error("HID send failed: %s", e)
-            cls._initialized_transports.discard(transport_id)
-            cls._device_handlers.pop(transport_id, None)
-            return False
 
 
 # =========================================================================
