@@ -189,11 +189,11 @@ class SendFrame(Command):
 
 @dataclass(frozen=True, slots=True)
 class LoadTheme(Command):
-    """Parse a theme directory and remember it as the device's current theme.
+    """Parse a theme, persist it, render the first frame, and send it.
 
-    Actual frame rendering + send lands in Phase 6 (Renderer + DisplayService).
-    This command validates the theme and persists the selection so it
-    survives app restarts.
+    If the device isn't attached, the theme is still persisted so it
+    takes effect on next connect.  If no Renderer is attached to the
+    App, the send step is skipped (parse + persist only).
     """
     key: str
     path: Path
@@ -208,10 +208,40 @@ class LoadTheme(Command):
 
         app.settings.set_current_theme(self.key, theme.name)
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
+
+        # Optional: render and send immediately if device is attached +
+        # connected and a Renderer is available.
+        device = app.devices.get(self.key)
+        if device is None or not device.is_connected:
+            return ThemeResult(
+                ok=True, key=self.key, theme_name=theme.name,
+                message=f"Theme '{theme.name}' saved (device not connected)",
+            )
+        if app._renderer is None:  # pyright: ignore[reportPrivateUsage]
+            return ThemeResult(
+                ok=True, key=self.key, theme_name=theme.name,
+                message=f"Theme '{theme.name}' saved (no Renderer attached)",
+            )
+
+        try:
+            frame = app.display.build_frame(
+                info=device.info, theme=theme, sensors={},
+            )
+            sent = device.send(frame)
+        except (TransportError, Exception) as e:
+            app.events.publish(ErrorOccurred(message=str(e), kind="render",
+                                             key=self.key))
+            return ThemeResult(
+                ok=False, key=self.key, theme_name=theme.name,
+                message=f"Render/send failed: {e}",
+            )
+
+        if sent:
+            app.events.publish(FrameSent(key=self.key, bytes_sent=len(frame)))
         return ThemeResult(
-            ok=True, key=self.key, theme_name=theme.name,
-            message=f"Theme '{theme.name}' loaded "
-                    f"(render+send lands with Phase 6)",
+            ok=sent, key=self.key, theme_name=theme.name,
+            message=(f"Theme '{theme.name}' loaded and sent ({len(frame)} bytes)"
+                     if sent else f"Theme '{theme.name}' rendered but send failed"),
         )
 
 

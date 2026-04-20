@@ -15,9 +15,11 @@ from .core.commands import Command
 from .core.errors import DeviceNotFoundError
 from .core.events import EventBus
 from .core.models import Wire
-from .core.ports import Device, Platform
+from .core.ports import Device, Platform, Renderer
 from .core.registry import find_product
 from .core.results import Result
+from .services.display import DisplayService
+from .services.overlay import OverlayService
 from .services.settings import Settings
 from .services.theme import ThemeService
 
@@ -47,12 +49,40 @@ class App:
         # BULK, LY, LED land in Phase 8
     }
 
-    def __init__(self, platform: Platform) -> None:
+    def __init__(self, platform: Platform,
+                 renderer: Renderer | None = None) -> None:
         self.platform = platform
         self.devices: Dict[str, Device] = {}
         self.events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = ThemeService()
+        self._renderer = renderer
+        # DisplayService is lazy: needs a Renderer.  None until one is set.
+        self._display: DisplayService | None = None
+        if renderer is not None:
+            self._wire_display(renderer)
+
+    def set_renderer(self, renderer: Renderer) -> None:
+        """Attach a Renderer (headless modes can defer until needed)."""
+        self._renderer = renderer
+        self._wire_display(renderer)
+
+    def _wire_display(self, renderer: Renderer) -> None:
+        self._display = DisplayService(
+            renderer=renderer,
+            themes=self.themes,
+            overlay=OverlayService(renderer),
+            settings=self.settings,
+        )
+
+    @property
+    def display(self) -> DisplayService:
+        """DisplayService for rendering.  Raises if no Renderer attached."""
+        if self._display is None:
+            raise RuntimeError(
+                "DisplayService unavailable — call App.set_renderer(...) first"
+            )
+        return self._display
 
     # ── Device lifecycle ──────────────────────────────────────────────
 
