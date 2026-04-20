@@ -20,7 +20,7 @@ from threading import RLock
 from typing import Any, Dict, Literal, Optional, Tuple
 
 from ..core.errors import ConfigError
-from ..core.models import DeviceSettings, TempUnit
+from ..core.models import DeviceSettings, FitMode, TempUnit
 from ..core.ports import Paths
 
 log = logging.getLogger(__name__)
@@ -134,6 +134,11 @@ class Settings:
             self.for_device(key).mask_position = position
             self._save()
 
+    def set_fit_mode(self, key: str, mode: FitMode) -> None:
+        with self._lock:
+            self.for_device(key).fit_mode = mode
+            self._save()
+
     # ── Persistence ───────────────────────────────────────────────────
 
     def _config_path(self) -> Path:
@@ -202,6 +207,13 @@ def _device_settings_from_dict(data: Dict[str, Any]) -> DeviceSettings:
     pos = kwargs.get("mask_position")
     if isinstance(pos, list) and len(pos) == 2:
         kwargs["mask_position"] = (pos[0], pos[1])
+    # FitMode enum from its string value
+    fm = kwargs.get("fit_mode")
+    if isinstance(fm, str):
+        try:
+            kwargs["fit_mode"] = FitMode(fm)
+        except ValueError:
+            kwargs.pop("fit_mode")
     return DeviceSettings(**kwargs)
 
 

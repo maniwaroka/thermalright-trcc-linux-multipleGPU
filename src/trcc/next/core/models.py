@@ -31,6 +31,18 @@ NativeOrientation = Literal["landscape", "portrait"]
 TempUnit = Literal["C", "F"]
 
 
+class FitMode(str, Enum):
+    """How a background image/video fits the device canvas.
+
+    WIDTH   — scale to fill width, letterbox top/bottom  (C# buttonTPJCW)
+    HEIGHT  — scale to fill height, pillarbox left/right (C# buttonTPJCH)
+    STRETCH — fill both axes, distorting aspect
+    """
+    WIDTH = "width"
+    HEIGHT = "height"
+    STRETCH = "stretch"
+
+
 # =========================================================================
 # LED styles / segment displays (categorical, enumerable)
 # =========================================================================
@@ -184,3 +196,4 @@ class DeviceSettings:
     temp_unit: TempUnit = "C"
     overlay_enabled: bool = True
     mask_position: Optional[Tuple[int, int]] = None
+    fit_mode: FitMode = FitMode.WIDTH

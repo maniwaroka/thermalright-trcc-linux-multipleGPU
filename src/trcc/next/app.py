@@ -22,6 +22,7 @@ from .core.ports import Device, Platform, Renderer
 from .core.registry import find_product
 from .core.results import Result
 from .services.display import DisplayService
+from .services.media import MediaService
 from .services.overlay import OverlayService
 from .services.settings import Settings
 from .services.theme import ThemeService
@@ -64,6 +65,7 @@ class App:
         self.events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = ThemeService()
+        self.media = MediaService()
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -81,6 +83,7 @@ class App:
             themes=self.themes,
             overlay=OverlayService(renderer),
             settings=self.settings,
+            media=self.media,
         )
 
     @property
