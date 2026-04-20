@@ -1,0 +1,303 @@
+"""Ports — ABCs that adapters implement.
+
+Pure contract definitions.  Adapter implementations live in
+`trcc.next.adapters.*`.  Services and App depend on these ABCs, never on
+concrete implementations.
+"""
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .models import (
+        DeviceInfo,
+        HandshakeResult,
+        ProductInfo,
+        RawFrame,
+        SensorReading,
+    )
+
+
+# =========================================================================
+# UsbTransport — the byte mover
+# =========================================================================
+
+
+class UsbTransport(ABC):
+    """Abstract USB transport.  One per open device handle."""
+
+    @abstractmethod
+    def open(self) -> bool:
+        """Open the device and claim interface.  True on success."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release interface and close the handle."""
+
+    @property
+    @abstractmethod
+    def is_open(self) -> bool:
+        """Whether the transport currently holds an open handle."""
+
+    @abstractmethod
+    def write(self, endpoint: int, data: bytes,
+              timeout_ms: int = 100) -> int:
+        """Bulk-write bytes to an OUT endpoint.  Returns bytes transferred."""
+
+    @abstractmethod
+    def read(self, endpoint: int, length: int,
+             timeout_ms: int = 100) -> bytes:
+        """Bulk-read up to *length* bytes from an IN endpoint."""
+
+
+# =========================================================================
+# Device — one per physical device, knows its wire protocol
+# =========================================================================
+
+
+class Device(ABC):
+    """A physical USB device we control.
+
+    Concrete subclasses (ScsiLcd, HidLcd, BulkLcd, LyLcd, Led) own their
+    wire protocol.  All devices share the same outward contract:
+    connect / send / disconnect.
+    """
+
+    def __init__(self, info: "ProductInfo", platform: "Platform") -> None:
+        self.info = info
+        self._platform = platform
+        self._transport: Optional[UsbTransport] = None
+        self._handshake: Optional["HandshakeResult"] = None
+
+    @abstractmethod
+    def connect(self) -> "HandshakeResult":
+        """Open the transport and perform the wire-protocol handshake."""
+
+    @abstractmethod
+    def send(self, payload: Any) -> bool:
+        """Send a payload in device-native format.  Protocol-specific shape."""
+
+    @abstractmethod
+    def disconnect(self) -> None:
+        """Close the transport and release state."""
+
+    @property
+    def is_connected(self) -> bool:
+        return self._handshake is not None
+
+    @property
+    def is_led(self) -> bool:
+        """True for LED-control devices; False for LCD-frame devices."""
+        return False
+
+    @property
+    def key(self) -> str:
+        return self.info.key
+
+
+# =========================================================================
+# SensorEnumerator — OS-specific sensor discovery and reading
+# =========================================================================
+
+
+class SensorEnumerator(ABC):
+    """Hardware sensor source.  Each OS has one implementation."""
+
+    @abstractmethod
+    def discover(self) -> List["SensorReading"]:
+        """Scan hardware for available sensors (once at startup)."""
+
+    @abstractmethod
+    def read_all(self) -> dict[str, float]:
+        """Return current readings for all discovered sensors."""
+
+    @abstractmethod
+    def read_one(self, sensor_id: str) -> Optional[float]:
+        """Read a single sensor by id."""
+
+    @abstractmethod
+    def start_polling(self, interval_s: float = 2.0) -> None: ...
+
+    @abstractmethod
+    def stop_polling(self) -> None: ...
+
+
+# =========================================================================
+# Paths — where user data lives on this OS
+# =========================================================================
+
+
+class Paths(ABC):
+    """Filesystem locations.  Each OS resolves these differently."""
+
+    @abstractmethod
+    def config_dir(self) -> Path: ...
+
+    @abstractmethod
+    def data_dir(self) -> Path: ...
+
+    @abstractmethod
+    def user_content_dir(self) -> Path: ...
+
+    @abstractmethod
+    def log_file(self) -> Path: ...
+
+
+# =========================================================================
+# Renderer — pixel operations (PySide6 on all OSes today)
+# =========================================================================
+
+
+class Renderer(ABC):
+    """Rendering backend.  Concrete: QtRenderer (adapters/render/qt.py)."""
+
+    # ── Surfaces ──────────────────────────────────────────────────────
+    @abstractmethod
+    def create_surface(self, width: int, height: int,
+                       color: Optional[Tuple[int, ...]] = None) -> Any: ...
+
+    @abstractmethod
+    def open_image(self, path: Path) -> Any: ...
+
+    @abstractmethod
+    def surface_size(self, surface: Any) -> Tuple[int, int]: ...
+
+    # ── Compositing ───────────────────────────────────────────────────
+    @abstractmethod
+    def composite(self, base: Any, overlay: Any,
+                  position: Tuple[int, int],
+                  mask: Any | None = None) -> Any: ...
+
+    @abstractmethod
+    def resize(self, surface: Any, width: int, height: int) -> Any: ...
+
+    @abstractmethod
+    def rotate(self, surface: Any, degrees: int) -> Any: ...
+
+    # ── Adjustments ───────────────────────────────────────────────────
+    @abstractmethod
+    def apply_brightness(self, surface: Any, percent: int) -> Any: ...
+
+    # ── Text ──────────────────────────────────────────────────────────
+    @abstractmethod
+    def draw_text(self, surface: Any, x: int, y: int, text: str,
+                  color: str, size: int, bold: bool = False,
+                  italic: bool = False) -> None: ...
+
+    # ── Encoding ──────────────────────────────────────────────────────
+    @abstractmethod
+    def encode_rgb565(self, surface: Any) -> bytes: ...
+
+    @abstractmethod
+    def encode_jpeg(self, surface: Any, quality: int = 95,
+                    max_size: int = 0) -> bytes: ...
+
+    # ── Legacy boundary (video frames) ────────────────────────────────
+    @abstractmethod
+    def from_raw_rgb24(self, frame: "RawFrame") -> Any: ...
+
+
+# =========================================================================
+# AutostartManager — OS-specific boot-time launch configuration
+# =========================================================================
+
+
+class AutostartManager(ABC):
+    @abstractmethod
+    def is_enabled(self) -> bool: ...
+
+    @abstractmethod
+    def enable(self) -> None: ...
+
+    @abstractmethod
+    def disable(self) -> None: ...
+
+    @abstractmethod
+    def refresh(self) -> None: ...
+
+
+# =========================================================================
+# Platform — OS root, one instance per app
+# =========================================================================
+
+
+class Platform(ABC):
+    """OS abstraction.  DI'd into App at startup.
+
+    Responsibilities:
+        - Enumerate attached devices (scan_devices).
+        - Open USB handles (open_usb).
+        - Expose sensors, paths, autostart.
+        - Run OS-specific setup (udev, WinUSB guide, etc.).
+    """
+
+    # ── USB I/O ───────────────────────────────────────────────────────
+    @abstractmethod
+    def open_usb(self, vid: int, pid: int,
+                 serial: Optional[str] = None) -> UsbTransport:
+        """Return an unopened UsbTransport for the given device."""
+
+    @abstractmethod
+    def scan_devices(self) -> List["DeviceInfo"]:
+        """Enumerate currently-attached supported devices."""
+
+    # ── Filesystem ────────────────────────────────────────────────────
+    @abstractmethod
+    def paths(self) -> Paths: ...
+
+    # ── Sensors ───────────────────────────────────────────────────────
+    @abstractmethod
+    def sensors(self) -> SensorEnumerator: ...
+
+    # ── Autostart ─────────────────────────────────────────────────────
+    @abstractmethod
+    def autostart(self) -> AutostartManager: ...
+
+    # ── One-time setup (udev rules / WinUSB guide / etc.) ─────────────
+    @abstractmethod
+    def setup(self, interactive: bool = True) -> int:
+        """Run OS-specific setup.  Returns a shell-style exit code."""
+
+    @abstractmethod
+    def check_permissions(self) -> List[str]:
+        """Return a list of user-facing permission warnings, empty if OK."""
+
+    # ── OS identity (for UIs, diagnostics, install hints) ─────────────
+    @abstractmethod
+    def distro_name(self) -> str: ...
+
+    @abstractmethod
+    def install_method(self) -> str:
+        """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
+
+    # ── OS-selection factory ──────────────────────────────────────────
+    _BY_OS: dict[str, Tuple[str, str]] = {
+        "linux": ("trcc.next.adapters.system.linux", "LinuxPlatform"),
+        "win32": ("trcc.next.adapters.system.windows", "WindowsPlatform"),
+        "darwin": ("trcc.next.adapters.system.macos", "MacOSPlatform"),
+        "bsd": ("trcc.next.adapters.system.bsd", "BSDPlatform"),
+    }
+
+    @classmethod
+    def detect(cls) -> "Platform":
+        """Pick the right Platform subclass for the running OS."""
+        import importlib
+        import sys
+
+        key = sys.platform
+        if "bsd" in key:
+            key = "bsd"
+        if key not in cls._BY_OS:
+            key = "linux"
+        module_path, class_name = cls._BY_OS[key]
+        mod = importlib.import_module(module_path)
+        return getattr(mod, class_name)()
+
+
+# =========================================================================
+# Callable type aliases (infrastructure DI)
+# =========================================================================
+
+DetectDevicesFn = Callable[[], List["DeviceInfo"]]
