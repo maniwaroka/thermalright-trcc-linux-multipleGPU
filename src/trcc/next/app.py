@@ -17,7 +17,7 @@ from .adapters.device.scsi_lcd import ScsiLcd
 from .core.commands import Command
 from .core.errors import DeviceNotFoundError
 from .core.events import EventBus
-from .core.models import Wire
+from .core.models import Theme, Wire
 from .core.ports import Device, Platform, Renderer
 from .core.registry import find_product
 from .core.results import Result
@@ -66,6 +66,9 @@ class App:
         self.settings = Settings(platform.paths())
         self.themes = ThemeService()
         self.media = MediaService()
+        # Currently-loaded Theme per device — set by LoadTheme, read by
+        # RenderAndSend ticker, cleared on DisconnectDevice.
+        self.active_themes: Dict[str, Theme] = {}
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None
@@ -122,10 +125,14 @@ class App:
         return device
 
     def detach(self, key: str) -> None:
-        """Disconnect and drop a device."""
+        """Disconnect and drop a device.  Frees the scene cache + active theme."""
         device = self.devices.pop(key, None)
         if device is not None:
             device.disconnect()
+        self.active_themes.pop(key, None)
+        self.media.unload(key)
+        if self._display is not None:
+            self._display.invalidate(key)
 
     def close(self) -> None:
         """Disconnect every attached device."""

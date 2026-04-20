@@ -29,7 +29,11 @@ log = logging.getLogger(__name__)
 
 
 _CONFIG_FILE = "config.json"
-_BACKGROUND_CANDIDATES = ("background.png", "background.jpg", "background.jpeg")
+_BACKGROUND_CANDIDATES = (
+    "background.mp4", "background.mov", "background.webm",
+    "background.png", "background.jpg", "background.jpeg",
+)
+_MASK_CANDIDATES = ("mask.png", "mask.jpg", "mask.jpeg")
 
 
 class ThemeService:
@@ -84,8 +88,16 @@ class ThemeService:
         return themes
 
     def background_path(self, theme: Theme) -> Optional[Path]:
-        """Return the theme's background image path, or None if absent."""
+        """Return the theme's background path (video or image), or None."""
         for candidate in _BACKGROUND_CANDIDATES:
+            path = theme.path / candidate
+            if path.exists():
+                return path
+        return None
+
+    def mask_path(self, theme: Theme) -> Optional[Path]:
+        """Return the theme's mask image path, or None if absent."""
+        for candidate in _MASK_CANDIDATES:
             path = theme.path / candidate
             if path.exists():
                 return path

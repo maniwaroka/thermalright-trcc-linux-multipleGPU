@@ -1,24 +1,27 @@
-"""DisplayService — orchestrates theme + sensors → device-ready frame bytes.
+"""DisplayService — cached two-layer render pipeline.
 
-Pipeline (matches the C# ground truth: fit → overlay → dim → rotate → encode):
+Per-device, two caches:
 
-    1. Choose the *visual* canvas size — native resolution, or swapped
-       if the user rotated 90°/270°.
-    2. Load background (image OR first video frame) and fit it onto
-       the canvas per DeviceSettings.fit_mode (WIDTH/HEIGHT/STRETCH).
-    3. Composite overlay elements (text, metrics) on top.
-    4. Apply brightness dim if < 100 %.
-    5. Rotate the canvas back to native-buffer dimensions.
-    6. Encode for the wire (RGB565 for SCSI / HID / Bulk / LY; JPEG
-       variant lands with Type 2 HID).
+  ┌─ bg_mask  ── fitted background (image or current video frame)
+  │              composited with the theme's mask image.  Heavy work:
+  │              fit, resize, alpha-composite.  Rebuilt only when
+  │              theme changes, orientation changes, or video cursor
+  │              advances.
+  │
+  └─ overlay  ── transparent layer with metric text / static text
+                 elements drawn on top.  Rebuilt only when sensor
+                 values change OR theme config changes.
 
-Static-image themes use ImageService-equivalent logic directly; video
-themes pull the current frame from MediaService.  Callers (commands)
-pass a `bytes` result straight to Device.send().
+Per-tick pipeline is just: blend the two caches, dim for brightness,
+rotate to native buffer arrangement, encode for the wire, hand to
+Device.send.  Order mirrors the C# ground truth
+(fit → overlay → dim → rotate → encode).
 """
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ..core.models import FitMode, ProductInfo, RawFrame, Theme, Wire
@@ -31,7 +34,6 @@ from .theme import ThemeService
 log = logging.getLogger(__name__)
 
 
-# Wire → encoding name.  Type 2 HID can swap to JPEG per device_type later.
 _ENCODING_BY_WIRE: Dict[Wire, str] = {
     Wire.SCSI: "rgb565",
     Wire.HID: "rgb565",
@@ -39,13 +41,35 @@ _ENCODING_BY_WIRE: Dict[Wire, str] = {
     Wire.LY: "rgb565",
 }
 
-# Background file extensions recognised as video vs still image.
 _VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
+# =========================================================================
+# SceneCache — per-device layered cache
+# =========================================================================
+
+
+@dataclass
+class SceneCache:
+    """Two surfaces + the invalidation keys that govern them."""
+
+    # bg_mask layer
+    bg_mask_surface: Any
+    bg_mask_key: Tuple[Any, ...]       # (theme_path, visual_size, video_cursor)
+
+    # overlay layer
+    overlay_surface: Any
+    overlay_key: Tuple[Any, ...]       # (config_id, visual_size, sensor_tuple)
+
+
+# =========================================================================
+# DisplayService
+# =========================================================================
+
+
 class DisplayService:
-    """Build device-ready frame bytes from a theme + live sensors."""
+    """Build device-ready frame bytes, caching the expensive layers."""
 
     def __init__(
         self,
@@ -60,6 +84,7 @@ class DisplayService:
         self._overlay = overlay
         self._settings = settings
         self._media = media
+        self._scenes: Dict[str, SceneCache] = {}
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
@@ -69,54 +94,81 @@ class DisplayService:
         theme: Theme,
         sensors: Dict[str, float],
     ) -> bytes:
-        """One pass through the render pipeline for a single frame."""
+        """One pass — uses the per-device cache; only rebuilds what changed."""
         s = self._settings.for_device(info.key)
-        visual_w, visual_h = self._visual_size(info.native_resolution, s.orientation)
+        visual_size = self._visual_size(info.native_resolution, s.orientation)
 
-        # 1. Background — image or video frame, fitted onto visual canvas
-        surface = self._build_background(info, theme, s.fit_mode, (visual_w, visual_h))
+        scene = self._scenes.get(info.key)
+        bg_key = self._bg_mask_key(info, theme, visual_size)
+        overlay_key = self._overlay_key(theme, visual_size, sensors)
 
-        # 2. Overlay (text / metrics) on top
-        surface = self._overlay.render(surface, theme.config, sensors)
+        if scene is None or scene.bg_mask_key != bg_key:
+            bg_surface = self._build_bg_mask(info, theme, visual_size)
+        else:
+            bg_surface = scene.bg_mask_surface
 
-        # 3. Brightness dim (before rotation, same order as the C# code)
+        if scene is None or scene.overlay_key != overlay_key:
+            overlay_surface = self._build_overlay(theme, sensors, visual_size)
+        else:
+            overlay_surface = scene.overlay_surface
+
+        self._scenes[info.key] = SceneCache(
+            bg_mask_surface=bg_surface, bg_mask_key=bg_key,
+            overlay_surface=overlay_surface, overlay_key=overlay_key,
+        )
+
+        # Compose: bg+mask below, overlay on top
+        surface = self._r.composite(bg_surface, overlay_surface, position=(0, 0))
+
+        # Brightness dim (before rotation — matches C# order)
         if s.brightness != 100:
             surface = self._r.apply_brightness(surface, s.brightness)
 
-        # 4. Rotate content so the native buffer ends up right-side-up
-        #    in the device's memory.  Rotating by -orientation swaps dims
-        #    back to native; for square devices it's a no-op visually.
+        # Rotate content back to native buffer arrangement
         if s.orientation:
             surface = self._r.rotate(surface, 360 - s.orientation)
 
-        # 5. Encode for the wire.  Caller hands `bytes` to Device.send().
         return self._encode_for_wire(surface, info)
 
-    # ── Background construction ───────────────────────────────────────
+    def invalidate(self, key: str) -> None:
+        """Drop the scene cache for *key* (called on disconnect / theme change)."""
+        self._scenes.pop(key, None)
 
-    def _build_background(
+    def invalidate_all(self) -> None:
+        self._scenes.clear()
+
+    # ── Layer 1: background + mask ────────────────────────────────────
+
+    def _build_bg_mask(
         self,
         info: ProductInfo,
         theme: Theme,
-        fit_mode: FitMode,
         visual_size: Tuple[int, int],
     ) -> Any:
-        """Produce a visual-sized canvas with the theme's background painted in."""
+        """Compose fitted background + mask at visual size."""
         canvas = self._r.create_surface(*visual_size, color=(0, 0, 0, 255))
 
+        # Paint the fitted background
         source = self._resolve_background(info, theme, visual_size)
-        if source is None:
-            return canvas
+        if source is not None:
+            src_w, src_h = self._r.surface_size(source)
+            dst_w, dst_h = visual_size
+            fit_mode = self._settings.for_device(info.key).fit_mode
+            fit_w, fit_h, off_x, off_y = _fit(
+                fit_mode, src_w, src_h, dst_w, dst_h,
+            )
+            fitted = self._r.resize(source, fit_w, fit_h)
+            canvas = self._r.composite(canvas, fitted, position=(off_x, off_y))
 
-        src_w, src_h = self._r.surface_size(source)
-        dst_w, dst_h = visual_size
+        # Composite the mask on top of the background (if present)
+        mask_path = self._themes.mask_path(theme)
+        if mask_path is not None:
+            mask = self._r.open_image(mask_path)
+            if self._r.surface_size(mask) != visual_size:
+                mask = self._r.resize(mask, *visual_size)
+            canvas = self._r.composite(canvas, mask, position=(0, 0))
 
-        # Compute fitted size + position per FitMode.
-        fit_w, fit_h, off_x, off_y = _fit(
-            fit_mode, src_w, src_h, dst_w, dst_h,
-        )
-        fitted = self._r.resize(source, fit_w, fit_h)
-        return self._r.composite(canvas, fitted, position=(off_x, off_y))
+        return canvas
 
     def _resolve_background(
         self,
@@ -124,38 +176,23 @@ class DisplayService:
         theme: Theme,
         visual_size: Tuple[int, int],
     ) -> Optional[Any]:
-        """Find the theme's background and return a Renderer surface.
-
-        Priority: active MediaService playback → theme background file
-        (image or video).  For video files with no pre-loaded playback,
-        decodes and caches the first frame here.
-        """
-        # Active playback (e.g. LoadTheme kicked off a video) wins
-        playback = self._media.playback(info.key)
-        if playback is not None and playback.frames:
-            frame = playback.advance()
-            if frame is not None:
-                return self._r.from_raw_rgb24(frame)
-
+        """Return a Renderer surface for the current background frame."""
         path = self._themes.background_path(theme)
         if path is None:
             return None
-
         ext = path.suffix.lower()
+
         if ext in _VIDEO_EXTS:
-            # No pre-loaded playback; decode + cache first frame only.
-            # Full-video playback is driven by the caller via MediaService
-            # (LoadVideoBackground command in a later phase).
-            try:
-                pb = self._media.load_video(
-                    device_key=info.key, path=path,
-                    size=visual_size,
-                )
-            except Exception as e:
-                log.warning("Video decode failed (%s) — falling back to black: %s",
-                            path.name, e)
-                return None
-            frame: Optional[RawFrame] = pb.current
+            playback = self._media.playback(info.key)
+            if playback is None or not playback.frames:
+                try:
+                    playback = self._media.load_video(
+                        device_key=info.key, path=path, size=visual_size,
+                    )
+                except Exception as e:
+                    log.warning("Video decode failed for %s: %s", path.name, e)
+                    return None
+            frame: Optional[RawFrame] = playback.advance()
             return self._r.from_raw_rgb24(frame) if frame else None
 
         if ext in _IMAGE_EXTS:
@@ -164,11 +201,53 @@ class DisplayService:
         log.debug("Unrecognised background extension %r; skipping", ext)
         return None
 
+    # ── Layer 2: metric overlay ───────────────────────────────────────
+
+    def _build_overlay(
+        self,
+        theme: Theme,
+        sensors: Dict[str, float],
+        visual_size: Tuple[int, int],
+    ) -> Any:
+        """Transparent layer with text + metric elements painted on."""
+        overlay_canvas = self._r.create_surface(*visual_size)
+        return self._overlay.render(overlay_canvas, theme.config, sensors)
+
+    # ── Cache keys ────────────────────────────────────────────────────
+
+    def _bg_mask_key(
+        self,
+        info: ProductInfo,
+        theme: Theme,
+        visual_size: Tuple[int, int],
+    ) -> Tuple[Any, ...]:
+        path = self._themes.background_path(theme)
+        is_video = path is not None and path.suffix.lower() in _VIDEO_EXTS
+        # For video, include the current cursor so each frame busts the cache.
+        cursor = None
+        if is_video:
+            pb = self._media.playback(info.key)
+            cursor = pb.cursor if pb else 0
+        return (str(theme.path), visual_size, cursor)
+
+    @staticmethod
+    def _overlay_key(
+        theme: Theme,
+        visual_size: Tuple[int, int],
+        sensors: Dict[str, float],
+    ) -> Tuple[Any, ...]:
+        # Sensors turn into a sorted tuple of (id, rounded_value).  Rounding
+        # limits cache-busting to meaningful changes (e.g. 45.3 → 45.4 is
+        # one redraw; 45.31 → 45.32 is ignored).
+        sensor_tuple = tuple(sorted(
+            (k, round(v, 1)) for k, v in sensors.items()
+        ))
+        return (id(theme.config), visual_size, sensor_tuple)
+
     # ── Helpers ───────────────────────────────────────────────────────
 
     @staticmethod
     def _visual_size(native: Tuple[int, int], orientation: int) -> Tuple[int, int]:
-        """Visual canvas dimensions — swapped for 90°/270° rotation."""
         w, h = native
         return (h, w) if orientation in (90, 270) else (w, h)
 
@@ -180,7 +259,7 @@ class DisplayService:
 
 
 # =========================================================================
-# Pure-Python fit algorithm (no rendering deps, easy to unit-test)
+# Pure-Python fit algorithm
 # =========================================================================
 
 
@@ -189,29 +268,24 @@ def _fit(
     src_w: int, src_h: int,
     dst_w: int, dst_h: int,
 ) -> Tuple[int, int, int, int]:
-    """Compute (width, height, x_offset, y_offset) for *src* on *dst*.
-
-    WIDTH   — match *dst_w*, letterbox top/bottom.
-    HEIGHT  — match *dst_h*, pillarbox left/right.
-    STRETCH — match both axes; no offset, aspect lost.
-    """
+    """(fit_w, fit_h, x_offset, y_offset)."""
     if mode is FitMode.STRETCH or src_w == 0 or src_h == 0:
         return dst_w, dst_h, 0, 0
 
     if mode is FitMode.WIDTH:
         fit_w = dst_w
         fit_h = max(1, (src_h * dst_w) // src_w)
-        off_x = 0
-        off_y = (dst_h - fit_h) // 2
-        return fit_w, fit_h, off_x, off_y
+        return fit_w, fit_h, 0, (dst_h - fit_h) // 2
 
     # FitMode.HEIGHT
     fit_h = dst_h
     fit_w = max(1, (src_w * dst_h) // src_h)
-    off_x = (dst_w - fit_w) // 2
-    off_y = 0
-    return fit_w, fit_h, off_x, off_y
+    return fit_w, fit_h, (dst_w - fit_w) // 2, 0
 
 
 # Re-exported for unit tests
 fit = _fit
+
+
+# Silence pyright on unused Path import (kept for future file-path cache keys)
+_ = Path

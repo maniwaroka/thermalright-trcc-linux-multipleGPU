@@ -49,6 +49,14 @@ class SendResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class RenderResult(Result):
+    """Built + sent one frame through the render pipeline."""
+    key: str = ""
+    bytes_sent: int = 0
+    theme_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ThemeResult(Result):
     key: str = ""
     theme_name: str = ""

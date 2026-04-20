@@ -42,6 +42,7 @@ from .results import (
     DiscoverResult,
     LedColorsResult,
     OrientationResult,
+    RenderResult,
     Result,
     SendResult,
     SensorsResult,
@@ -198,6 +199,61 @@ class SendFrame(Command[SendResult]):
 
 
 @dataclass(frozen=True, slots=True)
+class RenderAndSend(Command[RenderResult]):
+    """Render the device's active theme with live sensors, push to the wire.
+
+    Called by tickers — GUI QTimer, CLI `display play` loop, API tick
+    endpoint — every ~AppSettings.refresh_interval_s.  Uses the
+    DisplayService scene cache so only the changed layer rebuilds per
+    tick (sensors moved → redraw overlay; video cursor advanced →
+    rebuild bg; otherwise pure cache hit + composite).
+    """
+    key: str
+
+    def execute(self, app: "App") -> RenderResult:
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return RenderResult(ok=False, key=self.key, message=str(e))
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
+            )
+
+        theme = app.active_themes.get(self.key)
+        if theme is None:
+            return RenderResult(
+                ok=False, key=self.key,
+                message="No active theme — dispatch LoadTheme first",
+            )
+
+        sensors = app.platform.sensors().read_all()
+
+        try:
+            frame = app.display.build_frame(
+                info=device.info, theme=theme, sensors=sensors,
+            )
+            ok = device.send(frame)
+        except TransportError as e:
+            app.events.publish(ErrorOccurred(
+                message=str(e), kind="transport", key=self.key,
+            ))
+            return RenderResult(
+                ok=False, key=self.key, theme_name=theme.name,
+                message=str(e),
+            )
+
+        if ok:
+            app.events.publish(FrameSent(key=self.key, bytes_sent=len(frame)))
+        return RenderResult(
+            ok=ok, key=self.key,
+            bytes_sent=len(frame), theme_name=theme.name,
+            message=(f"Rendered + sent {len(frame)} bytes"
+                     if ok else "Render built frame but send returned False"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class LoadTheme(Command[ThemeResult]):
     """Parse a theme, persist it, render the first frame, and send it.
 
@@ -217,10 +273,14 @@ class LoadTheme(Command[ThemeResult]):
             return ThemeResult(ok=False, key=self.key, message=str(e))
 
         app.settings.set_current_theme(self.key, theme.name)
+        app.active_themes[self.key] = theme
+        app.display.invalidate(self.key)  # drop stale scene cache from prev theme
+        app.media.unload(self.key)        # drop stale video frames
         app.events.publish(ThemeLoaded(key=self.key, theme_name=theme.name))
 
-        # Optional: render and send immediately if device is attached +
-        # connected and a Renderer is available.
+        # If device is attached + connected + Renderer available, send an
+        # immediate first frame.  Otherwise the theme is saved for the
+        # next connect / tick.
         device = app.devices.get(self.key)
         if device is None or not device.is_connected:
             return ThemeResult(
