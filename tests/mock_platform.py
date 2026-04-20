@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from trcc.adapters.device.factory import DeviceProtocol, ProtocolInfo
 from trcc.core.ports import (
     DoctorPlatformConfig,
     Platform,
@@ -26,17 +27,18 @@ from trcc.core.ports import (
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-class NoopLCDProtocol:
+class NoopLCDProtocol(DeviceProtocol):
     """Noop LCD protocol — returns canned HandshakeResult, discards frames."""
 
     def __init__(self, resolution: tuple[int, int], fbl: int,
                  pm: int, sub: int):
+        super().__init__()
         self._resolution = resolution
         self._fbl = fbl
         self._pm = pm
         self._sub = sub
 
-    def handshake(self):
+    def _do_handshake(self):
         from trcc.core.models import HandshakeResult
         return HandshakeResult(
             resolution=self._resolution,
@@ -45,24 +47,36 @@ class NoopLCDProtocol:
             sub_byte=self._sub,
         )
 
-    def send_data(self, data: bytes, width: int, height: int) -> bool:
+    def send_data(self, image_data: bytes, width: int, height: int) -> bool:
         return True
 
     def close(self) -> None:
         pass
 
+    def get_info(self) -> ProtocolInfo:
+        return ProtocolInfo(protocol="noop-lcd", active_backend="noop")
 
-class NoopLEDProtocol:
+    @property
+    def protocol_name(self) -> str:
+        return "noop-lcd"
+
+    @property
+    def is_available(self) -> bool:
+        return True
+
+
+class NoopLEDProtocol(DeviceProtocol):
     """Noop LED protocol — returns canned LedHandshakeInfo, discards data."""
 
     def __init__(self, pm: int, sub: int = 0):
+        super().__init__()
         self._pm = pm
         self._sub = sub
 
     def send_data(self, colors, segment_on, global_on, brightness) -> bool:
         return True
 
-    def handshake(self):
+    def _do_handshake(self):
         from trcc.core.models import LedHandshakeInfo, PmRegistry
         style = PmRegistry.get_style(self._pm, self._sub)
         model = PmRegistry.get_model_name(self._pm, self._sub)
@@ -78,6 +92,21 @@ class NoopLEDProtocol:
 
     def close(self) -> None:
         pass
+
+    def get_info(self) -> ProtocolInfo:
+        return ProtocolInfo(protocol="noop-led", active_backend="noop")
+
+    @property
+    def protocol_name(self) -> str:
+        return "noop-led"
+
+    @property
+    def is_available(self) -> bool:
+        return True
+
+    @property
+    def is_led(self) -> bool:
+        return True
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -280,11 +309,11 @@ class MockPlatform(Platform):
                     return NoopLEDProtocol(pm, sub)
             return NoopLEDProtocol(3)
 
-        factory._PROTOCOL_REGISTRY[('scsi', '')] = _make_lcd_protocol
-        factory._PROTOCOL_REGISTRY[('hid', '')] = _make_lcd_protocol
-        factory._PROTOCOL_REGISTRY[('bulk', '')] = _make_lcd_protocol
-        factory._PROTOCOL_REGISTRY[('ly', '')] = _make_lcd_protocol
-        factory._PROTOCOL_REGISTRY[('led', '')] = _make_led_protocol
+        factory._PROTOCOL_REGISTRY['scsi'] = _make_lcd_protocol
+        factory._PROTOCOL_REGISTRY['hid'] = _make_lcd_protocol
+        factory._PROTOCOL_REGISTRY['bulk'] = _make_lcd_protocol
+        factory._PROTOCOL_REGISTRY['ly'] = _make_lcd_protocol
+        factory._PROTOCOL_REGISTRY['led'] = _make_led_protocol
 
 
 # ═════════════════════════════════════════════════════════════════════════════
