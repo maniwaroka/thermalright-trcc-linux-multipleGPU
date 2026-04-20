@@ -21,7 +21,7 @@ Usage::
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Callable, ClassVar, Dict, Optional, Tuple
+from typing import Callable, ClassVar, Dict, Optional
 
 from trcc.core.models import (
     DEVICE_TYPE_NAMES,
@@ -308,10 +308,10 @@ class DeviceProtocolFactory:
     _protocols: Dict[str, DeviceProtocol] = {}
     _scsi_transport_fn: ClassVar[Optional[Callable]] = None
 
-    # Registry map: (protocol, implementation) → factory function.
+    # Registry map: protocol name → factory function.
     # Populated at module bottom after concrete Protocol classes import —
     # avoids the circular (factory ⇄ protocol files) at class-body time.
-    _PROTOCOL_REGISTRY: ClassVar[Dict[Tuple[str, str], Callable[..., DeviceProtocol]]] = {}
+    _PROTOCOL_REGISTRY: ClassVar[Dict[str, Callable[..., DeviceProtocol]]] = {}
 
     @classmethod
     def set_scsi_transport(cls, fn: Callable) -> None:
@@ -335,7 +335,6 @@ class DeviceProtocolFactory:
         """Create a new protocol for the given device (not cached).
 
         Routes to the appropriate protocol class via _PROTOCOL_REGISTRY.
-        Lookup: exact (protocol, implementation) first, then (protocol, '').
 
         Args:
             device_info: Object with protocol, vid, pid, path, device_type.
@@ -347,13 +346,9 @@ class DeviceProtocolFactory:
             ValueError: If protocol is unknown.
         """
         protocol = getattr(device_info, 'protocol', 'scsi')
-        implementation = getattr(device_info, 'implementation', '')
-        log.debug("create_protocol: protocol=%s impl=%s", protocol, implementation)
+        log.debug("create_protocol: protocol=%s", protocol)
 
-        factory_fn = cls._PROTOCOL_REGISTRY.get(
-            (protocol, implementation),
-        ) or cls._PROTOCOL_REGISTRY.get((protocol, ''))
-
+        factory_fn = cls._PROTOCOL_REGISTRY.get(protocol)
         if factory_fn is None:
             raise ValueError(f"Unknown protocol: {protocol!r}")
 
@@ -571,10 +566,10 @@ from .ly_protocol import LyProtocol  # noqa: E402
 from .scsi_protocol import ScsiProtocol  # noqa: E402
 
 DeviceProtocolFactory._PROTOCOL_REGISTRY = {
-    ('scsi', ''):  lambda di: ScsiProtocol(di.path, di.vid, di.pid),
-    ('bulk', ''):  lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
-    ('ly', ''):    lambda di: LyProtocol(vid=di.vid, pid=di.pid),
-    ('led', ''):   lambda di: LedProtocol(vid=di.vid, pid=di.pid),
-    ('hid', ''):   lambda di: HidProtocol(vid=di.vid, pid=di.pid,
-                       device_type=getattr(di, 'device_type', 2)),
+    'scsi': lambda di: ScsiProtocol(di.path, di.vid, di.pid),
+    'bulk': lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
+    'ly':   lambda di: LyProtocol(vid=di.vid, pid=di.pid),
+    'led':  lambda di: LedProtocol(vid=di.vid, pid=di.pid),
+    'hid':  lambda di: HidProtocol(vid=di.vid, pid=di.pid,
+                device_type=getattr(di, 'device_type', 2)),
 }
