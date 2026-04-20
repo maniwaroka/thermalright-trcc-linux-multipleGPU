@@ -9,7 +9,10 @@ from __future__ import annotations
 import logging
 from typing import Dict, Type, TypeVar
 
+from .adapters.device.bulk_lcd import BulkLcd
 from .adapters.device.hid_lcd import HidLcd
+from .adapters.device.led import Led
+from .adapters.device.ly_lcd import LyLcd
 from .adapters.device.scsi_lcd import ScsiLcd
 from .core.commands import Command
 from .core.errors import DeviceNotFoundError
@@ -49,7 +52,9 @@ class App:
     _DEVICE_CLASSES: Dict[Wire, Type[Device]] = {
         Wire.SCSI: ScsiLcd,
         Wire.HID: HidLcd,
-        # BULK, LY, LED land in Phase 8
+        Wire.BULK: BulkLcd,
+        Wire.LY: LyLcd,
+        Wire.LED: Led,
     }
 
     def __init__(self, platform: Platform,

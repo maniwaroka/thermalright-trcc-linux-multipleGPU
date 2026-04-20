@@ -30,6 +30,7 @@ from .events import (
     DeviceDiscovered,
     ErrorOccurred,
     FrameSent,
+    LedColorsChanged,
     OrientationChanged,
     ThemeLoaded,
 )
@@ -319,16 +320,56 @@ class SetBrightness(Command[BrightnessResult]):
 
 @dataclass(frozen=True, slots=True)
 class SetLedColors(Command[LedColorsResult]):
-    """Set LED color array + on/off + brightness.  Stubbed until Led lands."""
+    """Set LED color array + on/off + brightness on a connected Led device."""
     key: str
     colors: List[Tuple[int, int, int]]
     global_on: bool = True
     brightness: int = 100
 
     def execute(self, app: "App") -> LedColorsResult:
+        from ..adapters.device.led import Led, LedPayload
+
+        try:
+            device = app.get(self.key)
+        except DeviceNotFoundError as e:
+            return LedColorsResult(
+                ok=False, key=self.key, colors=list(self.colors),
+                message=str(e),
+            )
+
+        if not isinstance(device, Led):
+            return LedColorsResult(
+                ok=False, key=self.key, colors=list(self.colors),
+                message=f"{self.key} is not an LED device",
+            )
+        if not device.is_connected:
+            raise DeviceNotConnectedError(
+                f"{self.key} not connected — dispatch ConnectDevice first"
+            )
+
+        payload = LedPayload(
+            colors=list(self.colors),
+            global_on=self.global_on,
+            brightness=self.brightness,
+        )
+        try:
+            ok = device.send(payload)
+        except TransportError as e:
+            app.events.publish(ErrorOccurred(message=str(e), kind="transport",
+                                             key=self.key))
+            return LedColorsResult(
+                ok=False, key=self.key, colors=list(self.colors),
+                message=str(e),
+            )
+
+        if ok:
+            app.events.publish(LedColorsChanged(
+                key=self.key, color_count=len(self.colors),
+            ))
         return LedColorsResult(
-            ok=False, key=self.key, colors=list(self.colors),
-            message="SetLedColors pending Led Device implementation",
+            ok=ok, key=self.key, colors=list(self.colors),
+            message=(f"Sent {len(self.colors)} LED color(s)"
+                     if ok else "LED send returned False"),
         )
 
 

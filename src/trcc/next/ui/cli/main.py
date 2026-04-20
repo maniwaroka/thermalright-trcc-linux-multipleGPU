@@ -10,7 +10,7 @@ import logging
 
 import typer
 
-from . import device, display, system
+from . import device, display, led, system
 
 app = typer.Typer(
     help="TRCC — Thermalright LCD/LED cooler control (clean-slate build).",
@@ -20,6 +20,7 @@ app = typer.Typer(
 
 app.add_typer(device.app, name="device")
 app.add_typer(display.app, name="display")
+app.add_typer(led.app, name="led")
 app.add_typer(system.app, name="system")
 
 
