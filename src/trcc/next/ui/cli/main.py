@@ -24,6 +24,13 @@ app.add_typer(led.app, name="led")
 app.add_typer(system.app, name="system")
 
 
+@app.command("gui")
+def gui() -> None:
+    """Launch the desktop GUI (PySide6)."""
+    from ..gui import launch
+    raise typer.Exit(code=launch())
+
+
 @app.callback()
 def _root(
     verbose: bool = typer.Option(False, "--verbose", "-v",
