@@ -5,11 +5,17 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ...core.commands import LoadTheme, SetBrightness, SetOrientation
+from ...core.commands import (
+    LoadTheme,
+    RenderAndSend,
+    SetBrightness,
+    SetOrientation,
+)
 from ._shared import (
     http_error_if_failed,
     to_brightness_response,
     to_orientation_response,
+    to_render_response,
     to_theme_response,
 )
 from .schemas import (
@@ -17,6 +23,7 @@ from .schemas import (
     BrightnessResponse,
     OrientationRequest,
     OrientationResponse,
+    RenderResponse,
     ThemeRequest,
     ThemeResponse,
 )
@@ -55,3 +62,16 @@ def load_theme(key: str, body: ThemeRequest,
     )
     http_error_if_failed(result)
     return to_theme_response(result)
+
+
+@router.post("/tick", response_model=RenderResponse)
+def tick(key: str, request: Request) -> RenderResponse:
+    """Render the active theme with live sensors + send one frame.
+
+    Stateless — the caller (scheduled job, cron, client-side timer)
+    polls this at AppSettings.refresh_interval_s or whatever cadence
+    they like.  Uses the scene cache so ticks are cheap.
+    """
+    result = request.app.state.trcc.dispatch(RenderAndSend(key=key))
+    http_error_if_failed(result)
+    return to_render_response(result)

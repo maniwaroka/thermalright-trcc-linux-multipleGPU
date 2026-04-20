@@ -10,7 +10,7 @@ import logging
 import sys
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,11 +22,13 @@ from PySide6.QtWidgets import (
 )
 
 from ...app import App
+from ...core.commands import RenderAndSend
 from ...core.events import (
     DeviceConnected,
     DeviceDisconnected,
     ErrorOccurred,
     FrameSent,
+    ThemeLoaded,
 )
 from .bus_bridge import BusBridge
 from .panels import DevicePanel, DisplayPanel, LedPanel
@@ -64,7 +66,15 @@ class MainWindow(QMainWindow):
         self._bus.device_connected.connect(self._on_connected, type=qconn)
         self._bus.device_disconnected.connect(self._on_disconnected, type=qconn)
         self._bus.frame_sent.connect(self._on_frame_sent, type=qconn)
+        self._bus.theme_loaded.connect(self._on_theme_loaded, type=qconn)
         self._bus.error_occurred.connect(self._on_error, type=qconn)
+
+        # Playback ticker — dispatches RenderAndSend to every device with an
+        # active theme, at AppSettings.refresh_interval_s.  Started lazily
+        # when a theme gets loaded; stops when no active themes remain.
+        self._ticker = QTimer(self)
+        self._ticker.setSingleShot(False)
+        self._ticker.timeout.connect(self._on_tick)
 
         self._show_platform_info()
 
@@ -88,6 +98,31 @@ class MainWindow(QMainWindow):
 
     def _on_error(self, event: ErrorOccurred) -> None:
         self._status.showMessage(f"Error [{event.kind}]: {event.message}", 8000)
+
+    def _on_theme_loaded(self, event: ThemeLoaded) -> None:
+        """A theme got loaded on some device — make sure the ticker is running."""
+        self._ensure_ticker_running()
+
+    def _ensure_ticker_running(self) -> None:
+        """Start the QTimer if there are active themes; stop it otherwise."""
+        if not self._app.active_themes:
+            if self._ticker.isActive():
+                self._ticker.stop()
+            return
+        interval_ms = max(100, int(self._app.settings.app.refresh_interval_s * 1000))
+        if not self._ticker.isActive() or self._ticker.interval() != interval_ms:
+            self._ticker.start(interval_ms)
+
+    def _on_tick(self) -> None:
+        """Fire one render+send for every device with an active theme."""
+        if not self._app.active_themes:
+            self._ticker.stop()
+            return
+        for key in list(self._app.active_themes):
+            try:
+                self._app.dispatch(RenderAndSend(key=key))
+            except Exception as e:
+                log.exception("Tick failed for %s: %s", key, e)
 
 
 def launch(app: Optional[App] = None) -> int:

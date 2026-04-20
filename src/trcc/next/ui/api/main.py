@@ -47,6 +47,7 @@ def build_app(trcc: App | None = None) -> FastAPI:
                 "POST /devices/{key}/display/orientation",
                 "POST /devices/{key}/display/brightness",
                 "POST /devices/{key}/display/theme",
+                "POST /devices/{key}/display/tick",
                 "POST /devices/{key}/led/colors",
                 "GET  /system/info",
                 "GET  /system/sensors",

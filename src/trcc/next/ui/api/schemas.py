@@ -70,6 +70,12 @@ class ThemeResponse(ResultBase):
     theme_name: str = ""
 
 
+class RenderResponse(ResultBase):
+    key: str = ""
+    bytes_sent: int = 0
+    theme_name: str = ""
+
+
 class LedColorsResponse(ResultBase):
     key: str = ""
     colors: List[Tuple[int, int, int]] = []

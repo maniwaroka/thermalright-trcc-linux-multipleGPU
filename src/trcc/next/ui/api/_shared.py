@@ -14,6 +14,7 @@ from ...core.results import (
     DiscoverResult,
     LedColorsResult,
     OrientationResult,
+    RenderResult,
     Result,
     SensorsResult,
     SetupResult,
@@ -28,6 +29,7 @@ from .schemas import (
     LedColorsResponse,
     OrientationResponse,
     ProductSchema,
+    RenderResponse,
     SensorReadingSchema,
     SensorsResponse,
     SetupResponse,
@@ -110,6 +112,15 @@ def to_theme_response(result: ThemeResult) -> ThemeResponse:
     return ThemeResponse(
         ok=result.ok, message=result.message,
         key=result.key, theme_name=result.theme_name,
+    )
+
+
+def to_render_response(result: RenderResult) -> RenderResponse:
+    return RenderResponse(
+        ok=result.ok, message=result.message,
+        key=result.key,
+        bytes_sent=result.bytes_sent,
+        theme_name=result.theme_name,
     )
 
 

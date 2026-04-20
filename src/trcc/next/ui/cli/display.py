@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from ...core.commands import LoadTheme, SetBrightness, SetOrientation
+from ...core.commands import LoadTheme, RenderAndSend, SetBrightness, SetOrientation
 from ._ctx import get_app
 
 app = typer.Typer(help="Configure device display (theme / orientation / brightness).",
@@ -47,3 +47,37 @@ def load_theme(
     typer.echo(result.message)
     if not result.ok:
         raise typer.Exit(code=1)
+
+
+@app.command("play")
+def play(
+    key: str = typer.Argument(..., help="Device key, e.g. 0402:3922"),
+    interval: float = typer.Option(
+        None, "--interval", "-i",
+        help="Tick interval in seconds (default: AppSettings.refresh_interval_s)",
+    ),
+) -> None:
+    """Run the render-and-send ticker until Ctrl-C.
+
+    Dispatches RenderAndSend every tick with live sensors.  Keeps SCSI
+    devices from timing out (static-blink fix) and advances video
+    playback.  Stops cleanly on SIGINT.
+    """
+    import time
+
+    app_obj = get_app()
+    tick_s = interval if interval is not None else app_obj.settings.app.refresh_interval_s
+    tick_s = max(0.05, tick_s)
+
+    typer.echo(f"Playing on {key} at {tick_s:.2f}s intervals (Ctrl-C to stop)…")
+    try:
+        while True:
+            result = app_obj.dispatch(RenderAndSend(key=key))
+            if not result.ok:
+                typer.echo(f"  tick failed: {result.message}", err=True)
+                raise typer.Exit(code=1)
+            typer.echo(f"  sent {result.bytes_sent} bytes "
+                       f"(theme={result.theme_name!r})")
+            time.sleep(tick_s)
+    except KeyboardInterrupt:
+        typer.echo("\nStopped.")
