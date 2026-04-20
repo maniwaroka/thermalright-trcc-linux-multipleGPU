@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, Generic, List, Tuple, TypeVar
 
 from .errors import (
     DeviceNotConnectedError,
@@ -57,11 +57,20 @@ if TYPE_CHECKING:
 # =========================================================================
 
 
-class Command(ABC):
-    """A user action.  Exactly one execute method; returns one Result."""
+R_co = TypeVar("R_co", bound=Result, covariant=True)
+
+
+class Command(ABC, Generic[R_co]):
+    """A user action.  Exactly one execute method; returns one Result.
+
+    Parameterised on the concrete Result subclass so that
+    ``app.dispatch(DiscoverDevices())`` is typed as ``DiscoverResult``,
+    not the Result base — callers get the subclass's fields (products,
+    readings, etc.) without casting.
+    """
 
     @abstractmethod
-    def execute(self, app: "App") -> Result: ...
+    def execute(self, app: "App") -> R_co: ...
 
 
 # =========================================================================
@@ -70,7 +79,7 @@ class Command(ABC):
 
 
 @dataclass(frozen=True, slots=True)
-class DiscoverDevices(Command):
+class DiscoverDevices(Command[DiscoverResult]):
     """List attached devices that match the product registry."""
 
     def execute(self, app: "App") -> DiscoverResult:
@@ -92,7 +101,7 @@ class DiscoverDevices(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class ConnectDevice(Command):
+class ConnectDevice(Command[ConnectResult]):
     """Attach + handshake with a discovered device."""
     key: str
 
@@ -132,7 +141,7 @@ class ConnectDevice(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class DisconnectDevice(Command):
+class DisconnectDevice(Command[DisconnectResult]):
     """Close the transport and drop the device."""
     key: str
 
@@ -153,7 +162,7 @@ class DisconnectDevice(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class SendFrame(Command):
+class SendFrame(Command[SendResult]):
     """Push already-built frame bytes to the device.
 
     Bypasses the theme/render pipeline (Phase 5+) — useful for scripts
@@ -188,7 +197,7 @@ class SendFrame(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class LoadTheme(Command):
+class LoadTheme(Command[ThemeResult]):
     """Parse a theme, persist it, render the first frame, and send it.
 
     If the device isn't attached, the theme is still persisted so it
@@ -246,7 +255,7 @@ class LoadTheme(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class SetOrientation(Command):
+class SetOrientation(Command[OrientationResult]):
     """Set per-device rotation (0 / 90 / 180 / 270).
 
     Validates against the product registry — device need not be
@@ -284,7 +293,7 @@ class SetOrientation(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class SetBrightness(Command):
+class SetBrightness(Command[BrightnessResult]):
     """Set per-device display brightness (0–100)."""
     key: str
     percent: int
@@ -309,7 +318,7 @@ class SetBrightness(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class SetLedColors(Command):
+class SetLedColors(Command[LedColorsResult]):
     """Set LED color array + on/off + brightness.  Stubbed until Led lands."""
     key: str
     colors: List[Tuple[int, int, int]]
@@ -329,7 +338,7 @@ class SetLedColors(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class ReadSensors(Command):
+class ReadSensors(Command[SensorsResult]):
     """Return current sensor readings.  Uses Platform's SensorEnumerator."""
 
     def execute(self, app: "App") -> SensorsResult:
@@ -348,7 +357,7 @@ class ReadSensors(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class RunSetup(Command):
+class RunSetup(Command[SetupResult]):
     """OS-specific one-time setup (udev, WinUSB guide, etc.)."""
     interactive: bool = True
 

@@ -7,7 +7,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 from __future__ import annotations
 
 import logging
-from typing import Dict, Type
+from typing import Dict, Type, TypeVar
 
 from .adapters.device.hid_lcd import HidLcd
 from .adapters.device.scsi_lcd import ScsiLcd
@@ -24,6 +24,9 @@ from .services.settings import Settings
 from .services.theme import ThemeService
 
 log = logging.getLogger(__name__)
+
+
+R = TypeVar("R", bound=Result)
 
 
 # =========================================================================
@@ -123,9 +126,11 @@ class App:
 
     # ── Command dispatch ──────────────────────────────────────────────
 
-    def dispatch(self, cmd: Command) -> Result:
+    def dispatch(self, cmd: Command[R]) -> R:
         """Execute a Command and return its Result.
 
+        Generic in the Result subclass so the caller sees the concrete
+        Result type (e.g. DiscoverResult with .products) without casting.
         UIs should only reach the rest of the app through this method.
         """
         log.debug("dispatch: %s", type(cmd).__name__)
