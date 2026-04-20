@@ -1,5 +1,16 @@
 # TRCC Linux — Claude Code Project Instructions
 
+## Two Source Trees (read this first)
+
+The repo currently carries two parallel source trees on the `dev` branch:
+
+- **`src/trcc/`** — the **shipping / legacy code**.  Everything users install today runs this.  Full feature set (sensors, setup wizard, autostart, theme download, LED segment displays, `.zt` animations, 4-OS support, etc.).  Every architecture principle below this header describes this tree — SCSI uses `/dev/sgN` + SG_IO on Linux, `DeviceProtocolFactory` exists, `ControllerBuilder` wires things, etc.
+- **`src/trcc/next/`** — a **clean-slate rebuild** (12 commits, `c309a55`→`39b3169`).  Proof that a simpler 5-role hexagonal design (Platform / UsbTransport / Device / App / UIs) works end-to-end with one Command bus.  Architecture is complete (3 UIs, two-layer scene cache, video + mask + rotation, tickers wired).  Feature parity with legacy: NO.  Hardware-verified on real devices: NO.  See `memory/project_next_clean_slate.md` for the full status table.
+
+**When the user asks about "the app" or bug fixes for shipping users, work in `src/trcc/`.**  Only touch `src/trcc/next/` when the task is explicitly about the clean-slate rebuild.  Never mix imports between the two trees.
+
+Legacy architecture follows below.
+
 ## Architecture — Hexagonal (Ports & Adapters)
 
 ### Layer Map
@@ -244,6 +255,7 @@ Bare `patch`, `minor`, or `major` → full release workflow:
 - Architecture history: `doc/HISTORY_ARCHITECTURE.md`
 - Project history: `doc/HISTORY_PROJECT.md`
 - Changelog: `doc/CHANGELOG.md`
+- **Clean-slate rebuild status**: `memory/project_next_clean_slate.md` — what `src/trcc/next/` has, what's stub, what's untested, commit map
 
 ## Execution Boundaries (Non-Negotiable)
 
