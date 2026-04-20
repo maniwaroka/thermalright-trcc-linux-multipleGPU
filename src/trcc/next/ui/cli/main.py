@@ -31,6 +31,16 @@ def gui() -> None:
     raise typer.Exit(code=launch())
 
 
+@app.command("api")
+def api(
+    host: str = typer.Option("127.0.0.1", "--host", "-H", help="Bind address"),
+    port: int = typer.Option(8080, "--port", "-p", help="Bind port"),
+) -> None:
+    """Launch the REST API (FastAPI + uvicorn)."""
+    from ..api.main import serve
+    serve(host=host, port=port)
+
+
 @app.callback()
 def _root(
     verbose: bool = typer.Option(False, "--verbose", "-v",
