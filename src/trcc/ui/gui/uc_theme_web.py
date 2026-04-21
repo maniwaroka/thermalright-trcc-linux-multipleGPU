@@ -232,10 +232,13 @@ class UCThemeWeb(DownloadableThemeBrowser):
         self._populate_grid(themes)
 
     def _on_item_clicked(self, item_info: CloudThemeItem):
-        """Handle click — play cached themes, download non-cached ones."""
-        if self._downloading:
-            return
+        """Handle click — play cached themes, download non-cached ones.
 
+        Clicks are NOT gated by `_downloading` — users can queue multiple
+        downloads in parallel.  Previously a first slow download locked
+        every subsequent click until it finished; users perceived "stuck
+        on first theme."
+        """
         self._select_item(item_info)
 
         if item_info.is_local:

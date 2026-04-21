@@ -165,10 +165,13 @@ class UCThemeMask(DownloadableThemeBrowser):
         self._populate_grid(masks)
 
     def _on_item_clicked(self, item_info: MaskItem):
-        """Handle click — select local masks, download non-local ones."""
-        if self._downloading:
-            return
+        """Handle click — select local masks, download non-local ones.
 
+        No `_downloading` gate: user clicks are always honored, even when
+        an earlier download is still in flight.  Parallel downloads are
+        fine (different files) and the UI never feels "stuck on the
+        first click."
+        """
         self._select_item(item_info)
 
         if item_info.is_local:
