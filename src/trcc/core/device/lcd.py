@@ -915,8 +915,20 @@ class LCDDevice:
             try:
                 result = self._load_config_json_fn(str(json_path))
                 if result is not None:
-                    overlay_config = result[0]
-                    self.log.debug("load_overlay_config_from_dir: loaded from config.json")
+                    candidate = result[0]
+                    # Legacy expects overlay_config to be a dict keyed by
+                    # metric name.  Older next/ builds wrote a list-shape
+                    # JSON here — treat that as invalid, fall through to
+                    # config1.dc below so the theme still loads.
+                    if isinstance(candidate, dict):
+                        overlay_config = candidate
+                        self.log.debug("load_overlay_config_from_dir: loaded from config.json")
+                    else:
+                        self.log.warning(
+                            "load_overlay_config_from_dir: config.json has %s shape "
+                            "(expected dict); falling back to config1.dc",
+                            type(candidate).__name__,
+                        )
             except Exception as e:
                 self.log.warning("load_overlay_config_from_dir: config.json parse failed: %s", e)
 
