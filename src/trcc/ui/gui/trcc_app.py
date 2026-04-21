@@ -645,7 +645,8 @@ class TRCCApp(QMainWindow):
     # ── System tray ─────────────────────────────────────────────────
 
     def _setup_systray(self) -> None:
-        icon_path = Path(__file__).parent.parent / 'assets' / 'icons' / 'trcc.png'
+        # __file__ = src/trcc/ui/gui/trcc_app.py  →  parents[2] = src/trcc/
+        icon_path = Path(__file__).resolve().parents[2] / 'assets' / 'icons' / 'trcc.png'
         icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
         self.setWindowIcon(icon)
 
