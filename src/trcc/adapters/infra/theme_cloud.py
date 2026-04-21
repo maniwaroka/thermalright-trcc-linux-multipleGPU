@@ -242,18 +242,29 @@ class CloudThemeDownloader:
             log.debug("download_theme: cache hit %s → %s", theme_id, dest_path)
             return str(dest_path)
 
-        url = self.get_theme_url(theme_id)
-        log.info("download_theme: %s → %s (url=%s)", theme_id, dest_path, url)
-
-        try:
-            result = self._download_file(url, dest_path, on_progress)
+        # Try every configured server in order — first one that responds
+        # wins.  czhorde.cc (.international) and czhorde.com (.china) serve
+        # the same assets; when one is unreachable for a user's network,
+        # the other usually works.
+        res_dir = RESOLUTION_URLS.get(self.resolution, self.resolution)
+        for server_name, base_template in SERVERS.items():
+            base = base_template.replace('{resolution}', res_dir)
+            url = f"{base}{theme_id}.mp4"
+            log.info("download_theme: %s via %s → %s", theme_id, server_name, url)
+            try:
+                result = self._download_file(url, dest_path, on_progress)
+            except Exception as e:
+                log.warning("download_theme: %s via %s raised %s", theme_id, server_name, e)
+                continue
             if result:
                 size = dest_path.stat().st_size if dest_path.exists() else 0
-                log.info("download_theme: saved %s (%d bytes)", dest_path, size)
-            return result
-        except Exception as e:
-            log.error("download_theme: failed %s: %s", theme_id, e)
-            return None
+                log.info("download_theme: saved %s via %s (%d bytes)",
+                         dest_path, server_name, size)
+                return result
+            log.warning("download_theme: %s via %s failed, trying next server",
+                        theme_id, server_name)
+        log.error("download_theme: %s failed on every server", theme_id)
+        return None
 
     def download_preview(
         self,
