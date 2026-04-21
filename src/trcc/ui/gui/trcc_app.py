@@ -448,9 +448,6 @@ class TRCCApp(QMainWindow):
             handler = LEDHandler(
                 device, self.uc_led_control, self._on_temp_unit_changed)
             self._handlers[path] = handler
-            # Register with the Trcc command layer so dispatches through
-            # self._trcc.led.<verb>(idx, ...) can resolve the device.
-            self._trcc.register_led(device)
             log.info("LED handler added: %s", path)
             added = True
             if self._ipc_server:
@@ -472,14 +469,15 @@ class TRCCApp(QMainWindow):
                 1 for h in self._handlers.values()
                 if isinstance(h, LCDHandler)
             )
-            # Register the device with the Trcc command layer FIRST — LCDHandler
-            # constructors dispatch set_* calls through self._trcc.lcd, and the
-            # index lookup would fail against an empty _lcd_devices list.
-            self._trcc.register_lcd(device)
+            # Handler goes direct to device — no Trcc.lcd command layer for the
+            # GUI.  Every `self._app.lcd.X` call in lcd_handler.py already has
+            # an `if self._app is None` fallback that uses `self._lcd.Y`
+            # directly; passing app=None activates those fallbacks everywhere,
+            # cutting the indirection that caused silent no-op bugs.
             lcd_handler = LCDHandler(
                 device, widgets, self._make_timer, self._data_dir,
                 is_visible_fn=self.is_app_visible,
-                app=self._trcc, lcd_idx=lcd_idx)
+                app=None, lcd_idx=lcd_idx)
             self._handlers[path] = lcd_handler
             log.info("LCD handler added: %s", path)
             added = True
