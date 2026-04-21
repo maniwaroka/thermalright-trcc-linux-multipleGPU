@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Generic, List, Optional, Tuple, TypeVar
 
 if TYPE_CHECKING:
     from .models import (
@@ -21,12 +21,22 @@ if TYPE_CHECKING:
 
 
 # =========================================================================
-# UsbTransport — the byte mover
+# Transports — byte movers, one ABC per wire family
 # =========================================================================
+#
+# Two transport families cover every protocol:
+#
+#   BulkTransport  — raw USB bulk/interrupt read/write (HID, BULK, LY, LED)
+#   ScsiTransport  — SCSI CDB + data phase, kernel-native where possible
+#                    (Linux SG_IO, Windows DeviceIoControl, macOS/BSD BOT)
+#
+# Protocols hold one of these; they don't care which OS subclass is
+# injected.  Platform.open(vid, pid, wire) returns the right transport
+# for (OS, wire).
 
 
-class UsbTransport(ABC):
-    """Abstract USB transport.  One per open device handle."""
+class BulkTransport(ABC):
+    """Abstract USB bulk/interrupt transport.  One per open device handle."""
 
     @abstractmethod
     def open(self) -> bool:
@@ -52,23 +62,65 @@ class UsbTransport(ABC):
         """Bulk-read up to *length* bytes from an IN endpoint."""
 
 
+class ScsiTransport(ABC):
+    """Abstract SCSI transport.  One per open device handle.
+
+    Uses CDB-level primitives so the kernel (Linux SG_IO, Windows
+    DeviceIoControl) can bundle CDB + data + status in a single syscall
+    where the OS supports it.  macOS/BSD fall back to userspace BOT.
+    """
+
+    @abstractmethod
+    def open(self) -> bool:
+        """Open the device.  True on success."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release resources."""
+
+    @property
+    @abstractmethod
+    def is_open(self) -> bool:
+        """Whether the transport currently holds an open handle."""
+
+    @abstractmethod
+    def send_cdb(self, cdb: bytes, data: bytes,
+                 timeout_ms: int = 5000) -> bool:
+        """Send a 16-byte CDB with a data-out payload.  True on CSW status 0."""
+
+    @abstractmethod
+    def read_cdb(self, cdb: bytes, length: int,
+                 timeout_ms: int = 5000) -> bytes:
+        """Send a 16-byte CDB and read *length* bytes of data-in."""
+
+
+# Transport type variable — constrained to the two transport ABCs.
+# Each Device subclass binds T to the transport it needs, so
+# `self._transport.write(...)` narrows correctly per device.
+T = TypeVar("T", BulkTransport, ScsiTransport)
+
+
 # =========================================================================
 # Device — one per physical device, knows its wire protocol
 # =========================================================================
 
 
-class Device(ABC):
+class Device(ABC, Generic[T]):
     """A physical USB device we control.
 
     Concrete subclasses (ScsiLcd, HidLcd, BulkLcd, LyLcd, Led) own their
-    wire protocol.  All devices share the same outward contract:
-    connect / send / disconnect.
+    wire protocol and declare the transport they need via the type
+    parameter: `class ScsiLcd(Device[ScsiTransport])`.  The transport
+    is DI'd at construction — devices never build their own.
+
+    All devices share the same outward contract: connect / send /
+    disconnect.  They know nothing about the OS, Platform, or other
+    devices.
     """
 
-    def __init__(self, info: "ProductInfo", platform: "Platform") -> None:
+    def __init__(self, info: "ProductInfo", transport: T) -> None:
         self.info = info
-        self._platform = platform
-        self._transport: Optional[UsbTransport] = None
+        self._transport: T = transport
         self._handshake: Optional["HandshakeResult"] = None
 
     @abstractmethod
@@ -233,11 +285,27 @@ class Platform(ABC):
         - Run OS-specific setup (udev, WinUSB guide, etc.).
     """
 
-    # ── USB I/O ───────────────────────────────────────────────────────
+    # ── Transport factories — one per wire family ────────────────────
     @abstractmethod
-    def open_usb(self, vid: int, pid: int,
-                 serial: Optional[str] = None) -> UsbTransport:
-        """Return an unopened UsbTransport for the given device."""
+    def open_bulk(self, vid: int, pid: int,
+                  serial: Optional[str] = None) -> BulkTransport:
+        """Return an unopened BulkTransport for a USB-bulk device.
+
+        Used by HID / BULK / LY / LED protocols.  Every OS can do this
+        via libusb, so the concrete class is usually shared.
+        """
+
+    @abstractmethod
+    def open_scsi(self, vid: int, pid: int,
+                  serial: Optional[str] = None) -> ScsiTransport:
+        """Return an unopened ScsiTransport for a SCSI-LCD device.
+
+        Used by SCSI protocols.  Each OS has a native path:
+            Linux   → SG_IO ioctl on /dev/sgN
+            Windows → DeviceIoControl on the raw volume
+            macOS   → USB BOT (no SG equivalent)
+            BSD     → USB BOT
+        """
 
     @abstractmethod
     def scan_devices(self) -> List["DeviceInfo"]:

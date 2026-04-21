@@ -17,7 +17,7 @@ from typing import Set
 
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
-from ...core.ports import Device, Platform
+from ...core.ports import BulkTransport, Device
 
 log = logging.getLogger(__name__)
 
@@ -46,11 +46,11 @@ _WRITE_CHUNK_SIZE = 16 * 1024
 _RGB565_PMS: Set[int] = {32}
 
 
-class BulkLcd(Device):
+class BulkLcd(Device[BulkTransport]):
     """Raw USB bulk LCD device (USBLCDNew protocol)."""
 
-    def __init__(self, info: ProductInfo, platform: Platform) -> None:
-        super().__init__(info, platform)
+    def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
+        super().__init__(info, transport)
         self._pm: int = 0
         self._sub: int = 0
         self._use_jpeg: bool = True
@@ -58,7 +58,6 @@ class BulkLcd(Device):
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
-        self._transport = self._platform.open_usb(self.info.vid, self.info.pid)
         if not self._transport.open():
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
@@ -92,7 +91,7 @@ class BulkLcd(Device):
         return result
 
     def send(self, payload: bytes) -> bool:
-        if self._transport is None or not self._transport.is_open:
+        if not self._transport.is_open:
             raise TransportError(
                 f"BulkLcd {self.info.key} not connected — call connect() first"
             )
@@ -126,7 +125,5 @@ class BulkLcd(Device):
             return False
 
     def disconnect(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._transport = None
+        self._transport.close()
         self._handshake = None

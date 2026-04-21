@@ -19,7 +19,7 @@ from typing import Optional
 
 from ...core.errors import HandshakeError, UnsupportedOperationError
 from ...core.models import HandshakeResult, ProductInfo
-from ...core.ports import Device, Platform
+from ...core.ports import BulkTransport, Device
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def _frame_timeout_ms(packet_size: int) -> int:
 # =========================================================================
 
 
-class HidLcd(Device):
+class HidLcd(Device[BulkTransport]):
     """HID-protocol LCD device (Type 2 or Type 3 firmware variants).
 
     Selection is by `info.device_type` (2 or 3); both variants share the
@@ -81,8 +81,8 @@ class HidLcd(Device):
     parse) and differ in packet layout and response validation.
     """
 
-    def __init__(self, info: ProductInfo, platform: Platform) -> None:
-        super().__init__(info, platform)
+    def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
+        super().__init__(info, transport)
         if info.device_type not in (2, 3):
             raise UnsupportedOperationError(
                 f"HidLcd requires device_type 2 or 3, got {info.device_type}"
@@ -92,9 +92,6 @@ class HidLcd(Device):
 
     def connect(self) -> HandshakeResult:
         """Open transport and perform the type-specific handshake."""
-        self._transport = self._platform.open_usb(
-            self.info.vid, self.info.pid,
-        )
         if not self._transport.open():
             raise HandshakeError(
                 f"Failed to open USB transport for {self.info.key}"
@@ -146,7 +143,7 @@ class HidLcd(Device):
 
     def send(self, payload: bytes) -> bool:
         """Send one image frame (RGB565 or JPEG bytes, protocol-specific)."""
-        if self._transport is None or not self._transport.is_open:
+        if not self._transport.is_open:
             raise HandshakeError(
                 f"HidLcd {self.info.key} not connected — call connect() first"
             )
@@ -170,9 +167,7 @@ class HidLcd(Device):
         return len(ack) > 0
 
     def disconnect(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._transport = None
+        self._transport.close()
         self._handshake = None
 
     # ── Wire protocol — Type 2 variant ────────────────────────────────

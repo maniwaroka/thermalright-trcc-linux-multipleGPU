@@ -20,7 +20,7 @@ import struct
 
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
-from ...core.ports import Device, Platform
+from ...core.ports import BulkTransport, Device
 
 log = logging.getLogger(__name__)
 
@@ -50,11 +50,11 @@ _CHUNK_DATA_SIZE = 496
 _USB_WRITE_SIZE = 4096
 
 
-class LyLcd(Device):
+class LyLcd(Device[BulkTransport]):
     """LY-series USB bulk LCD (Trofeo Vision 9.16)."""
 
-    def __init__(self, info: ProductInfo, platform: Platform) -> None:
-        super().__init__(info, platform)
+    def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
+        super().__init__(info, transport)
         self._pm: int = 0
         self._sub: int = 0
         # LY uses chunk header byte[8]=1, LY1 uses byte[8]=2
@@ -63,7 +63,6 @@ class LyLcd(Device):
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
-        self._transport = self._platform.open_usb(self.info.vid, self.info.pid)
         if not self._transport.open():
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
@@ -105,7 +104,7 @@ class LyLcd(Device):
         return result
 
     def send(self, payload: bytes) -> bool:
-        if self._transport is None or not self._transport.is_open:
+        if not self._transport.is_open:
             raise TransportError(
                 f"LyLcd {self.info.key} not connected — call connect() first"
             )
@@ -165,7 +164,5 @@ class LyLcd(Device):
             return False
 
     def disconnect(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._transport = None
+        self._transport.close()
         self._handshake = None

@@ -3,7 +3,7 @@
 Hexagonal (ports & adapters) with a Command bus.  Five roles:
 
     Platform       OS I/O primitives (ABC, one per OS)
-    UsbTransport   byte mover (ABC)
+    Transport      byte mover — BulkTransport (USB) or ScsiTransport (CDB-level)
     Device         physical device, knows its wire protocol (ABC, one per protocol)
     App            holds Platform + devices, dispatches Commands
     UIs            thin adapters (CLI / GUI / API), speak Commands + Results

@@ -101,7 +101,12 @@ class App:
     # ── Device lifecycle ──────────────────────────────────────────────
 
     def attach(self, vid: int, pid: int) -> Device:
-        """Build and cache a Device for (vid, pid).  Does not connect."""
+        """Build and cache a Device for (vid, pid).  Does not connect.
+
+        Resolves the right transport for the device's wire via the
+        Platform, then DI's it into the Device constructor.  Device
+        classes never touch Platform — they only know their transport.
+        """
         info = find_product(vid, pid)
         if info is None:
             raise DeviceNotFoundError(
@@ -112,7 +117,13 @@ class App:
             raise DeviceNotFoundError(
                 f"No Device implementation for wire={info.wire.value!r}"
             )
-        device = cls(info, self.platform)
+        # SCSI needs a kernel-native passthrough transport; everything
+        # else speaks plain USB bulk.  Platform picks the right impl.
+        if info.wire is Wire.SCSI:
+            transport = self.platform.open_scsi(vid, pid)
+        else:
+            transport = self.platform.open_bulk(vid, pid)
+        device = cls(info, transport)
         self.devices[device.key] = device
         log.debug("App.attach: %s → %s", device.key, cls.__name__)
         return device

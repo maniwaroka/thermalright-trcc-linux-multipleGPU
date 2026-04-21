@@ -1,8 +1,12 @@
-"""USB transport implementations.
+"""Bulk/interrupt USB transport implementations.
 
-Concrete UsbTransport subclasses.  PyUsbTransport (libusb via pyusb) is
-the default for every OS; HidApiTransport is a fallback for devices that
-enumerate as pure HID on Windows.
+Concrete BulkTransport subclasses.  PyUsbBulkTransport (libusb via pyusb)
+is the default for every OS; HidApiTransport is a fallback for devices
+that enumerate as pure HID on Windows.
+
+SCSI transports live in the OS platform files (adapters/system/{os}.py)
+because Linux (SG_IO) and Windows (DeviceIoControl) are OS-native; only
+macOS/BSD fall back to userspace USB BOT.
 """
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ import usb.core
 import usb.util
 
 from ...core.errors import PermissionError_, TransportError
-from ...core.ports import UsbTransport
+from ...core.ports import BulkTransport
 
 # Optional hidapi backend (the [hid] extra)
 try:
@@ -33,11 +37,11 @@ USB_INTERFACE = 0
 
 
 # =========================================================================
-# PyUsbTransport — libusb backend (works on Linux/Windows/macOS/BSD)
+# PyUsbBulkTransport — libusb backend (works on Linux/Windows/macOS/BSD)
 # =========================================================================
 
 
-class PyUsbTransport(UsbTransport):
+class PyUsbBulkTransport(BulkTransport):
     """USB transport via pyusb (libusb backend).
 
     C# LibUsbDotNet parity:
@@ -149,7 +153,7 @@ class PyUsbTransport(UsbTransport):
     def ep_in(self) -> Optional[int]:
         return self._ep_in
 
-    def __enter__(self) -> "PyUsbTransport":
+    def __enter__(self) -> "PyUsbBulkTransport":
         self.open()
         return self
 
@@ -162,11 +166,11 @@ class PyUsbTransport(UsbTransport):
 # =========================================================================
 
 
-class HidApiTransport(UsbTransport):
+class HidApiTransport(BulkTransport):
     """USB transport via hidapi.
 
     Report-based (max 64 bytes per report for interrupt endpoints).
-    Large bulk transfers should prefer PyUsbTransport.
+    Large bulk transfers should prefer PyUsbBulkTransport.
     """
 
     def __init__(self, vid: int, pid: int,

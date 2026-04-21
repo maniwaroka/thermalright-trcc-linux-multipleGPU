@@ -20,7 +20,7 @@ from typing import List, Optional, Tuple
 
 from ...core.errors import HandshakeError, TransportError, UnsupportedOperationError
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo
-from ...core.ports import Device, Platform
+from ...core.ports import BulkTransport, Device
 
 log = logging.getLogger(__name__)
 
@@ -66,11 +66,11 @@ class LedPayload:
 # ── Led Device ────────────────────────────────────────────────────────
 
 
-class Led(Device):
+class Led(Device[BulkTransport]):
     """RGB LED controller over HID 64-byte reports."""
 
-    def __init__(self, info: ProductInfo, platform: Platform) -> None:
-        super().__init__(info, platform)
+    def __init__(self, info: ProductInfo, transport: BulkTransport) -> None:
+        super().__init__(info, transport)
         self._send_lock = threading.Lock()
         self._pm: int = 0
         self._sub: int = 0
@@ -88,7 +88,6 @@ class Led(Device):
     # ── Device ABC ────────────────────────────────────────────────────
 
     def connect(self) -> HandshakeResult:
-        self._transport = self._platform.open_usb(self.info.vid, self.info.pid)
         if not self._transport.open():
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
@@ -161,7 +160,7 @@ class Led(Device):
                 "Led.send() requires a LedPayload; "
                 f"got {type(payload).__name__}"
             )
-        if self._transport is None or not self._transport.is_open:
+        if not self._transport.is_open:
             raise TransportError(
                 f"Led {self.info.key} not connected — call connect() first"
             )
@@ -191,9 +190,7 @@ class Led(Device):
             self._send_lock.release()
 
     def disconnect(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._transport = None
+        self._transport.close()
         self._handshake = None
         self._led_handshake = None
 
