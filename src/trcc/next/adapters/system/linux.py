@@ -39,6 +39,7 @@ from ..sensors.gpu_detect import (
     detect_gpu_vendors,
     install_matching_gpu_extras,
 )
+from ._udev import install as install_udev_rules
 
 log = logging.getLogger(__name__)
 
@@ -383,24 +384,39 @@ class LinuxPlatform(Platform):
     # ── Setup / permissions ──────────────────────────────────────────
 
     def setup(self, interactive: bool = True) -> int:
-        """Run OS-specific setup.
+        """Run one-time Linux setup.
 
-        Currently: detects GPU vendors via PCI sysfs and installs any
-        missing Python libs that match (e.g., nvidia-ml-py if NVIDIA is
-        present).  udev-rules installation lands in a later phase.
+        Two things happen here and neither can silently no-op:
+          1. udev rules — write /etc/udev/rules.d/99-trcc-lcd.rules for
+             every device in the registry + modprobe quirks + sg autoload.
+             Requires root; re-execs via sudo when not already root.
+          2. GPU Python extras — detect GPU vendors via PCI sysfs and
+             pip install matching libs (e.g., nvidia-ml-py for NVIDIA).
+
+        Non-interactive mode prints what would be done and returns 0
+        without touching the system.
         """
+        if not interactive:
+            log.info("=== dry run (pass interactive=True to apply) ===")
+            install_udev_rules(dry_run=True)
+            vendors = detect_gpu_vendors()
+            log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
+            install_matching_gpu_extras(vendors, dry_run=True)
+            return 0
+
+        rc_udev = install_udev_rules(dry_run=False)
         vendors = detect_gpu_vendors()
         log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
-        return install_matching_gpu_extras(vendors, dry_run=not interactive)
+        rc_gpu = install_matching_gpu_extras(vendors, dry_run=False)
+        return rc_udev or rc_gpu
 
     def check_permissions(self) -> List[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
         warnings: List[str] = []
-        # Quick check: is the trcc udev rules file present?
         if not Path("/etc/udev/rules.d/99-trcc-lcd.rules").exists():
             warnings.append(
                 "udev rules not installed — device access may require root. "
-                "Run 'trcc setup' to install them."
+                "Run 'python -m trcc.next system setup' to install them."
             )
         return warnings
 
