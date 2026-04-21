@@ -529,9 +529,14 @@ CLOUD_MASK_URLS: dict[str, str] = {
 }
 
 # Cloud theme server base URL templates (resolution suffix appended at runtime).
+# Order matters: `download_theme` iterates these in insertion order and
+# returns the first success.  `china` (czhorde.com) is tried first because
+# on typical US/international links it responds faster than `international`
+# (czhorde.cc).  Contrary to the keys' names — preserved for back-compat
+# with user settings.
 CLOUD_SERVERS: dict[str, str] = {
-    'international': 'http://www.czhorde.cc/tr/bj{resolution}/',
     'china': 'http://www.czhorde.com/tr/bj{resolution}/',
+    'international': 'http://www.czhorde.cc/tr/bj{resolution}/',
 }
 
 
