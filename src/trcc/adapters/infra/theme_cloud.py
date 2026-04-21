@@ -346,26 +346,10 @@ class CloudThemeDownloader:
         Returns:
             Path to downloaded file, or None on failure
         """
-        # The cloud theme server is hosted in China (czhorde.cc) and often
-        # slow over transpacific links.  60s + one retry catches the normal
-        # slowness without hanging the UI forever on a truly dead server.
-        for attempt in (1, 2):
-            result = self._download_file_once(url, dest, on_progress)
-            if result is not None:
-                return result
-            log.warning("_download_file: attempt %d timed out for %s", attempt, url)
-        return None
-
-    def _download_file_once(
-        self,
-        url: str,
-        dest: Path,
-        on_progress: Optional[Callable[[int, int, int], None]] = None,
-    ) -> Optional[str]:
         try:
             req = Request(url, headers={"User-Agent": "TRCC-Linux/1.0"})
 
-            with urlopen(req, timeout=60) as response:
+            with urlopen(req, timeout=30) as response:
                 total_size = int(response.headers.get('content-length', 0))
 
                 # Create parent directory
