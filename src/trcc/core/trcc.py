@@ -99,6 +99,30 @@ class Trcc:
         self._renderer = renderer
         return self
 
+    def register_lcd(self, device: LCDDevice) -> int:
+        """Register an already-built+connected LCD device with the command layer.
+
+        Returns the index the device got.  UI adapters that manage their own
+        device lifecycle (e.g. the GUI's per-handler detection flow) call
+        this instead of `discover()` so their devices show up in
+        `Trcc.lcd._devices` and command dispatch resolves the index.
+
+        Idempotent: if the same device is already registered, returns its
+        existing index.
+        """
+        if device in self._lcd_devices:
+            return self._lcd_devices.index(device)
+        self._lcd_devices.append(device)
+        return len(self._lcd_devices) - 1
+
+    def register_led(self, device: LEDDevice) -> int:
+        """Register an already-built+connected LED device.  Same contract as
+        `register_lcd`."""
+        if device in self._led_devices:
+            return self._led_devices.index(device)
+        self._led_devices.append(device)
+        return len(self._led_devices) - 1
+
     def discover(self) -> DiscoveryResult:
         """Enumerate connected LCD and LED devices, build Device objects,
         register them with the command classes."""
