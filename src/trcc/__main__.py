@@ -41,6 +41,17 @@ if sys.platform == 'win32':
     except (OSError, AttributeError):
         pass  # add_dll_directory requires Python 3.8+ and a valid dir
 
+# Opt-in: TRCC_NEXT=1 delegates to the experimental clean-slate tree
+# (`src/trcc/next/`).  Zero effect when unset — legacy runs as usual.
+if os.environ.get('TRCC_NEXT', '').strip() in ('1', 'true', 'yes'):
+    log.info("TRCC_NEXT set — delegating to trcc.next.ui.cli")
+    try:
+        from trcc.next.ui.cli.main import main as _next_main
+        sys.exit(_next_main() or 0)
+    except Exception:
+        log.critical("Fatal startup error in trcc.next", exc_info=True)
+        raise
+
 try:
     # Auto-launch GUI when invoked as trcc-gui.exe (windowed PyInstaller build)
     if os.path.basename(sys.executable).lower().startswith('trcc-gui'):

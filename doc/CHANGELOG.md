@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Experimental clean-slate architecture** (`trcc.next`) available as an opt-in via `trcc-next <subcommand>` or `TRCC_NEXT=1 trcc <subcommand>`. Default path unchanged — legacy users see zero difference. See `memory/project_next_clean_slate.md` for scope; feature parity still in progress.
+
 ## v9.4.7
 
 ### Fixes
