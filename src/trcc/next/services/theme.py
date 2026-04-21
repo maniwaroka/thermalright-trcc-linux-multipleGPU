@@ -11,9 +11,12 @@ This service provides:
     export(src, dst)    → zip/archive a theme for sharing
     import_(src, dst)   → unpack a shared theme archive
 
-Phase 5 scope: load + list.  Export/import stubbed pending Phase 12.
-Rendering (turning a Theme into frame bytes) is DisplayService's job
-and needs the Renderer port — lands with Phase 6.
+Config resolution:
+    config.json   — preferred native format
+    config1.dc    — binary legacy format (read-only fallback);
+                    auto-migrated to config.json on first load.
+
+Rendering (turning a Theme into frame bytes) is DisplayService's job.
 """
 from __future__ import annotations
 
@@ -24,16 +27,25 @@ from typing import List, Optional, Tuple
 
 from ..core.errors import ThemeError
 from ..core.models import Theme
+from ._dc_reader import load_dc_as_theme_config
 
 log = logging.getLogger(__name__)
 
 
 _CONFIG_FILE = "config.json"
+_DC_CONFIG_FILE = "config1.dc"
 _BACKGROUND_CANDIDATES = (
+    # next/ native names
     "background.mp4", "background.mov", "background.webm",
     "background.png", "background.jpg", "background.jpeg",
+    # Legacy theme naming (Windows TRCC)
+    "Theme.mp4", "Theme.mov", "Theme.webm",
+    "Theme.png", "Theme.jpg", "Theme.jpeg",
 )
-_MASK_CANDIDATES = ("mask.png", "mask.jpg", "mask.jpeg")
+_MASK_CANDIDATES = (
+    "mask.png", "mask.jpg", "mask.jpeg",
+    "Mask.png", "Mask.jpg", "Mask.jpeg",
+)
 
 
 class ThemeService:
@@ -68,9 +80,9 @@ class ThemeService:
     def list(self, directory: Path) -> List[Theme]:
         """Return every theme found directly under *directory*.
 
-        A subdirectory is a theme iff it contains config.json.  Invalid
-        themes are skipped with a warning, not raised — list() never
-        fails on one bad theme.
+        A subdirectory is a theme iff it contains config.json OR
+        config1.dc.  Invalid themes are skipped with a warning, not
+        raised — list() never fails on one bad theme.
         """
         if not directory.exists() or not directory.is_dir():
             return []
@@ -79,7 +91,8 @@ class ThemeService:
         for entry in sorted(directory.iterdir()):
             if not entry.is_dir():
                 continue
-            if not (entry / _CONFIG_FILE).exists():
+            if not ((entry / _CONFIG_FILE).exists()
+                    or (entry / _DC_CONFIG_FILE).exists()):
                 continue
             try:
                 themes.append(self.load(entry))
@@ -114,13 +127,41 @@ class ThemeService:
     # ── internals ─────────────────────────────────────────────────────
 
     def _load_config(self, path: Path) -> dict:
-        cfg_path = path / _CONFIG_FILE
-        if not cfg_path.exists():
-            raise ThemeError(f"Missing {_CONFIG_FILE} in {path}")
+        """Load theme config, preferring JSON and falling back to DC.
+
+        On first successful DC load, writes a `config.json` alongside
+        so subsequent loads skip the binary path.  Migration failure
+        (read-only dir, permission, etc.) is logged but doesn't prevent
+        the theme from loading.
+        """
+        json_path = path / _CONFIG_FILE
+        if json_path.exists():
+            try:
+                return json.loads(json_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                raise ThemeError(f"Invalid theme config {json_path}: {e}") from e
+
+        dc_path = path / _DC_CONFIG_FILE
+        if dc_path.exists():
+            config = load_dc_as_theme_config(dc_path)
+            self._try_migrate(json_path, config)
+            return config
+
+        raise ThemeError(
+            f"No {_CONFIG_FILE} or {_DC_CONFIG_FILE} in {path}"
+        )
+
+    @staticmethod
+    def _try_migrate(json_path: Path, config: dict) -> None:
+        """Write the JSON form alongside the DC file; skip quietly on error."""
         try:
-            return json.loads(cfg_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            raise ThemeError(f"Invalid theme config {cfg_path}: {e}") from e
+            json_path.write_text(
+                json.dumps(config, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            log.info("Migrated %s → %s", _DC_CONFIG_FILE, json_path)
+        except OSError as e:
+            log.warning("Could not migrate DC→JSON at %s: %s", json_path, e)
 
     def _resolution_from_config(self, config: dict) -> Tuple[int, int]:
         """Extract (width, height) from config; fall back to (0, 0) if absent."""
