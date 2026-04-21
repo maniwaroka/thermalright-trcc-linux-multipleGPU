@@ -80,12 +80,12 @@ Repository = "https://github.com/Lexonight1/thermalright-trcc-linux"
 Issues = "https://github.com/Lexonight1/thermalright-trcc-linux/issues"
 
 [project.scripts]
-trcc = "trcc.ui.cli:main"
+# `trcc` honors the TRCC_NEXT env var — unset = legacy, set = next/.
+trcc = "trcc._entry:main"
 trcc-gui = "trcc.ui.cli:gui"
 trcc-detect = "trcc.ui.cli:detect"
 trcc-test = "trcc.ui.cli:test_display"
-# Experimental clean-slate architecture (opt-in, unsupported).
-# Also reachable via: TRCC_NEXT=1 trcc <subcommand>
+# Direct opt-in to next/ (doesn't touch TRCC_NEXT).
 trcc-next = "trcc.next.ui.cli.main:main"
 
 [project.gui-scripts]
