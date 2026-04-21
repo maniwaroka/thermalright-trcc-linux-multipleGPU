@@ -210,6 +210,21 @@ Zero tolerance for security issues. Fix within hexagonal architecture — never 
 ### Plan Before Coding
 Non-trivial changes: think through full impact, state plan, wait for confirmation, THEN implement in one pass. Never jump in and patch as you go.
 
+### Look at the Log Before the Code
+When the user reports a broken feature: `grep -iE "error|traceback|warning" ~/.trcc/trcc.log` FIRST. The log usually names the broken step in one line; reading code to find it wastes 20 minutes and the user's patience.
+
+### Check Existing Fallback / Guard Code Before Rewriting
+Before rewriting any call site that dispatches through a facade (`self._app.*`, `self._trcc.*`, etc.), `grep "if self._app is not None"` in the same file. Many sites already have `else: self._x.y()` fallback paths written years ago — flipping the parameter that selects them is a 1-line fix instead of an 80-line rewrite.
+
+### Shape-Compat Before Writing a Migration
+Before adding code that writes a file another tool reads (legacy ↔ next/ sharing `config.json`, any inter-tool state), READ the other tool's reader and match the shape. Use a different filename if shapes differ (`trcc-next.json`) — sharing a filename with different shapes is how you corrupt user data.
+
+### pycache Before Bulk Moves
+`git rm -r dir/` leaves `__pycache__` behind. Then `git mv a/x dir/` nests at `dir/a/x` instead of replacing. Before any bulk directory operation: `find . -name __pycache__ -type d -exec rm -rf {} +`.
+
+### Network Retries ↔ UI Locks
+If you lengthen a timeout or add retry on a network call, audit every UI state that gates on "busy". A 120s retry chain with `_downloading=True` locking clicks is worse UX than 30s fail-fast.
+
 ### Two Modes
 
 **Development** — local commits, no push, no version bump:
