@@ -92,6 +92,13 @@ class SetupResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class AutostartResult(Result):
+    """Current autostart state + path for diagnostic UIs."""
+    enabled: bool = False
+    path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PlatformInfoResult(Result):
     """Snapshot of identity + path + permission info for diagnostic UIs."""
     distro_name: str = ""

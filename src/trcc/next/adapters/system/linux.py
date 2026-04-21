@@ -71,24 +71,82 @@ class LinuxPaths(Paths):
 
 
 # =========================================================================
-# Stubs for non-Phase-2 ports (satisfy ABC; raise or return defaults)
+# LinuxAutostart — XDG Autostart (.desktop in ~/.config/autostart/)
 # =========================================================================
+#
+# The XDG Autostart spec is supported by every major Linux desktop (GNOME,
+# KDE, XFCE, Cinnamon, Budgie, MATE, LXQt).  A simple `.desktop` file in
+# `$XDG_CONFIG_HOME/autostart/` (default `~/.config/autostart/`) makes the
+# app launch on user login.  No root required — pure per-user opt-in.
 
 
-class _NoopAutostart(AutostartManager):
-    """Placeholder autostart manager.  Real impl lands in Phase 12."""
+_AUTOSTART_FILENAME = "trcc-next.desktop"
+
+_AUTOSTART_TEMPLATE = """\
+[Desktop Entry]
+Type=Application
+Name=TRCC (next)
+GenericName=Thermalright Cooler Control
+Comment=Auto-start TRCC GUI on login
+Exec={exec_cmd}
+Icon=trcc-linux
+Terminal=false
+Categories=System;Settings;
+X-GNOME-Autostart-enabled=true
+StartupNotify=false
+"""
+
+
+class LinuxAutostart(AutostartManager):
+    """XDG Autostart adapter — writes/removes ~/.config/autostart/trcc-next.desktop."""
+
+    def __init__(self) -> None:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+        self._path = Path(xdg) / "autostart" / _AUTOSTART_FILENAME
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     def is_enabled(self) -> bool:
-        return False
+        return self._path.is_file()
 
     def enable(self) -> None:
-        pass
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(self._render(), encoding="utf-8")
+        self._path.chmod(0o644)
+        log.info("Autostart enabled: %s", self._path)
 
     def disable(self) -> None:
-        pass
+        if self._path.exists():
+            self._path.unlink()
+            log.info("Autostart disabled: %s", self._path)
 
     def refresh(self) -> None:
-        pass
+        """Re-render the .desktop file if it's present (picks up new Exec path)."""
+        if self._path.exists():
+            self.enable()
+
+    def _render(self) -> str:
+        return _AUTOSTART_TEMPLATE.format(exec_cmd=self._exec_cmd())
+
+    @staticmethod
+    def _exec_cmd() -> str:
+        """Build the launch command.
+
+        Preference order:
+          1. `trcc-next` console script if installed and on PATH
+          2. `<sys.executable> -m trcc.next gui`
+
+        The second form is robust across pipx / venv / system-python
+        installs because sys.executable is always the right interpreter.
+        """
+        import shutil
+        import sys as _sys
+
+        if (resolved := shutil.which("trcc-next")):
+            return f"{resolved} gui"
+        return f"{_sys.executable} -m trcc.next gui"
 
 
 # =========================================================================
@@ -378,7 +436,7 @@ class LinuxPlatform(Platform):
 
     def autostart(self) -> AutostartManager:
         if self._autostart is None:
-            self._autostart = _NoopAutostart()
+            self._autostart = LinuxAutostart()
         return self._autostart
 
     # ── Setup / permissions ──────────────────────────────────────────

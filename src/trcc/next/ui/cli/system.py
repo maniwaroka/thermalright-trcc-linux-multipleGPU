@@ -3,7 +3,14 @@ from __future__ import annotations
 
 import typer
 
-from ...core.commands import GetPlatformInfo, ReadSensors, RunSetup
+from ...core.commands import (
+    DisableAutostart,
+    EnableAutostart,
+    GetAutostartStatus,
+    GetPlatformInfo,
+    ReadSensors,
+    RunSetup,
+)
 from ._ctx import get_app
 
 app = typer.Typer(help="System-level operations (setup, sensors, info).",
@@ -52,3 +59,39 @@ def info() -> None:
             typer.echo(f"  {w}")
     else:
         typer.echo("\nPermissions: OK")
+
+
+# ── Autostart subcommands ────────────────────────────────────────────
+
+autostart_app = typer.Typer(
+    help="Manage auto-launch-on-login (XDG .desktop on Linux).",
+    no_args_is_help=True,
+)
+app.add_typer(autostart_app, name="autostart")
+
+
+@autostart_app.command("status")
+def autostart_status() -> None:
+    """Show whether auto-launch-on-login is enabled."""
+    r = get_app().dispatch(GetAutostartStatus())
+    state = "enabled" if r.enabled else "disabled"
+    typer.echo(f"Autostart: {state}")
+    if r.path:
+        typer.echo(f"Path:      {r.path}")
+
+
+@autostart_app.command("enable")
+def autostart_enable() -> None:
+    """Install the autostart entry (per-user, no sudo required)."""
+    r = get_app().dispatch(EnableAutostart())
+    typer.echo(r.message)
+    typer.echo(f"Path: {r.path}")
+    if not r.enabled:
+        raise typer.Exit(code=1)
+
+
+@autostart_app.command("disable")
+def autostart_disable() -> None:
+    """Remove the autostart entry."""
+    r = get_app().dispatch(DisableAutostart())
+    typer.echo(r.message)

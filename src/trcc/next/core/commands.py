@@ -36,6 +36,7 @@ from .events import (
 )
 from .registry import find_product
 from .results import (
+    AutostartResult,
     BrightnessResult,
     ConnectResult,
     DisconnectResult,
@@ -513,4 +514,54 @@ class GetPlatformInfo(Command[PlatformInfoResult]):
             user_content_dir=str(paths.user_content_dir()),
             log_file=str(paths.log_file()),
             permission_warnings=p.check_permissions(),
+        )
+
+
+# ── Autostart ────────────────────────────────────────────────────────
+
+
+def _autostart_path(app: "App") -> str:
+    """Extract the manager's filesystem path when available."""
+    mgr = app.platform.autostart()
+    return str(getattr(mgr, "path", "")) or ""
+
+
+@dataclass(frozen=True, slots=True)
+class GetAutostartStatus(Command[AutostartResult]):
+    """Report whether auto-launch-on-login is enabled."""
+
+    def execute(self, app: "App") -> AutostartResult:
+        mgr = app.platform.autostart()
+        enabled = mgr.is_enabled()
+        path = _autostart_path(app)
+        return AutostartResult(
+            ok=True,
+            message="enabled" if enabled else "disabled",
+            enabled=enabled, path=path,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EnableAutostart(Command[AutostartResult]):
+    """Install the OS-specific autostart entry (per-user, no sudo)."""
+
+    def execute(self, app: "App") -> AutostartResult:
+        mgr = app.platform.autostart()
+        mgr.enable()
+        return AutostartResult(
+            ok=True, message="autostart enabled",
+            enabled=mgr.is_enabled(), path=_autostart_path(app),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DisableAutostart(Command[AutostartResult]):
+    """Remove the OS-specific autostart entry."""
+
+    def execute(self, app: "App") -> AutostartResult:
+        mgr = app.platform.autostart()
+        mgr.disable()
+        return AutostartResult(
+            ok=True, message="autostart disabled",
+            enabled=mgr.is_enabled(), path=_autostart_path(app),
         )
