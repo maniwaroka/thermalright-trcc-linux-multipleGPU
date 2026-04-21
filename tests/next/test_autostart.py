@@ -31,7 +31,11 @@ def test_enable_content_has_xdg_required_fields(tmp_home: Path) -> None:
     assert text.startswith("[Desktop Entry]"), "must start with spec-required header"
     assert "\nType=Application\n" in text
     assert "\nExec=" in text
-    assert "trcc.next" in text, "Exec line should reference the next/ module"
+    # Exec resolves to `trcc-next gui` (preferred, if script on PATH) or
+    # `<python> -m trcc.next gui` (fallback).  Either points at next/.
+    assert "trcc-next" in text or "trcc.next" in text, (
+        "Exec line should reference the next/ tree"
+    )
 
 
 def test_enable_permissions_are_readable(tmp_home: Path) -> None:

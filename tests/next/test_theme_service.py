@@ -30,14 +30,14 @@ def test_raises_on_dir_without_config(tmp_path: Path) -> None:
     svc = ThemeService()
     empty = tmp_path / "empty"
     empty.mkdir()
-    with pytest.raises(ThemeError, match="No config.json or config1.dc"):
+    with pytest.raises(ThemeError, match="No trcc-next.json or config1.dc"):
         svc.load(empty)
 
 
 def test_loads_json_theme(tmp_path: Path) -> None:
     theme = tmp_path / "ThemeA"
     theme.mkdir()
-    (theme / "config.json").write_text(json.dumps({
+    (theme / "trcc-next.json").write_text(json.dumps({
         "name": "JSON Theme",
         "overlay_enabled": True,
         "elements": [],
@@ -61,8 +61,8 @@ def test_falls_back_to_dc_and_migrates(tmp_path: Path) -> None:
     # Loaded from DC — name defaults to directory name
     assert t.name == "DcTheme"
 
-    # Migration wrote config.json alongside
-    json_path = theme / "config.json"
+    # Migration wrote trcc-next.json alongside
+    json_path = theme / "trcc-next.json"
     assert json_path.exists(), "auto-migration should have created config.json"
     migrated = json.loads(json_path.read_text(encoding="utf-8"))
     assert migrated["overlay_enabled"] is True
@@ -76,7 +76,7 @@ def test_falls_back_to_dc_and_migrates(tmp_path: Path) -> None:
 def test_prefers_json_over_dc_when_both_present(tmp_path: Path) -> None:
     theme = tmp_path / "Both"
     theme.mkdir()
-    (theme / "config.json").write_text(json.dumps({
+    (theme / "trcc-next.json").write_text(json.dumps({
         "name": "Wins", "elements": [], "overlay_enabled": True,
     }), encoding="utf-8")
     (theme / "config1.dc").write_bytes(_build_dc())
@@ -90,7 +90,7 @@ def test_prefers_json_over_dc_when_both_present(tmp_path: Path) -> None:
 def test_list_finds_both_formats(tmp_path: Path) -> None:
     json_t = tmp_path / "A"
     json_t.mkdir()
-    (json_t / "config.json").write_text('{"elements": []}')
+    (json_t / "trcc-next.json").write_text('{"elements": []}')
     dc_t = tmp_path / "B"
     dc_t.mkdir()
     (dc_t / "config1.dc").write_bytes(_build_dc())
@@ -109,7 +109,7 @@ def test_list_finds_both_formats(tmp_path: Path) -> None:
 def test_background_path_finds_legacy_theme_png(tmp_path: Path) -> None:
     theme = tmp_path / "Legacy"
     theme.mkdir()
-    (theme / "config.json").write_text('{"elements": []}')
+    (theme / "trcc-next.json").write_text('{"elements": []}')
     (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")   # magic only
 
     svc = ThemeService()
@@ -121,7 +121,7 @@ def test_background_path_finds_legacy_theme_png(tmp_path: Path) -> None:
 def test_background_path_prefers_native_over_legacy(tmp_path: Path) -> None:
     theme = tmp_path / "Both"
     theme.mkdir()
-    (theme / "config.json").write_text('{"elements": []}')
+    (theme / "trcc-next.json").write_text('{"elements": []}')
     (theme / "background.png").write_bytes(b"\x89PNG\r\n\x1a\n")
     (theme / "Theme.png").write_bytes(b"\x89PNG\r\n\x1a\n")
 

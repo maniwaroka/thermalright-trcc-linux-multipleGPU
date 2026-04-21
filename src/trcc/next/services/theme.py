@@ -1,7 +1,7 @@
 """ThemeService — theme discovery and metadata parsing.
 
 A theme in TRCC is a directory containing:
-    config.json       element layout, fonts, colors, overlay config
+    trcc-next.json    next/'s native element layout / fonts / colors
     background.png    (or .jpg) the base image
     optional extras   mask images, animation frames, fonts
 
@@ -12,9 +12,11 @@ This service provides:
     import_(src, dst)   → unpack a shared theme archive
 
 Config resolution:
-    config.json   — preferred native format
+    trcc-next.json — next/'s native format.  Named distinctly from
+                     legacy's `config.json` so migration never clobbers
+                     a theme a legacy install also reads.
     config1.dc    — binary legacy format (read-only fallback);
-                    auto-migrated to config.json on first load.
+                    auto-migrated to trcc-next.json on first load.
 
 Rendering (turning a Theme into frame bytes) is DisplayService's job.
 """
@@ -32,7 +34,10 @@ from ._dc_reader import load_dc_as_theme_config
 log = logging.getLogger(__name__)
 
 
-_CONFIG_FILE = "config.json"
+# Distinct filename from legacy's `config.json` — next/'s JSON layout
+# uses a list of elements, legacy's expects a dict keyed by metric name.
+# Separating filenames avoids ever reading the other tool's shape.
+_CONFIG_FILE = "trcc-next.json"
 _DC_CONFIG_FILE = "config1.dc"
 _BACKGROUND_CANDIDATES = (
     # next/ native names
@@ -129,10 +134,12 @@ class ThemeService:
     def _load_config(self, path: Path) -> dict:
         """Load theme config, preferring JSON and falling back to DC.
 
-        On first successful DC load, writes a `config.json` alongside
-        so subsequent loads skip the binary path.  Migration failure
-        (read-only dir, permission, etc.) is logged but doesn't prevent
-        the theme from loading.
+        On first successful DC load, writes a `trcc-next.json` alongside
+        so subsequent loads skip the binary path.  Legacy's `config.json`
+        uses a different shape, so we keep filenames separate — the two
+        tools can share theme directories without stepping on each other.
+        Migration failure (read-only dir, permission, etc.) is logged
+        but doesn't prevent the theme from loading.
         """
         json_path = path / _CONFIG_FILE
         if json_path.exists():

@@ -7,7 +7,10 @@ font records, 13 element positions, and mask/rotation flags.
 next/ writes theme configs as plain JSON going forward.  This reader
 lets users load their existing DC-format themes; `ThemeService.load`
 invokes it as a fallback, converts to our JSON-compatible dict, and
-writes `config.json` alongside so the next load skips the binary path.
+writes `trcc-next.json` alongside so the next load skips the binary
+path.  The filename is deliberately distinct from legacy's
+`config.json` — the two tools use different JSON shapes, and sharing
+a filename would make whichever wrote last clobber the other.
 
 Scope: the 20% of fields the overlay actually renders.  We skip the
 mask rectangle, UI mode, charsets, and style bytes that legacy surfaces
