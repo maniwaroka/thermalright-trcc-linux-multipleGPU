@@ -42,6 +42,7 @@ from .results import (
     DiscoverResult,
     LedColorsResult,
     OrientationResult,
+    PlatformInfoResult,
     RenderResult,
     Result,
     SendResult,
@@ -440,15 +441,32 @@ class SetLedColors(Command[LedColorsResult]):
 
 @dataclass(frozen=True, slots=True)
 class ReadSensors(Command[SensorsResult]):
-    """Return current sensor readings.  Uses Platform's SensorEnumerator."""
+    """Return current sensor readings.
+
+    Pulls descriptor metadata (label / unit / category) from
+    `discover()` and fresh values from `read_all()`, then merges the
+    two so every returned `SensorReading` carries the current value.
+    """
 
     def execute(self, app: "App") -> SensorsResult:
+        from .models import SensorReading
         enum = app.platform.sensors()
-        readings = enum.discover()
+        descriptors = enum.discover()
+        current = enum.read_all()
+        readings = [
+            SensorReading(
+                sensor_id=d.sensor_id,
+                category=d.category,
+                value=current.get(d.sensor_id, 0.0),
+                unit=d.unit,
+                label=d.label,
+            )
+            for d in descriptors
+        ]
         return SensorsResult(
             ok=True,
             message=f"{len(readings)} sensor(s)",
-            readings=list(readings),
+            readings=readings,
         )
 
 
@@ -470,4 +488,29 @@ class RunSetup(Command[SetupResult]):
             message=f"Setup completed with exit code {code}",
             exit_code=code,
             warnings=warnings,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GetPlatformInfo(Command[PlatformInfoResult]):
+    """Snapshot of OS identity + paths + permission warnings.
+
+    Used by diagnostic UIs (`trcc info`, GUI about panel).  Keeps UIs
+    from reaching directly into `app.platform` — they dispatch this and
+    render the Result like any other Command.
+    """
+
+    def execute(self, app: "App") -> PlatformInfoResult:
+        p = app.platform
+        paths = p.paths()
+        return PlatformInfoResult(
+            ok=True,
+            message=f"Platform: {p.distro_name()}",
+            distro_name=p.distro_name(),
+            install_method=p.install_method(),
+            config_dir=str(paths.config_dir()),
+            data_dir=str(paths.data_dir()),
+            user_content_dir=str(paths.user_content_dir()),
+            log_file=str(paths.log_file()),
+            permission_warnings=p.check_permissions(),
         )

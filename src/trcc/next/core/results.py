@@ -89,3 +89,15 @@ class SensorsResult(Result):
 class SetupResult(Result):
     exit_code: int = 0
     warnings: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformInfoResult(Result):
+    """Snapshot of identity + path + permission info for diagnostic UIs."""
+    distro_name: str = ""
+    install_method: str = ""
+    config_dir: str = ""
+    data_dir: str = ""
+    user_content_dir: str = ""
+    log_file: str = ""
+    permission_warnings: List[str] = field(default_factory=list)

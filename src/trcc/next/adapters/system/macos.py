@@ -28,6 +28,7 @@ from ...core.ports import (
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
 from ..device.usb_bot_scsi import UsbBotScsiTransport
+from ..sensors.aggregator import BaselineSensors
 
 log = logging.getLogger(__name__)
 
@@ -51,23 +52,6 @@ class MacOSPaths(Paths):
 
     def log_file(self) -> Path:
         return self._root / "Logs" / "trcc.log"
-
-
-class _NoopSensors(SensorEnumerator):
-    def discover(self) -> List:
-        return []
-
-    def read_all(self) -> dict[str, float]:
-        return {}
-
-    def read_one(self, sensor_id: str) -> Optional[float]:
-        return None
-
-    def start_polling(self, interval_s: float = 2.0) -> None:
-        pass
-
-    def stop_polling(self) -> None:
-        pass
 
 
 class _NoopAutostart(AutostartManager):
@@ -120,8 +104,9 @@ class MacOSPlatform(Platform):
         return self._paths
 
     def sensors(self) -> SensorEnumerator:
+        # Baseline (psutil + nvml) until MacOsSmc sensor source lands.
         if self._sensors is None:
-            self._sensors = _NoopSensors()
+            self._sensors = BaselineSensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:

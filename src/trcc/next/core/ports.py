@@ -150,24 +150,185 @@ class Device(ABC, Generic[T]):
 
 
 # =========================================================================
-# SensorEnumerator — OS-specific sensor discovery and reading
+# Sensor sources — one ABC per hardware role
+# =========================================================================
+#
+# Every reading is Optional[float].  None means "this hardware doesn't
+# expose it" — a headless VM has no CPU temp, an APU has no discrete
+# GPU, a server has no fans.  Overlays skip None silently so barebones
+# and $5k rigs use the same themes, show what they have.
+#
+# Units are normalized at the source:
+#     temp → °C     clock → MHz     power → W
+#     memory → MB   percent → 0-100
+#
+# Overlay keys use normalized, vendor-neutral names:
+#     cpu:temp  cpu:usage  cpu:freq  cpu:power
+#     gpu:primary:temp  gpu:0:temp  gpu:nvidia:0:temp
+#     memory:used  memory:percent
+#     fan:cpu:rpm  fan:gpu:percent
+
+
+class CpuSource(ABC):
+    """Primary CPU.  usage/freq nearly always present; temp/power may be None."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def temp(self) -> Optional[float]:
+        """CPU package temperature in °C, or None."""
+
+    @abstractmethod
+    def usage(self) -> Optional[float]:
+        """CPU utilization 0-100, or None."""
+
+    @abstractmethod
+    def freq(self) -> Optional[float]:
+        """Current CPU frequency in MHz, or None."""
+
+    @abstractmethod
+    def power(self) -> Optional[float]:
+        """Package power draw in W, or None."""
+
+
+class MemorySource(ABC):
+    """System RAM."""
+
+    @abstractmethod
+    def used(self) -> Optional[float]:
+        """Used RAM in MB, or None."""
+
+    @abstractmethod
+    def available(self) -> Optional[float]:
+        """Available RAM in MB, or None."""
+
+    @abstractmethod
+    def total(self) -> Optional[float]:
+        """Total RAM in MB, or None."""
+
+    @abstractmethod
+    def percent(self) -> Optional[float]:
+        """Used fraction 0-100, or None."""
+
+
+class GpuSource(ABC):
+    """One GPU — NVIDIA/AMD/Intel/Apple, discrete or integrated."""
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable ID, e.g. 'nvidia:0', 'amd:0', 'intel:igpu'."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable model name."""
+
+    @property
+    @abstractmethod
+    def is_discrete(self) -> bool:
+        """True for dedicated cards, False for iGPUs sharing CPU memory."""
+
+    @abstractmethod
+    def temp(self) -> Optional[float]:
+        """Core temperature in °C, or None."""
+
+    @abstractmethod
+    def usage(self) -> Optional[float]:
+        """Utilization 0-100, or None."""
+
+    @abstractmethod
+    def clock(self) -> Optional[float]:
+        """Core clock in MHz, or None."""
+
+    @abstractmethod
+    def power(self) -> Optional[float]:
+        """Board power draw in W, or None."""
+
+    @abstractmethod
+    def fan(self) -> Optional[float]:
+        """Fan speed 0-100, or None."""
+
+    @abstractmethod
+    def vram_used(self) -> Optional[float]:
+        """VRAM used in MB, or None."""
+
+    @abstractmethod
+    def vram_total(self) -> Optional[float]:
+        """VRAM total in MB, or None."""
+
+
+class FanSource(ABC):
+    """One fan — may be role-mapped (cpu/gpu/sys1) or anonymous."""
+
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Stable ID, e.g. 'cpu', 'gpu', 'sys1', 'hwmon:nct6798:fan1'."""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable label."""
+
+    @abstractmethod
+    def rpm(self) -> Optional[int]:
+        """Current RPM, or None."""
+
+    @abstractmethod
+    def percent(self) -> Optional[float]:
+        """Duty cycle 0-100, or None."""
+
+
+# =========================================================================
+# SensorEnumerator — the aggregate: composes one CPU + one memory + N GPUs + N fans
 # =========================================================================
 
 
 class SensorEnumerator(ABC):
-    """Hardware sensor source.  Each OS has one implementation."""
+    """OS-level sensor root.  Each OS has one implementation.
+
+    Exposes structured access (cpu, memory, gpus, fans) AND a flat
+    dict view for overlays keyed by normalized names.
+    """
+
+    # ── Structured access ───────────────────────────────────────────
+    @abstractmethod
+    def cpu(self) -> CpuSource: ...
 
     @abstractmethod
+    def memory(self) -> MemorySource: ...
+
+    @abstractmethod
+    def gpus(self) -> List[GpuSource]:
+        """All detected GPUs, sorted discrete-first.  Empty if no GPU."""
+
+    @abstractmethod
+    def fans(self) -> List[FanSource]:
+        """All detected fans.  Empty if none."""
+
+    def primary_gpu(self) -> Optional[GpuSource]:
+        """First discrete GPU, else first integrated, else None."""
+        gpus = self.gpus()
+        for gpu in gpus:
+            if gpu.is_discrete:
+                return gpu
+        return gpus[0] if gpus else None
+
+    # ── Flat dict view (for overlay lookups) ────────────────────────
+    @abstractmethod
     def discover(self) -> List["SensorReading"]:
-        """Scan hardware for available sensors (once at startup)."""
+        """One SensorReading per normalized key.  Snapshot at call time."""
 
     @abstractmethod
     def read_all(self) -> dict[str, float]:
-        """Return current readings for all discovered sensors."""
+        """Current readings keyed by normalized name.  Omits None values."""
 
     @abstractmethod
     def read_one(self, sensor_id: str) -> Optional[float]:
-        """Read a single sensor by id."""
+        """Read a single normalized key."""
 
     @abstractmethod
     def start_polling(self, interval_s: float = 2.0) -> None: ...

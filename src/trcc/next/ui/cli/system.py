@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import typer
 
-from ...core.commands import ReadSensors, RunSetup
+from ...core.commands import GetPlatformInfo, ReadSensors, RunSetup
 from ._ctx import get_app
 
 app = typer.Typer(help="System-level operations (setup, sensors, info).",
@@ -40,14 +40,15 @@ def sensors() -> None:
 @app.command("info")
 def info() -> None:
     """Show platform info (distro, install method, config dir, permissions)."""
-    platform = get_app().platform
-    typer.echo(f"Distro:   {platform.distro_name()}")
-    typer.echo(f"Install:  {platform.install_method()}")
-    typer.echo(f"Config:   {platform.paths().config_dir()}")
-    warnings = platform.check_permissions()
-    if warnings:
+    r = get_app().dispatch(GetPlatformInfo())
+    typer.echo(f"Distro:   {r.distro_name}")
+    typer.echo(f"Install:  {r.install_method}")
+    typer.echo(f"Config:   {r.config_dir}")
+    typer.echo(f"Data:     {r.data_dir}")
+    typer.echo(f"Logs:     {r.log_file}")
+    if r.permission_warnings:
         typer.echo("\nWarnings:")
-        for w in warnings:
+        for w in r.permission_warnings:
             typer.echo(f"  {w}")
     else:
         typer.echo("\nPermissions: OK")

@@ -34,6 +34,11 @@ from ...core.ports import (
 )
 from ...core.registry import ALL_DEVICES
 from ..device.transport import PyUsbBulkTransport
+from ..sensors.aggregator import build_linux_sensors
+from ..sensors.gpu_detect import (
+    detect_gpu_vendors,
+    install_matching_gpu_extras,
+)
 
 log = logging.getLogger(__name__)
 
@@ -67,25 +72,6 @@ class LinuxPaths(Paths):
 # =========================================================================
 # Stubs for non-Phase-2 ports (satisfy ABC; raise or return defaults)
 # =========================================================================
-
-
-class _NoopSensors(SensorEnumerator):
-    """Placeholder sensor enumerator.  Real impl lands in Phase 5."""
-
-    def discover(self) -> List:
-        return []
-
-    def read_all(self) -> dict[str, float]:
-        return {}
-
-    def read_one(self, sensor_id: str) -> Optional[float]:
-        return None
-
-    def start_polling(self, interval_s: float = 2.0) -> None:
-        pass
-
-    def stop_polling(self) -> None:
-        pass
 
 
 class _NoopAutostart(AutostartManager):
@@ -386,7 +372,7 @@ class LinuxPlatform(Platform):
 
     def sensors(self) -> SensorEnumerator:
         if self._sensors is None:
-            self._sensors = _NoopSensors()
+            self._sensors = build_linux_sensors()
         return self._sensors
 
     def autostart(self) -> AutostartManager:
@@ -397,9 +383,15 @@ class LinuxPlatform(Platform):
     # ── Setup / permissions ──────────────────────────────────────────
 
     def setup(self, interactive: bool = True) -> int:
-        """Run OS-specific setup — full impl lands in Phase 12."""
-        log.warning("LinuxPlatform.setup: not yet implemented (Phase 12)")
-        return 0
+        """Run OS-specific setup.
+
+        Currently: detects GPU vendors via PCI sysfs and installs any
+        missing Python libs that match (e.g., nvidia-ml-py if NVIDIA is
+        present).  udev-rules installation lands in a later phase.
+        """
+        vendors = detect_gpu_vendors()
+        log.info("Detected GPU vendors: %s", sorted(vendors) or "none")
+        return install_matching_gpu_extras(vendors, dry_run=not interactive)
 
     def check_permissions(self) -> List[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
