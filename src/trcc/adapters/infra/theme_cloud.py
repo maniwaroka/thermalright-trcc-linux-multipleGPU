@@ -246,7 +246,7 @@ class CloudThemeDownloader:
         # wins.  czhorde.cc (.international) and czhorde.com (.china) serve
         # the same assets; when one is unreachable for a user's network,
         # the other usually works.
-        res_dir = RESOLUTION_URLS.get(self.resolution, self.resolution)
+        res_dir = self.resolution.replace('x', '')
         for server_name, base_template in SERVERS.items():
             base = base_template.replace('{resolution}', res_dir)
             url = f"{base}{theme_id}.mp4"
