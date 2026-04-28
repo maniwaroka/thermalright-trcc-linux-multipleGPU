@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.4.14
+
+### Added
+- **`next/` `.zt` animation decoder** (Phase A5): `next/services/media.py` gains a `ZtDecoder` class that reads Thermalright's `Theme.zt` JPEG-sequence archives (the format `UCVideoCut.BmpToThemeFile` writes). Parses the `0xDC` magic, frame_count, per-frame absolute timestamps, and back-to-back JPEG payloads; uses one `ffmpeg jpeg_pipe` invocation per frame to scale to the requested resolution; derives fps from the average inter-frame delay. `MediaService.load_video` dispatches by suffix — `.zt` → `ZtDecoder`, anything else → `VideoDecoder`. Synthetic round-trip test confirms 2-frame red/blue archive decodes to correct pixels at correct fps. No legacy or shipping behaviour changed; this only fills a gap in the experimental `TRCC_NEXT=1` build.
+
 ## v9.4.13
 
 ### Added
