@@ -143,8 +143,51 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = ["E501"]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "UP",    # pyupgrade (PEP 585, 604, 613, 695-compatible modernizations)
+    "B",     # flake8-bugbear (mutable defaults, unused loops, etc.)
+    "SIM",   # flake8-simplify
+    "PIE",   # flake8-pie (unnecessary placeholders, dict updates)
+    "RUF",   # ruff-native rules
+    "FA",    # flake8-future-annotations (require `from __future__ import annotations`)
+    "PTH",   # flake8-use-pathlib (prefer pathlib over os.path)
+]
+ignore = [
+    "E501",   # line length — wrapping not always clearer
+    "SIM108", # ternary not always clearer than if/else
+    "RUF012", # mutable class attrs (PySide6 signals trip this)
+    "RUF001", # ambiguous unicode in strings (°, ✓ are intentional)
+    "RUF002", # ambiguous unicode in docstrings (same)
+    "RUF003", # ambiguous unicode in comments (same)
+    "SIM105", # suppressible-exception — try/except None reads clearer than contextlib.suppress
+    "SIM102", # collapsible-if — nested ifs sometimes clearer when conditions are unrelated
+    "B008",   # function-call-in-default — typer.Argument / FastAPI Form / Depends require this pattern
+    "B027",   # empty-method-without-abstract — Template Method default no-op hooks (configure_dpi, auto_setup, …) are intentional
+]
+
+# Per-directory rules — legacy `src/trcc/` is scheduled for deletion in
+# Phase E (cutover to `src/trcc/next/`).  Retrofitting pathlib there is
+# debt-thrown-out, so PTH stays strict in `next/` only.  Note: ruff uses
+# gitignore-style globs, so `*` matches across slashes — we must list each
+# legacy subtree by name and skip top-level files (no PTH violations there).
+[tool.ruff.lint.per-file-ignores]
+# Legacy subtrees — PTH/SIM117/SIM115 retrofits would be discarded at Phase E cutover.
+"src/trcc/adapters/**/*.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/core/**/*.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/install/**/*.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/services/**/*.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/ui/**/*.py" = ["PTH", "SIM115", "SIM117"]
+# Legacy top-level files
+"src/trcc/__init__.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/__main__.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/__version__.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/_entry.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/conf.py" = ["PTH", "SIM115", "SIM117"]
+"src/trcc/ipc.py" = ["PTH", "SIM115", "SIM117"]
 
 [tool.coverage.run]
 source = ["trcc"]
