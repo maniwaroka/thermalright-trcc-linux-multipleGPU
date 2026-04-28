@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.4.11
+
+### Maintenance
+- **Stale-workflow no longer auto-closes fresh bug reports**: previous config closed any issue with no activity for 5 days regardless of who owed the response, so user reports could close before the maintainer ever replied. Now stale only fires for issues explicitly labeled `awaiting-reporter`, with a 14-day stale window and a 7-day grace period before close. Repo-only change, no functional impact for users.
+
 ## v9.4.10
 
 ### Fixes
