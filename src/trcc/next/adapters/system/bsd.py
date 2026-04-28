@@ -112,8 +112,21 @@ class BSDPlatform(Platform):
         return self._autostart
 
     def setup(self, interactive: bool = True) -> int:
-        log.warning("BSDPlatform.setup: devd rules wizard not yet wired")
-        return 0
+        """Install FreeBSD devd rules so non-root users can talk to the cooler.
+
+        Mirrors LinuxPlatform.setup(): writes a config file under
+        ``/usr/local/etc/devd/`` that chmod's the USB device node 0666
+        on attach for every device in :data:`ALL_DEVICES`.  Re-execs via
+        sudo/doas when called as a normal user.
+
+        ``interactive=False`` is a dry run — prints what would be
+        written, no system changes.
+
+        OpenBSD has no devd; the installer logs a pointer to the right
+        manual setup path and returns 0.
+        """
+        from ._devd import install
+        return install(dry_run=not interactive)
 
     def check_permissions(self) -> List[str]:
         if os.geteuid() != 0:

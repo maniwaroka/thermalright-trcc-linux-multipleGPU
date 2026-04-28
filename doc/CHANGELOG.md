@@ -1,5 +1,14 @@
 # Changelog
 
+## v9.4.15
+
+### Added
+- **`next/` setup wizards for FreeBSD, Windows, and macOS** (Phase B follow-up): each `Platform.setup()` previously logged a "not yet wired" warning. Each is now a real wizard tailored to the OS's actual permission model — researched against current platform documentation, written so the script can never silently break a working install.
+  - **FreeBSD** (`_devd.py`): generates a complete `/usr/local/etc/devd/trcc.conf` with `chmod 0666` rules for every TRCC VID:PID, atomic write, then `service devd restart`. Re-execs via `sudo` or `doas` when called as a normal user. Skipped with a useful pointer on OpenBSD/NetBSD (no devd).
+  - **Windows** (`_winusb.py`): read-only diagnostic — Windows can't silently install kernel drivers (UAC + signed driver package required). Enumerates connected TRCC devices via pyusb, splits them into "visible" vs "needs WinUSB", and prints a copy-paste Zadig recipe naming each missing device. Detects the libusb-1.0.dll-on-PATH failure case separately and points users at the libusb download.
+  - **macOS** (`_macos_setup.py`): read-only diagnostic — CLI tools can't hold the `com.apple.vm.device-access` entitlement without a provisioning profile, per Apple's developer forums. Checks codesign status, the `com.apple.quarantine` xattr, and `geteuid()`; prints the matching fix for whichever combination is failing (Gatekeeper "Open Anyway", `xattr -d`, or re-run with `sudo`).
+- Pure Python; no legacy or shipping behaviour changed; only the experimental `TRCC_NEXT=1` build's `system setup` command is affected.
+
 ## v9.4.14
 
 ### Added

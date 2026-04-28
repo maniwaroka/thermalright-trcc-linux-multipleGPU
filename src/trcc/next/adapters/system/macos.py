@@ -115,8 +115,15 @@ class MacOSPlatform(Platform):
         return self._autostart
 
     def setup(self, interactive: bool = True) -> int:
-        log.warning("MacOSPlatform.setup: codesign + entitlements wizard not yet wired")
-        return 0
+        """Diagnose codesign / quarantine / privileges, print fix steps.
+
+        Read-only: macOS USB access requires either a signed bundle
+        with a provisioning entitlement (Developer Program) or
+        ``sudo``, neither of which a setup wizard can install for the
+        user.
+        """
+        from ._macos_setup import install
+        return install(dry_run=not interactive)
 
     def check_permissions(self) -> List[str]:
         if os.geteuid() != 0:

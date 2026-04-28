@@ -342,8 +342,15 @@ class WindowsPlatform(Platform):
         return self._autostart
 
     def setup(self, interactive: bool = True) -> int:
-        log.warning("WindowsPlatform.setup: WinUSB driver installation not yet wired")
-        return 0
+        """Diagnose WinUSB driver state and print Zadig instructions.
+
+        Read-only: Windows driver installation needs UAC + a signed
+        driver package, which this script can't fake.  ``interactive``
+        is accepted for parity with other platforms but ignored —
+        diagnostic is the same either way.
+        """
+        from ._winusb import install
+        return install(dry_run=not interactive)
 
     def check_permissions(self) -> List[str]:
         return []
