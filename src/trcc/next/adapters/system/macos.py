@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 
 import usb.core
 import usb.util
@@ -37,7 +36,7 @@ class MacOSPaths(Paths):
     """~/Library/Application Support style paths."""
 
     def __init__(self) -> None:
-        home = Path(os.path.expanduser("~"))
+        home = Path.home()
         self._root = home / "Library" / "Application Support" / "trcc"
         self._user_content = home / "Library" / "Application Support" / "trcc-user"
 
@@ -73,21 +72,21 @@ class MacOSPlatform(Platform):
 
     def __init__(self) -> None:
         self._paths = MacOSPaths()
-        self._sensors: Optional[SensorEnumerator] = None
-        self._autostart: Optional[AutostartManager] = None
+        self._sensors: SensorEnumerator | None = None
+        self._autostart: AutostartManager | None = None
 
     def open_bulk(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> BulkTransport:
+                  serial: str | None = None) -> BulkTransport:
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> ScsiTransport:
+                  serial: str | None = None) -> ScsiTransport:
         """SCSI via USB BOT over libusb — macOS has no kernel SCSI passthrough."""
         bulk = PyUsbBulkTransport(vid, pid, serial)
         return UsbBotScsiTransport(bulk)
 
-    def scan_devices(self) -> List[DeviceInfo]:
-        found: List[DeviceInfo] = []
+    def scan_devices(self) -> list[DeviceInfo]:
+        found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
                 serial_idx = getattr(dev, "iSerialNumber", 0)
@@ -125,7 +124,7 @@ class MacOSPlatform(Platform):
         from ._macos_setup import install
         return install(dry_run=not interactive)
 
-    def check_permissions(self) -> List[str]:
+    def check_permissions(self) -> list[str]:
         if os.geteuid() != 0:
             return [
                 "macOS requires root privileges to detach the mass-storage "

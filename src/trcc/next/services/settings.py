@@ -17,7 +17,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Literal
 
 from ..core.errors import ConfigError
 from ..core.models import DeviceSettings, FitMode, TempUnit
@@ -36,7 +36,7 @@ class AppSettings:
     """Global user preferences."""
     language: str = "en"
     refresh_interval_s: float = 2.0
-    active_device: Optional[str] = None
+    active_device: str | None = None
     autostart_configured: bool = False
     ui_theme: Literal["dark", "light", "system"] = "system"
 
@@ -60,7 +60,7 @@ class Settings:
         self._paths = paths
         self._lock = RLock()
         self._app = AppSettings()
-        self._devices: Dict[str, DeviceSettings] = {}
+        self._devices: dict[str, DeviceSettings] = {}
         self._load()
 
     # ── AppSettings surface ───────────────────────────────────────────
@@ -74,7 +74,7 @@ class Settings:
             self._app.language = lang
             self._save()
 
-    def set_active_device(self, key: Optional[str]) -> None:
+    def set_active_device(self, key: str | None) -> None:
         with self._lock:
             self._app.active_device = key
             self._save()
@@ -103,7 +103,7 @@ class Settings:
             self.for_device(key).brightness = max(0, min(100, percent))
             self._save()
 
-    def set_current_theme(self, key: str, theme_name: Optional[str]) -> None:
+    def set_current_theme(self, key: str, theme_name: str | None) -> None:
         with self._lock:
             self.for_device(key).current_theme = theme_name
             self._save()
@@ -129,7 +129,7 @@ class Settings:
             self._save()
 
     def set_mask_position(self, key: str,
-                          position: Optional[Tuple[int, int]]) -> None:
+                          position: tuple[int, int] | None) -> None:
         with self._lock:
             self.for_device(key).mask_position = position
             self._save()
@@ -175,11 +175,11 @@ class Settings:
         }
         tmp = path.with_suffix(".json.tmp")
         try:
-            with open(tmp, "w", encoding="utf-8") as f:
+            with tmp.open("w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2, default=_json_default)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp, path)
+            tmp.replace(path)
         except OSError as e:
             raise ConfigError(f"Failed to persist config to {path}: {e}") from e
 
@@ -196,9 +196,9 @@ def _json_default(obj: Any) -> Any:
     raise TypeError(f"{type(obj).__name__} is not JSON-serialisable")
 
 
-def _device_settings_from_dict(data: Dict[str, Any]) -> DeviceSettings:
+def _device_settings_from_dict(data: dict[str, Any]) -> DeviceSettings:
     """Build DeviceSettings from a parsed JSON dict, tolerant of extras."""
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     valid_fields = {f for f in DeviceSettings.__dataclass_fields__}
     for field_name, value in data.items():
         if field_name in valid_fields:

@@ -17,7 +17,6 @@ import fcntl
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 
 import usb.core
 import usb.util
@@ -53,7 +52,7 @@ class LinuxPaths(Paths):
     """XDG + HOME locations for user data."""
 
     def __init__(self) -> None:
-        home = Path(os.path.expanduser("~"))
+        home = Path.home()
         self._root = home / ".trcc"
         self._user_content = home / ".trcc-user"
 
@@ -101,8 +100,9 @@ class LinuxAutostart(AutostartManager):
     """XDG Autostart adapter — writes/removes ~/.config/autostart/trcc-next.desktop."""
 
     def __init__(self) -> None:
-        xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-        self._path = Path(xdg) / "autostart" / _AUTOSTART_FILENAME
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        base = Path(xdg) if xdg else Path.home() / ".config"
+        self._path = base / "autostart" / _AUTOSTART_FILENAME
 
     @property
     def path(self) -> Path:
@@ -197,7 +197,7 @@ class _SgIoHdr(ctypes.Structure):
 _SG_HDR_SIZE = ctypes.sizeof(_SgIoHdr)
 
 
-def _resolve_scsi_path(vid: int, pid: int) -> Optional[str]:
+def _resolve_scsi_path(vid: int, pid: int) -> str | None:
     """Walk sysfs to find /dev/sgN for a given VID:PID.
 
     Pass 1: /sys/class/scsi_generic/sgN  (kernel `sg` module loaded)
@@ -225,7 +225,7 @@ def _resolve_scsi_path(vid: int, pid: int) -> Optional[str]:
     return None
 
 
-def _walk_sysfs_for_vid_pid(start: Path) -> Optional[tuple[int, int]]:
+def _walk_sysfs_for_vid_pid(start: Path) -> tuple[int, int] | None:
     """Walk up sysfs parents until we find idVendor + idProduct files."""
     path = Path(os.path.realpath(start))
     for _ in range(10):
@@ -251,7 +251,7 @@ class LinuxScsiTransport(ScsiTransport):
 
     def __init__(self, device_path: str) -> None:
         self._path = device_path
-        self._fd: Optional[int] = None
+        self._fd: int | None = None
         # Cache for send_cdb: {data_len: (cdb_buf, data_buf, sense_buf, hdr, ioctl_buf)}
         self._write_bufs: dict[int, tuple] = {}
 
@@ -373,18 +373,18 @@ class LinuxPlatform(Platform):
 
     def __init__(self) -> None:
         self._paths = LinuxPaths()
-        self._sensors: Optional[SensorEnumerator] = None
-        self._autostart: Optional[AutostartManager] = None
+        self._sensors: SensorEnumerator | None = None
+        self._autostart: AutostartManager | None = None
 
     # ── Transport factories ──────────────────────────────────────────
 
     def open_bulk(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> BulkTransport:
+                  serial: str | None = None) -> BulkTransport:
         """Return an unopened PyUsbBulkTransport for HID/BULK/LY/LED."""
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> ScsiTransport:
+                  serial: str | None = None) -> ScsiTransport:
         """Return an unopened SG_IO-backed SCSI transport.
 
         Resolves vid:pid → /dev/sgN via sysfs before building the
@@ -401,14 +401,14 @@ class LinuxPlatform(Platform):
         log.debug("LinuxPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
         return LinuxScsiTransport(path)
 
-    def scan_devices(self) -> List[DeviceInfo]:
+    def scan_devices(self) -> list[DeviceInfo]:
         """Walk ALL_DEVICES and return a DeviceInfo for each present VID/PID.
 
         No kernel-subsystem filtering — we ask pyusb whether the device
         physically enumerated and let the Device subclass handle any
         per-OS driver detach on connect().
         """
-        found: List[DeviceInfo] = []
+        found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
                 serial_idx = getattr(dev, 'iSerialNumber', 0)
@@ -468,9 +468,9 @@ class LinuxPlatform(Platform):
         rc_gpu = install_matching_gpu_extras(vendors, dry_run=False)
         return rc_udev or rc_gpu
 
-    def check_permissions(self) -> List[str]:
+    def check_permissions(self) -> list[str]:
         """Return user-facing warnings if udev rules are missing, etc."""
-        warnings: List[str] = []
+        warnings: list[str] = []
         if not Path("/etc/udev/rules.d/99-trcc-lcd.rules").exists():
             warnings.append(
                 "udev rules not installed — device access may require root. "

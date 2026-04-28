@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 
 import usb.core
 import usb.util
@@ -35,7 +34,7 @@ class BSDPaths(Paths):
     """XDG-style paths on BSD (falls back to HOME)."""
 
     def __init__(self) -> None:
-        home = Path(os.path.expanduser("~"))
+        home = Path.home()
         self._root = home / ".trcc"
         self._user_content = home / ".trcc-user"
 
@@ -71,20 +70,20 @@ class BSDPlatform(Platform):
 
     def __init__(self) -> None:
         self._paths = BSDPaths()
-        self._sensors: Optional[SensorEnumerator] = None
-        self._autostart: Optional[AutostartManager] = None
+        self._sensors: SensorEnumerator | None = None
+        self._autostart: AutostartManager | None = None
 
     def open_bulk(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> BulkTransport:
+                  serial: str | None = None) -> BulkTransport:
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> ScsiTransport:
+                  serial: str | None = None) -> ScsiTransport:
         bulk = PyUsbBulkTransport(vid, pid, serial)
         return UsbBotScsiTransport(bulk)
 
-    def scan_devices(self) -> List[DeviceInfo]:
-        found: List[DeviceInfo] = []
+    def scan_devices(self) -> list[DeviceInfo]:
+        found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
                 serial_idx = getattr(dev, "iSerialNumber", 0)
@@ -128,7 +127,7 @@ class BSDPlatform(Platform):
         from ._devd import install
         return install(dry_run=not interactive)
 
-    def check_permissions(self) -> List[str]:
+    def check_permissions(self) -> list[str]:
         if os.geteuid() != 0:
             return [
                 "BSD requires root to detach the umass kernel driver — "
