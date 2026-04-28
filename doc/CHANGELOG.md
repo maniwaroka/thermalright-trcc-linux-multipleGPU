@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.4.12
+
+### Added
+- **`next/` segment-display port**: 11 LED styles (AX120, PA120, AK120, LC1, LF8, LF12, LF10, CZ1, LC2, LF11, LF15) ported verbatim from `core/led_segment.py` to `next/services/led_segment.py` (~700 LOC). Uses a `LegacyMetricsView` adapter that exposes next/'s `dict[str, SensorReading]` via legacy attribute names through `__getattr__`, so the segment math copies across without touching the compute layer. Pure Python — runs identically on Linux/Windows/macOS/BSD. No legacy or shipping behaviour changed; this only fills a gap in the experimental `TRCC_NEXT=1` build.
+
 ## v9.4.11
 
 ### Maintenance
