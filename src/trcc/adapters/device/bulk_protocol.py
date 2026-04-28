@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from trcc.core.models import HandshakeResult
+from trcc.core.models import HandshakeResult, UsbAddress
 
 from .factory import DeviceProtocol, DeviceProtocolFactory, ProtocolInfo
 
@@ -26,20 +26,29 @@ class _BulkLikeProtocol(DeviceProtocol):
 
     _label: str = ""  # "Bulk" or "LY" — set by subclass
 
-    def __init__(self, vid: int, pid: int):
+    def __init__(
+        self, vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ):
         super().__init__()
         self._vid = vid
         self._pid = pid
+        self._addr = addr  # disambiguates dual same-VID/PID coolers (#128)
         self._device: Optional[Any] = None
 
     @staticmethod
-    def _make_device(vid: int, pid: int) -> Any:
+    def _make_device(
+        vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ) -> Any:
         raise NotImplementedError
 
     def _ensure_device(self) -> None:
         if self._device is None:
-            log.debug("%s: creating device %04X:%04X", self._label, self._vid, self._pid)
-            self._device = self._make_device(self._vid, self._pid)
+            log.debug("%s: creating device %04X:%04X%s",
+                      self._label, self._vid, self._pid,
+                      f" @ {self._addr}" if self._addr else "")
+            self._device = self._make_device(self._vid, self._pid, addr=self._addr)
             assert self._device is not None
             log.debug("%s: starting handshake", self._label)
             result = self._device.handshake()
@@ -87,9 +96,12 @@ class BulkProtocol(_BulkLikeProtocol):
     _label = "Bulk"
 
     @staticmethod
-    def _make_device(vid: int, pid: int) -> Any:
+    def _make_device(
+        vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ) -> Any:
         from .bulk import BulkDevice
-        return BulkDevice(vid, pid)
+        return BulkDevice(vid, pid, addr=addr)
 
     def get_info(self) -> ProtocolInfo:
         return self._build_usb_protocol_info(

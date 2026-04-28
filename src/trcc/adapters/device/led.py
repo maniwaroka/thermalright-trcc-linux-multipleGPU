@@ -462,12 +462,17 @@ def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
     Args:
         vid: USB vendor ID.
         pid: USB product ID.
-        usb_path: USB bus path (e.g. "2-1.4") for cache disambiguation.
+        usb_path: USB bus path (e.g. "usb:5:2") — used for cache
+            disambiguation AND to bind the transport to the specific
+            physical USB device when two LED controllers share VID:PID
+            (issue #128).
 
     Returns:
         LedHandshakeInfo with pm, sub_type, style, and model_name,
         or None if the probe fails and no cached result exists.
     """
+    from trcc.core.models import UsbAddress
+
     # Cache-first: avoid consuming the one-shot handshake unnecessarily.
     if (cached := _LedProbeCache.load(vid, pid, usb_path)) is not None:
         return cached
@@ -475,7 +480,9 @@ def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
     transport = None
     try:
         from .factory import DeviceProtocolFactory
-        transport = DeviceProtocolFactory.create_usb_transport(vid, pid)
+        transport = DeviceProtocolFactory.create_usb_transport(
+            vid, pid, addr=UsbAddress.parse(usb_path),
+        )
         transport.open()
         sender = LedHidSender(transport)
         info = sender.handshake()

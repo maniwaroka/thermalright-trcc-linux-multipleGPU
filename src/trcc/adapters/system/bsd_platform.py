@@ -319,7 +319,9 @@ class BSDPlatform(Platform):
     def create_scsi_transport(self, path: str,
                               vid: int = 0, pid: int = 0) -> Any:
         from trcc.adapters.device.bsd.scsi import BSDScsiTransport
-        return BSDScsiTransport(vid, pid)
+        from trcc.core.models import UsbAddress
+        # path is usb:bus:address on BSD — bind to that physical device.
+        return BSDScsiTransport(vid, pid, addr=UsbAddress.parse(path))
 
     # ── Directories ───────────────────────────────────────────
 

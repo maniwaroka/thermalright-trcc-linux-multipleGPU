@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import logging
 import struct
-from typing import Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from trcc.adapters.device.scsi import ScsiTransport
+
+if TYPE_CHECKING:
+    from trcc.core.models import UsbAddress
 
 log = logging.getLogger(__name__)
 
@@ -33,9 +36,13 @@ class UsbBotScsiTransport(ScsiTransport):
     _platform_name: ClassVar[str] = "USB BOT"
     _pyusb_install_hint: ClassVar[str] = "pyusb not installed"
 
-    def __init__(self, vid: int, pid: int) -> None:
+    def __init__(
+        self, vid: int, pid: int,
+        *, addr: 'UsbAddress | None' = None,
+    ) -> None:
         self._vid = vid
         self._pid = pid
+        self._addr = addr  # bind to specific (bus, address) — issue #128
         self._dev: Any = None
         self._ep_out: Optional[int] = None
         self._ep_in: Optional[int] = None
@@ -50,9 +57,13 @@ class UsbBotScsiTransport(ScsiTransport):
             log.error(self._pyusb_install_hint)
             return False
 
-        dev: Any = usb.core.find(idVendor=self._vid, idProduct=self._pid)
+        kwargs: dict[str, Any] = {'idVendor': self._vid, 'idProduct': self._pid}
+        if self._addr is not None:
+            kwargs['custom_match'] = self._addr.matches
+        dev: Any = usb.core.find(**kwargs)
         if dev is None:
-            log.error("Device %04X:%04X not found", self._vid, self._pid)
+            where = f" @ {self._addr}" if self._addr else ""
+            log.error("Device %04X:%04X%s not found", self._vid, self._pid, where)
             return False
 
         try:

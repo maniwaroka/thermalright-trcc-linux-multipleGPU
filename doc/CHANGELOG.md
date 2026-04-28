@@ -1,5 +1,13 @@
 # Changelog
 
+## v9.4.10
+
+### Fixes
+- **Multi-device support: actually drive both coolers** (#128, completes v9.4.9): v9.4.9 made the detector return both same-VID:PID devices, but the transport open path still bound to the first physical device — every send went to one cooler. Now every transport (`PyUsbTransport`, `HidApiTransport`, `UsbBotScsiTransport` for macOS/BSD, plus `open_usb_device` for Bulk/LY) binds to the specific `(bus, address)` the detector observed via pyusb's `custom_match`. Two same-ID coolers each get their own physical device.
+
+### Refactors
+- **`UsbAddress` model** in `core/models/device.py` — frozen-slots dataclass that parses `usb:bus:address` strings, matches a pyusb device by `(bus, address)`, and stringifies cleanly. `DetectedDevice.addr` exposes it as a property derived from `usb_path`. Threaded through `UsbProtocol`, `_BulkLikeProtocol`, `BulkFrameDevice`, and the SCSI transport factory so every USB-class adapter binds by physical address rather than VID:PID alone.
+
 ## v9.4.9
 
 ### Fixes

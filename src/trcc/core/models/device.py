@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from .protocol import _DEFAULT_PROFILE, BULK_RGB565_FBLS, DeviceProfile, get_profile
 
@@ -24,6 +24,36 @@ class DeviceEntry:
     fbl: int = 100         # FBL code (resolution identifier) — used by Windows SCSI poll fallback
 
 
+@dataclass(frozen=True, slots=True)
+class UsbAddress:
+    """Bus + address — a unique physical USB device location.
+
+    Two coolers with identical VID:PID still have distinct (bus, address)
+    pairs, so threading this through the transport open path lets each
+    protocol bind to its own physical device (issue #128).
+    """
+    bus: int
+    address: int
+
+    @classmethod
+    def parse(cls, usb_path: str) -> 'UsbAddress | None':
+        """Parse 'usb:5:2' into UsbAddress(5, 2). Returns None on bad input."""
+        match usb_path.split(':'):
+            case ['usb', bus, addr]:
+                try:
+                    return cls(int(bus), int(addr))
+                except ValueError:
+                    return None
+        return None
+
+    def matches(self, dev: Any) -> bool:
+        """pyusb `custom_match` — bind only to this physical device."""
+        return dev.bus == self.bus and dev.address == self.address
+
+    def __str__(self) -> str:
+        return f"usb:{self.bus}:{self.address}"
+
+
 @dataclass(slots=True)
 class DetectedDevice:
     """Detected USB/SCSI device."""
@@ -31,7 +61,7 @@ class DetectedDevice:
     pid: int  # Product ID
     vendor_name: str
     product_name: str
-    usb_path: str  # e.g., "2-1.4"
+    usb_path: str  # e.g., "usb:5:2"
     scsi_device: Optional[str] = None  # e.g., "/dev/sg0"
     implementation: str = "generic"  # Device-specific implementation
     model: str = "CZTV"  # Device model for button image lookup
@@ -43,6 +73,11 @@ class DetectedDevice:
     def path(self) -> str:
         """Device path for protocol factories (SCSI → /dev/sgN, else USB path)."""
         return self.scsi_device or self.usb_path
+
+    @property
+    def addr(self) -> 'UsbAddress | None':
+        """Physical USB (bus, address) parsed from usb_path. None for SCSI-only devices."""
+        return UsbAddress.parse(self.usb_path)
 
 
 # =========================================================================
@@ -323,7 +358,7 @@ def get_button_image(key: int, sub: int = 0, *, is_led: bool = False) -> str | N
 
 __all__ = [
     'LCD_DEFAULT_BUTTON', 'LED_DEFAULT_BUTTON',
-    'DeviceEntry', 'DetectedDevice', 'DeviceInfo',
+    'DeviceEntry', 'DetectedDevice', 'DeviceInfo', 'UsbAddress',
     'SCSI_DEVICES', 'HID_LCD_DEVICES', 'LED_DEVICES', 'BULK_DEVICES',
     'LY_DEVICES', 'ALL_DEVICES',
     'IMPL_NAMES', 'get_button_image',

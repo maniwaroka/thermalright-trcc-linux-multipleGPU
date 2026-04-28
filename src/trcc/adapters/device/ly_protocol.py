@@ -6,7 +6,9 @@ differs in the concrete Device class it wraps + display metadata.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
+
+from trcc.core.models import UsbAddress
 
 from .bulk_protocol import _BulkLikeProtocol
 from .factory import ProtocolInfo
@@ -20,9 +22,12 @@ class LyProtocol(_BulkLikeProtocol):
     _label = "LY"
 
     @staticmethod
-    def _make_device(vid: int, pid: int) -> Any:
+    def _make_device(
+        vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ) -> Any:
         from .ly import LyDevice
-        return LyDevice(vid, pid)
+        return LyDevice(vid, pid, addr=addr)
 
     def get_info(self) -> ProtocolInfo:
         return self._build_usb_protocol_info(

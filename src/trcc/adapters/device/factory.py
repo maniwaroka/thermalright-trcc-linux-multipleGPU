@@ -27,6 +27,7 @@ from trcc.core.models import (
     DEVICE_TYPE_NAMES,
     PROTOCOL_NAMES,
     HandshakeResult,
+    UsbAddress,
 )
 
 log = logging.getLogger(__name__)
@@ -245,19 +246,24 @@ class UsbProtocol(DeviceProtocol):
     Subclasses implement protocol-specific handshake, send, and info.
     """
 
-    def __init__(self, vid: int, pid: int):
+    def __init__(
+        self, vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ):
         super().__init__()
         self._vid = vid
         self._pid = pid
+        self._addr = addr  # bus+address from detector — disambiguates dual same-VID/PID coolers
         self._transport = None
 
     def _ensure_transport(self) -> None:
         """Lazily open USB transport on first use."""
         if self._transport is None:
-            log.debug("Opening %s transport: %04X:%04X",
-                      self.protocol_name, self._vid, self._pid)
+            log.debug("Opening %s transport: %04X:%04X%s",
+                      self.protocol_name, self._vid, self._pid,
+                      f" @ {self._addr}" if self._addr else "")
             self._transport = DeviceProtocolFactory.create_usb_transport(
-                self._vid, self._pid)
+                self._vid, self._pid, addr=self._addr)
             self._transport.open()
             self._notify_state_changed("transport_open", True)
 
@@ -408,15 +414,22 @@ class DeviceProtocolFactory:
         return shutil.which("sg_raw") is not None
 
     @staticmethod
-    def create_usb_transport(vid: int, pid: int):
-        """Create the best available USB transport (pyusb preferred, hidapi fallback)."""
+    def create_usb_transport(
+        vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ):
+        """Create the best available USB transport (pyusb preferred, hidapi fallback).
+
+        ``addr`` (bus + address) binds the transport to a specific physical USB
+        device — required when two coolers share the same VID:PID (issue #128).
+        """
         from .hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
         if PYUSB_AVAILABLE:
             from .hid import PyUsbTransport
-            return PyUsbTransport(vid, pid)
+            return PyUsbTransport(vid, pid, addr=addr)
         elif HIDAPI_AVAILABLE:
             from .hid import HidApiTransport
-            return HidApiTransport(vid, pid)
+            return HidApiTransport(vid, pid, addr=addr)
         else:
             raise ImportError(
                 "No USB backend available. Install pyusb or hidapi:\n"
@@ -567,9 +580,9 @@ from .scsi_protocol import ScsiProtocol  # noqa: E402
 
 DeviceProtocolFactory._PROTOCOL_REGISTRY = {
     'scsi': lambda di: ScsiProtocol(di.path, di.vid, di.pid),
-    'bulk': lambda di: BulkProtocol(vid=di.vid, pid=di.pid),
-    'ly':   lambda di: LyProtocol(vid=di.vid, pid=di.pid),
-    'led':  lambda di: LedProtocol(vid=di.vid, pid=di.pid),
-    'hid':  lambda di: HidProtocol(vid=di.vid, pid=di.pid,
+    'bulk': lambda di: BulkProtocol(vid=di.vid, pid=di.pid, addr=di.addr),
+    'ly':   lambda di: LyProtocol(vid=di.vid, pid=di.pid, addr=di.addr),
+    'led':  lambda di: LedProtocol(vid=di.vid, pid=di.pid, addr=di.addr),
+    'hid':  lambda di: HidProtocol(vid=di.vid, pid=di.pid, addr=di.addr,
                 device_type=getattr(di, 'device_type', 2)),
 }

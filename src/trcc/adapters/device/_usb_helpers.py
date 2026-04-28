@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from trcc.core.models import UsbAddress
 
 log = logging.getLogger(__name__)
 
@@ -151,12 +154,19 @@ def _reset_and_refind(dev: Any, vid: int, pid: int) -> Any:
 # Public API
 # ---------------------------------------------------------------------------
 
-def open_usb_device(vid: int, pid: int) -> tuple[Any, Any]:
+def open_usb_device(
+    vid: int, pid: int,
+    *, addr: 'UsbAddress | None' = None,
+) -> tuple[Any, Any]:
     """Find, configure, and claim a vendor-class USB device.
 
     Handles the full USB lifecycle:
       find -> detach kernel drivers -> configure
       -> find vendor interface -> claim (with EBUSY retry) -> return
+
+    ``addr`` (bus + address) binds to a specific physical USB device when two
+    coolers share VID:PID (issue #128). Without it, pyusb returns the first
+    match — fine for single-device users, ambiguous for dual.
 
     Returns:
         (device, interface) tuple ready for endpoint detection.
@@ -168,9 +178,13 @@ def open_usb_device(vid: int, pid: int) -> tuple[Any, Any]:
     import usb.core  # type: ignore[import-untyped]
     import usb.util  # type: ignore[import-untyped]
 
-    dev = usb.core.find(idVendor=vid, idProduct=pid)
+    kwargs: dict[str, Any] = {'idVendor': vid, 'idProduct': pid}
+    if addr is not None:
+        kwargs['custom_match'] = addr.matches
+    dev = usb.core.find(**kwargs)
     if dev is None:
-        raise RuntimeError(_ERR_NOT_FOUND.format(vid=vid, pid=pid))
+        where = f" @ {addr}" if addr else ""
+        raise RuntimeError(_ERR_NOT_FOUND.format(vid=vid, pid=pid) + where)
 
     # 1. Detach kernel drivers (post-verification included)
     detach_blocked = _detach_kernel_drivers(dev)
@@ -218,10 +232,14 @@ class BulkFrameDevice:
     Subclasses implement: handshake(), send_frame().
     """
 
-    def __init__(self, vid: int, pid: int, usb_path: str = ""):
+    def __init__(
+        self, vid: int, pid: int, usb_path: str = "",
+        *, addr: 'UsbAddress | None' = None,
+    ):
         self.vid = vid
         self.pid = pid
         self.usb_path = usb_path
+        self.addr = addr  # bus+addr — disambiguates dual same-VID/PID coolers (#128)
         self._dev: Any = None
         self._ep_out: Any = None
         self._ep_in: Any = None
@@ -237,7 +255,7 @@ class BulkFrameDevice:
         """Find and claim the USB device, discover bulk IN/OUT endpoints."""
         import usb.util
 
-        dev, intf = open_usb_device(self.vid, self.pid)
+        dev, intf = open_usb_device(self.vid, self.pid, addr=self.addr)
 
         self._ep_out = usb.util.find_descriptor(
             intf,

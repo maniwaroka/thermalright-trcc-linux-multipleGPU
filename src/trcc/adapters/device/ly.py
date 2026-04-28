@@ -20,11 +20,15 @@ from __future__ import annotations
 
 import logging
 import struct
+from typing import TYPE_CHECKING
 
 from trcc.core.models import HandshakeResult, fbl_to_resolution, pm_to_fbl
 
 from ._usb_helpers import BulkFrameDevice
 from .frame import FrameDevice
+
+if TYPE_CHECKING:
+    from trcc.core.models import UsbAddress
 
 log = logging.getLogger(__name__)
 
@@ -66,8 +70,11 @@ class LyDevice(BulkFrameDevice, FrameDevice):
     claimed the interface (no usb-storage, no usbhid).
     """
 
-    def __init__(self, vid: int, pid: int, usb_path: str = ""):
-        super().__init__(vid, pid, usb_path)
+    def __init__(
+        self, vid: int, pid: int, usb_path: str = "",
+        *, addr: 'UsbAddress | None' = None,
+    ):
+        super().__init__(vid, pid, usb_path, addr=addr)
         # LY uses chunk header byte[8]=1, LY1 uses 2
         self._chunk_cmd: int = 1 if pid == _PID_LY else 2
 

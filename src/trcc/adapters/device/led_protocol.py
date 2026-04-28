@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional, Tuple
 
-from trcc.core.models import HandshakeResult
+from trcc.core.models import HandshakeResult, UsbAddress
 
 from .factory import ProtocolInfo, UsbProtocol
 
@@ -23,8 +23,11 @@ class LedProtocol(UsbProtocol):
     UsbTransport as HidProtocol (lazy open via Platform factory).
     """
 
-    def __init__(self, vid: int, pid: int):
-        super().__init__(vid, pid)
+    def __init__(
+        self, vid: int, pid: int,
+        *, addr: Optional[UsbAddress] = None,
+    ):
+        super().__init__(vid, pid, addr=addr)
         self._sender = None
 
     def send_data(

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from trcc.core.models import DEVICE_TYPE_NAMES, HandshakeResult
+from trcc.core.models import DEVICE_TYPE_NAMES, HandshakeResult, UsbAddress
 
 from .factory import ProtocolInfo, UsbProtocol
 from .hid import HidDevice, HidDeviceType2, HidDeviceType3
@@ -25,8 +25,11 @@ class HidProtocol(UsbProtocol):
     selected by `device_type`. Prefers pyusb, falls back to hidapi.
     """
 
-    def __init__(self, vid: int, pid: int, device_type: int):
-        super().__init__(vid, pid)
+    def __init__(
+        self, vid: int, pid: int, device_type: int,
+        *, addr: Optional[UsbAddress] = None,
+    ):
+        super().__init__(vid, pid, addr=addr)
         self._device_type = device_type
         self._handler: Optional[HidDevice] = None
 

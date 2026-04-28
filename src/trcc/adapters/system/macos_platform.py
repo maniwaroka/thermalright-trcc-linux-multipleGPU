@@ -799,7 +799,9 @@ class MacOSPlatform(Platform):
 
     def create_scsi_transport(self, path: str, vid: int = 0, pid: int = 0) -> Any:
         from trcc.adapters.device.macos.scsi import MacOSScsiTransport
-        return MacOSScsiTransport(vid=vid, pid=pid)
+        from trcc.core.models import UsbAddress
+        # path is usb:bus:address on macOS — bind to that physical device.
+        return MacOSScsiTransport(vid=vid, pid=pid, addr=UsbAddress.parse(path))
 
     # ── Directories ───────────────────────────────────────────
 
