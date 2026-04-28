@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## v9.4.8
+
+### Fixes
+- **Cloud theme downloads silently failing**: `czhorde.bj` slug was being appended twice to the GitHub URL, producing 404s on every cloud theme/mask download. Now built once, correctly.
+- **Cloud theme falls back across mirrors**: download tries every configured server in order (`czhorde.com`, then `czhorde.cc`) and returns the first success — single-server outages no longer break theme downloads.
+- **Cloud theme/mask clicks no longer gated by in-flight state**: clicking a cloud item always triggers a download, never short-circuited by a stale `_downloading` flag.
+- **Legacy GUI taskbar icon path**: corrected the resolution path so the taskbar icon shows on first launch.
+- **LCD config tolerant of legacy ↔ next/ migration shapes**: `config.json` written by the experimental `trcc-next` is now safely read by the legacy GUI (list-shape config no longer crashes load).
 
 ### Added
 - **Experimental clean-slate architecture** (`trcc.next`) available as an opt-in via `trcc-next <subcommand>` or `TRCC_NEXT=1 trcc <subcommand>`. Default path unchanged — legacy users see zero difference. See `memory/project_next_clean_slate.md` for scope; feature parity still in progress.
