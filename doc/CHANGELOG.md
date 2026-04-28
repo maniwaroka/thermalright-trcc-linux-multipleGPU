@@ -1,5 +1,32 @@
 # Changelog
 
+## v9.5.0
+
+Milestone release rolling up the v9.4.8 → v9.4.15 patch series — every fix from those releases is included here, distilled into one tag for the people whose package manager wakes up once a week.
+
+### User-facing fixes (every install)
+- **Cloud theme downloads work again**: deduped the `czhorde.bj` slug from the GitHub URL (was producing 404s on every cloud theme/mask download), tries every configured mirror in order with first-win short-circuit, and the click-to-download path no longer gets gated on a stale in-flight flag.
+- **Multi-device support actually drives both coolers**: two cases. First, the detector now uses `usb.core.find(find_all=True)` and emits a `DetectedDevice` per physical USB so two same-VID/PID coolers (e.g. Frozen Warframe 240 + Trofeo Vision 6.86", both `0416:5302`) are both discovered. Second — and this is the one that actually mattered — every USB transport (`PyUsbTransport`, `HidApiTransport`, the macOS/BSD `UsbBotScsiTransport`, plus `open_usb_device` for Bulk/LY) now binds to the specific `(bus, address)` the detector observed via pyusb's `custom_match`. Without that second half, both protocol instances opened the same physical USB and frames sent to "device 2" landed on device 1.
+- **Headless `led-mode temp_linked` / `load_linked` no longer reads zeros**: on a headless box with no GUI, the CLI never started a metrics loop, so sensor-linked LED modes computed colors against a freshly-zeroed `HardwareMetrics`. The CLI composition root now bootstraps `SystemService` once and seeds every connected device with current metrics before the command runs.
+- **Legacy GUI taskbar icon path corrected** so the icon shows on first launch.
+- **LCD config tolerant of `next/`-shape `config.json`** when users opt back into the legacy build after trying `TRCC_NEXT=1`.
+
+### Maintainer-facing
+- **Stale-workflow only fires on `awaiting-reporter`-labeled issues** (14-day stale, 7-day grace). Previously closed any inactive issue at 5 days regardless of who owed the response — issue #128 hit that the same day we shipped its fix.
+
+### Architecture (refactors that paved the way)
+- **`Trcc` is a container** — `__iter__` yields every connected LCD then LED, `__len__` returns total. Replaces `_lcd_devices` / `_led_devices` poking at call sites.
+- **`UsbAddress` model** in `core/models/device.py` — frozen-slots dataclass that parses `usb:bus:address` strings, matches a pyusb device via `(bus, address)`, stringifies cleanly. `DetectedDevice.addr` exposes it as a property derived from `usb_path`. Threaded through `UsbProtocol`, `_BulkLikeProtocol`, `BulkFrameDevice`, and the SCSI transport factory so every USB-class adapter binds by physical address rather than VID:PID alone.
+
+### Experimental `TRCC_NEXT=1` build (opt-in clean rebuild)
+v9.5.0 is the first release where `next/` has feature parity for the things real users notice on a fresh install:
+- 11 LED segment-display renderers (AX120, PA120, AK120, LC1, LF8, LF12, LF10, CZ1, LC2, LF11, LF15) ported verbatim — `LegacyMetricsView.__getattr__` translates next/'s `dict[str, SensorReading]` into the legacy attribute shape so the segment math copies across without edits.
+- Cloud-theme `0xDD` DC parser — verified against 5 real `config1.dc` files; HARDWARE / CUSTOM elements decode cleanly, TIME / WEEKDAY / DATE emit placeholder text for a follow-up dynamic renderer.
+- Theme.zt animation decoder — `ZtDecoder` reads the JPEG-sequence archives the Windows app emits via `UCVideoCut.BmpToThemeFile`; `MediaService.load_video` dispatches by suffix.
+- Real cross-OS setup wizards: FreeBSD writes `devd` rules and restarts devd; Windows enumerates devices and prints a per-device Zadig recipe; macOS diagnoses codesign / quarantine / privilege state and prints the matching fix command. Each wizard does what its OS actually allows — never more, never less, never silently.
+
+`next/` is still opt-in via `TRCC_NEXT=1` or the `trcc-next` console script. Default behaviour unchanged for every shipping user.
+
 ## v9.4.15
 
 ### Added
