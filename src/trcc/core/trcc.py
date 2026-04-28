@@ -19,7 +19,8 @@ Usage:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from itertools import chain
+from typing import TYPE_CHECKING, Iterator
 
 from .control_center_commands import ControlCenterCommands
 from .events import EventBus
@@ -178,7 +179,7 @@ class Trcc:
 
     def cleanup(self) -> None:
         """Release every device and clear subscribers."""
-        for dev in [*self._lcd_devices, *self._led_devices]:
+        for dev in self:
             try:
                 dev.cleanup()
             except Exception:
@@ -186,3 +187,14 @@ class Trcc:
         self._lcd_devices.clear()
         self._led_devices.clear()
         self.events.clear()
+
+    # ── Container protocol ───────────────────────────────────────────
+    # Trcc IS the registry of connected devices — `for d in trcc` walks
+    # every LCD then every LED, `len(trcc)` is total device count, and
+    # `bool(trcc)` is True iff anything is connected.
+
+    def __iter__(self) -> Iterator['LCDDevice | LEDDevice']:
+        return chain(self._lcd_devices, self._led_devices)
+
+    def __len__(self) -> int:
+        return len(self._lcd_devices) + len(self._led_devices)

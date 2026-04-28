@@ -91,28 +91,29 @@ class DeviceDetector:
 
         devices: List[DetectedDevice] = []
         for (vid, pid), entry in ALL_DEVICES.items():
-            usb_dev: Any = usb.core.find(idVendor=vid, idProduct=pid)
-            if usb_dev is None:
-                continue
+            # find_all=True yields every match; `or ()` handles None when
+            # no devices are present, so two same-VID/PID coolers each
+            # produce their own DetectedDevice (issue #128).
+            for usb_dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or ()):
+                dev: Any = usb_dev
+                usb_path = f'usb:{dev.bus}:{dev.address}'
+                scsi_dev = (
+                    scsi_resolver(vid, pid)
+                    if scsi_resolver and entry.protocol == 'scsi'
+                    else None
+                )
 
-            usb_path = f'usb:{usb_dev.bus}:{usb_dev.address}'
-            scsi_dev = (
-                scsi_resolver(vid, pid)
-                if scsi_resolver and entry.protocol == 'scsi'
-                else None
-            )
-
-            devices.append(DetectedDevice(
-                vid=vid, pid=pid,
-                vendor_name=entry.vendor, product_name=entry.product,
-                usb_path=usb_path,
-                scsi_device=scsi_dev,
-                implementation=entry.implementation,
-                model=entry.model,
-                button_image=entry.button_image,
-                protocol=entry.protocol,
-                device_type=entry.device_type,
-            ))
+                devices.append(DetectedDevice(
+                    vid=vid, pid=pid,
+                    vendor_name=entry.vendor, product_name=entry.product,
+                    usb_path=usb_path,
+                    scsi_device=scsi_dev,
+                    implementation=entry.implementation,
+                    model=entry.model,
+                    button_image=entry.button_image,
+                    protocol=entry.protocol,
+                    device_type=entry.device_type,
+                ))
 
         log.info(
             "Detected %d device(s): %s", len(devices),

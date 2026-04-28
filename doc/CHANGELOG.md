@@ -1,5 +1,14 @@
 # Changelog
 
+## v9.4.9
+
+### Fixes
+- **Two devices with the same USB ID, only one detected** (#128): the detector called `usb.core.find()` which returns the first match — users running two coolers with identical VID:PID (e.g. Frozen Warframe 240 + Trofeo Vision 6.86", both `0416:5302`) only saw one. Now uses `find_all=True` and emits a `DetectedDevice` per physical USB; `usb_path` (`usb:bus:address`) disambiguates downstream. Same fix for the macOS detector.
+- **Headless `led-mode temp_linked` / `load_linked` had wrong colors** (#130): on a headless box the CLI never started a metrics loop, so sensor-linked LED modes ran against a zeroed `HardwareMetrics` snapshot. The CLI composition root now bootstraps `SystemService` once and seeds every connected device with the current metrics before the command runs.
+
+### Refactors
+- **`Trcc` is now a container**: added `__iter__` (yields every connected LCD then LED) and `__len__` so call sites can write `for device in trcc:` and `len(trcc)` instead of poking `_lcd_devices` / `_led_devices` directly. `cleanup()` already migrated.
+
 ## v9.4.8
 
 ### Fixes

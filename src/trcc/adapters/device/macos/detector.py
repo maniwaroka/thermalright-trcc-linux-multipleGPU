@@ -59,32 +59,24 @@ class MacOSDeviceDetector:
 
         for registry, protocol, device_type in all_registries:
             for (vid, pid), entry in registry.items():
-                usb_dev: Any = usb.core.find(idVendor=vid, idProduct=pid)
-                if usb_dev is None:
-                    continue
+                # find_all=True so two same-VID/PID coolers both surface (issue #128).
+                for usb_dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or ()):
+                    dev: Any = usb_dev
+                    impl = 'hid_led' if registry is _LED_DEVICES else entry.implementation
+                    dt = device_type if device_type is not None else getattr(entry, 'device_type', 2)
+                    usb_path = f'usb:{dev.bus}:{dev.address}'
 
-                impl = entry.implementation
-                if registry is _LED_DEVICES:
-                    impl = 'hid_led'
-
-                dt = device_type
-                if dt is None:
-                    dt = getattr(entry, 'device_type', 2)
-
-                # macOS: no /dev/sgN — SCSI uses pyusb bulk transfers
-                usb_path = f'usb:{usb_dev.bus}:{usb_dev.address}'
-
-                devices.append(DetectedDevice(
-                    vid=vid, pid=pid,
-                    vendor_name=entry.vendor, product_name=entry.product,
-                    usb_path=usb_path,
-                    scsi_device=None,  # macOS: no sg device, pyusb direct
-                    implementation=impl,
-                    model=getattr(entry, 'model', ''),
-                    button_image=getattr(entry, 'button_image', ''),
-                    protocol=protocol,
-                    device_type=dt,
-                ))
+                    devices.append(DetectedDevice(
+                        vid=vid, pid=pid,
+                        vendor_name=entry.vendor, product_name=entry.product,
+                        usb_path=usb_path,
+                        scsi_device=None,  # macOS: no sg device, pyusb direct
+                        implementation=impl,
+                        model=getattr(entry, 'model', ''),
+                        button_image=getattr(entry, 'button_image', ''),
+                        protocol=protocol,
+                        device_type=dt,
+                    ))
 
         log.info("macOS detector found %d device(s)", len(devices))
         return devices
