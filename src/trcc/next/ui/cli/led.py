@@ -1,8 +1,6 @@
 """CLI `led` group — set LED colors on RGB LED controllers."""
 from __future__ import annotations
 
-from typing import List
-
 import typer
 
 from ...core.commands import SetLedColors
@@ -25,7 +23,7 @@ def _parse_hex_color(raw: str) -> tuple[int, int, int]:
 @app.command("set-colors")
 def set_colors(
     key: str = typer.Argument(..., help="LED device key, e.g. 0416:8001"),
-    colors: List[str] = typer.Argument(..., help="Hex colors (#rrggbb), one per LED"),
+    colors: list[str] = typer.Argument(..., help="Hex colors (#rrggbb), one per LED"),
     brightness: int = typer.Option(100, "--brightness", "-b",
                                    help="Global brightness 0–100"),
     off: bool = typer.Option(False, "--off",

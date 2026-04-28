@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
@@ -125,7 +124,7 @@ class MainWindow(QMainWindow):
                 log.exception("Tick failed for %s: %s", key, e)
 
 
-def launch(app: Optional[App] = None) -> int:
+def launch(app: App | None = None) -> int:
     """Start the GUI.  Returns the exit code.
 
     A real QApplication (not just a QGuiApplication) is required for

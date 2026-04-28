@@ -14,7 +14,7 @@ import ctypes
 import logging
 import os
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 import usb.core
 import usb.util
@@ -123,7 +123,7 @@ def _kernel32() -> Any:
     return ctypes.windll.kernel32  # pyright: ignore[reportAttributeAccessIssue]
 
 
-def _find_physical_drive(vid: int, pid: int) -> Optional[str]:
+def _find_physical_drive(vid: int, pid: int) -> str | None:
     """Map VID:PID → \\\\.\\PhysicalDriveN via WMI.
 
     LCD devices report tiny capacity (< 1MB) because they have no real
@@ -157,7 +157,7 @@ class WindowsScsiTransport(ScsiTransport):
 
     def __init__(self, device_path: str) -> None:
         self._path = device_path
-        self._handle: Optional[int] = None
+        self._handle: int | None = None
 
     @property
     def is_open(self) -> bool:
@@ -295,15 +295,15 @@ class WindowsPlatform(Platform):
 
     def __init__(self) -> None:
         self._paths = WindowsPaths()
-        self._sensors: Optional[SensorEnumerator] = None
-        self._autostart: Optional[AutostartManager] = None
+        self._sensors: SensorEnumerator | None = None
+        self._autostart: AutostartManager | None = None
 
     def open_bulk(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> BulkTransport:
+                  serial: str | None = None) -> BulkTransport:
         return PyUsbBulkTransport(vid, pid, serial)
 
     def open_scsi(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> ScsiTransport:
+                  serial: str | None = None) -> ScsiTransport:
         path = _find_physical_drive(vid, pid)
         if path is None:
             raise TransportError(
@@ -313,8 +313,8 @@ class WindowsPlatform(Platform):
         log.debug("WindowsPlatform.open_scsi: %04x:%04x → %s", vid, pid, path)
         return WindowsScsiTransport(path)
 
-    def scan_devices(self) -> List[DeviceInfo]:
-        found: List[DeviceInfo] = []
+    def scan_devices(self) -> list[DeviceInfo]:
+        found: list[DeviceInfo] = []
         for (vid, pid) in ALL_DEVICES:
             for dev in (usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):
                 serial_idx = getattr(dev, "iSerialNumber", 0)
@@ -352,7 +352,7 @@ class WindowsPlatform(Platform):
         from ._winusb import install
         return install(dry_run=not interactive)
 
-    def check_permissions(self) -> List[str]:
+    def check_permissions(self) -> list[str]:
         return []
 
     def distro_name(self) -> str:

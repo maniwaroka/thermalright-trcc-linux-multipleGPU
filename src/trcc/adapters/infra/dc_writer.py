@@ -48,7 +48,7 @@ import logging
 import os
 import struct
 from pathlib import Path
-from typing import IO, Optional, Tuple
+from typing import IO
 
 from trcc.core.models import (
     METRIC_TO_IDS,
@@ -249,7 +249,7 @@ def overlay_to_theme(overlay_config: dict,
     return theme
 
 
-def _hex_to_argb(hex_color: str) -> Tuple[int, int, int, int]:
+def _hex_to_argb(hex_color: str) -> tuple[int, int, int, int]:
     """Convert hex color string to ARGB tuple."""
     hex_color = hex_color.lstrip('#')
     if len(hex_color) == 6:
@@ -272,12 +272,12 @@ def _hex_to_argb(hex_color: str) -> Tuple[int, int, int, int]:
 def save_theme(theme_path: str,
                background_image=None,
                mask_image=None,
-               overlay_config: Optional[dict] = None,
-               mask_position: Optional[Tuple[int, int]] = None,
+               overlay_config: dict | None = None,
+               mask_position: tuple[int, int] | None = None,
                *,
                display_width: int,
                display_height: int,
-               dc_data: Optional[dict] = None) -> None:
+               dc_data: dict | None = None) -> None:
     """Save a complete theme to disk in Windows-compatible format.
 
     Creates: 00.png, 01.png (mask), config1.dc, Theme.png (preview), config.json.
@@ -357,7 +357,7 @@ def _merge_dc_display_options(theme: ThemeConfig, dc_data: dict) -> None:
         theme.overlay_h = rect.get('h', theme.overlay_h)
 
 
-def _detect_video_file(theme_path: str) -> Optional[str]:
+def _detect_video_file(theme_path: str) -> str | None:
     """Detect video/animation file in theme directory."""
     theme_dir = Path(theme_path)
     zt_path = theme_dir / 'Theme.zt'
@@ -373,10 +373,10 @@ def _detect_video_file(theme_path: str) -> Optional[str]:
 
 
 def write_json(theme_path: str,
-               overlay_config: Optional[dict] = None,
-               display_options: Optional[dict] = None,
-               mask_settings: Optional[dict] = None,
-               video_file: Optional[str] = None) -> None:
+               overlay_config: dict | None = None,
+               display_options: dict | None = None,
+               mask_settings: dict | None = None,
+               video_file: str | None = None) -> None:
     """Write theme config as human-readable JSON alongside config1.dc."""
     import json
 
@@ -567,7 +567,7 @@ def write_carousel(config: CarouselConfig, filepath: str) -> None:
         f.write(struct.pack('<i', config.lcd_rotation))
 
 
-def read_carousel(filepath: str) -> Optional[CarouselConfig]:
+def read_carousel(filepath: str) -> CarouselConfig | None:
     """Read carousel configuration from Theme.dc."""
     if not os.path.exists(filepath):
         return None

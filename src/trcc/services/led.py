@@ -7,7 +7,7 @@ LEDDevice (core/led_device.py) delegates to this service.
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from ..core.models import (
     LED_SELECT_ALL_STYLES,
@@ -60,7 +60,7 @@ class LEDService:
 
         # Segment display state (styles 1-11 — all digit-display LED devices)
         self._segment_mode = False
-        self._segment_mask: Optional[List[bool]] = None
+        self._segment_mask: list[bool] | None = None
         self._seg_phase = 0          # Current rotation phase
         self._seg_tick_count = 0     # Ticks since last phase change
         self._seg_phase_ticks = self.state.carousel_interval
@@ -68,7 +68,7 @@ class LEDService:
         self._seg_display: Any = None  # SegmentDisplay instance
 
         # Device identity (for config persistence)
-        self._device_key: Optional[str] = None
+        self._device_key: str | None = None
         self._led_style: int = 1
 
     # ── Style resolution (static) ───────────────────────────────────
@@ -275,7 +275,7 @@ class LEDService:
 
     # ── Effect engine ───────────────────────────────────────────────
 
-    def tick(self) -> List[Tuple[int, int, int]]:
+    def tick(self) -> list[tuple[int, int, int]]:
         """Advance animation one tick and return computed per-segment colors.
 
         Dispatches to mode-specific algorithm. For multi-zone devices,
@@ -359,8 +359,8 @@ class LEDService:
 
     # ── Display-ready colors ────────────────────────────────────────
 
-    def apply_mask(self, colors: List[Tuple[int, int, int]]
-                   ) -> List[Tuple[int, int, int]]:
+    def apply_mask(self, colors: list[tuple[int, int, int]]
+                   ) -> list[tuple[int, int, int]]:
         """Apply segment mask to produce per-LED color array.
 
         Returns the same masked array used for both hardware send and
@@ -390,7 +390,7 @@ class LEDService:
     def set_protocol(self, protocol: Any) -> None:
         self._protocol = protocol
 
-    def send_colors(self, colors: List[Tuple[int, int, int]]) -> bool:
+    def send_colors(self, colors: list[tuple[int, int, int]]) -> bool:
         """Send pre-computed colors to device. Returns success."""
         if not colors or not self._protocol:
             log.debug("send_colors: skipped (colors=%d, protocol=%s)",
@@ -413,7 +413,7 @@ class LEDService:
         return self.send_colors(self.tick())
 
     @staticmethod
-    def zones_to_ansi(colors: List[Tuple[int, int, int]]) -> str:
+    def zones_to_ansi(colors: list[tuple[int, int, int]]) -> str:
         """Render LED zone colors as ANSI true-color blocks for terminal preview."""
         if not colors:
             return ''

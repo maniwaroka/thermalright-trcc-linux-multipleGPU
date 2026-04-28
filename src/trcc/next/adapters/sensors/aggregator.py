@@ -22,7 +22,6 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
-from typing import List, Optional
 
 from ...core.models import SensorReading
 from ...core.ports import (
@@ -49,12 +48,12 @@ log = logging.getLogger(__name__)
 # ── Key mapping helpers ──────────────────────────────────────────────
 
 
-def _store(readings: dict[str, float], key: str, value: Optional[float]) -> None:
+def _store(readings: dict[str, float], key: str, value: float | None) -> None:
     if value is not None:
         readings[key] = float(value)
 
 
-def _cpu_keys() -> List[tuple[str, str, str]]:
+def _cpu_keys() -> list[tuple[str, str, str]]:
     """(key, category, unit) triples for the 4 CPU readings."""
     return [
         ("cpu:temp", "temperature", "°C"),
@@ -64,7 +63,7 @@ def _cpu_keys() -> List[tuple[str, str, str]]:
     ]
 
 
-def _memory_keys() -> List[tuple[str, str, str]]:
+def _memory_keys() -> list[tuple[str, str, str]]:
     return [
         ("memory:used", "memory", "MB"),
         ("memory:available", "memory", "MB"),
@@ -73,7 +72,7 @@ def _memory_keys() -> List[tuple[str, str, str]]:
     ]
 
 
-def _gpu_reading_keys(prefix: str) -> List[tuple[str, str, str]]:
+def _gpu_reading_keys(prefix: str) -> list[tuple[str, str, str]]:
     return [
         (f"{prefix}:temp", "temperature", "°C"),
         (f"{prefix}:usage", "usage", "%"),
@@ -85,7 +84,7 @@ def _gpu_reading_keys(prefix: str) -> List[tuple[str, str, str]]:
     ]
 
 
-def _io_keys() -> List[tuple[str, str, str]]:
+def _io_keys() -> list[tuple[str, str, str]]:
     return [
         ("disk:read", "disk_io", "MB/s"),
         ("disk:write", "disk_io", "MB/s"),
@@ -97,7 +96,7 @@ def _io_keys() -> List[tuple[str, str, str]]:
     ]
 
 
-def _time_keys() -> List[tuple[str, str, str]]:
+def _time_keys() -> list[tuple[str, str, str]]:
     return [
         ("time:hour", "datetime", ""),
         ("time:minute", "datetime", ""),
@@ -120,18 +119,18 @@ class BaselineSensors(SensorEnumerator):
     """
 
     def __init__(self,
-                 cpu: Optional[CpuSource] = None,
-                 memory: Optional[MemorySource] = None,
-                 gpus: Optional[List[GpuSource]] = None,
-                 fans: Optional[List[FanSource]] = None) -> None:
+                 cpu: CpuSource | None = None,
+                 memory: MemorySource | None = None,
+                 gpus: list[GpuSource] | None = None,
+                 fans: list[FanSource] | None = None) -> None:
         self._cpu = cpu or PsutilCpu()
         self._memory = memory or PsutilMemory()
-        self._gpus: List[GpuSource] = gpus if gpus is not None else discover_nvidia_gpus()
-        self._fans: List[FanSource] = fans or []
+        self._gpus: list[GpuSource] = gpus if gpus is not None else discover_nvidia_gpus()
+        self._fans: list[FanSource] = fans or []
         self._io = ComputedIo()
         self._lock = threading.Lock()
         self._readings: dict[str, float] = {}
-        self._poll_thread: Optional[threading.Thread] = None
+        self._poll_thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._interval_s: float = 2.0
         self._gpus.sort(key=lambda g: (not g.is_discrete, g.key))
@@ -144,18 +143,18 @@ class BaselineSensors(SensorEnumerator):
     def memory(self) -> MemorySource:
         return self._memory
 
-    def gpus(self) -> List[GpuSource]:
+    def gpus(self) -> list[GpuSource]:
         return list(self._gpus)
 
-    def fans(self) -> List[FanSource]:
+    def fans(self) -> list[FanSource]:
         return list(self._fans)
 
     # ── Flat dict view ─────────────────────────────────────────────
 
-    def discover(self) -> List[SensorReading]:
+    def discover(self) -> list[SensorReading]:
         """Return one SensorReading per normalized key with current values."""
         current = self.read_all()
-        readings: List[SensorReading] = []
+        readings: list[SensorReading] = []
 
         for key, cat, unit in _cpu_keys():
             readings.append(SensorReading(
@@ -218,7 +217,7 @@ class BaselineSensors(SensorEnumerator):
         with self._lock:
             return dict(self._readings)
 
-    def read_one(self, sensor_id: str) -> Optional[float]:
+    def read_one(self, sensor_id: str) -> float | None:
         with self._lock:
             return self._readings.get(sensor_id)
 
@@ -329,7 +328,7 @@ def build_linux_sensors() -> BaselineSensors:
     hwmon_devices = scan_hwmon_devices()
     psutil_cpu = PsutilCpu()
     cpu = HwmonCpu(psutil_cpu, find_cpu_temp_device(hwmon_devices))
-    gpus: List[GpuSource] = []
+    gpus: list[GpuSource] = []
     gpus.extend(discover_nvidia_gpus())
     gpus.extend(discover_amd_gpus(hwmon_devices))
     gpus.extend(discover_intel_gpus(hwmon_devices))

@@ -1,8 +1,6 @@
 """LedPanel — push a uniform RGB color to an LED controller."""
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -30,7 +28,7 @@ class LedPanel(QWidget):
     path works end-to-end.
     """
 
-    def __init__(self, app: App, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, app: App, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._app = app
         self._color = QColor(255, 255, 255)

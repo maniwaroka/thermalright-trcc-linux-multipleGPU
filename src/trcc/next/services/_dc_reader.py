@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import struct
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ..core.errors import ThemeError
 
@@ -36,7 +36,7 @@ _ELEMENT_SLOTS = 13
 
 # Legacy slot order → our normalized sensor keys.  `None` means a label
 # slot (the "CPU" / "GPU" / "MHz" string that sits next to a value).
-_SLOT_MAP: List[Tuple[str, Optional[str], str, str]] = [
+_SLOT_MAP: list[tuple[str, str | None, str, str]] = [
     # (slot_name, metric_key_or_None, label_text, format_string)
     ("custom_text",       None,               "",      ""),
     ("cpu_temp",          "cpu:temp",         "CPU",   "{value:.0f}°C"),
@@ -57,7 +57,7 @@ _SLOT_MAP: List[Tuple[str, Optional[str], str, str]] = [
 # 0xDD HARDWARE element (main_count, sub_count) → (sensor_id, format).
 # Mirrors legacy core/models/sensor.py::HARDWARE_METRICS but emits
 # next/-shape sensor IDs directly.
-_HW_TO_SENSOR: Dict[Tuple[int, int], Tuple[str, str]] = {
+_HW_TO_SENSOR: dict[tuple[int, int], tuple[str, str]] = {
     # CPU (main=0)
     (0, 1): ("cpu:temp",            "{value:.0f}°C"),
     (0, 2): ("cpu:usage",           "{value:.0f}%"),
@@ -98,7 +98,7 @@ _MODE_DATE = 3
 _MODE_CUSTOM = 4
 
 
-def load_dc_as_theme_config(path: Path) -> Dict[str, Any]:
+def load_dc_as_theme_config(path: Path) -> dict[str, Any]:
     """Read a `config1.dc` and return a JSON-compatible dict for ThemeService.
 
     Raises ThemeError on any parse failure.  Output shape:
@@ -181,7 +181,7 @@ class _Reader:
         return s
 
 
-def _parse_dc(data: bytes, theme_name: str) -> Dict[str, Any]:
+def _parse_dc(data: bytes, theme_name: str) -> dict[str, Any]:
     """Walk a 0xDC-format DC buffer; return our JSON-compatible dict."""
     r = _Reader(data, start=1)   # skip magic
 
@@ -217,7 +217,7 @@ def _parse_dc(data: bytes, theme_name: str) -> Dict[str, Any]:
     }
 
     # 13 font records.  Slot 0 carries the custom text string.
-    fonts: List[Dict[str, Any]] = []
+    fonts: list[dict[str, Any]] = []
     custom_text = ""
     for idx in range(_FONT_SLOTS):
         try:
@@ -251,7 +251,7 @@ def _parse_dc(data: bytes, theme_name: str) -> Dict[str, Any]:
         background_display, transparent_display, rotation = True, False, 0
 
     # 13 (x, y) pairs — one per slot
-    positions: List[Tuple[int, int]] = []
+    positions: list[tuple[int, int]] = []
     for _ in range(_ELEMENT_SLOTS):
         try:
             x = r.read_int32()
@@ -261,7 +261,7 @@ def _parse_dc(data: bytes, theme_name: str) -> Dict[str, Any]:
         positions.append((x, y))
 
     # Build element list
-    elements: List[Dict[str, Any]] = []
+    elements: list[dict[str, Any]] = []
     for idx, (slot_name, metric_key, label, fmt) in enumerate(_SLOT_MAP):
         if idx >= len(positions):
             break
@@ -310,7 +310,7 @@ def _clamp_font_size(raw: float, default: float = 24.0) -> float:
 # ── 0xDD format (cloud themes) ───────────────────────────────────────
 
 
-def _parse_dd(data: bytes, theme_name: str) -> Dict[str, Any]:
+def _parse_dd(data: bytes, theme_name: str) -> dict[str, Any]:
     """Walk a 0xDD-format (cloud-theme) DC buffer.
 
     Layout differs from 0xDC: instead of fixed slots, 0xDD carries a
@@ -332,7 +332,7 @@ def _parse_dd(data: bytes, theme_name: str) -> Dict[str, Any]:
             f"0xDD element count out of range: {count}",
         )
 
-    elements: List[Dict[str, Any]] = []
+    elements: list[dict[str, Any]] = []
     for _ in range(count):
         mode = r.read_int32()
         mode_sub = r.read_int32()
@@ -378,7 +378,7 @@ def _parse_dd(data: bytes, theme_name: str) -> Dict[str, Any]:
     }
 
 
-def _read_dd_font(r: _Reader) -> Dict[str, Any]:
+def _read_dd_font(r: _Reader) -> dict[str, Any]:
     """Read the font/color record that follows every 0xDD element."""
     r.read_string()                                 # font_name (unused)
     size = _clamp_font_size(r.read_float())
@@ -404,11 +404,11 @@ def _build_dd_element(
     y: int,
     main_count: int,
     sub_count: int,
-    font: Dict[str, Any],
+    font: dict[str, Any],
     custom_text: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Translate one parsed 0xDD element into next/'s overlay-element dict."""
-    base: Dict[str, Any] = {"x": x, "y": y, **font}
+    base: dict[str, Any] = {"x": x, "y": y, **font}
     match mode:
         case 0:  # HARDWARE
             entry = _HW_TO_SENSOR.get((main_count, sub_count))

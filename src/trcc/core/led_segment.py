@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .models import HardwareMetrics
@@ -43,7 +43,7 @@ class SegmentDisplay:
     """
 
     # ── 7-Segment encoding ──────────────────────────────────────────
-    CHAR_7SEG: Dict[str, Set[str]] = {
+    CHAR_7SEG: dict[str, set[str]] = {
         '0': {'a', 'b', 'c', 'd', 'e', 'f'},
         '1': {'b', 'c'},
         '2': {'a', 'b', 'd', 'e', 'g'},
@@ -63,7 +63,7 @@ class SegmentDisplay:
     WIRE_7SEG = ('a', 'b', 'c', 'd', 'e', 'f', 'g')
 
     # ── 13-Segment encoding (LF10) ─────────────────────────────────
-    CHAR_13SEG: Dict[str, Set[str]] = {
+    CHAR_13SEG: dict[str, set[str]] = {
         '0': {'a', 'b', 'c', 'd', 'e', 'f', 'h', 'i', 'j', 'k', 'l'},
         '1': {'c', 'd', 'e', 'f', 'g'},
         '2': {'a', 'b', 'c', 'd', 'e', 'g', 'h', 'i', 'j', 'k', 'm'},
@@ -81,11 +81,11 @@ class SegmentDisplay:
     # ── Subclass contract (enforced, not abstract) ──────────────────
     mask_size: int = 0
     phase_count: int = 0
-    zone_led_map: Optional[Tuple[Tuple[int, ...], ...]] = None
+    zone_led_map: tuple[tuple[int, ...], ...] | None = None
     # Per-zone metric source: (device, kind) per zone index.
     # e.g. PA120: zone 0=("cpu","temp"), zone 1=("cpu","load"), ...
     # None = use global temp_source/load_source (single-zone devices).
-    zone_metric_sources: Optional[Tuple[Tuple[str, str], ...]] = None
+    zone_metric_sources: tuple[tuple[str, str], ...] | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -97,7 +97,7 @@ class SegmentDisplay:
     def compute_mask(
         self, metrics: HardwareMetrics, phase: int = 0,
         temp_unit: str = "C", **kw: Any,
-    ) -> List[bool]:
+    ) -> list[bool]:
         raise NotImplementedError
 
     # ── Temperature conversion ──────────────────────────────────────
@@ -114,7 +114,7 @@ class SegmentDisplay:
     # ── Encoding helpers ────────────────────────────────────────────
 
     def _encode_7seg(
-        self, ch: str, leds: Tuple[int, ...], mask: List[bool],
+        self, ch: str, leds: tuple[int, ...], mask: list[bool],
     ) -> None:
         """Encode a single character into 7-segment LEDs."""
         segs = self.CHAR_7SEG.get(ch, set())
@@ -124,7 +124,7 @@ class SegmentDisplay:
 
     def _encode_digits(
         self, value: int, max_val: int, digit_count: int,
-        digit_leds: Tuple[Tuple[int, ...], ...], mask: List[bool],
+        digit_leds: tuple[tuple[int, ...], ...], mask: list[bool],
         suppress_leading_zeros: bool = True,
     ) -> None:
         """Encode N-digit value with optional leading-zero suppression."""
@@ -143,32 +143,32 @@ class SegmentDisplay:
             self._encode_7seg(ch, digit_leds[idx], mask)
 
     def _encode_3digit(
-        self, value: int, digit_leds: Tuple[Tuple[int, ...], ...],
-        mask: List[bool],
+        self, value: int, digit_leds: tuple[tuple[int, ...], ...],
+        mask: list[bool],
     ) -> None:
         self._encode_digits(value, 999, 3, digit_leds, mask)
 
     def _encode_4digit(
-        self, value: int, digit_leds: Tuple[Tuple[int, ...], ...],
-        mask: List[bool],
+        self, value: int, digit_leds: tuple[tuple[int, ...], ...],
+        mask: list[bool],
     ) -> None:
         self._encode_digits(value, 9999, 4, digit_leds, mask)
 
     def _encode_5digit(
-        self, value: int, digit_leds: Tuple[Tuple[int, ...], ...],
-        mask: List[bool],
+        self, value: int, digit_leds: tuple[tuple[int, ...], ...],
+        mask: list[bool],
     ) -> None:
         self._encode_digits(value, 99999, 5, digit_leds, mask)
 
     def _encode_2digit(
-        self, value: int, digit_leds: Tuple[Tuple[int, ...], ...],
-        mask: List[bool],
+        self, value: int, digit_leds: tuple[tuple[int, ...], ...],
+        mask: list[bool],
     ) -> None:
         self._encode_digits(value, 99, 2, digit_leds, mask)
 
     def _encode_2digit_partial(
-        self, value: int, digit_leds: Tuple[Tuple[int, ...], ...],
-        partial_bc: Optional[Tuple[int, int]], mask: List[bool],
+        self, value: int, digit_leds: tuple[tuple[int, ...], ...],
+        partial_bc: tuple[int, int] | None, mask: list[bool],
     ) -> None:
         """Encode 0-199: 2 full digits + optional partial '1' for hundreds."""
         v = max(0, min(199, value))
@@ -183,23 +183,23 @@ class SegmentDisplay:
             self._encode_2digit(v, digit_leds, mask)
 
     def _encode_unit(
-        self, mode: int, digit_leds: Tuple[int, ...], mask: List[bool],
+        self, mode: int, digit_leds: tuple[int, ...], mask: list[bool],
     ) -> None:
         """Encode unit symbol: 0=C, -1=F, 1=MHz('H'), 2=GB('G')."""
         ch = {0: 'C', -1: 'F', 1: 'H', 2: 'G'}.get(mode, ' ')
         self._encode_7seg(ch, digit_leds, mask)
 
     def _encode_clock_digit(
-        self, value: int, digit_leds: Tuple[int, ...],
-        mask: List[bool], suppress_zero: bool = False,
+        self, value: int, digit_leds: tuple[int, ...],
+        mask: list[bool], suppress_zero: bool = False,
     ) -> None:
         if suppress_zero and value == 0:
             return
         self._encode_7seg(str(value), digit_leds, mask)
 
     def _encode_3digit_13seg(
-        self, value: int, digits_13: Tuple[Tuple[int, ...], ...],
-        mask: List[bool],
+        self, value: int, digits_13: tuple[tuple[int, ...], ...],
+        mask: list[bool],
     ) -> None:
         """Encode value with 13-segment encoding for 3 digits."""
         v = max(0, min(999, value))
@@ -228,7 +228,7 @@ class AX120Display(SegmentDisplay):
     CELSIUS = 6
     FAHRENHEIT = 7
     PERCENT = 8
-    DIGITS: Tuple[Tuple[int, ...], ...] = (
+    DIGITS: tuple[tuple[int, ...], ...] = (
         (9, 10, 11, 12, 13, 14, 15),
         (16, 17, 18, 19, 20, 21, 22),
         (23, 24, 25, 26, 27, 28, 29),
@@ -241,7 +241,7 @@ class AX120Display(SegmentDisplay):
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 30
         for idx in self.ALWAYS_ON:
             mask[idx] = True
@@ -273,39 +273,39 @@ class PA120Display(SegmentDisplay):
     SSD, HSD = 4, 5
     BFB = 6
     SSD1, HSD1, BFB1 = 7, 8, 9
-    CPU_TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    CPU_TEMP_DIGITS: tuple[tuple[int, ...], ...] = (
         (10, 11, 12, 13, 14, 15, 16),
         (17, 18, 19, 20, 21, 22, 23),
         (24, 25, 26, 27, 28, 29, 30),
     )
-    CPU_USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    CPU_USE_DIGITS: tuple[tuple[int, ...], ...] = (
         (31, 32, 33, 34, 35, 36, 37),
         (38, 39, 40, 41, 42, 43, 44),
     )
     CPU_USE_PARTIAL = (80, 81)
-    GPU_TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    GPU_TEMP_DIGITS: tuple[tuple[int, ...], ...] = (
         (45, 46, 47, 48, 49, 50, 51),
         (52, 53, 54, 55, 56, 57, 58),
         (59, 60, 61, 62, 63, 64, 65),
     )
-    GPU_USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    GPU_USE_DIGITS: tuple[tuple[int, ...], ...] = (
         (66, 67, 68, 69, 70, 71, 72),
         (73, 74, 75, 76, 77, 78, 79),
     )
     GPU_USE_PARTIAL = (82, 83)
-    ZONE_LEDS: Tuple[Tuple[int, ...], ...] = (
-        (CPU1, CPU2, SSD, HSD) + tuple(range(10, 31)),
-        (BFB,) + tuple(range(31, 45)) + (80, 81),
-        (GPU1, GPU2, SSD1, HSD1) + tuple(range(45, 66)),
-        (BFB1,) + tuple(range(66, 80)) + (82, 83),
+    ZONE_LEDS: tuple[tuple[int, ...], ...] = (
+        (CPU1, CPU2, SSD, HSD, *tuple(range(10, 31))),
+        (BFB, *tuple(range(31, 45)), 80, 81),
+        (GPU1, GPU2, SSD1, HSD1, *tuple(range(45, 66))),
+        (BFB1, *tuple(range(66, 80)), 82, 83),
     )
     zone_led_map = ZONE_LEDS
-    zone_metric_sources: Tuple[Tuple[str, str], ...] = (
+    zone_metric_sources: tuple[tuple[str, str], ...] = (
         ("cpu", "temp"), ("cpu", "load"), ("gpu", "temp"), ("gpu", "load"),
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 84
         for idx in (self.CPU1, self.CPU2, self.GPU1, self.GPU2,
                     self.BFB, self.BFB1):
@@ -337,17 +337,17 @@ class AK120Display(SegmentDisplay):
     mask_size = 64
     phase_count = 2
     CPU1, WATT, SSD, HSD, BFB, GPU1 = 0, 1, 2, 3, 4, 5
-    WATT_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    WATT_DIGITS: tuple[tuple[int, ...], ...] = (
         (6, 7, 8, 9, 10, 11, 12),
         (13, 14, 15, 16, 17, 18, 19),
         (20, 21, 22, 23, 24, 25, 26),
     )
-    TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    TEMP_DIGITS: tuple[tuple[int, ...], ...] = (
         (27, 28, 29, 30, 31, 32, 33),
         (34, 35, 36, 37, 38, 39, 40),
         (41, 42, 43, 44, 45, 46, 47),
     )
-    USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    USE_DIGITS: tuple[tuple[int, ...], ...] = (
         (48, 49, 50, 51, 52, 53, 54),
         (55, 56, 57, 58, 59, 60, 61),
     )
@@ -358,7 +358,7 @@ class AK120Display(SegmentDisplay):
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 64
         mask[self.WATT] = mask[self.BFB] = True
         temp_key, use_key, watt_key, source_idx = self.PHASES[phase % 2]
@@ -379,13 +379,13 @@ class LC1Display(SegmentDisplay):
     mask_size = 31
     phase_count = 3
     SSD, MTNO, GNO = 0, 1, 2
-    DIGITS: Tuple[Tuple[int, ...], ...] = (
+    DIGITS: tuple[tuple[int, ...], ...] = (
         (3, 4, 5, 6, 7, 8, 9),
         (10, 11, 12, 13, 14, 15, 16),
         (17, 18, 19, 20, 21, 22, 23),
     )
     UNIT_DIGIT = (24, 25, 26, 27, 28, 29, 30)
-    ALL_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    ALL_DIGITS: tuple[tuple[int, ...], ...] = (
         (3, 4, 5, 6, 7, 8, 9),
         (10, 11, 12, 13, 14, 15, 16),
         (17, 18, 19, 20, 21, 22, 23),
@@ -403,7 +403,7 @@ class LC1Display(SegmentDisplay):
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 31
         sub_style = kw.get('sub_style', 0)
         memory_ratio = kw.get('memory_ratio', 2)
@@ -429,23 +429,23 @@ class LF8Display(SegmentDisplay):
     mask_size = 93
     phase_count = 2
     CPU1, GPU1, SSD, HSD, WATT, MHZ, BFB = 0, 1, 2, 3, 4, 5, 6
-    TEMP_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    TEMP_DIGITS: tuple[tuple[int, ...], ...] = (
         (7, 8, 9, 10, 11, 12, 13),
         (14, 15, 16, 17, 18, 19, 20),
         (21, 22, 23, 24, 25, 26, 27),
     )
-    WATT_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    WATT_DIGITS: tuple[tuple[int, ...], ...] = (
         (28, 29, 30, 31, 32, 33, 34),
         (35, 36, 37, 38, 39, 40, 41),
         (42, 43, 44, 45, 46, 47, 48),
     )
-    MHZ_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    MHZ_DIGITS: tuple[tuple[int, ...], ...] = (
         (49, 50, 51, 52, 53, 54, 55),
         (56, 57, 58, 59, 60, 61, 62),
         (63, 64, 65, 66, 67, 68, 69),
         (70, 71, 72, 73, 74, 75, 76),
     )
-    USE_DIGITS: Tuple[Tuple[int, ...], ...] = (
+    USE_DIGITS: tuple[tuple[int, ...], ...] = (
         (77, 78, 79, 80, 81, 82, 83),
         (84, 85, 86, 87, 88, 89, 90),
     )
@@ -456,7 +456,7 @@ class LF8Display(SegmentDisplay):
     )
 
     def _compute_digits(self, metrics: HardwareMetrics, phase: int,
-                        temp_unit: str, mask: List[bool]) -> None:
+                        temp_unit: str, mask: list[bool]) -> None:
         """Shared digit computation for LF8 and LF12."""
         mask[self.WATT] = mask[self.MHZ] = mask[self.BFB] = True
         temp_key, watt_key, mhz_key, use_key, src = self.PHASES[phase % 2]
@@ -469,7 +469,7 @@ class LF8Display(SegmentDisplay):
             int(getattr(metrics, use_key, 0)), self.USE_DIGITS, self.USE_PARTIAL, mask)
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * self.mask_size
         self._compute_digits(metrics, phase, temp_unit, mask)
         return mask
@@ -484,7 +484,7 @@ class LF12Display(LF8Display):
     DECORATION = tuple(range(93, 124))
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 124
         self._compute_digits(metrics, phase, temp_unit, mask)
         for idx in self.DECORATION:
@@ -500,23 +500,23 @@ class LF10Display(SegmentDisplay):
     mask_size = 116
     phase_count = 1
     CPU1, SSD, HSD, GPU1, SSD1, HSD1 = 0, 1, 2, 3, 4, 5
-    DIGIT_LEDS_13: Tuple[Tuple[int, ...], ...] = (
+    DIGIT_LEDS_13: tuple[tuple[int, ...], ...] = (
         tuple(range(6, 19)), tuple(range(19, 32)), tuple(range(32, 45)),
         tuple(range(45, 58)), tuple(range(58, 71)), tuple(range(71, 84)),
     )
     DECORATION = tuple(range(84, 116))
-    ZONE_LEDS: Tuple[Tuple[int, ...], ...] = (
-        (CPU1, SSD, HSD) + tuple(range(6, 45)) + tuple(range(84, 94)),
-        (GPU1, SSD1, HSD1) + tuple(range(45, 84)) + tuple(range(94, 104)),
+    ZONE_LEDS: tuple[tuple[int, ...], ...] = (
+        (CPU1, SSD, HSD, *tuple(range(6, 45)), *tuple(range(84, 94))),
+        (GPU1, SSD1, HSD1, *tuple(range(45, 84)), *tuple(range(94, 104))),
         tuple(range(104, 116)),
     )
     zone_led_map = ZONE_LEDS
-    zone_metric_sources: Tuple[Tuple[str, str], ...] = (
+    zone_metric_sources: tuple[tuple[str, str], ...] = (
         ("cpu", "temp"), ("gpu", "temp"), ("", ""),
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 116
         mask[self.CPU1] = mask[self.GPU1] = True
         if temp_unit == "C":
@@ -542,7 +542,7 @@ class CZ1Display(SegmentDisplay):
     mask_size = 18
     phase_count = 4
     CPU1, GPU1, CPU2, GPU2 = 0, 1, 2, 3
-    DIGITS: Tuple[Tuple[int, ...], ...] = (
+    DIGITS: tuple[tuple[int, ...], ...] = (
         (4, 5, 6, 7, 8, 9, 10),
         (11, 12, 13, 14, 15, 16, 17),
     )
@@ -554,7 +554,7 @@ class CZ1Display(SegmentDisplay):
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 18
         metric_key, indicator_on = self.PHASES[phase % 4]
         for idx in indicator_on:
@@ -574,7 +574,7 @@ class LC2Display(SegmentDisplay):
     mask_size = 61
     phase_count = 1
     COLON_AND_SEP = (0, 1, 2)
-    DIGITS: Tuple[Tuple[int, ...], ...] = (
+    DIGITS: tuple[tuple[int, ...], ...] = (
         (3, 4, 5, 6, 7, 8, 9),
         (10, 11, 12, 13, 14, 15, 16),
         (17, 18, 19, 20, 21, 22, 23),
@@ -587,7 +587,7 @@ class LC2Display(SegmentDisplay):
     DECORATION = tuple(range(54, 61))
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 61
         is_24h = kw.get('is_24h', True)
         week_sunday = kw.get('week_sunday', False)
@@ -631,7 +631,7 @@ class LF11Display(SegmentDisplay):
     mask_size = 38
     phase_count = 4
     SSD, BFB, MHZ_IND = 0, 1, 2
-    DIGITS: Tuple[Tuple[int, ...], ...] = (
+    DIGITS: tuple[tuple[int, ...], ...] = (
         (3, 4, 5, 6, 7, 8, 9),
         (10, 11, 12, 13, 14, 15, 16),
         (17, 18, 19, 20, 21, 22, 23),
@@ -646,7 +646,7 @@ class LF11Display(SegmentDisplay):
     )
 
     def compute_mask(self, metrics: HardwareMetrics, phase: int = 0,
-                     temp_unit: str = "C", **kw: Any) -> List[bool]:
+                     temp_unit: str = "C", **kw: Any) -> list[bool]:
         mask = [False] * 38
         metric_key, mode = self.PHASES[phase % 4]
         value = int(getattr(metrics, metric_key, 0))
@@ -668,7 +668,7 @@ class LF11Display(SegmentDisplay):
 # Display registry — style_id → SegmentDisplay instance
 # ═══════════════════════════════════════════════════════════════════════
 
-DISPLAYS: Dict[int, SegmentDisplay] = {
+DISPLAYS: dict[int, SegmentDisplay] = {
     1: AX120Display(),
     2: PA120Display(),
     3: AK120Display(),
@@ -687,7 +687,7 @@ DISPLAYS: Dict[int, SegmentDisplay] = {
 def compute_mask(
     style_id: int, metrics: HardwareMetrics, phase: int = 0,
     temp_unit: str = "C", is_24h: bool = True, week_sunday: bool = False,
-) -> List[bool]:
+) -> list[bool]:
     """Compute LED on/off mask for any supported style."""
     display = DISPLAYS.get(style_id)
     if display is None:
@@ -696,7 +696,7 @@ def compute_mask(
         metrics, phase, temp_unit, is_24h=is_24h, week_sunday=week_sunday)
 
 
-def get_display(style_id: int) -> Optional[SegmentDisplay]:
+def get_display(style_id: int) -> SegmentDisplay | None:
     """Get the SegmentDisplay instance for a style, or None."""
     return DISPLAYS.get(style_id)
 

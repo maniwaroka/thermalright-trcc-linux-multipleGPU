@@ -11,7 +11,6 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import List
 
 from trcc.core.models import DetectedDevice
 
@@ -22,7 +21,7 @@ class WindowsDeviceDetector:
     """Detect Thermalright USB devices on Windows."""
 
     @staticmethod
-    def detect() -> List[DetectedDevice]:
+    def detect() -> list[DetectedDevice]:
         """Scan for Thermalright USB devices using WMI.
 
         Strategy:
@@ -41,7 +40,7 @@ class WindowsDeviceDetector:
             log.error("wmi package not installed — pip install wmi")
             return []
 
-        devices: List[DetectedDevice] = []
+        devices: list[DetectedDevice] = []
         seen_paths: set[str] = set()
         try:
             w = wmi.WMI()

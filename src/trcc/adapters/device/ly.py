@@ -72,7 +72,7 @@ class LyDevice(BulkFrameDevice, FrameDevice):
 
     def __init__(
         self, vid: int, pid: int, usb_path: str = "",
-        *, addr: 'UsbAddress | None' = None,
+        *, addr: UsbAddress | None = None,
     ):
         super().__init__(vid, pid, usb_path, addr=addr)
         # LY uses chunk header byte[8]=1, LY1 uses 2

@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import List, Tuple
 
 from ...core.registry import ALL_DEVICES
 
@@ -113,8 +112,8 @@ def _check_pyusb_backend() -> int:
     return 0
 
 
-def _classify_devices() -> Tuple[
-    List[Tuple[int, int, str]], List[Tuple[int, int, str]],
+def _classify_devices() -> tuple[
+    list[tuple[int, int, str]], list[tuple[int, int, str]],
 ]:
     """Split registered devices into (visible, invisible) by VID/PID.
 
@@ -125,8 +124,8 @@ def _classify_devices() -> Tuple[
     """
     import usb.core
 
-    visible: List[Tuple[int, int, str]] = []
-    invisible: List[Tuple[int, int, str]] = []
+    visible: list[tuple[int, int, str]] = []
+    invisible: list[tuple[int, int, str]] = []
     for (vid, pid), product in sorted(ALL_DEVICES.items()):
         label = f"{product.vendor} {product.product}"
         if any(usb.core.find(find_all=True, idVendor=vid, idProduct=pid) or []):

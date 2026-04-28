@@ -156,7 +156,7 @@ def _reset_and_refind(dev: Any, vid: int, pid: int) -> Any:
 
 def open_usb_device(
     vid: int, pid: int,
-    *, addr: 'UsbAddress | None' = None,
+    *, addr: UsbAddress | None = None,
 ) -> tuple[Any, Any]:
     """Find, configure, and claim a vendor-class USB device.
 
@@ -234,7 +234,7 @@ class BulkFrameDevice:
 
     def __init__(
         self, vid: int, pid: int, usb_path: str = "",
-        *, addr: 'UsbAddress | None' = None,
+        *, addr: UsbAddress | None = None,
     ):
         self.vid = vid
         self.pid = pid

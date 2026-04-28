@@ -416,7 +416,7 @@ class OverlayService:
             )
             changed = [
                 name for name, old, new in zip(
-                    _CACHE_KEY_NAMES, self._cache_key, new_key)
+                    _CACHE_KEY_NAMES, self._cache_key, new_key, strict=False)
                 if old != new
             ]
             self.log.debug("overlay cache invalidated — changed: %s", ', '.join(changed))

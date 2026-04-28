@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, Optional, Tuple
 
 # =============================================================================
 # Handshake results
@@ -17,7 +16,7 @@ class HandshakeResult:
     Protocol-specific subclasses (HidHandshakeInfo, LedHandshakeInfo) add extras.
     """
 
-    resolution: Optional[Tuple[int, int]] = None
+    resolution: tuple[int, int] | None = None
     model_id: int = 0
     serial: str = ""
     pm_byte: int = 0   # Raw PM from handshake (for button image lookup)
@@ -31,7 +30,7 @@ class HidHandshakeInfo(HandshakeResult):
     device_type: int = 0      # 2 or 3
     mode_byte_1: int = 0     # Type 2: resp[5] (PM), Type 3: resp[0]-1
     mode_byte_2: int = 0     # Type 2: resp[4] (SUB), Type 3: 0
-    fbl: Optional[int] = None  # FBL code resolved from PM/SUB
+    fbl: int | None = None  # FBL code resolved from PM/SUB
 
 
 @dataclass(slots=True)
@@ -45,20 +44,20 @@ class LCDDeviceConfig:
     width: int = 320
     height: int = 320
     pixel_format: str = "RGB565"
-    fbl: Optional[int] = None
+    fbl: int | None = None
     resolution_detected: bool = False
-    poll_command: Tuple[int, int] = (0xF5, 0xE100)
-    init_command: Tuple[int, int] = (0x1F5, 0xE100)
+    poll_command: tuple[int, int] = (0xF5, 0xE100)
+    init_command: tuple[int, int] = (0x1F5, 0xE100)
     init_per_frame: bool = False
     init_delay: float = 0.0
     frame_delay: float = 0.0
 
     @property
-    def resolution(self) -> Tuple[int, int]:
+    def resolution(self) -> tuple[int, int]:
         return (self.width, self.height)
 
     @staticmethod
-    def from_key(impl_key: str) -> 'LCDDeviceConfig':
+    def from_key(impl_key: str) -> LCDDeviceConfig:
         """Factory: create config from implementation key."""
         from .device import IMPL_NAMES
         name = IMPL_NAMES.get(impl_key, "Generic LCD")
@@ -419,9 +418,9 @@ class ProtocolTraits:
     udev rule generation, factory backend selection, image encoding, and
     device type classification.
     """
-    udev_subsystems: Tuple[str, ...]     # subsystems for udev rules
+    udev_subsystems: tuple[str, ...]     # subsystems for udev rules
     backend_key: str                     # 'sg_raw' or 'pyusb'
-    fallback_backend: Optional[str]      # 'hidapi' for HID/LED, None for others
+    fallback_backend: str | None      # 'hidapi' for HID/LED, None for others
     requires_reboot: bool                # SCSI needs reboot after udev quirk
     supports_jpeg: bool                  # bulk/ly use JPEG encoding
     is_led: bool                         # LED protocol — original (predates LCD)
@@ -432,7 +431,7 @@ class ProtocolTraits:
         return not self.is_led
 
 
-PROTOCOL_TRAITS: Dict[str, ProtocolTraits] = {
+PROTOCOL_TRAITS: dict[str, ProtocolTraits] = {
     'scsi': ProtocolTraits(
         udev_subsystems=('scsi_generic',), backend_key='sg_raw',
         fallback_backend=None, requires_reboot=True,
@@ -541,16 +540,32 @@ CLOUD_SERVERS: dict[str, str] = {
 
 
 __all__ = [
-    'HandshakeResult', 'HidHandshakeInfo', 'LCDDeviceConfig',
-    'PlaybackState', 'VideoState',
-    'DeviceProfile', 'FBL_PROFILES', '_DEFAULT_PROFILE',
-    'get_encode_rotation', 'get_profile',
-    'FBL_TO_RESOLUTION', 'JPEG_MODE_FBLS', 'BULK_RGB565_FBLS',
+    'BULK_RGB565_FBLS',
+    'CLOUD_MASK_URLS',
+    'CLOUD_SERVERS',
+    'CLOUD_THEME_URL_KEYS',
+    'DEVICE_TYPE_NAMES',
+    'FBL_PROFILES',
+    'FBL_TO_RESOLUTION',
+    'JPEG_MODE_FBLS',
+    'LED_DEVICE_TYPE_NAME',
+    'PANEL_ASSET_DIMS',
+    'PROTOCOL_NAMES',
+    'PROTOCOL_TRAITS',
     'RESOLUTION_TO_PM',
-    'fbl_to_resolution', 'pm_to_fbl',
-    'SPLIT_OVERLAY_MAP', 'SPLIT_MODE_RESOLUTIONS',
-    'PANEL_ASSET_DIMS', 'panel_asset_dims',
-    'PROTOCOL_NAMES', 'DEVICE_TYPE_NAMES', 'LED_DEVICE_TYPE_NAME',
-    'ProtocolTraits', 'PROTOCOL_TRAITS',
-    'CLOUD_THEME_URL_KEYS', 'CLOUD_MASK_URLS', 'CLOUD_SERVERS',
+    'SPLIT_MODE_RESOLUTIONS',
+    'SPLIT_OVERLAY_MAP',
+    '_DEFAULT_PROFILE',
+    'DeviceProfile',
+    'HandshakeResult',
+    'HidHandshakeInfo',
+    'LCDDeviceConfig',
+    'PlaybackState',
+    'ProtocolTraits',
+    'VideoState',
+    'fbl_to_resolution',
+    'get_encode_rotation',
+    'get_profile',
+    'panel_asset_dims',
+    'pm_to_fbl',
 ]

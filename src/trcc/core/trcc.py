@@ -19,8 +19,9 @@ Usage:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from itertools import chain
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 from .control_center_commands import ControlCenterCommands
 from .events import EventBus
@@ -193,7 +194,7 @@ class Trcc:
     # every LCD then every LED, `len(trcc)` is total device count, and
     # `bool(trcc)` is True iff anything is connected.
 
-    def __iter__(self) -> Iterator['LCDDevice | LEDDevice']:
+    def __iter__(self) -> Iterator[LCDDevice | LEDDevice]:
         return chain(self._lcd_devices, self._led_devices)
 
     def __len__(self) -> int:

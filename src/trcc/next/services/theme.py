@@ -22,10 +22,10 @@ Rendering (turning a Theme into frame bytes) is DisplayService's job.
 """
 from __future__ import annotations
 
+import builtins
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..core.errors import ThemeError
 from ..core.models import Theme
@@ -82,7 +82,7 @@ class ThemeService:
             config=config,
         )
 
-    def list(self, directory: Path) -> List[Theme]:
+    def list(self, directory: Path) -> builtins.list[Theme]:
         """Return every theme found directly under *directory*.
 
         A subdirectory is a theme iff it contains config.json OR
@@ -92,7 +92,7 @@ class ThemeService:
         if not directory.exists() or not directory.is_dir():
             return []
 
-        themes: List[Theme] = []
+        themes: list[Theme] = []
         for entry in sorted(directory.iterdir()):
             if not entry.is_dir():
                 continue
@@ -105,7 +105,7 @@ class ThemeService:
                 log.warning("Skipping invalid theme %s: %s", entry, e)
         return themes
 
-    def background_path(self, theme: Theme) -> Optional[Path]:
+    def background_path(self, theme: Theme) -> Path | None:
         """Return the theme's background path (video or image), or None."""
         for candidate in _BACKGROUND_CANDIDATES:
             path = theme.path / candidate
@@ -113,7 +113,7 @@ class ThemeService:
                 return path
         return None
 
-    def mask_path(self, theme: Theme) -> Optional[Path]:
+    def mask_path(self, theme: Theme) -> Path | None:
         """Return the theme's mask image path, or None if absent."""
         for candidate in _MASK_CANDIDATES:
             path = theme.path / candidate
@@ -170,7 +170,7 @@ class ThemeService:
         except OSError as e:
             log.warning("Could not migrate DC→JSON at %s: %s", json_path, e)
 
-    def _resolution_from_config(self, config: dict) -> Tuple[int, int]:
+    def _resolution_from_config(self, config: dict) -> tuple[int, int]:
         """Extract (width, height) from config; fall back to (0, 0) if absent."""
         width = int(config.get("width", 0))
         height = int(config.get("height", 0))

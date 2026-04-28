@@ -16,9 +16,9 @@ from .models import (
 )
 
 __all__ = [
-    'ThemeType',
+    'DeviceInfo',
     'PlaybackState',
     'ThemeInfo',
-    'DeviceInfo',
+    'ThemeType',
     'VideoState',
 ]

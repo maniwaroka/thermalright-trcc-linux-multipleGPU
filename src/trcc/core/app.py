@@ -352,26 +352,26 @@ class TrccApp:
         return self.has_device(lcd=False)
 
     @property
-    def lcd_device(self) -> 'LCDDevice | None':
+    def lcd_device(self) -> LCDDevice | None:
         from .device.lcd import LCDDevice
         return next((d for d in self._devices.values()
                      if isinstance(d, LCDDevice)), None)
 
     @property
-    def led_device(self) -> 'LEDDevice | None':
+    def led_device(self) -> LEDDevice | None:
         from .device.led import LEDDevice
         return next((d for d in self._devices.values()
                      if isinstance(d, LEDDevice)), None)
 
     @property
-    def lcd(self) -> 'LCDDevice':
+    def lcd(self) -> LCDDevice:
         d = self.lcd_device
         if d is None:
             raise RuntimeError("No LCD device connected.")
         return d
 
     @property
-    def led(self) -> 'LEDDevice':
+    def led(self) -> LEDDevice:
         d = self.led_device
         if d is None:
             raise RuntimeError("No LED device connected.")

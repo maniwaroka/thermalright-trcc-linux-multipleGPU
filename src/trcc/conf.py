@@ -27,7 +27,7 @@ import locale
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .__version__ import __version__
 from .core.models import LEGACY_TO_ISO, LOCALE_TO_LANG
@@ -142,7 +142,7 @@ def load_config() -> dict:
     """Load user config from disk. Returns empty dict if file is missing."""
     _migrate_old_config()
     try:
-        with open(CONFIG_PATH, 'r') as f:
+        with open(CONFIG_PATH) as f:
             config = json.load(f)
     except FileNotFoundError:
         return {}
@@ -183,7 +183,7 @@ def save_last_handshake(data: dict) -> None:
 def load_last_handshake() -> dict:
     """Load cached handshake result. Returns empty dict if missing."""
     try:
-        with open(_HANDSHAKE_CACHE_PATH, 'r') as f:
+        with open(_HANDSHAKE_CACHE_PATH) as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
@@ -366,7 +366,7 @@ class Settings:
         save_config(config)
 
     @staticmethod
-    def get_selected_device() -> Optional[str]:
+    def get_selected_device() -> str | None:
         """Get CLI-selected device path (e.g. '/dev/sg0'). Returns None if unset."""
         return load_config().get('selected_device')
 
@@ -506,7 +506,7 @@ class Settings:
 
     # --- Instance methods and properties ---
 
-    def __init__(self, path_resolver: 'Platform') -> None:
+    def __init__(self, path_resolver: Platform) -> None:
         if path_resolver is None:
             raise RuntimeError(
                 "Settings requires a path_resolver. "
@@ -628,12 +628,12 @@ def _get_settings() -> Settings:
 settings: Settings = None  # type: ignore[assignment]
 
 
-def init_settings(path_resolver: 'Platform') -> Settings:
+def init_settings(path_resolver: Platform) -> Settings:
     """Initialize the Settings singleton with a platform path resolver.
 
     Accepts Platform — provides config_dir(), data_dir(), user_content_dir().
     """
-    global _settings, settings  # noqa: PLW0603
+    global _settings, settings
     _migrate_user_content_themes()
     _settings = Settings(path_resolver)
     settings = _settings

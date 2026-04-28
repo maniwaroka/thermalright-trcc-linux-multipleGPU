@@ -23,5 +23,5 @@ def tagged_logger(namespace: str, label: str = '') -> logging.Logger:
     """
     log = logging.getLogger(f'{namespace}.{label}' if label else namespace)
     if hasattr(log, 'dev'):
-        setattr(log, 'dev', label or '-')
+        setattr(log, 'dev', label or '-')  # noqa: B010 — setattr is the pyright-clean way; direct assignment to a non-declared attribute is a type error
     return log

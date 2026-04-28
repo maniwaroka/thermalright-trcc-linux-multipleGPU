@@ -14,8 +14,9 @@ SOLID:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from trcc.core.models import JPEG_MAX_BYTES, DetectedDevice
 
@@ -147,7 +148,7 @@ class Renderer(ABC):
     # ── Legacy boundary ───────────────────────────────────────────
 
     @abstractmethod
-    def from_raw_rgb24(self, frame: "RawFrame") -> Any:
+    def from_raw_rgb24(self, frame: RawFrame) -> Any:
         """Convert RawFrame (RGB24 bytes) → native surface."""
 
 
@@ -262,7 +263,7 @@ class DoctorPlatformConfig:
     doctor.py reads the fields and stays OS-blind.
     """
     distro_name: str
-    pkg_manager: Optional[str]
+    pkg_manager: str | None
     check_libusb: bool
     extra_binaries: list[tuple[str, bool, str]]   # (name, required, note)
     run_gpu_check: bool
@@ -324,7 +325,7 @@ class SensorEnumerator(ABC):
         """Return current sensor readings (non-blocking, from cache)."""
 
     @abstractmethod
-    def read_one(self, sensor_id: str) -> Optional[float]:
+    def read_one(self, sensor_id: str) -> float | None:
         """Read a single sensor by ID."""
 
     @abstractmethod
@@ -541,7 +542,7 @@ class Platform(ABC):
         """Minimize to taskbar on close? Windows overrides -> True."""
         return False
 
-    def no_devices_hint(self) -> Optional[str]:
+    def no_devices_hint(self) -> str | None:
         """Hint when no devices detected. Windows overrides with WinUSB note."""
         return None
 
@@ -576,7 +577,7 @@ class Platform(ABC):
         """Create OS-specific SCSI transport for a device path."""
 
     @abstractmethod
-    def create_detect_fn(self) -> Callable[[], List[DetectedDevice]]:
+    def create_detect_fn(self) -> Callable[[], list[DetectedDevice]]:
         """Return a device detection callable for this OS."""
 
     @abstractmethod
@@ -592,7 +593,7 @@ class Platform(ABC):
         """Check all system dependencies. Returns list of DepResult."""
 
     @abstractmethod
-    def get_pkg_manager(self) -> Optional[str]:
+    def get_pkg_manager(self) -> str | None:
         """Detect the native package manager (dnf, winget, brew, pkg, etc.)."""
 
     @abstractmethod

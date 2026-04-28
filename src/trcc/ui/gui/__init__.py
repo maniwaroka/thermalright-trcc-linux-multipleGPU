@@ -23,15 +23,15 @@ from .uc_theme_setting import UCThemeSetting
 from .uc_theme_web import UCThemeWeb
 
 __all__ = [
-    'TRCCApp',
     'BasePanel',
     'ImageLabel',
+    'TRCCApp',
     'UCDevice',
     'UCPreview',
     'UCThemeLocal',
-    'UCThemeWeb',
     'UCThemeMask',
     'UCThemeSetting',
+    'UCThemeWeb',
 ]
 
 log = logging.getLogger(__name__)

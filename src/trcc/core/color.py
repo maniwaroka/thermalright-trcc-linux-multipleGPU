@@ -4,8 +4,6 @@ Pure domain logic, zero I/O. Matches FormLED.cs RGBTable and gradient behavior.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 
 class ColorEngine:
     """Encapsulates all LED color computation.
@@ -15,7 +13,7 @@ class ColorEngine:
     """
 
     # Gradient stops: (value, (R, G, B)) — linearly interpolated between stops.
-    TEMP_GRADIENT: List[Tuple[float, Tuple[int, int, int]]] = [
+    TEMP_GRADIENT: list[tuple[float, tuple[int, int, int]]] = [
         (30, (0, 255, 255)),    # Cyan
         (50, (0, 255, 0)),      # Green
         (70, (255, 255, 0)),    # Yellow
@@ -25,10 +23,10 @@ class ColorEngine:
 
     LOAD_GRADIENT = TEMP_GRADIENT  # Same gradient (0-100%)
 
-    _cached_table: Optional[List[Tuple[int, int, int]]] = None
+    _cached_table: list[tuple[int, int, int]] | None = None
 
     @staticmethod
-    def generate_table() -> List[Tuple[int, int, int]]:
+    def generate_table() -> list[tuple[int, int, int]]:
         """Generate the 768-entry RGB rainbow lookup table.
 
         Matches FormLED.cs RGBTable initialization — smooth HSV hue cycle
@@ -69,7 +67,7 @@ class ColorEngine:
         return table
 
     @classmethod
-    def get_table(cls) -> List[Tuple[int, int, int]]:
+    def get_table(cls) -> list[tuple[int, int, int]]:
         """Get the cached 768-entry RGB rainbow table."""
         if cls._cached_table is None:
             cls._cached_table = cls.generate_table()
@@ -77,8 +75,8 @@ class ColorEngine:
 
     @staticmethod
     def _lerp(
-        c1: Tuple[int, int, int], c2: Tuple[int, int, int], t: float,
-    ) -> Tuple[int, int, int]:
+        c1: tuple[int, int, int], c2: tuple[int, int, int], t: float,
+    ) -> tuple[int, int, int]:
         """Linearly interpolate between two RGB colors (t=0->c1, t=1->c2)."""
         t = max(0.0, min(1.0, t))
         return (
@@ -90,9 +88,9 @@ class ColorEngine:
     @staticmethod
     def color_for_value(
         value: float,
-        gradient: List[Tuple[float, Tuple[int, int, int]]],
-        high_color: Optional[Tuple[int, int, int]] = None,
-    ) -> Tuple[int, int, int]:
+        gradient: list[tuple[float, tuple[int, int, int]]],
+        high_color: tuple[int, int, int] | None = None,
+    ) -> tuple[int, int, int]:
         """Map a sensor value to an RGB color with smooth gradient interpolation.
 
         Linearly interpolates between adjacent gradient stops.

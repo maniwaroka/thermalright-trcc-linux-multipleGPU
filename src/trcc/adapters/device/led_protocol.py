@@ -7,7 +7,6 @@ to `led.py::LedHidSender`.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
 
 from trcc.core.models import HandshakeResult, UsbAddress
 
@@ -25,15 +24,15 @@ class LedProtocol(UsbProtocol):
 
     def __init__(
         self, vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ):
         super().__init__(vid, pid, addr=addr)
         self._sender = None
 
     def send_data(
         self,
-        led_colors: List[Tuple[int, int, int]],
-        is_on: Optional[List[bool]] = None,
+        led_colors: list[tuple[int, int, int]],
+        is_on: list[bool] | None = None,
         global_on: bool = True,
         brightness: int = 100,
     ) -> bool:
@@ -70,7 +69,7 @@ class LedProtocol(UsbProtocol):
 
         return self._guarded_send("LED", _do_send)
 
-    def _do_handshake(self) -> Optional[HandshakeResult]:
+    def _do_handshake(self) -> HandshakeResult | None:
         """LED handshake — cached after first call (firmware ignores re-handshakes)."""
         if self._handshake_result is not None:
             return self._handshake_result

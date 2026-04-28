@@ -1,8 +1,6 @@
 """Domain constants — temperature conversion, display formats, locale maps."""
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
-
 # =============================================================================
 # Temperature conversion — single source of truth
 # =============================================================================
@@ -13,7 +11,7 @@ def celsius_to_fahrenheit(celsius: float) -> float:
     return celsius * 9 / 5 + 32
 
 
-def parse_hex_color(hex_color: str) -> Optional[Tuple[int, int, int]]:
+def parse_hex_color(hex_color: str) -> tuple[int, int, int] | None:
     """Parse '#RRGGBB' or 'RRGGBB' → (r, g, b), or None on invalid input."""
     hex_color = hex_color.lstrip('#')
     if len(hex_color) != 6:
@@ -40,14 +38,14 @@ JPEG_MAX_BYTES = 650_000
 
 
 # Time formats matching Windows TRCC (UCXiTongXianShiSub.cs)
-TIME_FORMATS: Dict[int, str] = {
+TIME_FORMATS: dict[int, str] = {
     0: "%H:%M",       # 24-hour (14:58)
     1: "%I:%M",       # 12-hour with leading zero (02:58) — stripped in _format_metric
     2: "%H:%M",       # 24-hour (same as mode 0 in Windows)
 }
 
 # Date formats matching Windows TRCC
-DATE_FORMATS: Dict[int, str] = {
+DATE_FORMATS: dict[int, str] = {
     0: "%Y/%m/%d",    # 2026/01/30
     1: "%Y/%m/%d",    # 2026/01/30 (same as mode 0 in Windows)
     2: "%d/%m/%Y",    # 30/01/2026
@@ -98,8 +96,16 @@ LOCALE_TO_LANG: dict[str, str] = {
 
 
 __all__ = [
-    'celsius_to_fahrenheit', 'parse_hex_color',
-    'BRIGHTNESS_STEPS', 'DEFAULT_BRIGHTNESS_LEVEL', 'JPEG_MAX_BYTES',
-    'TIME_FORMATS', 'DATE_FORMATS', 'WEEKDAYS', 'WEEKDAYS_CN',
-    'LEGACY_TO_ISO', 'ISO_TO_LEGACY', 'LOCALE_TO_LANG',
+    'BRIGHTNESS_STEPS',
+    'DATE_FORMATS',
+    'DEFAULT_BRIGHTNESS_LEVEL',
+    'ISO_TO_LEGACY',
+    'JPEG_MAX_BYTES',
+    'LEGACY_TO_ISO',
+    'LOCALE_TO_LANG',
+    'TIME_FORMATS',
+    'WEEKDAYS',
+    'WEEKDAYS_CN',
+    'celsius_to_fahrenheit',
+    'parse_hex_color',
 ]

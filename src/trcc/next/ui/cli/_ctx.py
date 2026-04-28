@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Optional
 
 from ...app import App
 from ...core.ports import Platform, Renderer
@@ -11,8 +10,8 @@ from ...core.ports import Platform, Renderer
 log = logging.getLogger(__name__)
 
 
-_platform_override: Optional[Platform] = None
-_renderer_override: Optional[Renderer] = None
+_platform_override: Platform | None = None
+_renderer_override: Renderer | None = None
 
 
 def set_platform(platform: Platform) -> None:

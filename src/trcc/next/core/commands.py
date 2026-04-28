@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, List, Tuple, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from .errors import (
     DeviceNotConnectedError,
@@ -74,7 +74,7 @@ class Command(ABC, Generic[R_co]):
     """
 
     @abstractmethod
-    def execute(self, app: "App") -> R_co: ...
+    def execute(self, app: App) -> R_co: ...
 
 
 # =========================================================================
@@ -86,7 +86,7 @@ class Command(ABC, Generic[R_co]):
 class DiscoverDevices(Command[DiscoverResult]):
     """List attached devices that match the product registry."""
 
-    def execute(self, app: "App") -> DiscoverResult:
+    def execute(self, app: App) -> DiscoverResult:
         live = app.platform.scan_devices()
         products = []
         for info in live:
@@ -109,7 +109,7 @@ class ConnectDevice(Command[ConnectResult]):
     """Attach + handshake with a discovered device."""
     key: str
 
-    def execute(self, app: "App") -> ConnectResult:
+    def execute(self, app: App) -> ConnectResult:
         try:
             vid_str, pid_str = self.key.split(":")
             vid, pid = int(vid_str, 16), int(pid_str, 16)
@@ -149,7 +149,7 @@ class DisconnectDevice(Command[DisconnectResult]):
     """Close the transport and drop the device."""
     key: str
 
-    def execute(self, app: "App") -> DisconnectResult:
+    def execute(self, app: App) -> DisconnectResult:
         if self.key not in app.devices:
             return DisconnectResult(
                 ok=False, key=self.key,
@@ -175,7 +175,7 @@ class SendFrame(Command[SendResult]):
     key: str
     data: bytes
 
-    def execute(self, app: "App") -> SendResult:
+    def execute(self, app: App) -> SendResult:
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
@@ -212,7 +212,7 @@ class RenderAndSend(Command[RenderResult]):
     """
     key: str
 
-    def execute(self, app: "App") -> RenderResult:
+    def execute(self, app: App) -> RenderResult:
         try:
             device = app.get(self.key)
         except DeviceNotFoundError as e:
@@ -266,7 +266,7 @@ class LoadTheme(Command[ThemeResult]):
     key: str
     path: Path
 
-    def execute(self, app: "App") -> ThemeResult:
+    def execute(self, app: App) -> ThemeResult:
         try:
             theme = app.themes.load(self.path)
         except ThemeError as e:
@@ -327,7 +327,7 @@ class SetOrientation(Command[OrientationResult]):
     key: str
     degrees: int
 
-    def execute(self, app: "App") -> OrientationResult:
+    def execute(self, app: App) -> OrientationResult:
         try:
             vid_str, pid_str = self.key.split(":")
             vid, pid = int(vid_str, 16), int(pid_str, 16)
@@ -361,7 +361,7 @@ class SetBrightness(Command[BrightnessResult]):
     key: str
     percent: int
 
-    def execute(self, app: "App") -> BrightnessResult:
+    def execute(self, app: App) -> BrightnessResult:
         if not 0 <= self.percent <= 100:
             return BrightnessResult(
                 ok=False, key=self.key, percent=self.percent,
@@ -384,11 +384,11 @@ class SetBrightness(Command[BrightnessResult]):
 class SetLedColors(Command[LedColorsResult]):
     """Set LED color array + on/off + brightness on a connected Led device."""
     key: str
-    colors: List[Tuple[int, int, int]]
+    colors: list[tuple[int, int, int]]
     global_on: bool = True
     brightness: int = 100
 
-    def execute(self, app: "App") -> LedColorsResult:
+    def execute(self, app: App) -> LedColorsResult:
         from ..adapters.device.led import Led, LedPayload
 
         try:
@@ -449,7 +449,7 @@ class ReadSensors(Command[SensorsResult]):
     two so every returned `SensorReading` carries the current value.
     """
 
-    def execute(self, app: "App") -> SensorsResult:
+    def execute(self, app: App) -> SensorsResult:
         from .models import SensorReading
         enum = app.platform.sensors()
         descriptors = enum.discover()
@@ -481,7 +481,7 @@ class RunSetup(Command[SetupResult]):
     """OS-specific one-time setup (udev, WinUSB guide, etc.)."""
     interactive: bool = True
 
-    def execute(self, app: "App") -> SetupResult:
+    def execute(self, app: App) -> SetupResult:
         warnings = app.platform.check_permissions()
         code = app.platform.setup(interactive=self.interactive)
         return SetupResult(
@@ -501,7 +501,7 @@ class GetPlatformInfo(Command[PlatformInfoResult]):
     render the Result like any other Command.
     """
 
-    def execute(self, app: "App") -> PlatformInfoResult:
+    def execute(self, app: App) -> PlatformInfoResult:
         p = app.platform
         paths = p.paths()
         return PlatformInfoResult(
@@ -520,7 +520,7 @@ class GetPlatformInfo(Command[PlatformInfoResult]):
 # ── Autostart ────────────────────────────────────────────────────────
 
 
-def _autostart_path(app: "App") -> str:
+def _autostart_path(app: App) -> str:
     """Extract the manager's filesystem path when available."""
     mgr = app.platform.autostart()
     return str(getattr(mgr, "path", "")) or ""
@@ -530,7 +530,7 @@ def _autostart_path(app: "App") -> str:
 class GetAutostartStatus(Command[AutostartResult]):
     """Report whether auto-launch-on-login is enabled."""
 
-    def execute(self, app: "App") -> AutostartResult:
+    def execute(self, app: App) -> AutostartResult:
         mgr = app.platform.autostart()
         enabled = mgr.is_enabled()
         path = _autostart_path(app)
@@ -545,7 +545,7 @@ class GetAutostartStatus(Command[AutostartResult]):
 class EnableAutostart(Command[AutostartResult]):
     """Install the OS-specific autostart entry (per-user, no sudo)."""
 
-    def execute(self, app: "App") -> AutostartResult:
+    def execute(self, app: App) -> AutostartResult:
         mgr = app.platform.autostart()
         mgr.enable()
         return AutostartResult(
@@ -558,7 +558,7 @@ class EnableAutostart(Command[AutostartResult]):
 class DisableAutostart(Command[AutostartResult]):
     """Remove the OS-specific autostart entry."""
 
-    def execute(self, app: "App") -> AutostartResult:
+    def execute(self, app: App) -> AutostartResult:
         mgr = app.platform.autostart()
         mgr.disable()
         return AutostartResult(

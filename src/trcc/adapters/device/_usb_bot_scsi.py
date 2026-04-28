@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import struct
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from trcc.adapters.device.scsi import ScsiTransport
 
@@ -38,14 +38,14 @@ class UsbBotScsiTransport(ScsiTransport):
 
     def __init__(
         self, vid: int, pid: int,
-        *, addr: 'UsbAddress | None' = None,
+        *, addr: UsbAddress | None = None,
     ) -> None:
         self._vid = vid
         self._pid = pid
         self._addr = addr  # bind to specific (bus, address) — issue #128
         self._dev: Any = None
-        self._ep_out: Optional[int] = None
-        self._ep_in: Optional[int] = None
+        self._ep_out: int | None = None
+        self._ep_in: int | None = None
         self._tag = 0
 
     def open(self) -> bool:

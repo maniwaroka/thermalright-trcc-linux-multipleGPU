@@ -27,7 +27,7 @@ def get_trcc() -> Trcc:
 
     Idempotent + thread-safe — multiple API workers don't race.
     """
-    global _trcc  # noqa: PLW0603
+    global _trcc
     with _lock:
         if _trcc is None:
             from trcc.ui.cli import _make_cli_renderer  # same offscreen Qt setup as CLI
@@ -43,7 +43,7 @@ def get_trcc() -> Trcc:
 
 def shutdown() -> None:
     """Release the Trcc singleton. Called by FastAPI on shutdown."""
-    global _trcc  # noqa: PLW0603
+    global _trcc
     with _lock:
         if _trcc is not None:
             try:

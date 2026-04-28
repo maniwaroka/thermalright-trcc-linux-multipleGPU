@@ -11,7 +11,7 @@ import shutil
 import struct
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 
@@ -786,7 +786,7 @@ class MacOSPlatform(Platform):
 
     # ── Sensor factory ───────────────────────────────────────
 
-    def _make_sensor_enumerator(self) -> 'SensorEnumerator':
+    def _make_sensor_enumerator(self) -> SensorEnumerator:
         return SensorEnumerator()
 
     # ── Hardware discovery ────────────────────────────────────
@@ -864,7 +864,7 @@ class MacOSPlatform(Platform):
 
     # ── Administration ────────────────────────────────────────
 
-    def get_pkg_manager(self) -> Optional[str]:
+    def get_pkg_manager(self) -> str | None:
         return 'brew' if shutil.which('brew') else None
 
     def check_deps(self) -> list:
@@ -885,7 +885,7 @@ class MacOSPlatform(Platform):
     def distro_name(self) -> str:
         return f"macOS {platform.mac_ver()[0]}"
 
-    def no_devices_hint(self) -> Optional[str]:
+    def no_devices_hint(self) -> str | None:
         return None
 
     def doctor_config(self) -> DoctorPlatformConfig:

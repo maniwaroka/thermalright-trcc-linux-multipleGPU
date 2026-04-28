@@ -1,8 +1,6 @@
 """DevicePanel — discover / connect / disconnect devices."""
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -21,7 +19,7 @@ from ....core.commands import ConnectDevice, DisconnectDevice, DiscoverDevices
 class DevicePanel(QWidget):
     """Lists detected devices and lets the user connect/disconnect each."""
 
-    def __init__(self, app: App, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, app: App, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._app = app
 
@@ -65,7 +63,7 @@ class DevicePanel(QWidget):
             self._list.addItem(item)
         self._status.setText(result.message)
 
-    def _selected_key(self) -> Optional[str]:
+    def _selected_key(self) -> str | None:
         item = self._list.currentItem()
         if item is None:
             self._status.setText("Select a device first.")

@@ -15,7 +15,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from ..core.models import HardwareMetrics
 from ..core.models import format_metric as _format_metric
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def _read_sysfs(path: str) -> Optional[str]:
+def _read_sysfs(path: str) -> str | None:
     """Safely read a sysfs/proc file, return stripped content or None."""
     try:
         with open(path) as f:
@@ -53,8 +53,8 @@ class SystemService:
 
     def __init__(self, enumerator: SensorEnumerator) -> None:
         self._enumerator: SensorEnumerator = enumerator
-        self._defaults: Optional[Dict[str, str]] = None
-        self._fallback_cache: Optional[Dict[str, float]] = None
+        self._defaults: dict[str, str] | None = None
+        self._fallback_cache: dict[str, float] | None = None
         self._fallback_lock = threading.Lock()
         self._mem_clock_cache: object | float | None = _SENTINEL
         self._enumerator.discover()
@@ -89,20 +89,20 @@ class SystemService:
         """Read current values for all discovered sensors."""
         return self._enumerator.read_all()
 
-    def read_one(self, sensor_id: str) -> Optional[float]:
+    def read_one(self, sensor_id: str) -> float | None:
         """Read a single sensor by ID."""
         return self._enumerator.read_one(sensor_id)
 
     # ── Legacy key mapping ────────────────────────────────────────────
 
-    def _ensure_defaults(self) -> Dict[str, str]:
+    def _ensure_defaults(self) -> dict[str, str]:
         """Get legacy metric key → sensor_id mapping (cached)."""
         if self._defaults is None:
             self._defaults = self._enumerator.map_defaults() or {}
-        defaults: Dict[str, str] = self._defaults  # type: ignore[assignment]
+        defaults: dict[str, str] = self._defaults  # type: ignore[assignment]
         return defaults
 
-    def _read_metric(self, legacy_key: str) -> Optional[float]:
+    def _read_metric(self, legacy_key: str) -> float | None:
         """Read a single metric by legacy key via the enumerator."""
         defaults = self._ensure_defaults()
         if (sensor_id := defaults.get(legacy_key)):
@@ -112,52 +112,52 @@ class SystemService:
     # ── Metric properties ─────────────────────────────────────────────
 
     @property
-    def cpu_temperature(self) -> Optional[float]:
+    def cpu_temperature(self) -> float | None:
         """CPU temperature (enumerator hwmon, fallback: lm_sensors)."""
         return self._read_metric('cpu_temp') or self._fallback_cpu_temp()
 
     @property
-    def cpu_usage(self) -> Optional[float]:
+    def cpu_usage(self) -> float | None:
         """CPU usage percentage."""
         return self._read_metric('cpu_percent') or self._fallback_cpu_usage()
 
     @property
-    def cpu_frequency(self) -> Optional[float]:
+    def cpu_frequency(self) -> float | None:
         """CPU frequency in MHz."""
         return self._read_metric('cpu_freq') or self._fallback_cpu_freq()
 
     @property
-    def gpu_temperature(self) -> Optional[float]:
+    def gpu_temperature(self) -> float | None:
         return self._read_metric('gpu_temp')
 
     @property
-    def gpu_usage(self) -> Optional[float]:
+    def gpu_usage(self) -> float | None:
         return self._read_metric('gpu_usage')
 
     @property
-    def gpu_clock(self) -> Optional[float]:
+    def gpu_clock(self) -> float | None:
         return self._read_metric('gpu_clock')
 
     @property
-    def memory_usage(self) -> Optional[float]:
+    def memory_usage(self) -> float | None:
         return self._read_metric('mem_percent')
 
     @property
-    def memory_available(self) -> Optional[float]:
+    def memory_available(self) -> float | None:
         return self._read_metric('mem_available')
 
     @property
-    def memory_temperature(self) -> Optional[float]:
+    def memory_temperature(self) -> float | None:
         return self._read_metric('mem_temp') or self._fallback_mem_temp()
 
     @property
-    def memory_clock(self) -> Optional[float]:
+    def memory_clock(self) -> float | None:
         return self._fallback_mem_clock()
 
     @property
-    def disk_stats(self) -> Dict[str, float]:
+    def disk_stats(self) -> dict[str, float]:
         readings = self.read_all()
-        stats: Dict[str, float] = {}
+        stats: dict[str, float] = {}
         for legacy, sensor in [
             ('disk_read', 'computed:disk_read'),
             ('disk_write', 'computed:disk_write'),
@@ -168,13 +168,13 @@ class SystemService:
         return stats
 
     @property
-    def disk_temperature(self) -> Optional[float]:
+    def disk_temperature(self) -> float | None:
         return self._read_metric('disk_temp') or self._fallback_disk_temp()
 
     @property
-    def network_stats(self) -> Dict[str, float]:
+    def network_stats(self) -> dict[str, float]:
         readings = self.read_all()
-        stats: Dict[str, float] = {}
+        stats: dict[str, float] = {}
         for legacy, sensor in [
             ('net_up', 'computed:net_up'),
             ('net_down', 'computed:net_down'),
@@ -186,10 +186,10 @@ class SystemService:
         return stats
 
     @property
-    def fan_speeds(self) -> Dict[str, float]:
+    def fan_speeds(self) -> dict[str, float]:
         defaults = self._ensure_defaults()
         readings = self.read_all()
-        fans: Dict[str, float] = {}
+        fans: dict[str, float] = {}
         for fan_key in ('fan_cpu', 'fan_gpu', 'fan_ssd', 'fan_sys2'):
             sensor_id = defaults.get(fan_key)
             if sensor_id and sensor_id in readings:
@@ -264,7 +264,7 @@ class SystemService:
             if self._fallback_cache is not None:
                 return  # Already computed
 
-        cache: Dict[str, float] = {}
+        cache: dict[str, float] = {}
         fallbacks = [
             ('cpu_temp', self._fallback_cpu_temp),
             ('cpu_percent', self._fallback_cpu_usage),
@@ -297,7 +297,7 @@ class SystemService:
     # ── Utilities ─────────────────────────────────────────────────────
 
     @staticmethod
-    def find_hwmon_by_name(name: str) -> Optional[str]:
+    def find_hwmon_by_name(name: str) -> str | None:
         """Find hwmon path by sensor name (k10temp, coretemp, amdgpu, etc.)."""
         hwmon_base = "/sys/class/hwmon"
         if not os.path.exists(hwmon_base):
@@ -311,7 +311,7 @@ class SystemService:
 
     # ── Subprocess fallbacks ──────────────────────────────────────────
 
-    def _fallback_cpu_temp(self) -> Optional[float]:
+    def _fallback_cpu_temp(self) -> float | None:
         """CPU temp via lm_sensors subprocess."""
         try:
             result = subprocess.run(
@@ -329,7 +329,7 @@ class SystemService:
         return None
 
     @staticmethod
-    def _fallback_cpu_usage() -> Optional[float]:
+    def _fallback_cpu_usage() -> float | None:
         """CPU usage via /proc/loadavg."""
         try:
             if (loadavg := _read_sysfs('/proc/loadavg')):
@@ -340,10 +340,10 @@ class SystemService:
         return None
 
     @staticmethod
-    def _fallback_cpu_freq() -> Optional[float]:
+    def _fallback_cpu_freq() -> float | None:
         """CPU frequency via /proc/cpuinfo."""
         try:
-            with open('/proc/cpuinfo', 'r') as f:
+            with open('/proc/cpuinfo') as f:
                 for line in f:
                     if 'cpu MHz' in line:
                         match = re.search(r':\s*([0-9.]+)', line)
@@ -353,7 +353,7 @@ class SystemService:
             log.debug("cpu_freq fallback failed: %s", e)
         return None
 
-    def _fallback_mem_temp(self) -> Optional[float]:
+    def _fallback_mem_temp(self) -> float | None:
         """Memory temp via lm_sensors subprocess."""
         try:
             result = subprocess.run(
@@ -377,7 +377,7 @@ class SystemService:
             log.debug("mem_temp fallback failed: %s", e)
         return None
 
-    def _fallback_mem_clock(self) -> Optional[float]:
+    def _fallback_mem_clock(self) -> float | None:
         """Memory clock via dmidecode / lshw / EDAC.  Cached after first call."""
         if self._mem_clock_cache is not _SENTINEL:
             return self._mem_clock_cache  # type: ignore[return-value]
@@ -386,7 +386,7 @@ class SystemService:
         return value
 
     @staticmethod
-    def _probe_mem_clock(privileged_cmd_fn: Any = None) -> Optional[float]:
+    def _probe_mem_clock(privileged_cmd_fn: Any = None) -> float | None:
         """Actually probe memory clock (called once, result cached)."""
         if privileged_cmd_fn is None:
             # Fallback: build command list directly (no sudo wrapper)
@@ -442,7 +442,7 @@ class SystemService:
         return None
 
     @staticmethod
-    def _fallback_disk_temp() -> Optional[float]:
+    def _fallback_disk_temp() -> float | None:
         """Disk temperature via smartctl."""
         try:
             result = subprocess.run(
@@ -476,7 +476,7 @@ def set_instance(svc: SystemService) -> None:
     with injected dependencies.  Replaces the old ``_get_instance()`` which
     violated hexagonal architecture by importing from adapters.
     """
-    global _instance  # noqa: PLW0603
+    global _instance
     _instance = svc
     svc.start_polling()
 
@@ -511,7 +511,7 @@ def get_cached_metrics(max_age: float = 0.5) -> HardwareMetrics:
     per ``max_age`` window — callers that fire within the same tick share
     the same result.
     """
-    global _cached_metrics, _cached_metrics_time  # noqa: PLW0603
+    global _cached_metrics, _cached_metrics_time
     now = time.monotonic()
     if _cached_metrics is None or (now - _cached_metrics_time) > max_age:
         _cached_metrics = get_all_metrics()

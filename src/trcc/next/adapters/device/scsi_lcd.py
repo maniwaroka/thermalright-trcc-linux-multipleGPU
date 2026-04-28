@@ -11,7 +11,6 @@ import binascii
 import logging
 import struct
 import time
-from typing import List, Tuple
 
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
@@ -152,13 +151,13 @@ class ScsiLcd(Device[ScsiTransport]):
         return full[:16]
 
     @staticmethod
-    def _frame_chunks(width: int, height: int) -> List[Tuple[int, int]]:
+    def _frame_chunks(width: int, height: int) -> list[tuple[int, int]]:
         """Compute (cmd, size) pairs for chunked frame send."""
         pixels = width * height
         chunk_size = (_CHUNK_SIZE_SMALL if pixels <= _SMALL_DISPLAY_PIXELS
                       else _CHUNK_SIZE_LARGE)
         total = pixels * 2  # RGB565 = 2 bytes per pixel
-        chunks: List[Tuple[int, int]] = []
+        chunks: list[tuple[int, int]] = []
         offset = 0
         idx = 0
         while offset < total:

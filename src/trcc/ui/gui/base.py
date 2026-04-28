@@ -13,8 +13,8 @@ Provides common functionality:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPixmap
@@ -68,7 +68,7 @@ class BasePanel(QFrame):
         # Resource directory (legacy)
         self._resource_dir = None
         # Periodic update timer
-        self._update_timer: Optional[QTimer] = None
+        self._update_timer: QTimer | None = None
 
     def __init_subclass__(cls, **kwargs):
         """Enforce that concrete subclasses implement _setup_ui()."""
@@ -110,7 +110,7 @@ class BasePanel(QFrame):
 
     # === Concrete helpers ===
 
-    def _apply_background(self, asset_name: str) -> Optional[QPixmap]:
+    def _apply_background(self, asset_name: str) -> QPixmap | None:
         """Apply a background image using set_background_pixmap."""
         return set_background_pixmap(self, asset_name)
 
@@ -309,7 +309,7 @@ class _BgPaintFilter(QObject):
         super().__init__(parent)
         self._pixmap = pixmap
 
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.Paint:
             painter = QPainter(obj)  # type: ignore[arg-type]
             painter.drawPixmap(0, 0, self._pixmap)
@@ -645,7 +645,6 @@ class BaseThemeBrowser(BasePanel):
 
     def _create_filter_buttons(self):
         """Override to add filter/category buttons above the grid."""
-        pass
 
     def _load_filter_assets(self):
         """Load shared filter button pixmaps (normal + active)."""

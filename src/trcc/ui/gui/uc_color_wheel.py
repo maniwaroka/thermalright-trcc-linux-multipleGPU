@@ -18,7 +18,6 @@ Original color ring by Lcstyle (GitHub PR #9).
 
 import logging
 import math
-from typing import Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -70,7 +69,7 @@ class UCColorWheel(QWidget):
 
         # Load C# color wheel asset
         path = Assets.get('color_wheel_knob')
-        self._ring_pixmap: Optional[QPixmap] = QPixmap(path) if path else None
+        self._ring_pixmap: QPixmap | None = QPixmap(path) if path else None
 
         # Center on/off button (C# UCColorA.buttonDSHX — color_wheel_toggle_off/color_wheel_toggle_on)
         self._onoff_btn = QPushButton(self)

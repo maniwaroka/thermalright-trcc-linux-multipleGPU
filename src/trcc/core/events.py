@@ -20,8 +20,9 @@ Event names are strings by convention — keep them flat and stable:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from threading import Lock
-from typing import Any, Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 

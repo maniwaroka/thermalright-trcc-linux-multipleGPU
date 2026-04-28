@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Optional, Tuple
 
 from .sensor import HARDWARE_METRICS
 
@@ -27,7 +26,7 @@ class ElementConfig:
     """Element position and font config."""
     x: int
     y: int
-    font: Optional[FontConfig] = None
+    font: FontConfig | None = None
     enabled: bool = True
 
 
@@ -117,12 +116,12 @@ class OverlayElement:
     enabled: bool = True
     x: int = 10
     y: int = 10
-    color: Tuple[int, int, int] = (255, 255, 255)
+    color: tuple[int, int, int] = (255, 255, 255)
     font_size: int = 16
     font_name: str = "Microsoft YaHei"
 
     # Hardware element specific
-    metric_key: Optional[str] = None  # e.g., 'cpu_temp', 'gpu_usage'
+    metric_key: str | None = None  # e.g., 'cpu_temp', 'gpu_usage'
     format_string: str = "{value}"    # e.g., "CPU: {value}°C"
 
     # Text element specific
@@ -328,9 +327,18 @@ ACTION_ICON_IMAGES: dict[str, str] = {
 
 
 __all__ = [
-    'FontConfig', 'ElementConfig', 'OverlayMode', 'DisplayElement',
-    'OverlayElementType', 'OverlayElement', 'OverlayElementConfig',
-    'VALID_OVERLAY_KEYS', 'parse_metric_spec', 'build_overlay_config',
-    'OVERLAY_MODE_IMAGES', 'OVERLAY_SELECT_IMAGE',
-    'DATE_FORMAT_IMAGES', 'ACTION_ICON_IMAGES',
+    'ACTION_ICON_IMAGES',
+    'DATE_FORMAT_IMAGES',
+    'OVERLAY_MODE_IMAGES',
+    'OVERLAY_SELECT_IMAGE',
+    'VALID_OVERLAY_KEYS',
+    'DisplayElement',
+    'ElementConfig',
+    'FontConfig',
+    'OverlayElement',
+    'OverlayElementConfig',
+    'OverlayElementType',
+    'OverlayMode',
+    'build_overlay_config',
+    'parse_metric_spec',
 ]

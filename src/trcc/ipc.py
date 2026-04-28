@@ -355,7 +355,7 @@ class IPCTransport(Transport):
             if not (data := b"".join(chunks).decode().strip()):
                 return {"success": False, "error": "Empty response from daemon"}
             return json.loads(data)
-        except socket.timeout:
+        except TimeoutError:
             return {"success": False, "error": "IPC timeout -- daemon may be busy"}
         except OSError as e:
             return {"success": False, "error": f"IPC connection failed: {e}"}

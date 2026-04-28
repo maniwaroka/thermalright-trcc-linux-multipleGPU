@@ -145,7 +145,7 @@ class Orientation:
         }
 
     @classmethod
-    def from_dict(cls, width: int, height: int, dirs: dict) -> 'Orientation | None':
+    def from_dict(cls, width: int, height: int, dirs: dict) -> Orientation | None:
         """Restore from stored config. Returns None if malformed."""
         if not isinstance(dirs, dict):
             return None

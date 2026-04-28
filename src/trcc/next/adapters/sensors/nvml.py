@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import List, Optional
 
 from ...core.ports import GpuSource
 
@@ -50,11 +49,11 @@ def _ensure_init() -> bool:
             return False
 
 
-def discover_nvidia_gpus() -> List[GpuSource]:
+def discover_nvidia_gpus() -> list[GpuSource]:
     """Return one NvidiaGpu per card NVML sees.  Empty if no NVIDIA / no driver."""
     if not _ensure_init() or pynvml is None:
         return []
-    gpus: List[GpuSource] = []
+    gpus: list[GpuSource] = []
     try:
         count = pynvml.nvmlDeviceGetCount()
     except Exception:
@@ -76,7 +75,7 @@ class NvidiaGpu(GpuSource):
     def __init__(self, index: int, handle: object) -> None:
         self._index = index
         self._handle = handle
-        self._name_cache: Optional[str] = None
+        self._name_cache: str | None = None
 
     @property
     def key(self) -> str:
@@ -99,7 +98,7 @@ class NvidiaGpu(GpuSource):
     def is_discrete(self) -> bool:
         return True
 
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         if pynvml is None:
             return None
         try:
@@ -108,7 +107,7 @@ class NvidiaGpu(GpuSource):
         except Exception:
             return None
 
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         if pynvml is None:
             return None
         try:
@@ -116,7 +115,7 @@ class NvidiaGpu(GpuSource):
         except Exception:
             return None
 
-    def clock(self) -> Optional[float]:
+    def clock(self) -> float | None:
         if pynvml is None:
             return None
         try:
@@ -125,7 +124,7 @@ class NvidiaGpu(GpuSource):
         except Exception:
             return None
 
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         if pynvml is None:
             return None
         try:
@@ -133,7 +132,7 @@ class NvidiaGpu(GpuSource):
         except Exception:
             return None
 
-    def fan(self) -> Optional[float]:
+    def fan(self) -> float | None:
         if pynvml is None:
             return None
         try:
@@ -141,7 +140,7 @@ class NvidiaGpu(GpuSource):
         except Exception:
             return None
 
-    def vram_used(self) -> Optional[float]:
+    def vram_used(self) -> float | None:
         if pynvml is None:
             return None
         try:
@@ -149,7 +148,7 @@ class NvidiaGpu(GpuSource):
         except Exception:
             return None
 
-    def vram_total(self) -> Optional[float]:
+    def vram_total(self) -> float | None:
         if pynvml is None:
             return None
         try:

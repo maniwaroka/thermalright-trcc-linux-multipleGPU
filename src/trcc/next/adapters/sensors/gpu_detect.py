@@ -17,7 +17,6 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Set
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ _VENDOR_IDS = {
 }
 
 
-def detect_gpu_vendors() -> Set[str]:
+def detect_gpu_vendors() -> set[str]:
     """Scan PCI sysfs for display controllers.  Returns {'nvidia', 'amd', 'intel', 'apple'} subset.
 
     Linux-only detection path via `/sys/bus/pci/devices`.  Returns an
@@ -44,7 +43,7 @@ def detect_gpu_vendors() -> Set[str]:
     if not pci_base.exists():
         return set()
 
-    found: Set[str] = set()
+    found: set[str] = set()
     for dev in pci_base.iterdir():
         try:
             klass_raw = (dev / "class").read_text().strip()
@@ -69,7 +68,7 @@ _VENDOR_EXTRAS = {
 }
 
 
-def install_matching_gpu_extras(vendors: Set[str],
+def install_matching_gpu_extras(vendors: set[str],
                                 dry_run: bool = False) -> int:
     """pip-install the Python libs matching detected GPU vendors.
 

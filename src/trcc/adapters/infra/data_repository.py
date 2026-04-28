@@ -20,13 +20,13 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 from ...core.models import ThemeDir  # noqa: F401 — re-export for back-compat
 from ...core.paths import (
     _TRCC_PKG,
-    ASSETS_DIR,  # noqa: F401 — re-export (package resource dir)
-    RESOURCES_DIR,  # noqa: F401 — re-export (package resource dir)
+    ASSETS_DIR,
+    RESOURCES_DIR,
     USER_CONFIG_DIR,  # noqa: F401 — re-export (universal config dir)
     _has_any_content,
     has_themes,
@@ -60,16 +60,16 @@ class SysUtils:
     )
 
     @staticmethod
-    def read_sysfs(path: str) -> Optional[str]:
+    def read_sysfs(path: str) -> str | None:
         """Safely read a sysfs/proc file, return stripped content or None."""
         try:
-            with open(path, 'r') as f:
+            with open(path) as f:
                 return f.read().strip()
         except Exception:
             return None
 
     @staticmethod
-    def find_scsi_devices() -> List[str]:
+    def find_scsi_devices() -> list[str]:
         """List available /dev/sg* devices by scanning sysfs dynamically."""
         sysfs = '/sys/class/scsi_generic'
         if not os.path.isdir(sysfs):
@@ -77,7 +77,7 @@ class SysUtils:
         return [e for e in sorted(os.listdir(sysfs)) if e.startswith('sg')]
 
     @staticmethod
-    def find_scsi_block_devices() -> List[str]:
+    def find_scsi_block_devices() -> list[str]:
         """List available /dev/sd* block devices by scanning sysfs.
 
         Fallback for systems where the ``sg`` kernel module is not loaded —
@@ -334,7 +334,7 @@ class DataManager:
         return ok
 
     @staticmethod
-    def _fetch_archive(archive_name: str, subdir: str = '') -> Optional[str]:
+    def _fetch_archive(archive_name: str, subdir: str = '') -> str | None:
         """Locate or download a .7z archive.
 
         Args:
@@ -409,7 +409,7 @@ class DataManager:
     def ensure_all(
         width: int,
         height: int,
-        progress_fn: Optional[callable] = None,  # type: ignore[type-arg]
+        progress_fn: callable | None = None,  # type: ignore[type-arg]
     ) -> None:
         """Ensure all archives are extracted for a resolution (idempotent).
 
@@ -514,7 +514,7 @@ class Resources:
     """GUI resource file finding and search path management."""
 
     @staticmethod
-    def find(filename: str, search_paths: Optional[list] = None) -> Optional[str]:
+    def find(filename: str, search_paths: list | None = None) -> str | None:
         """Find a resource file in search paths."""
         if search_paths is None:
             search_paths = RESOURCE_SEARCH_PATHS
@@ -525,7 +525,7 @@ class Resources:
         return None
 
     @staticmethod
-    def build_search_paths(resource_dir: Optional[str] = None) -> list:
+    def build_search_paths(resource_dir: str | None = None) -> list:
         """Build search paths list with optional custom directory first."""
         paths = []
         if resource_dir:
@@ -541,7 +541,7 @@ class Resources:
 _HOME = os.path.expanduser('~')
 FONTS_DIR = os.path.join(ASSETS_DIR, 'fonts')
 
-FONT_SEARCH_DIRS: List[str] = [
+FONT_SEARCH_DIRS: list[str] = [
     FONTS_DIR,                                          # bundled
     os.path.join(_HOME, '.local/share/fonts'),          # XDG user fonts
     os.path.join(_HOME, '.fonts'),                      # legacy user fonts

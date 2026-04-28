@@ -30,4 +30,4 @@ class HardwareComponent:
     attributes: dict = field(default_factory=dict)  # category-specific static data
 
 
-__all__ = ['UsbDeviceEntry', 'HardwareComponent']
+__all__ = ['HardwareComponent', 'UsbDeviceEntry']

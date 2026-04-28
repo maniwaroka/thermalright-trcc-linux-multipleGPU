@@ -8,7 +8,6 @@ DeviceProtocolFactory.create_usb_transport).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from trcc.core.models import DEVICE_TYPE_NAMES, HandshakeResult, UsbAddress
 
@@ -27,13 +26,13 @@ class HidProtocol(UsbProtocol):
 
     def __init__(
         self, vid: int, pid: int, device_type: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ):
         super().__init__(vid, pid, addr=addr)
         self._device_type = device_type
-        self._handler: Optional[HidDevice] = None
+        self._handler: HidDevice | None = None
 
-    def _build_handler(self) -> Optional[HidDevice]:
+    def _build_handler(self) -> HidDevice | None:
         """Instantiate the Type 2 or Type 3 device handler."""
         assert self._transport is not None
         if self._device_type == 2:
@@ -43,7 +42,7 @@ class HidProtocol(UsbProtocol):
         log.warning("Unknown HID device type: %d", self._device_type)
         return None
 
-    def _do_handshake(self) -> Optional[HandshakeResult]:
+    def _do_handshake(self) -> HandshakeResult | None:
         """Open HID transport and perform type-specific handshake."""
         self._ensure_transport()
         self._handler = self._build_handler()

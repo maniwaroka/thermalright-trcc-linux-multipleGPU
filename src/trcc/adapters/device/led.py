@@ -17,7 +17,6 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from trcc.core.color import ColorEngine  # noqa: F401 — re-export
 from trcc.core.models import (
@@ -147,8 +146,8 @@ class LedPacketBuilder:
 
     @staticmethod
     def build_led_packet(
-        led_colors: List[Tuple[int, int, int]],
-        is_on: Optional[List[bool]] = None,
+        led_colors: list[tuple[int, int, int]],
+        is_on: list[bool] | None = None,
         global_on: bool = True,
         brightness: int = 100,
     ) -> bytes:
@@ -220,7 +219,7 @@ class LedHidSender(LedDevice):
             RuntimeError: If handshake fails after all retries.
         """
         init_pkt = LedPacketBuilder.build_init_packet()
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
 
         for attempt in range(1, HANDSHAKE_MAX_RETRIES + 1):
             try:
@@ -340,7 +339,6 @@ class LedHidSender(LedDevice):
 
     def close(self) -> None:
         """Release resources (transport is managed externally)."""
-        pass
 
 
 # =========================================================================
@@ -349,8 +347,8 @@ class LedHidSender(LedDevice):
 
 def send_led_colors(
     transport: UsbTransport,
-    led_colors: List[Tuple[int, int, int]],
-    is_on: Optional[List[bool]] = None,
+    led_colors: list[tuple[int, int, int]],
+    is_on: list[bool] | None = None,
     global_on: bool = True,
     brightness: int = 100,
 ) -> bool:
@@ -422,7 +420,7 @@ class _LedProbeCache:
 
     @classmethod
     def load(cls, vid: int, pid: int,
-             usb_path: str = '') -> Optional[LedHandshakeInfo]:
+             usb_path: str = '') -> LedHandshakeInfo | None:
         """Load a cached probe result from disk."""
         import json
         try:
@@ -452,7 +450,7 @@ class _LedProbeCache:
 
 
 def probe_led_model(vid: int = LED_VID, pid: int = LED_PID,
-                    usb_path: str = '') -> Optional[LedHandshakeInfo]:
+                    usb_path: str = '') -> LedHandshakeInfo | None:
     """Probe an LED device to discover its model via HID handshake.
 
     Checks the disk cache first (keyed by VID:PID:bus_path).  Only

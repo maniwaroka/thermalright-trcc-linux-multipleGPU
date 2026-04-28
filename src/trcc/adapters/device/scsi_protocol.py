@@ -8,7 +8,6 @@ DI'd via the Platform-injected `DeviceProtocolFactory._scsi_transport_fn`.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from trcc.core.models import HandshakeResult
 
@@ -43,7 +42,7 @@ class ScsiProtocol(DeviceProtocol):
             self._transport.open()
             self._notify_state_changed("transport_open", True)
 
-    def _do_handshake(self) -> Optional[HandshakeResult]:
+    def _do_handshake(self) -> HandshakeResult | None:
         from .scsi import ScsiDevice
         self._ensure_transport()
         if self._transport is None:

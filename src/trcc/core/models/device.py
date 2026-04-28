@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from .protocol import _DEFAULT_PROFILE, BULK_RGB565_FBLS, DeviceProfile, get_profile
 
@@ -36,7 +36,7 @@ class UsbAddress:
     address: int
 
     @classmethod
-    def parse(cls, usb_path: str) -> 'UsbAddress | None':
+    def parse(cls, usb_path: str) -> UsbAddress | None:
         """Parse 'usb:5:2' into UsbAddress(5, 2). Returns None on bad input."""
         match usb_path.split(':'):
             case ['usb', bus, addr]:
@@ -62,7 +62,7 @@ class DetectedDevice:
     vendor_name: str
     product_name: str
     usb_path: str  # e.g., "usb:5:2"
-    scsi_device: Optional[str] = None  # e.g., "/dev/sg0"
+    scsi_device: str | None = None  # e.g., "/dev/sg0"
     implementation: str = "generic"  # Device-specific implementation
     model: str = "CZTV"  # Device model for button image lookup
     button_image: str = LCD_DEFAULT_BUTTON  # Sidebar image prefix
@@ -75,7 +75,7 @@ class DetectedDevice:
         return self.scsi_device or self.usb_path
 
     @property
-    def addr(self) -> 'UsbAddress | None':
+    def addr(self) -> UsbAddress | None:
         """Physical USB (bus, address) parsed from usb_path. None for SCSI-only devices."""
         return UsbAddress.parse(self.usb_path)
 
@@ -158,23 +158,23 @@ class DeviceInfo:
     """
     name: str
     path: str  # /dev/sgX
-    resolution: Tuple[int, int] = (0, 0)  # Discovered via handshake
+    resolution: tuple[int, int] = (0, 0)  # Discovered via handshake
 
     # Device properties (from detection)
-    vendor: Optional[str] = None
-    product: Optional[str] = None
-    model: Optional[str] = None
+    vendor: str | None = None
+    product: str | None = None
+    model: str | None = None
     vid: int = 0
     pid: int = 0
     device_index: int = 0  # 0-based ordinal among detected devices
-    fbl_code: Optional[int] = None  # Resolution identifier
+    fbl_code: int | None = None  # Resolution identifier
     protocol: str = "scsi"  # "scsi" or "hid"
     device_type: int = 1  # 1=SCSI, 2=HID Type 2 ("H"), 3=HID Type 3 ("ALi")
     implementation: str = "generic"  # e.g. "thermalright_lcd_v1", "hid_type2", "hid_led"
     button_image: str = LCD_DEFAULT_BUTTON    # Sidebar image prefix
     pm_byte: int = 0                # Raw PM from handshake (for button image lookup)
     sub_byte: int = 0               # Raw SUB from handshake (for encode rotation lookup)
-    led_style_id: Optional[int] = None  # LED style from probe (avoids name-based lookup)
+    led_style_id: int | None = None  # LED style from probe (avoids name-based lookup)
     led_style_sub: int = 0              # LED style sub-variant (C# nowLedStyleSub)
 
     # State
@@ -183,7 +183,7 @@ class DeviceInfo:
     rotation: int = 0  # 0, 90, 180, 270
 
     @classmethod
-    def from_dict(cls, d: dict) -> 'DeviceInfo':
+    def from_dict(cls, d: dict) -> DeviceInfo:
         """Create DeviceInfo from a detection dict (find_lcd_devices output)."""
         return cls(
             name=d.get('name', 'LCD'),
@@ -203,7 +203,7 @@ class DeviceInfo:
         )
 
     @classmethod
-    def from_detected(cls, d: 'DetectedDevice', device_index: int = 0) -> 'DeviceInfo':
+    def from_detected(cls, d: DetectedDevice, device_index: int = 0) -> DeviceInfo:
         """Create DeviceInfo from a DetectedDevice."""
         return cls(
             name=f"{d.vendor_name} {d.product_name}",
@@ -226,7 +226,7 @@ class DeviceInfo:
         return f"{self.resolution[0]}x{self.resolution[1]}"
 
     @property
-    def profile(self) -> 'DeviceProfile':
+    def profile(self) -> DeviceProfile:
         """Device profile derived from FBL code."""
         return get_profile(self.fbl_code) if self.fbl_code is not None else _DEFAULT_PROFILE
 
@@ -266,7 +266,7 @@ IMPL_NAMES: dict[str, str] = {
 # Device Button Image Map (from UCDevice.cs ADDUserButton)
 # =============================================================================
 
-_LCD_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
+_LCD_BUTTON_IMAGE: dict[int, dict[int | None, str]] = {
     1:   {0: 'A1GRAND VISION', 1: 'A1GRAND VISION',
           48: 'A1LM22', 49: 'A1LF14', None: 'A1GRAND VISION'},
     3:   {None: 'A1CORE VISION'},
@@ -312,7 +312,7 @@ _LCD_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
     129: {None: 'A1GRAND VISION'},
 }
 
-_LED_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
+_LED_BUTTON_IMAGE: dict[int, dict[int | None, str]] = {
     1:   {None: 'A1FROZEN HORIZON PRO'},
     2:   {None: 'A1FROZEN MAGIC PRO'},
     3:   {None: 'A1AX120 DIGITAL'},
@@ -334,7 +334,7 @@ _LED_BUTTON_IMAGE: dict[int, dict[Optional[int], str]] = {
 }
 
 
-def _resolve_button(table: dict[int, dict[Optional[int], str]],
+def _resolve_button(table: dict[int, dict[int | None, str]],
                      key: int, sub: int) -> str | None:
     match table.get(key):
         case None:
@@ -357,9 +357,18 @@ def get_button_image(key: int, sub: int = 0, *, is_led: bool = False) -> str | N
 
 
 __all__ = [
-    'LCD_DEFAULT_BUTTON', 'LED_DEFAULT_BUTTON',
-    'DeviceEntry', 'DetectedDevice', 'DeviceInfo', 'UsbAddress',
-    'SCSI_DEVICES', 'HID_LCD_DEVICES', 'LED_DEVICES', 'BULK_DEVICES',
-    'LY_DEVICES', 'ALL_DEVICES',
-    'IMPL_NAMES', 'get_button_image',
+    'ALL_DEVICES',
+    'BULK_DEVICES',
+    'HID_LCD_DEVICES',
+    'IMPL_NAMES',
+    'LCD_DEFAULT_BUTTON',
+    'LED_DEFAULT_BUTTON',
+    'LED_DEVICES',
+    'LY_DEVICES',
+    'SCSI_DEVICES',
+    'DetectedDevice',
+    'DeviceEntry',
+    'DeviceInfo',
+    'UsbAddress',
+    'get_button_image',
 ]

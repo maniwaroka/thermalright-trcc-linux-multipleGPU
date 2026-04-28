@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 from ...core.ports import CpuSource, FanSource, GpuSource
 from .psutil_sources import PsutilCpu
@@ -40,14 +39,14 @@ _INTEL_DRIVERS = ("i915", "xe")
 # ── Sysfs I/O helpers ────────────────────────────────────────────────
 
 
-def _read_text(path: Path) -> Optional[str]:
+def _read_text(path: Path) -> str | None:
     try:
         return path.read_text().strip()
     except (OSError, UnicodeDecodeError):
         return None
 
 
-def _read_int(path: Path) -> Optional[int]:
+def _read_int(path: Path) -> int | None:
     s = _read_text(path)
     if s is None:
         return None
@@ -60,7 +59,7 @@ def _read_int(path: Path) -> Optional[int]:
             return None
 
 
-def _read_float(path: Path) -> Optional[float]:
+def _read_float(path: Path) -> float | None:
     s = _read_text(path)
     if s is None:
         return None
@@ -80,26 +79,26 @@ class HwmonDevice:
         self.path = path
         self.driver = _read_text(path / "name") or path.name
 
-    def read_temp(self, idx: int = 1) -> Optional[float]:
+    def read_temp(self, idx: int = 1) -> float | None:
         """tempN_input reports millidegrees C."""
         val = _read_int(self.path / f"temp{idx}_input")
         return val / 1000.0 if val is not None else None
 
-    def read_fan_rpm(self, idx: int = 1) -> Optional[int]:
+    def read_fan_rpm(self, idx: int = 1) -> int | None:
         return _read_int(self.path / f"fan{idx}_input")
 
-    def read_pwm(self, idx: int = 1) -> Optional[float]:
+    def read_pwm(self, idx: int = 1) -> float | None:
         """pwmN reports 0-255 duty cycle; normalize to 0-100."""
         val = _read_int(self.path / f"pwm{idx}")
         return (val / 255.0 * 100.0) if val is not None else None
 
-    def read_power(self, idx: int = 1) -> Optional[float]:
+    def read_power(self, idx: int = 1) -> float | None:
         """powerN_average reports μW; return W."""
         val = _read_int(self.path / f"power{idx}_average")
         return val / 1_000_000.0 if val is not None else None
 
 
-def scan_hwmon_devices() -> List[HwmonDevice]:
+def scan_hwmon_devices() -> list[HwmonDevice]:
     """Walk /sys/class/hwmon and wrap each directory."""
     if not _HWMON_ROOT.exists():
         return []
@@ -113,7 +112,7 @@ class HwmonCpu(CpuSource):
     """CPU with temp from hwmon coretemp/k10temp/zenpower + usage/freq from psutil."""
 
     def __init__(self, psutil_cpu: PsutilCpu,
-                 temp_device: Optional[HwmonDevice]) -> None:
+                 temp_device: HwmonDevice | None) -> None:
         self._psutil = psutil_cpu
         self._temp_device = temp_device
 
@@ -121,23 +120,23 @@ class HwmonCpu(CpuSource):
     def name(self) -> str:
         return self._psutil.name
 
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         if self._temp_device is None:
             return None
         return self._temp_device.read_temp(1)
 
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         return self._psutil.usage()
 
-    def freq(self) -> Optional[float]:
+    def freq(self) -> float | None:
         return self._psutil.freq()
 
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         # Intel RAPL / AMD package power lives outside hwmon; add later.
         return None
 
 
-def find_cpu_temp_device(devices: List[HwmonDevice]) -> Optional[HwmonDevice]:
+def find_cpu_temp_device(devices: list[HwmonDevice]) -> HwmonDevice | None:
     """Pick the first hwmon device whose driver is a known CPU thermal."""
     for dev in devices:
         if dev.driver in _CPU_DRIVERS:
@@ -148,7 +147,7 @@ def find_cpu_temp_device(devices: List[HwmonDevice]) -> Optional[HwmonDevice]:
 # ── AMD + Intel GPUs (hwmon + DRM sysfs composition) ─────────────────
 
 
-def _find_drm_card_for_hwmon(hwmon_path: Path) -> Optional[Path]:
+def _find_drm_card_for_hwmon(hwmon_path: Path) -> Path | None:
     """Walk sysfs to match a hwmon directory to its /sys/class/drm/cardN."""
     # hwmon_path -> ../../device points to the PCI device
     try:
@@ -177,11 +176,11 @@ class AmdGpu(GpuSource):
     """
 
     def __init__(self, index: int, hwmon: HwmonDevice,
-                 drm_card: Optional[Path]) -> None:
+                 drm_card: Path | None) -> None:
         self._index = index
         self._hwmon = hwmon
         self._drm = drm_card
-        self._name_cache: Optional[str] = None
+        self._name_cache: str | None = None
 
     @property
     def key(self) -> str:
@@ -206,25 +205,25 @@ class AmdGpu(GpuSource):
         total = self.vram_total()
         return total is not None and total > 2048.0
 
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         return self._hwmon.read_temp(1)
 
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         if self._drm is None:
             return None
         return _read_float(self._drm / "device" / "gpu_busy_percent")
 
-    def clock(self) -> Optional[float]:
+    def clock(self) -> float | None:
         # amdgpu freq1_input reports Hz in some kernels, MHz in others
         val = _read_int(self._hwmon.path / "freq1_input")
         if val is None:
             return None
         return val / 1_000_000.0 if val > 1_000_000 else float(val)
 
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         return self._hwmon.read_power(1)
 
-    def fan(self) -> Optional[float]:
+    def fan(self) -> float | None:
         rpm = self._hwmon.read_fan_rpm(1)
         if rpm is None:
             # Try PWM duty cycle as a percentage fallback
@@ -232,13 +231,13 @@ class AmdGpu(GpuSource):
         # Approximate %: amdgpu fan1_max isn't always exposed; skip rpm→%
         return None
 
-    def vram_used(self) -> Optional[float]:
+    def vram_used(self) -> float | None:
         if self._drm is None:
             return None
         val = _read_int(self._drm / "device" / "mem_info_vram_used")
         return val / (1024 * 1024) if val is not None else None
 
-    def vram_total(self) -> Optional[float]:
+    def vram_total(self) -> float | None:
         if self._drm is None:
             return None
         val = _read_int(self._drm / "device" / "mem_info_vram_total")
@@ -252,8 +251,8 @@ class IntelGpu(GpuSource):
     follows the driver name — xe = discrete Arc, i915 = iGPU.
     """
 
-    def __init__(self, index: int, hwmon: Optional[HwmonDevice],
-                 drm_card: Optional[Path], driver: str) -> None:
+    def __init__(self, index: int, hwmon: HwmonDevice | None,
+                 drm_card: Path | None, driver: str) -> None:
         self._index = index
         self._hwmon = hwmon
         self._drm = drm_card
@@ -274,45 +273,45 @@ class IntelGpu(GpuSource):
     def is_discrete(self) -> bool:
         return self._driver == "xe"
 
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         return self._hwmon.read_temp(1) if self._hwmon is not None else None
 
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         # i915 exposes gt busy as `gt_cur_freq_mhz` / max ratio — approximate;
         # proper util requires `intel_gpu_top` which isn't sysfs.  Skip for now.
         return None
 
-    def clock(self) -> Optional[float]:
+    def clock(self) -> float | None:
         if self._drm is None:
             return None
         return _read_float(self._drm / "gt_cur_freq_mhz")
 
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         return self._hwmon.read_power(1) if self._hwmon is not None else None
 
-    def fan(self) -> Optional[float]:
+    def fan(self) -> float | None:
         # Intel iGPUs don't have their own fan.  Arc discrete may.
         return self._hwmon.read_pwm(1) if self._hwmon is not None else None
 
-    def vram_used(self) -> Optional[float]:
+    def vram_used(self) -> float | None:
         return None  # Intel GPUs don't expose VRAM accounting through sysfs
 
-    def vram_total(self) -> Optional[float]:
+    def vram_total(self) -> float | None:
         return None
 
 
-def discover_amd_gpus(devices: List[HwmonDevice]) -> List[GpuSource]:
+def discover_amd_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
     """Find amdgpu hwmon entries, link them to /sys/class/drm cards."""
-    gpus: List[GpuSource] = []
+    gpus: list[GpuSource] = []
     for i, dev in enumerate(d for d in devices if d.driver == _AMD_DRIVER):
         gpus.append(AmdGpu(i, dev, _find_drm_card_for_hwmon(dev.path)))
     return gpus
 
 
-def discover_intel_gpus(devices: List[HwmonDevice]) -> List[GpuSource]:
+def discover_intel_gpus(devices: list[HwmonDevice]) -> list[GpuSource]:
     """Find i915/xe hwmon entries.  iGPUs often have no hwmon entry at all —
     they're still listed via DRM-only probing."""
-    gpus: List[GpuSource] = []
+    gpus: list[GpuSource] = []
     # hwmon-backed entries first (Arc discrete + newer i915)
     seen_drm: set[Path] = set()
     for i, dev in enumerate(d for d in devices if d.driver in _INTEL_DRIVERS):
@@ -338,7 +337,7 @@ def discover_intel_gpus(devices: List[HwmonDevice]) -> List[GpuSource]:
 class HwmonFan(FanSource):
     """One fan input on a hwmon device."""
 
-    def __init__(self, hwmon: HwmonDevice, idx: int, label: Optional[str]) -> None:
+    def __init__(self, hwmon: HwmonDevice, idx: int, label: str | None) -> None:
         self._hwmon = hwmon
         self._idx = idx
         self._label = label or f"{hwmon.driver} fan{idx}"
@@ -351,15 +350,15 @@ class HwmonFan(FanSource):
     def name(self) -> str:
         return self._label
 
-    def rpm(self) -> Optional[int]:
+    def rpm(self) -> int | None:
         return self._hwmon.read_fan_rpm(self._idx)
 
-    def percent(self) -> Optional[float]:
+    def percent(self) -> float | None:
         return self._hwmon.read_pwm(self._idx)
 
 
-def discover_fans(devices: List[HwmonDevice]) -> List[FanSource]:
-    fans: List[FanSource] = []
+def discover_fans(devices: list[HwmonDevice]) -> list[FanSource]:
+    fans: list[FanSource] = []
     for dev in devices:
         for fan_input in sorted(dev.path.glob("fan*_input")):
             try:

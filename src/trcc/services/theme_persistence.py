@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any
 
 from .overlay import OverlayService
 from .theme import ThemeService
@@ -32,7 +32,7 @@ class ThemePersistence:
         mask_source_dir: Path | None,
         media_source_path: Any, media_is_playing: bool,
         current_theme_path: Path | None,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Save current config as a custom theme."""
         if not current_image:
             return False, "No image to save"
@@ -68,7 +68,7 @@ class ThemePersistence:
         export_path: Path,
         current_theme_path: Path | None,
         lcd_width: int, lcd_height: int,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Export current theme as .tr or JSON file."""
         if not current_theme_path:
             return False, "No theme loaded"
@@ -94,7 +94,7 @@ class ThemePersistence:
         self,
         import_path: Path, data_dir: Path,
         lcd_size: tuple[int, int],
-    ) -> Tuple[bool, Any]:
+    ) -> tuple[bool, Any]:
         """Import theme from .tr or JSON file.
 
         Returns (success, result) where result is either a ThemeInfo to load

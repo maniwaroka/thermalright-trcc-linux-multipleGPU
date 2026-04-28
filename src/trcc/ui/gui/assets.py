@@ -27,7 +27,7 @@ _ASSETS_DIR = _PKG_ASSETS_DIR
 
 def set_assets_dir(path: Path) -> None:
     """Set the resolved asset directory (called by platform adapter)."""
-    global _ASSETS_DIR  # noqa: PLW0603
+    global _ASSETS_DIR
     _ASSETS_DIR = path
     _resolve.cache_clear()
     log.debug("Assets dir set to %s", path)

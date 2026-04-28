@@ -185,7 +185,7 @@ class SystemInfoPanel(QWidget):
 
     def update_binding(self, row: int, binding: SensorBinding):
         """Update a row's sensor binding after picker selection."""
-        pass  # Row labels are baked into the PNG backgrounds
+        # Row labels are baked into the PNG backgrounds
 
     def set_selected(self, selected: bool):
         """Set selection state (white border when selected)."""

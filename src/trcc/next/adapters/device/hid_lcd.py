@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import struct
 import time
-from typing import Optional
 
 from ...core.errors import HandshakeError, UnsupportedOperationError
 from ...core.models import HandshakeResult, ProductInfo
@@ -100,7 +99,7 @@ class HidLcd(Device[BulkTransport]):
         init_pkt = self._build_init_packet()
         response_size = self._response_size()
 
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         for attempt in range(1, _HANDSHAKE_MAX_RETRIES + 1):
             try:
                 time.sleep(_DELAY_PRE_INIT_S)

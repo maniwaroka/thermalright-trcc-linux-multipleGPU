@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 
@@ -138,11 +138,11 @@ def _real_user_home() -> Path:
 def _privileged_cmd(binary: str, args: list[str]) -> list[str]:
     """Build command with pkexec elevation when polkit policy is installed."""
     if hasattr(os, 'geteuid') and os.geteuid() == 0:
-        return [binary] + args
+        return [binary, *args]
     full_path = shutil.which(binary)
     if full_path and os.path.isfile(_POLKIT_POLICY) and shutil.which('pkexec'):
-        return ['pkexec', full_path] + args
-    return [binary] + args
+        return ['pkexec', full_path, *args]
+    return [binary, *args]
 
 
 def _detect_gpu_vendors() -> list[str]:
@@ -159,7 +159,7 @@ def _detect_gpu_vendors() -> list[str]:
             continue
         try:
             pci_class = class_path.read_text().strip()
-            if not (pci_class.startswith('0x0300') or pci_class.startswith('0x0302')):
+            if not (pci_class.startswith(('0x0300', '0x0302'))):
                 continue
             vendor = vendor_path.read_text().strip().removeprefix('0x')
             if vendor not in vendors:
@@ -189,7 +189,7 @@ def _autostart_desktop_entry() -> str:
     )
 
 
-def _get_smart_health(dev_name: str) -> Optional[str]:
+def _get_smart_health(dev_name: str) -> str | None:
     """Get SMART health status via smartctl."""
     try:
         result = subprocess.run(
@@ -550,7 +550,7 @@ def setup_polkit() -> int:
     if invoking_user:
         restore_paths.append(str(rules_dst))
     if shutil.which('restorecon'):
-        subprocess.run(['restorecon'] + restore_paths, check=False)
+        subprocess.run(['restorecon', *restore_paths], check=False)
     print(f"Installed {policy_dst}")
     print(f"User '{invoking_user}' can now run dmidecode/smartctl without a password.")
     return 0
@@ -931,7 +931,7 @@ class SensorEnumerator(SensorEnumeratorBase):
                         readings[sid] = power_w
             self._rapl_prev[sid] = (energy_uj, now)
 
-    def read_one(self, sensor_id: str) -> Optional[float]:
+    def read_one(self, sensor_id: str) -> float | None:
         if sensor_id in self._hwmon_paths:
             if (val := SysUtils.read_sysfs(self._hwmon_paths[sensor_id])) is not None:
                 try:
@@ -1156,7 +1156,7 @@ class LinuxPlatform(Platform):
         from trcc.adapters.device.linux.detector import linux_scsi_resolver
         return DeviceDetector.make_detect_fn(scsi_resolver=linux_scsi_resolver)
 
-    def _make_sensor_enumerator(self) -> 'SensorEnumerator':
+    def _make_sensor_enumerator(self) -> SensorEnumerator:
         return SensorEnumerator()
 
     # ── Transport creation ────────────────────────────────────
@@ -1218,7 +1218,7 @@ class LinuxPlatform(Platform):
 
     # ── Administration ────────────────────────────────────────
 
-    def get_pkg_manager(self) -> Optional[str]:
+    def get_pkg_manager(self) -> str | None:
         from trcc.adapters.infra.doctor import _detect_pkg_manager
         return _detect_pkg_manager()
 
@@ -1277,7 +1277,7 @@ class LinuxPlatform(Platform):
         from trcc.adapters.infra.doctor import _read_os_release
         return _read_os_release().get('PRETTY_NAME', 'Unknown Linux')
 
-    def no_devices_hint(self) -> Optional[str]:
+    def no_devices_hint(self) -> str | None:
         return None
 
     def doctor_config(self) -> DoctorPlatformConfig:
@@ -1376,8 +1376,7 @@ class LinuxPlatform(Platform):
                 if _confirm(f"Install? -> {gpu.install_cmd}", auto_yes):
                     print(f"    -> {gpu.install_cmd}")
                     result = subprocess.run(
-                        [sys.executable, "-m", "pip", "install"]
-                        + gpu.install_cmd.split()[-1:],
+                        [sys.executable, "-m", "pip", "install", *gpu.install_cmd.split()[-1:]],
                     )
                     if result.returncode == 0:
                         actions.append(f"Installed: {gpu.install_cmd}")

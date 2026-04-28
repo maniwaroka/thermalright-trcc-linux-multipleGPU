@@ -7,7 +7,7 @@ Holds one Platform (the OS), one dict of live Devices keyed by their
 from __future__ import annotations
 
 import logging
-from typing import Dict, Type, TypeVar
+from typing import TypeVar
 
 from .adapters.device.bulk_lcd import BulkLcd
 from .adapters.device.hid_lcd import HidLcd
@@ -50,7 +50,7 @@ class App:
     """
 
     # Wire → Device subclass.  New wire protocol = new entry.
-    _DEVICE_CLASSES: Dict[Wire, Type[Device]] = {
+    _DEVICE_CLASSES: dict[Wire, type[Device]] = {
         Wire.SCSI: ScsiLcd,
         Wire.HID: HidLcd,
         Wire.BULK: BulkLcd,
@@ -61,14 +61,14 @@ class App:
     def __init__(self, platform: Platform,
                  renderer: Renderer | None = None) -> None:
         self.platform = platform
-        self.devices: Dict[str, Device] = {}
+        self.devices: dict[str, Device] = {}
         self.events = EventBus()
         self.settings = Settings(platform.paths())
         self.themes = ThemeService()
         self.media = MediaService()
         # Currently-loaded Theme per device — set by LoadTheme, read by
         # RenderAndSend ticker, cleared on DisconnectDevice.
-        self.active_themes: Dict[str, Theme] = {}
+        self.active_themes: dict[str, Theme] = {}
         self._renderer = renderer
         # DisplayService is lazy: needs a Renderer.  None until one is set.
         self._display: DisplayService | None = None

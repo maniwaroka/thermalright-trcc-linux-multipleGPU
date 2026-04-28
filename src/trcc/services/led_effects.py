@@ -5,8 +5,6 @@ timers, returns per-segment color lists. No I/O, no protocol, no config.
 """
 from __future__ import annotations
 
-from typing import List, Tuple
-
 from ..core.models import HardwareMetrics, LEDMode, LEDState
 
 
@@ -34,10 +32,10 @@ class LEDEffectEngine:
     # ── Main dispatch ────────────────────────────────────────────────
 
     def _tick_single_mode(
-        self, mode: LEDMode, color: Tuple[int, int, int],
+        self, mode: LEDMode, color: tuple[int, int, int],
         seg_count: int,
         metric_source: tuple[str, str] | None = None,
-    ) -> List[Tuple[int, int, int]]:
+    ) -> list[tuple[int, int, int]]:
         """Compute colors for a single mode across seg_count segments.
 
         If the device has a decoration ring (state.ring_count > 0), ring
@@ -73,7 +71,7 @@ class LEDEffectEngine:
 
         return colors
 
-    def _tick_test_mode(self) -> List[Tuple[int, int, int]]:
+    def _tick_test_mode(self) -> list[tuple[int, int, int]]:
         """C# checkBox1 test mode: cycle 4 colors every 10 ticks at min brightness."""
         st = self._state
         st.test_timer += 1
@@ -86,7 +84,7 @@ class LEDEffectEngine:
     def _tick_multi_zone(
         self, zone_map: tuple[tuple[int, ...], ...],
         metric_sources: tuple[tuple[str, str], ...] | None = None,
-    ) -> List[Tuple[int, int, int]]:
+    ) -> list[tuple[int, int, int]]:
         """Compute per-zone colors using physical LED index mapping.
 
         Each zone's LEDs are placed at their mapped indices.
@@ -96,7 +94,7 @@ class LEDEffectEngine:
         st = self._state
         zones = st.zones
         total = st.led_count
-        colors: List[Tuple[int, int, int]] = [(0, 0, 0)] * total
+        colors: list[tuple[int, int, int]] = [(0, 0, 0)] * total
         for zi, led_indices in enumerate(zone_map):
             if zi >= len(zones):
                 break
@@ -127,8 +125,8 @@ class LEDEffectEngine:
 
     # ── Effect algorithms (ported from FormLED.cs) ──────────────────
 
-    def _tick_breathing_for(self, color: Tuple[int, int, int],
-                            seg_count: int) -> List[Tuple[int, int, int]]:
+    def _tick_breathing_for(self, color: tuple[int, int, int],
+                            seg_count: int) -> list[tuple[int, int, int]]:
         """DSHX_Timer: pulse brightness, period=66 ticks."""
         timer = self._state.rgb_timer
         period = 66
@@ -148,7 +146,7 @@ class LEDEffectEngine:
 
         return [(anim_r, anim_g, anim_b)] * seg_count
 
-    def _tick_colorful_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
+    def _tick_colorful_for(self, seg_count: int) -> list[tuple[int, int, int]]:
         """QCJB_Timer: 6-phase color gradient cycle with per-segment offset, period=168 ticks.
 
         Each segment gets a different position in the 168-tick cycle, spread
@@ -159,7 +157,7 @@ class LEDEffectEngine:
         phase_len = 28
         seg_offset = period // max(seg_count, 1)
 
-        colors: List[Tuple[int, int, int]] = []
+        colors: list[tuple[int, int, int]] = []
         for i in range(seg_count):
             t_i = (timer + i * seg_offset) % period
             phase = t_i // phase_len
@@ -181,7 +179,7 @@ class LEDEffectEngine:
         self._state.rgb_timer = (timer + 1) % period
         return colors
 
-    def _tick_rainbow_for(self, seg_count: int) -> List[Tuple[int, int, int]]:
+    def _tick_rainbow_for(self, seg_count: int) -> list[tuple[int, int, int]]:
         """CHMS_Timer: 768-entry RGB table with per-segment offset."""
         from ..core.color import ColorEngine
         table = ColorEngine.get_table()
@@ -197,7 +195,7 @@ class LEDEffectEngine:
 
         return colors
 
-    def _tick_ring_rainbow(self, ring_count: int) -> List[Tuple[int, int, int]]:
+    def _tick_ring_rainbow(self, ring_count: int) -> list[tuple[int, int, int]]:
         """C# CHMS_Timer5 for ledVal5_1: per-LED rainbow with reversed index.
 
         Each ring LED gets a phase offset based on position, and the ring
@@ -211,7 +209,7 @@ class LEDEffectEngine:
         # the increment to use the same timer value as the segments.
         timer = (self._state.rgb_timer - 4) % table_len
 
-        colors: List[Tuple[int, int, int]] = [(0, 0, 0)] * ring_count
+        colors: list[tuple[int, int, int]] = [(0, 0, 0)] * ring_count
         for j in range(ring_count):
             idx = (timer + j * table_len // ring_count) % table_len
             colors[ring_count - j - 1] = table[idx]
@@ -220,7 +218,7 @@ class LEDEffectEngine:
     def _tick_temp_linked_for(
         self, seg_count: int,
         metric_source: tuple[str, str] | None = None,
-    ) -> List[Tuple[int, int, int]]:
+    ) -> list[tuple[int, int, int]]:
         """WDLD_Timer: color from temperature thresholds."""
         from ..core.color import ColorEngine
 
@@ -232,7 +230,7 @@ class LEDEffectEngine:
     def _tick_load_linked_for(
         self, seg_count: int,
         metric_source: tuple[str, str] | None = None,
-    ) -> List[Tuple[int, int, int]]:
+    ) -> list[tuple[int, int, int]]:
         """FZLD_Timer: color from CPU/GPU load thresholds."""
         from ..core.color import ColorEngine
 

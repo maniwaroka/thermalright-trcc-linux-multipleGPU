@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -25,7 +24,7 @@ from ....core.commands import LoadTheme, SetBrightness, SetOrientation
 class DisplayPanel(QWidget):
     """Per-device display controls (orientation / brightness / theme)."""
 
-    def __init__(self, app: App, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, app: App, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._app = app
 

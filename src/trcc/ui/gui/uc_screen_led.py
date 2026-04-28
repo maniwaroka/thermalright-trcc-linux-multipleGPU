@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
@@ -456,9 +455,9 @@ class UCScreenLED(QWidget):
         self._style_id = 1
         self._positions = _POS_1
         self._led_count = len(_POS_1)
-        self._colors: List[Tuple[int, int, int]] = [(0, 0, 0)] * self._led_count
-        self._is_on: List[bool] = [True] * self._led_count
-        self._overlay: Optional[QPixmap] = None
+        self._colors: list[tuple[int, int, int]] = [(0, 0, 0)] * self._led_count
+        self._is_on: list[bool] = [True] * self._led_count
+        self._overlay: QPixmap | None = None
         self._led_mode = 0  # 4 = display mode (draws decoration images)
         self._deco_pixmaps: dict[str, QPixmap] = {}
 
@@ -475,7 +474,7 @@ class UCScreenLED(QWidget):
         self._load_decorations(style_id)
         self.update()
 
-    def set_overlay(self, pixmap: Optional[QPixmap]) -> None:
+    def set_overlay(self, pixmap: QPixmap | None) -> None:
         """Set device overlay image (drawn LAST as foreground mask)."""
         self._overlay = pixmap
         self.update()
@@ -483,7 +482,7 @@ class UCScreenLED(QWidget):
     # Keep backward compat for callers still using old name
     set_background = set_overlay
 
-    def set_colors(self, colors: List[Tuple[int, int, int]]) -> None:
+    def set_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED segment colors from controller tick."""
         self._colors = list(colors[:self._led_count])
         while len(self._colors) < self._led_count:

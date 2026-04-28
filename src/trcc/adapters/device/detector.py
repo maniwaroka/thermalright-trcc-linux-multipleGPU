@@ -15,17 +15,18 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from trcc.core.models import (
     ALL_DEVICES,
-    BULK_DEVICES,  # noqa: F401 — re-exported for downstream importers
-    HID_LCD_DEVICES,  # noqa: F401
-    LED_DEVICES,  # noqa: F401
-    LY_DEVICES,  # noqa: F401
-    SCSI_DEVICES,  # noqa: F401
+    BULK_DEVICES,
+    HID_LCD_DEVICES,
+    LED_DEVICES,
+    LY_DEVICES,
+    SCSI_DEVICES,
     DetectedDevice,
-    DeviceEntry,  # noqa: F401
+    DeviceEntry,
 )
 
 log = logging.getLogger(__name__)
@@ -45,11 +46,11 @@ _hid_testing_enabled = False
 
 def enable_hid_testing() -> None:
     """No-op — HID devices are now auto-detected."""
-    global _hid_testing_enabled  # noqa: PLW0603
+    global _hid_testing_enabled
     _hid_testing_enabled = True
 
 
-ScsiResolver = Callable[[int, int], Optional[str]]
+ScsiResolver = Callable[[int, int], str | None]
 
 # Protocol comes from DeviceEntry.protocol — models.py is the single source of truth.
 
@@ -62,26 +63,26 @@ class DeviceDetector:
 
     @staticmethod
     def make_detect_fn(
-        scsi_resolver: Optional[ScsiResolver] = None,
-    ) -> Callable[[], List[DetectedDevice]]:
+        scsi_resolver: ScsiResolver | None = None,
+    ) -> Callable[[], list[DetectedDevice]]:
         """Return a detect() callable with the given SCSI resolver bound.
 
         Args:
             scsi_resolver: (vid, pid) -> /dev/sgN or /dev/passN or None.
                 None means SCSI devices have no path (macOS uses pyusb direct).
         """
-        def detect() -> List[DetectedDevice]:
+        def detect() -> list[DetectedDevice]:
             return DeviceDetector._detect(scsi_resolver)
         return detect
 
     @staticmethod
-    def detect() -> List[DetectedDevice]:
+    def detect() -> list[DetectedDevice]:
         """Linux default — resolves SCSI paths via sysfs."""
         from trcc.adapters.device.linux.detector import linux_scsi_resolver
         return DeviceDetector._detect(linux_scsi_resolver)
 
     @staticmethod
-    def _detect(scsi_resolver: Optional[ScsiResolver]) -> List[DetectedDevice]:
+    def _detect(scsi_resolver: ScsiResolver | None) -> list[DetectedDevice]:
         """Core detection via pyusb with injected SCSI resolver."""
         try:
             import usb.core  # pyright: ignore[reportMissingImports]
@@ -89,7 +90,7 @@ class DeviceDetector:
             log.error("pyusb not installed — pip install pyusb")
             return []
 
-        devices: List[DetectedDevice] = []
+        devices: list[DetectedDevice] = []
         for (vid, pid), entry in ALL_DEVICES.items():
             # find_all=True yields every match; `or ()` handles None when
             # no devices are present, so two same-VID/PID coolers each
@@ -131,7 +132,7 @@ class DeviceDetector:
         return dict(ALL_DEVICES)
 
     @staticmethod
-    def run_command(cmd: List[str]) -> str:
+    def run_command(cmd: list[str]) -> str:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             return result.stdout.strip() if result.returncode == 0 else ""
@@ -144,11 +145,11 @@ class DeviceDetector:
         try:
             with open("/etc/udev/rules.d/99-trcc-lcd.rules") as f:
                 return vid_hex in f.read()
-        except (IOError, OSError):
+        except OSError:
             return False
 
     @staticmethod
-    def get_default() -> Optional[DetectedDevice]:
+    def get_default() -> DetectedDevice | None:
         if not (devices := DeviceDetector.detect()):
             return None
         for device in devices:
@@ -157,7 +158,7 @@ class DeviceDetector:
         return devices[0]
 
     @staticmethod
-    def get_device_path() -> Optional[str]:
+    def get_device_path() -> str | None:
         device = DeviceDetector.get_default()
         return device.scsi_device if device else None
 
@@ -180,5 +181,5 @@ check_udev_rules = DeviceDetector.check_udev_rules
 get_device_path = DeviceDetector.get_device_path
 
 
-def get_default_device() -> Optional[DetectedDevice]:
+def get_default_device() -> DetectedDevice | None:
     return DeviceDetector.get_default()

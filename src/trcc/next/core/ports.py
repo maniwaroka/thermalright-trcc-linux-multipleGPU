@@ -7,8 +7,9 @@ concrete implementations.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Generic, List, Optional, Tuple, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
     from .models import (
@@ -118,13 +119,13 @@ class Device(ABC, Generic[T]):
     devices.
     """
 
-    def __init__(self, info: "ProductInfo", transport: T) -> None:
+    def __init__(self, info: ProductInfo, transport: T) -> None:
         self.info = info
         self._transport: T = transport
-        self._handshake: Optional["HandshakeResult"] = None
+        self._handshake: HandshakeResult | None = None
 
     @abstractmethod
-    def connect(self) -> "HandshakeResult":
+    def connect(self) -> HandshakeResult:
         """Open the transport and perform the wire-protocol handshake."""
 
     @abstractmethod
@@ -177,19 +178,19 @@ class CpuSource(ABC):
     def name(self) -> str: ...
 
     @abstractmethod
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         """CPU package temperature in °C, or None."""
 
     @abstractmethod
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         """CPU utilization 0-100, or None."""
 
     @abstractmethod
-    def freq(self) -> Optional[float]:
+    def freq(self) -> float | None:
         """Current CPU frequency in MHz, or None."""
 
     @abstractmethod
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         """Package power draw in W, or None."""
 
 
@@ -197,19 +198,19 @@ class MemorySource(ABC):
     """System RAM."""
 
     @abstractmethod
-    def used(self) -> Optional[float]:
+    def used(self) -> float | None:
         """Used RAM in MB, or None."""
 
     @abstractmethod
-    def available(self) -> Optional[float]:
+    def available(self) -> float | None:
         """Available RAM in MB, or None."""
 
     @abstractmethod
-    def total(self) -> Optional[float]:
+    def total(self) -> float | None:
         """Total RAM in MB, or None."""
 
     @abstractmethod
-    def percent(self) -> Optional[float]:
+    def percent(self) -> float | None:
         """Used fraction 0-100, or None."""
 
 
@@ -232,31 +233,31 @@ class GpuSource(ABC):
         """True for dedicated cards, False for iGPUs sharing CPU memory."""
 
     @abstractmethod
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         """Core temperature in °C, or None."""
 
     @abstractmethod
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         """Utilization 0-100, or None."""
 
     @abstractmethod
-    def clock(self) -> Optional[float]:
+    def clock(self) -> float | None:
         """Core clock in MHz, or None."""
 
     @abstractmethod
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         """Board power draw in W, or None."""
 
     @abstractmethod
-    def fan(self) -> Optional[float]:
+    def fan(self) -> float | None:
         """Fan speed 0-100, or None."""
 
     @abstractmethod
-    def vram_used(self) -> Optional[float]:
+    def vram_used(self) -> float | None:
         """VRAM used in MB, or None."""
 
     @abstractmethod
-    def vram_total(self) -> Optional[float]:
+    def vram_total(self) -> float | None:
         """VRAM total in MB, or None."""
 
 
@@ -274,11 +275,11 @@ class FanSource(ABC):
         """Human-readable label."""
 
     @abstractmethod
-    def rpm(self) -> Optional[int]:
+    def rpm(self) -> int | None:
         """Current RPM, or None."""
 
     @abstractmethod
-    def percent(self) -> Optional[float]:
+    def percent(self) -> float | None:
         """Duty cycle 0-100, or None."""
 
 
@@ -302,14 +303,14 @@ class SensorEnumerator(ABC):
     def memory(self) -> MemorySource: ...
 
     @abstractmethod
-    def gpus(self) -> List[GpuSource]:
+    def gpus(self) -> list[GpuSource]:
         """All detected GPUs, sorted discrete-first.  Empty if no GPU."""
 
     @abstractmethod
-    def fans(self) -> List[FanSource]:
+    def fans(self) -> list[FanSource]:
         """All detected fans.  Empty if none."""
 
-    def primary_gpu(self) -> Optional[GpuSource]:
+    def primary_gpu(self) -> GpuSource | None:
         """First discrete GPU, else first integrated, else None."""
         gpus = self.gpus()
         for gpu in gpus:
@@ -319,7 +320,7 @@ class SensorEnumerator(ABC):
 
     # ── Flat dict view (for overlay lookups) ────────────────────────
     @abstractmethod
-    def discover(self) -> List["SensorReading"]:
+    def discover(self) -> list[SensorReading]:
         """One SensorReading per normalized key.  Snapshot at call time."""
 
     @abstractmethod
@@ -327,7 +328,7 @@ class SensorEnumerator(ABC):
         """Current readings keyed by normalized name.  Omits None values."""
 
     @abstractmethod
-    def read_one(self, sensor_id: str) -> Optional[float]:
+    def read_one(self, sensor_id: str) -> float | None:
         """Read a single normalized key."""
 
     @abstractmethod
@@ -369,18 +370,18 @@ class Renderer(ABC):
     # ── Surfaces ──────────────────────────────────────────────────────
     @abstractmethod
     def create_surface(self, width: int, height: int,
-                       color: Optional[Tuple[int, ...]] = None) -> Any: ...
+                       color: tuple[int, ...] | None = None) -> Any: ...
 
     @abstractmethod
     def open_image(self, path: Path) -> Any: ...
 
     @abstractmethod
-    def surface_size(self, surface: Any) -> Tuple[int, int]: ...
+    def surface_size(self, surface: Any) -> tuple[int, int]: ...
 
     # ── Compositing ───────────────────────────────────────────────────
     @abstractmethod
     def composite(self, base: Any, overlay: Any,
-                  position: Tuple[int, int],
+                  position: tuple[int, int],
                   mask: Any | None = None) -> Any: ...
 
     @abstractmethod
@@ -409,7 +410,7 @@ class Renderer(ABC):
 
     # ── Legacy boundary (video frames) ────────────────────────────────
     @abstractmethod
-    def from_raw_rgb24(self, frame: "RawFrame") -> Any: ...
+    def from_raw_rgb24(self, frame: RawFrame) -> Any: ...
 
 
 # =========================================================================
@@ -449,7 +450,7 @@ class Platform(ABC):
     # ── Transport factories — one per wire family ────────────────────
     @abstractmethod
     def open_bulk(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> BulkTransport:
+                  serial: str | None = None) -> BulkTransport:
         """Return an unopened BulkTransport for a USB-bulk device.
 
         Used by HID / BULK / LY / LED protocols.  Every OS can do this
@@ -458,7 +459,7 @@ class Platform(ABC):
 
     @abstractmethod
     def open_scsi(self, vid: int, pid: int,
-                  serial: Optional[str] = None) -> ScsiTransport:
+                  serial: str | None = None) -> ScsiTransport:
         """Return an unopened ScsiTransport for a SCSI-LCD device.
 
         Used by SCSI protocols.  Each OS has a native path:
@@ -469,7 +470,7 @@ class Platform(ABC):
         """
 
     @abstractmethod
-    def scan_devices(self) -> List["DeviceInfo"]:
+    def scan_devices(self) -> list[DeviceInfo]:
         """Enumerate currently-attached supported devices."""
 
     # ── Filesystem ────────────────────────────────────────────────────
@@ -490,7 +491,7 @@ class Platform(ABC):
         """Run OS-specific setup.  Returns a shell-style exit code."""
 
     @abstractmethod
-    def check_permissions(self) -> List[str]:
+    def check_permissions(self) -> list[str]:
         """Return a list of user-facing permission warnings, empty if OK."""
 
     # ── OS identity (for UIs, diagnostics, install hints) ─────────────
@@ -502,7 +503,7 @@ class Platform(ABC):
         """How this app was installed: pip, rpm, deb, pacman, app-bundle..."""
 
     # ── OS-selection factory ──────────────────────────────────────────
-    _BY_OS: dict[str, Tuple[str, str]] = {
+    _BY_OS: dict[str, tuple[str, str]] = {
         "linux": ("trcc.next.adapters.system.linux", "LinuxPlatform"),
         "win32": ("trcc.next.adapters.system.windows", "WindowsPlatform"),
         "darwin": ("trcc.next.adapters.system.macos", "MacOSPlatform"),
@@ -510,7 +511,7 @@ class Platform(ABC):
     }
 
     @classmethod
-    def detect(cls) -> "Platform":
+    def detect(cls) -> Platform:
         """Pick the right Platform subclass for the running OS."""
         import importlib
         import sys
@@ -529,4 +530,4 @@ class Platform(ABC):
 # Callable type aliases (infrastructure DI)
 # =========================================================================
 
-DetectDevicesFn = Callable[[], List["DeviceInfo"]]
+DetectDevicesFn = Callable[[], list["DeviceInfo"]]

@@ -13,7 +13,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from trcc.adapters.system._base import SensorEnumeratorBase
 from trcc.adapters.system._shared import (
@@ -92,7 +92,7 @@ def get_memory_info() -> list[dict[str, str]]:
             slots.append({
                 'manufacturer': 'Unknown',
                 'part_number': '',
-                'type': _sysctl('dev.cpu.0.freq') and 'DDR' or 'Unknown',
+                'type': (_sysctl('dev.cpu.0.freq') and 'DDR') or 'Unknown',
                 'speed': 'Unknown',
                 'size': f'{total_gb:.0f} GB',
                 'form_factor': 'Unknown',
@@ -305,7 +305,7 @@ class BSDPlatform(Platform):
 
     # ── Sensor factory ───────────────────────────────────────
 
-    def _make_sensor_enumerator(self) -> 'SensorEnumerator':
+    def _make_sensor_enumerator(self) -> SensorEnumerator:
         return SensorEnumerator()
 
     # ── Hardware discovery ────────────────────────────────────
@@ -384,7 +384,7 @@ class BSDPlatform(Platform):
 
     # ── Administration ────────────────────────────────────────
 
-    def get_pkg_manager(self) -> Optional[str]:
+    def get_pkg_manager(self) -> str | None:
         return 'pkg' if shutil.which('pkg') else None
 
     def check_deps(self) -> list:
@@ -405,7 +405,7 @@ class BSDPlatform(Platform):
     def distro_name(self) -> str:
         return f"FreeBSD {platform.release()}"
 
-    def no_devices_hint(self) -> Optional[str]:
+    def no_devices_hint(self) -> str | None:
         return None
 
     def doctor_config(self) -> DoctorPlatformConfig:

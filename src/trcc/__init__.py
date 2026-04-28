@@ -41,18 +41,18 @@ def detect_devices():
 
 
 __all__ = [
-    # Version
-    "__version__",
-    # Detection
-    "detect_devices",
-    "get_device_path",
-    # System info
-    "get_all_metrics",
-    "format_metric",
     # Theme parsing
     "DcConfig",
-    "parse_dc_file",
-    "dc_to_overlay_config",
     # Animation
     "VideoDecoder",
+    # Version
+    "__version__",
+    "dc_to_overlay_config",
+    # Detection
+    "detect_devices",
+    "format_metric",
+    # System info
+    "get_all_metrics",
+    "get_device_path",
+    "parse_dc_file",
 ]

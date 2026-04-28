@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 from ..core.models import (
     LCD_DEFAULT_BUTTON,
@@ -77,7 +77,7 @@ class DeviceService:
             self._devices = []
 
         # Enrich all devices — LED probe + button image resolution.
-        for d, raw_d in zip(self._devices, raw):
+        for d, raw_d in zip(self._devices, raw, strict=False):
             self._enrich_device(d, raw_d.usb_path)
 
         log.info("DeviceService: found %d device(s)", len(self._devices))
@@ -341,7 +341,7 @@ class DeviceService:
 
     # ── Protocol info ────────────────────────────────────────────────
 
-    def get_protocol_info(self) -> Optional[Any]:
+    def get_protocol_info(self) -> Any | None:
         """Get protocol/backend info for the selected device."""
         if self._get_protocol_info is None:
             return None

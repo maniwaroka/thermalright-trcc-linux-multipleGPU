@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from ..core.models import FitMode, ProductInfo, RawFrame, Theme, Wire
 from ..core.ports import Renderer
@@ -34,7 +34,7 @@ from .theme import ThemeService
 log = logging.getLogger(__name__)
 
 
-_ENCODING_BY_WIRE: Dict[Wire, str] = {
+_ENCODING_BY_WIRE: dict[Wire, str] = {
     Wire.SCSI: "rgb565",
     Wire.HID: "rgb565",
     Wire.BULK: "rgb565",
@@ -56,11 +56,11 @@ class SceneCache:
 
     # bg_mask layer
     bg_mask_surface: Any
-    bg_mask_key: Tuple[Any, ...]       # (theme_path, visual_size, video_cursor)
+    bg_mask_key: tuple[Any, ...]       # (theme_path, visual_size, video_cursor)
 
     # overlay layer
     overlay_surface: Any
-    overlay_key: Tuple[Any, ...]       # (config_id, visual_size, sensor_tuple)
+    overlay_key: tuple[Any, ...]       # (config_id, visual_size, sensor_tuple)
 
 
 # =========================================================================
@@ -84,7 +84,7 @@ class DisplayService:
         self._overlay = overlay
         self._settings = settings
         self._media = media
-        self._scenes: Dict[str, SceneCache] = {}
+        self._scenes: dict[str, SceneCache] = {}
 
     # ── Top-level pipeline ────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ class DisplayService:
         self,
         info: ProductInfo,
         theme: Theme,
-        sensors: Dict[str, float],
+        sensors: dict[str, float],
     ) -> bytes:
         """One pass — uses the per-device cache; only rebuilds what changed."""
         s = self._settings.for_device(info.key)
@@ -143,7 +143,7 @@ class DisplayService:
         self,
         info: ProductInfo,
         theme: Theme,
-        visual_size: Tuple[int, int],
+        visual_size: tuple[int, int],
     ) -> Any:
         """Compose fitted background + mask at visual size."""
         canvas = self._r.create_surface(*visual_size, color=(0, 0, 0, 255))
@@ -174,8 +174,8 @@ class DisplayService:
         self,
         info: ProductInfo,
         theme: Theme,
-        visual_size: Tuple[int, int],
-    ) -> Optional[Any]:
+        visual_size: tuple[int, int],
+    ) -> Any | None:
         """Return a Renderer surface for the current background frame."""
         path = self._themes.background_path(theme)
         if path is None:
@@ -192,7 +192,7 @@ class DisplayService:
                 except Exception as e:
                     log.warning("Video decode failed for %s: %s", path.name, e)
                     return None
-            frame: Optional[RawFrame] = playback.advance()
+            frame: RawFrame | None = playback.advance()
             return self._r.from_raw_rgb24(frame) if frame else None
 
         if ext in _IMAGE_EXTS:
@@ -206,8 +206,8 @@ class DisplayService:
     def _build_overlay(
         self,
         theme: Theme,
-        sensors: Dict[str, float],
-        visual_size: Tuple[int, int],
+        sensors: dict[str, float],
+        visual_size: tuple[int, int],
     ) -> Any:
         """Transparent layer with text + metric elements painted on."""
         overlay_canvas = self._r.create_surface(*visual_size)
@@ -219,8 +219,8 @@ class DisplayService:
         self,
         info: ProductInfo,
         theme: Theme,
-        visual_size: Tuple[int, int],
-    ) -> Tuple[Any, ...]:
+        visual_size: tuple[int, int],
+    ) -> tuple[Any, ...]:
         path = self._themes.background_path(theme)
         is_video = path is not None and path.suffix.lower() in _VIDEO_EXTS
         # For video, include the current cursor so each frame busts the cache.
@@ -233,9 +233,9 @@ class DisplayService:
     @staticmethod
     def _overlay_key(
         theme: Theme,
-        visual_size: Tuple[int, int],
-        sensors: Dict[str, float],
-    ) -> Tuple[Any, ...]:
+        visual_size: tuple[int, int],
+        sensors: dict[str, float],
+    ) -> tuple[Any, ...]:
         # Sensors turn into a sorted tuple of (id, rounded_value).  Rounding
         # limits cache-busting to meaningful changes (e.g. 45.3 → 45.4 is
         # one redraw; 45.31 → 45.32 is ignored).
@@ -247,7 +247,7 @@ class DisplayService:
     # ── Helpers ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _visual_size(native: Tuple[int, int], orientation: int) -> Tuple[int, int]:
+    def _visual_size(native: tuple[int, int], orientation: int) -> tuple[int, int]:
         w, h = native
         return (h, w) if orientation in (90, 270) else (w, h)
 
@@ -267,7 +267,7 @@ def _fit(
     mode: FitMode,
     src_w: int, src_h: int,
     dst_w: int, dst_h: int,
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     """(fit_w, fit_h, x_offset, y_offset)."""
     if mode is FitMode.STRETCH or src_w == 0 or src_h == 0:
         return dst_w, dst_h, 0, 0

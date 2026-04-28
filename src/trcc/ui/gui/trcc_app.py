@@ -1049,7 +1049,7 @@ class TRCCApp(QMainWindow):
         _lbl(self.uc_theme_web, tr('Gallery', lang), x, y, w, h, pt, 'Gallery')
         tab_x_positions = [45, 135, 235, 335, 430, 525, 635]
         tab_keys: list[str | None] = ['All', 'Tech', None, 'Light', 'Nature', 'Aesthetic', 'Other']
-        for tx, key in zip(tab_x_positions, tab_keys):
+        for tx, key in zip(tab_x_positions, tab_keys, strict=False):
             text = 'HUD' if key is None else tr(key, lang)
             lbl = _lbl(self.uc_theme_web, text,
                        tx, GALLERY_TAB_Y, 90, GALLERY_TAB_H, GALLERY_TAB_FONT, key)

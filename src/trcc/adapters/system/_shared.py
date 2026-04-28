@@ -71,7 +71,7 @@ def _posix_acquire_instance_lock(config_dir: str) -> object | None:
     lock_path = Path(config_dir) / "trcc-linux.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        fh = open(lock_path, "w")  # noqa: SIM115
+        fh = open(lock_path, "w")
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fh.write(str(os.getpid()))
         fh.flush()

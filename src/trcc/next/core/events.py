@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, DefaultDict, List, Tuple, Type
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class DeviceDiscovered(Event):
 @dataclass(frozen=True, slots=True)
 class DeviceConnected(Event):
     key: str
-    resolution: Tuple[int, int]
+    resolution: tuple[int, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,13 +100,13 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: DefaultDict[Type[Event], List[Handler]] = defaultdict(list)
+        self._handlers: defaultdict[type[Event], list[Handler]] = defaultdict(list)
 
-    def subscribe(self, event_type: Type[Event], handler: Handler) -> None:
+    def subscribe(self, event_type: type[Event], handler: Handler) -> None:
         """Register *handler* for all events of *event_type*."""
         self._handlers[event_type].append(handler)
 
-    def unsubscribe(self, event_type: Type[Event], handler: Handler) -> None:
+    def unsubscribe(self, event_type: type[Event], handler: Handler) -> None:
         """Remove a previously-registered handler.  No-op if not found."""
         try:
             self._handlers[event_type].remove(handler)

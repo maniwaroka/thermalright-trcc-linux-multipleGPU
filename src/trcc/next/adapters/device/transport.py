@@ -11,7 +11,7 @@ macOS/BSD fall back to userspace USB BOT.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import usb.core
 import usb.util
@@ -50,14 +50,14 @@ class PyUsbBulkTransport(BulkTransport):
     """
 
     def __init__(self, vid: int, pid: int,
-                 serial: Optional[str] = None) -> None:
+                 serial: str | None = None) -> None:
         self._vid = vid
         self._pid = pid
         self._serial = serial
         self._device: Any = None
         self._is_open = False
-        self._ep_out: Optional[int] = None
-        self._ep_in: Optional[int] = None
+        self._ep_out: int | None = None
+        self._ep_in: int | None = None
 
     def open(self) -> bool:
         kwargs: dict[str, Any] = {'idVendor': self._vid, 'idProduct': self._pid}
@@ -146,14 +146,14 @@ class PyUsbBulkTransport(BulkTransport):
             raise TransportError(f"USB read failed: {e}") from e
 
     @property
-    def ep_out(self) -> Optional[int]:
+    def ep_out(self) -> int | None:
         return self._ep_out
 
     @property
-    def ep_in(self) -> Optional[int]:
+    def ep_in(self) -> int | None:
         return self._ep_in
 
-    def __enter__(self) -> "PyUsbBulkTransport":
+    def __enter__(self) -> PyUsbBulkTransport:
         self.open()
         return self
 
@@ -174,7 +174,7 @@ class HidApiTransport(BulkTransport):
     """
 
     def __init__(self, vid: int, pid: int,
-                 serial: Optional[str] = None) -> None:
+                 serial: str | None = None) -> None:
         if not HIDAPI_AVAILABLE:
             raise ImportError(
                 "hidapi not installed — pip install hidapi "
@@ -225,7 +225,7 @@ class HidApiTransport(BulkTransport):
         data = self._device.read(length, timeout_ms)
         return bytes(data) if data else b''
 
-    def __enter__(self) -> "HidApiTransport":
+    def __enter__(self) -> HidApiTransport:
         self.open()
         return self
 

@@ -34,8 +34,8 @@ Usage:
 
 import logging
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -76,7 +76,7 @@ class CloudThemeDownloader:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def get_known_themes() -> List[str]:
+    def get_known_themes() -> list[str]:
         """Get list of all known cloud theme IDs."""
         themes = []
         for prefix, _, count in CATEGORIES[1:]:  # Skip 'all'
@@ -85,7 +85,7 @@ class CloudThemeDownloader:
         return themes
 
     @staticmethod
-    def get_themes_by_category(category: str) -> List[str]:
+    def get_themes_by_category(category: str) -> list[str]:
         """Get theme IDs for a specific category prefix ('a'..'y') or 'all'."""
         if category == 'all':
             return CloudThemeDownloader.get_known_themes()
@@ -103,7 +103,7 @@ class CloudThemeDownloader:
     def __init__(
         self,
         resolution: str = '',
-        cache_dir: Optional[str] = None,
+        cache_dir: str | None = None,
         server: str = 'international'
     ):
         self.resolution = resolution
@@ -172,7 +172,7 @@ class CloudThemeDownloader:
         """
         return self.get_theme_url(theme_id)
 
-    def get_cached_path(self, theme_id: str) -> Optional[Path]:
+    def get_cached_path(self, theme_id: str) -> Path | None:
         """Get path to cached theme file if it exists.
 
         Args:
@@ -193,7 +193,7 @@ class CloudThemeDownloader:
         """Check if theme is already downloaded."""
         return self.get_cached_path(theme_id) is not None
 
-    def download_preview_png(self, theme_id: str) -> Optional[str]:
+    def download_preview_png(self, theme_id: str) -> str | None:
         """Download PNG preview image for a theme from the server.
 
         Small file (~few KB), much faster than downloading the full MP4.
@@ -219,9 +219,9 @@ class CloudThemeDownloader:
     def download_theme(
         self,
         theme_id: str,
-        on_progress: Optional[Callable[[int, int, int], None]] = None,
+        on_progress: Callable[[int, int, int], None] | None = None,
         force: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Download a cloud theme.
 
@@ -269,8 +269,8 @@ class CloudThemeDownloader:
     def download_preview(
         self,
         theme_id: str,
-        on_progress: Optional[Callable[[int, int, int], None]] = None
-    ) -> Optional[str]:
+        on_progress: Callable[[int, int, int], None] | None = None
+    ) -> str | None:
         """
         Download theme preview.
 
@@ -291,9 +291,9 @@ class CloudThemeDownloader:
         self,
         category: str,
         max_themes: int = 0,
-        on_progress: Optional[Callable[[int, int, str], None]] = None,
+        on_progress: Callable[[int, int, str], None] | None = None,
         force: bool = False
-    ) -> Dict[str, Optional[str]]:
+    ) -> dict[str, str | None]:
         """
         Download all themes in a category.
 
@@ -329,9 +329,9 @@ class CloudThemeDownloader:
 
     def download_all(
         self,
-        on_progress: Optional[Callable[[int, int, str], None]] = None,
+        on_progress: Callable[[int, int, str], None] | None = None,
         force: bool = False
-    ) -> Dict[str, Optional[str]]:
+    ) -> dict[str, str | None]:
         """Download all known cloud themes."""
         return self.download_category('all', on_progress=on_progress, force=force)
 
@@ -344,8 +344,8 @@ class CloudThemeDownloader:
         self,
         url: str,
         dest: Path,
-        on_progress: Optional[Callable[[int, int, int], None]] = None
-    ) -> Optional[str]:
+        on_progress: Callable[[int, int, int], None] | None = None
+    ) -> str | None:
         """
         Download a file with progress tracking.
 
@@ -419,11 +419,11 @@ class CloudThemeDownloader:
             log.error("Download error: %s", e)
             return None
 
-    def get_all_theme_ids(self) -> List[str]:
+    def get_all_theme_ids(self) -> list[str]:
         """Get all known theme IDs."""
         return CloudThemeDownloader.get_known_themes()
 
-    def get_cached_themes(self) -> List[str]:
+    def get_cached_themes(self) -> list[str]:
         """Get list of cached theme IDs."""
         cached = []
         if self.cache_dir.exists():
@@ -440,8 +440,8 @@ get_themes_by_category = CloudThemeDownloader.get_themes_by_category
 def download_theme(
     theme_id: str,
     resolution: str,
-    cache_dir: Optional[str] = None,
-) -> Optional[str]:
+    cache_dir: str | None = None,
+) -> str | None:
     """Quick download of a single theme (convenience wrapper)."""
     return CloudThemeDownloader(resolution=resolution, cache_dir=cache_dir).download_theme(theme_id)
 

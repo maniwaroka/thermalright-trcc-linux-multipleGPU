@@ -11,7 +11,6 @@ Based on decompiled Windows TRCC code:
 import logging
 import struct
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from trcc.core.models import (
     HARDWARE_METRICS,
@@ -43,7 +42,7 @@ class DcParser:
         return HARDWARE_METRICS.get((main_count, sub_count), f'sensor_{main_count}_{sub_count}')
 
     @staticmethod
-    def metric_to_hardware_ids(metric: str) -> Tuple[int, int]:
+    def metric_to_hardware_ids(metric: str) -> tuple[int, int]:
         """Map metric name to hardware (main_count, sub_count) IDs."""
         return METRIC_TO_IDS.get(metric, (0, 0))
 
@@ -404,10 +403,10 @@ class DcParser:
         return result
 
     @staticmethod
-    def _parse_display_elements(data: bytes, start_pos: int) -> List[DisplayElement]:
+    def _parse_display_elements(data: bytes, start_pos: int) -> list[DisplayElement]:
         """Parse UCXiTongXianShiSubArray from config data."""
         r = BinaryReader(data, pos=start_pos)
-        elements: List[DisplayElement] = []
+        elements: list[DisplayElement] = []
 
         if not r.has_bytes(4):
             return elements
@@ -572,13 +571,13 @@ class DcParser:
         return overlay_config
 
     @staticmethod
-    def load_json(filepath: str) -> Optional[Tuple[dict, dict]]:
+    def load_json(filepath: str) -> tuple[dict, dict] | None:
         """Load theme config from a JSON file (config.json)."""
         log.debug("load_json: filepath=%s", filepath)
         import json
 
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, encoding='utf-8') as f:
                 data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             return None

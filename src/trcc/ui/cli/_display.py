@@ -102,7 +102,7 @@ def test(device=None, loop=False, preview=False):
         return 1
 
 
-def play_video(builder, video_path, *, device=None, loop=True, duration=0,  # noqa: ARG001
+def play_video(builder, video_path, *, device=None, loop=True, duration=0,
                preview=False, metrics=None, mask=None,
                font_size=14, color='ffffff', font='Microsoft YaHei',
                font_style='regular', temp_unit=0, time_format=0,
@@ -291,13 +291,13 @@ def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=Fals
 # Each is a 3-liner: call → format → exit code.
 # =========================================================================
 
-def send_image(image_path, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
+def send_image(image_path, *, lcd: int = 0, device=None, preview=False):
     """Send image to LCD."""
     from pathlib import Path
     return _emit(trcc().lcd.send_image(lcd, Path(image_path)))
 
 
-def send_color(hex_color, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
+def send_color(hex_color, *, lcd: int = 0, device=None, preview=False):
     """Send solid color to LCD."""
     if not (rgb := _parse_hex(hex_color)):
         typer.echo("Error: Invalid hex color. Use format: ff0000", err=True)
@@ -306,22 +306,22 @@ def send_color(hex_color, *, lcd: int = 0, device=None, preview=False):  # noqa:
     return _emit(trcc().lcd.send_color(lcd, r, g, b))
 
 
-def set_brightness(level, *, lcd: int = 0, device=None):  # noqa: ARG001
+def set_brightness(level, *, lcd: int = 0, device=None):
     """Set display brightness level (1=25%, 2=50%, 3=100%)."""
     return _emit(trcc().lcd.set_brightness(lcd, level))
 
 
-def set_rotation(degrees, *, lcd: int = 0, device=None):  # noqa: ARG001
+def set_rotation(degrees, *, lcd: int = 0, device=None):
     """Set display rotation (0, 90, 180, 270)."""
     return _emit(trcc().lcd.set_rotation(lcd, degrees))
 
 
-def set_split_mode(mode, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
+def set_split_mode(mode, *, lcd: int = 0, device=None, preview=False):
     """Set split mode (Dynamic Island) for widescreen displays."""
     return _emit(trcc().lcd.set_split_mode(lcd, mode))
 
 
-def load_mask(mask_path, *, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
+def load_mask(mask_path, *, lcd: int = 0, device=None, preview=False):
     """Load mask overlay from file/directory and send composited image."""
     from pathlib import Path
     return _emit(trcc().lcd.apply_mask(lcd, Path(mask_path)))
@@ -357,7 +357,7 @@ def render_overlay(builder, dc_path, *, device=None, send=False, output=None,
     return 0
 
 
-def reset(*, lcd: int = 0, device=None, preview=False):  # noqa: ARG001
+def reset(*, lcd: int = 0, device=None, preview=False):
     """Reset/reinitialize the LCD device."""
     return _emit(trcc().lcd.reset(lcd))
 

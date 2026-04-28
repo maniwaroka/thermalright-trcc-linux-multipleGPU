@@ -7,7 +7,7 @@ and the concrete `BulkProtocol` for USBLCDNew devices (87AD:70DB).
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from trcc.core.models import HandshakeResult, UsbAddress
 
@@ -28,18 +28,18 @@ class _BulkLikeProtocol(DeviceProtocol):
 
     def __init__(
         self, vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ):
         super().__init__()
         self._vid = vid
         self._pid = pid
         self._addr = addr  # disambiguates dual same-VID/PID coolers (#128)
-        self._device: Optional[Any] = None
+        self._device: Any | None = None
 
     @staticmethod
     def _make_device(
         vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -61,7 +61,7 @@ class _BulkLikeProtocol(DeviceProtocol):
                 log.warning("%s handshake: no resolution detected (result=%s)",
                             self._label, result)
 
-    def _do_handshake(self) -> Optional[HandshakeResult]:
+    def _do_handshake(self) -> HandshakeResult | None:
         self._ensure_device()
         return self._handshake_result
 
@@ -98,7 +98,7 @@ class BulkProtocol(_BulkLikeProtocol):
     @staticmethod
     def _make_device(
         vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ) -> Any:
         from .bulk import BulkDevice
         return BulkDevice(vid, pid, addr=addr)

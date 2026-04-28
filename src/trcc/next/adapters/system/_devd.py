@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
 
 from ...core.registry import ALL_DEVICES
 
@@ -143,7 +142,7 @@ def _root_reexec() -> int:
         "from trcc.next.adapters.system._devd import install; "
         "import sys; sys.exit(install())"
     )
-    cmd: List[str] = [elevator, sys.executable, "-c", code]
+    cmd: list[str] = [elevator, sys.executable, "-c", code]
     log.info("Re-running as root via %s to install devd rules",
              Path(elevator).name)
     try:

@@ -17,7 +17,7 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Optional
+from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -59,7 +59,7 @@ def _ensure_system(builder) -> None:
     Lazy — only called by commands that use metrics (overlay, LED mode, etc.).
     Builder is injected by the calling command (from ctx.obj at the boundary).
     """
-    global _system_svc  # noqa: PLW0603
+    global _system_svc
     if _system_svc is None:
         from trcc.services.system import set_instance
         svc = builder.build_system()
@@ -143,7 +143,7 @@ def _main_callback(
         "--testing-hid", hidden=True,
         help="No-op (HID devices are now auto-detected)",
     )] = False,
-    version: Annotated[Optional[bool], typer.Option(
+    version: Annotated[bool | None, typer.Option(
         "--version", callback=_version_callback, is_eager=True,
         help="Show version and exit",
     )] = None,
@@ -494,7 +494,7 @@ def _cmd_select(
 
 @app.command("test", rich_help_panel="LCD Display")
 def _cmd_test(
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path (e.g., /dev/sg0)",
     )] = None,
     loop: Annotated[bool, typer.Option(
@@ -541,7 +541,7 @@ def _cmd_color(
 @app.command("video", rich_help_panel="LCD Display")
 def _cmd_video(
     path: Annotated[str, typer.Argument(help="Video/GIF/ZT file to play")],
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
     no_loop: Annotated[bool, typer.Option(
@@ -566,7 +566,7 @@ def _cmd_theme(
     background: Annotated[str, typer.Option(
         "--background", "-b", help="Background image/video/GIF",
     )],
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
     no_loop: Annotated[bool, typer.Option(
@@ -578,11 +578,11 @@ def _cmd_theme(
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal preview",
     )] = False,
-    metric: Annotated[Optional[list[str]], typer.Option(
+    metric: Annotated[list[str] | None, typer.Option(
         "--metric", "-m",
         help="Overlay metric: key:x,y[:color[:size]] (repeatable)",
     )] = None,
-    mask: Annotated[Optional[str], typer.Option(
+    mask: Annotated[str | None, typer.Option(
         "--mask", help="Mask PNG file or directory",
     )] = None,
     font: Annotated[str, typer.Option(
@@ -606,7 +606,7 @@ def _cmd_theme(
     date_format: Annotated[int, typer.Option(
         "--date-format", help="Date format: 0=yyyy/MM/dd, 2=dd/MM/yyyy",
     )] = 0,
-    save: Annotated[Optional[str], typer.Option(
+    save: Annotated[str | None, typer.Option(
         "--save", "-s", help="Save as named theme (e.g. --save MyTheme)",
     )] = None,
 ) -> int:
@@ -651,7 +651,7 @@ def _cmd_rotation(
 
 @app.command("screencast", rich_help_panel="LCD Display")
 def _cmd_screencast(
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
     x: Annotated[int, typer.Option(help="Capture region X offset")] = 0,
@@ -671,10 +671,10 @@ def _cmd_screencast(
 
 @app.command("mask", rich_help_panel="LCD Display")
 def _cmd_mask(
-    path: Annotated[Optional[str], typer.Argument(
+    path: Annotated[str | None, typer.Argument(
         help="Mask PNG file or theme directory",
     )] = None,
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
     clear: Annotated[bool, typer.Option(
@@ -696,13 +696,13 @@ def _cmd_mask(
 @app.command("overlay", rich_help_panel="LCD Display")
 def _cmd_overlay(
     dc_path: Annotated[str, typer.Argument(help="DC config or theme directory path")],
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
     send: Annotated[bool, typer.Option(
         "--send", "-s", help="Send rendered result to LCD",
     )] = False,
-    output: Annotated[Optional[str], typer.Option(
+    output: Annotated[str | None, typer.Option(
         "--output", "-o", help="Save rendered image to file",
     )] = None,
     preview: Annotated[bool, typer.Option(
@@ -747,7 +747,7 @@ def _cmd_background_list(
     lcd: Annotated[int, typer.Option(
         "--lcd", help="LCD device index (default 0)",
     )] = 0,
-    category: Annotated[Optional[str], typer.Option(
+    category: Annotated[str | None, typer.Option(
         "--category", help="Filter by category (a=Gallery, b=Tech, c=HUD, etc.)",
     )] = None,
 ) -> int:
@@ -758,7 +758,7 @@ def _cmd_background_list(
 @app.command("theme-load", rich_help_panel="Themes")
 def _cmd_theme_load(
     name: Annotated[str, typer.Argument(help="Theme name (from theme-list)")],
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
     preview: Annotated[bool, typer.Option(
@@ -906,7 +906,7 @@ def _cmd_led_zone_sync(
     led: Annotated[int, typer.Option(
         "--led", help="LED device index (default 0)",
     )] = 0,
-    interval: Annotated[Optional[int], typer.Option(
+    interval: Annotated[int | None, typer.Option(
         "--interval", "-i", help="Sync interval in seconds",
     )] = None,
 ) -> int:
@@ -1078,7 +1078,7 @@ def _cmd_split(
 
 @app.command("test-led", rich_help_panel="Diagnostics")
 def _cmd_test_led(
-    mode: Annotated[Optional[str], typer.Argument(
+    mode: Annotated[str | None, typer.Argument(
         help="LED mode: static, breathing, colorful, rainbow (omit for all)",
     )] = None,
     segments: Annotated[int, typer.Option(
@@ -1107,17 +1107,17 @@ def _cmd_test_lcd(
 @app.command("theme-save", deprecated=True, rich_help_panel="Themes")
 def _cmd_theme_save(
     name: Annotated[str, typer.Argument(help="Theme name")],
-    background: Annotated[Optional[str], typer.Option(
+    background: Annotated[str | None, typer.Option(
         "--background", "-b", help="Background image/video (auto-detects format)",
     )] = None,
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
-    metric: Annotated[Optional[list[str]], typer.Option(
+    metric: Annotated[list[str] | None, typer.Option(
         "--metric", "-m",
         help="Overlay metric: key:x,y[:color[:size]] (repeatable)",
     )] = None,
-    mask: Annotated[Optional[str], typer.Option(
+    mask: Annotated[str | None, typer.Option(
         "--mask", help="Mask PNG file or directory",
     )] = None,
     font: Annotated[str, typer.Option(
@@ -1163,7 +1163,7 @@ def _cmd_theme_export(
 @app.command("theme-import", rich_help_panel="Themes")
 def _cmd_theme_import(
     file_path: Annotated[str, typer.Argument(help="Path to .tr file")],
-    device: Annotated[Optional[str], typer.Option(
+    device: Annotated[str | None, typer.Option(
         "--device", "-d", help="Device path",
     )] = None,
 ) -> int:
@@ -1176,7 +1176,7 @@ def _cmd_info(
     preview: Annotated[bool, typer.Option(
         "--preview", "-p", help="Show ANSI terminal dashboard",
     )] = False,
-    metric: Annotated[Optional[str], typer.Option(
+    metric: Annotated[str | None, typer.Option(
         "--metric", "-m",
         help="Filter: cpu, gpu, mem, disk, net, fan, time",
     )] = None,
@@ -1309,7 +1309,7 @@ def _cmd_setup_gui() -> None:
 
 @app.command("download", rich_help_panel="Themes")
 def _cmd_download(
-    pack: Annotated[Optional[str], typer.Argument(
+    pack: Annotated[str | None, typer.Argument(
         help="Theme pack name (e.g., themes-320x320 or themes-480)",
     )] = None,
     show_list: Annotated[bool, typer.Option(
@@ -1427,16 +1427,16 @@ def _cmd_serve(
     port: Annotated[int, typer.Option(
         "--port", "-p", help="Listen port",
     )] = 9876,
-    token: Annotated[Optional[str], typer.Option(
+    token: Annotated[str | None, typer.Option(
         "--token", "-t", help="API token for auth",
     )] = None,
     tls: Annotated[bool, typer.Option(
         "--tls", help="Enable HTTPS (auto-generates self-signed cert if needed)",
     )] = False,
-    cert: Annotated[Optional[str], typer.Option(
+    cert: Annotated[str | None, typer.Option(
         "--cert", help="Path to TLS certificate file (.pem)",
     )] = None,
-    key: Annotated[Optional[str], typer.Option(
+    key: Annotated[str | None, typer.Option(
         "--key", help="Path to TLS private key file (.pem)",
     )] = None,
 ) -> int:
@@ -1446,11 +1446,11 @@ def _cmd_serve(
 
     import uvicorn
 
-    from trcc.ui.api import app as api_app, configure_app, configure_auth, set_pairing_code  # noqa: I001
+    from trcc.ui.api import app as api_app, configure_app, configure_auth, set_pairing_code
     from trcc.conf import Settings
 
     # Token resolution: explicit --token > persistent config > auto-generate
-    pairing_code: Optional[str] = None
+    pairing_code: str | None = None
     if token is not None:
         # Explicit --token: save it, no pairing code needed
         Settings.save_api_token(token)
@@ -1491,7 +1491,7 @@ def _cmd_serve(
     return 0
 
 
-def _print_serve_qr(host: str, port: int, token: Optional[str], tls: bool) -> None:
+def _print_serve_qr(host: str, port: int, token: str | None, tls: bool) -> None:
     """Print a terminal QR code with connection details for remote apps.
 
     Presentation-only — delegates to ServerInfo (DTO) for payload and
@@ -1515,7 +1515,7 @@ def _print_serve_qr(host: str, port: int, token: Optional[str], tls: bool) -> No
     print(f"Scan to connect: {display_host}:{port}")
 
 
-def _ensure_self_signed_cert() -> Optional[tuple[str, str]]:
+def _ensure_self_signed_cert() -> tuple[str, str] | None:
     """Auto-generate a self-signed TLS cert in ~/.trcc/tls/ if missing."""
     import shutil
     import subprocess
@@ -1581,7 +1581,7 @@ def main():
                 print(data, flush=True)
 
     _is_gui = _positional[:1] == ['gui']
-    _progress_obs: Optional[AppObserver] = None
+    _progress_obs: AppObserver | None = None
     if not _is_gui:
         _progress_obs = _CliProgressObserver()
         trcc_app.register(_progress_obs)

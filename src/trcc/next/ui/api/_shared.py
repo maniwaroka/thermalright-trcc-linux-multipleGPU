@@ -2,8 +2,6 @@
 and Pydantic response schemas."""
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import HTTPException
 
 from ...core.models import HandshakeResult, ProductInfo, SensorReading
@@ -52,7 +50,7 @@ def product_to_schema(p: ProductInfo) -> ProductSchema:
     )
 
 
-def handshake_to_schema(h: Optional[HandshakeResult]) -> Optional[HandshakeSchema]:
+def handshake_to_schema(h: HandshakeResult | None) -> HandshakeSchema | None:
     if h is None:
         return None
     return HandshakeSchema(

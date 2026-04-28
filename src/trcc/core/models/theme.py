@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .overlay import DisplayElement
@@ -36,15 +36,15 @@ class LocalThemeItem(ThemeItem):
 class CloudThemeItem(ThemeItem):
     """Item in the cloud themes browser (UCThemeWeb)."""
     id: str = ""
-    video: Optional[str] = None
-    preview: Optional[str] = None
+    video: str | None = None
+    preview: str | None = None
 
 
 @dataclass(slots=True)
 class MaskItem(ThemeItem):
     """Item in the masks browser (UCThemeMask)."""
-    path: Optional[str] = None
-    preview: Optional[str] = None
+    path: str | None = None
+    preview: str | None = None
     is_custom: bool = False  # User-uploaded mask (enables delete in context menu)
 
 
@@ -55,8 +55,8 @@ class MaskInfo:
     Pure domain object — adapters (GUI, API) convert to their own types.
     """
     name: str
-    path: Optional[Path] = None
-    preview_path: Optional[Path] = None
+    path: Path | None = None
+    preview_path: Path | None = None
     is_custom: bool = False  # User-created vs cloud-downloaded
 
 
@@ -68,11 +68,11 @@ class MaskInfo:
 class ThemeData:
     """Bundle returned after loading a theme — everything needed to display it."""
     background: Any = None               # native surface (QImage)
-    animation_path: Optional[Path] = None  # video/zt path
+    animation_path: Path | None = None  # video/zt path
     is_animated: bool = False
     mask: Any = None                     # native surface (QImage)
-    mask_position: Optional[Tuple[int, int]] = None
-    mask_source_dir: Optional[Path] = None
+    mask_position: tuple[int, int] | None = None
+    mask_source_dir: Path | None = None
 
 
 class ThemeDir:
@@ -148,28 +148,28 @@ class ThemeInfo:
     Matches Windows FormCZTV theme data structure.
     """
     name: str
-    path: Optional[Path] = None
+    path: Path | None = None
     theme_type: ThemeType = ThemeType.LOCAL
 
     # Files within theme directory
-    background_path: Optional[Path] = None      # 00.png
-    mask_path: Optional[Path] = None            # 01.png
-    thumbnail_path: Optional[Path] = None       # Theme.png
-    animation_path: Optional[Path] = None       # Theme.zt or video file
-    config_path: Optional[Path] = None          # config1.dc
+    background_path: Path | None = None      # 00.png
+    mask_path: Path | None = None            # 01.png
+    thumbnail_path: Path | None = None       # Theme.png
+    animation_path: Path | None = None       # Theme.zt or video file
+    config_path: Path | None = None          # config1.dc
 
     # Metadata
-    resolution: Tuple[int, int] = (320, 320)
+    resolution: tuple[int, int] = (320, 320)
     is_animated: bool = False
     is_mask_only: bool = False
 
     # Cloud theme specific
-    video_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    category: Optional[str] = None  # a=Gallery, b=Tech, c=HUD, etc.
+    video_url: str | None = None
+    preview_url: str | None = None
+    category: str | None = None  # a=Gallery, b=Tech, c=HUD, etc.
 
     @classmethod
-    def from_video(cls, video_path: Path, preview_path: Optional[Path] = None) -> 'ThemeInfo':
+    def from_video(cls, video_path: Path, preview_path: Path | None = None) -> ThemeInfo:
         """Create ThemeInfo from a cloud video file."""
         name = video_path.stem
         category = name[0] if name else None
@@ -193,7 +193,7 @@ class ThemeInfo:
 class ThemeConfig:
     """Complete theme configuration for saving."""
     # Display elements (UCXiTongXianShiSubArray)
-    elements: List['DisplayElement'] = field(default_factory=list)
+    elements: list[DisplayElement] = field(default_factory=list)
 
     # System info global enable
     system_info_enabled: bool = True
@@ -225,12 +225,20 @@ class CarouselConfig:
     enabled: bool = False              # isLunbo
     interval_seconds: int = 3          # myLunBoTimer (minimum 3)
     count: int = 0                     # lunBoCount
-    theme_indices: List[int] = field(default_factory=lambda: [-1, -1, -1, -1, -1, -1])
+    theme_indices: list[int] = field(default_factory=lambda: [-1, -1, -1, -1, -1, -1])
     lcd_rotation: int = 1              # myLddVal (1-3): split mode style, NOT rotation
 
 
 __all__ = [
-    'ThemeItem', 'LocalThemeItem', 'CloudThemeItem', 'MaskItem', 'MaskInfo',
-    'ThemeData', 'ThemeDir', 'ThemeType', 'ThemeInfo',
-    'ThemeConfig', 'CarouselConfig',
+    'CarouselConfig',
+    'CloudThemeItem',
+    'LocalThemeItem',
+    'MaskInfo',
+    'MaskItem',
+    'ThemeConfig',
+    'ThemeData',
+    'ThemeDir',
+    'ThemeInfo',
+    'ThemeItem',
+    'ThemeType',
 ]

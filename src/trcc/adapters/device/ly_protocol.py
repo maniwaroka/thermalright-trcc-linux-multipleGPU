@@ -6,7 +6,7 @@ differs in the concrete Device class it wraps + display metadata.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from trcc.core.models import UsbAddress
 
@@ -24,7 +24,7 @@ class LyProtocol(_BulkLikeProtocol):
     @staticmethod
     def _make_device(
         vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ) -> Any:
         from .ly import LyDevice
         return LyDevice(vid, pid, addr=addr)

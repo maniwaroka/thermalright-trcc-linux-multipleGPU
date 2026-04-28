@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 
@@ -64,7 +64,7 @@ def _winreg() -> Any:
     return winreg
 
 
-def _format_size(size_bytes: Optional[str | int]) -> str:
+def _format_size(size_bytes: str | int | None) -> str:
     if not size_bytes:
         return ''
     try:
@@ -80,12 +80,12 @@ def _format_size(size_bytes: Optional[str | int]) -> str:
         return str(size_bytes)
 
 
-def _memory_form_factor(code: Optional[int]) -> str:
+def _memory_form_factor(code: int | None) -> str:
     factors = {8: 'DIMM', 12: 'SODIMM', 13: 'RIMM', 15: 'FB-DIMM', 16: 'Die'}
     return factors.get(code or 0, 'Unknown')
 
 
-def _memory_type(code: Optional[int]) -> str:
+def _memory_type(code: int | None) -> str:
     types = {20: 'DDR', 21: 'DDR2', 24: 'DDR3', 26: 'DDR4', 30: 'LPDDR4', 34: 'DDR5', 35: 'LPDDR5'}
     return types.get(code or 0, 'Unknown')
 
@@ -100,7 +100,7 @@ def _disk_type(disk: object) -> str:
     return 'Unknown'
 
 
-def _get_disk_health(device_id: Optional[str]) -> str:
+def _get_disk_health(device_id: str | None) -> str:
     if not device_id:
         return 'Unknown'
     try:
@@ -369,7 +369,7 @@ class WindowsPlatform(Platform):
 
     # ── Sensor enumerator ─────────────────────────────────────
 
-    def _make_sensor_enumerator(self) -> 'SensorEnumerator':
+    def _make_sensor_enumerator(self) -> SensorEnumerator:
         return SensorEnumerator()
 
     # ── Device detection ──────────────────────────────────────
@@ -430,7 +430,7 @@ class WindowsPlatform(Platform):
         lock_path = Path(self.config_dir()) / "trcc-linux.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            fh = open(lock_path, "w")  # noqa: SIM115
+            fh = open(lock_path, "w")
             msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # pyright: ignore[reportAttributeAccessIssue]
             fh.write(str(os.getpid()))
             fh.flush()
@@ -461,7 +461,7 @@ class WindowsPlatform(Platform):
 
     # ── Administration ────────────────────────────────────────
 
-    def get_pkg_manager(self) -> Optional[str]:
+    def get_pkg_manager(self) -> str | None:
         return 'winget' if shutil.which('winget') else None
 
     def check_deps(self) -> list:
@@ -507,7 +507,7 @@ class WindowsPlatform(Platform):
         import platform
         return f"Windows {platform.version()}"
 
-    def no_devices_hint(self) -> Optional[str]:
+    def no_devices_hint(self) -> str | None:
         return (
             "\nOn Windows, non-SCSI devices (HID, Bulk, LY) need the\n"
             "WinUSB driver. Run 'trcc setup-winusb' for instructions."

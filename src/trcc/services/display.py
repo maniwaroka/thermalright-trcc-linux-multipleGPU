@@ -10,8 +10,9 @@ import logging
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..core.ports import Platform
@@ -44,7 +45,7 @@ class DisplayService:
                  media: MediaService,
                  theme_svc: Any = None,
                  cpu_percent_fn: Callable[[], float] | None = None,
-                 path_resolver: 'Platform | None' = None,
+                 path_resolver: Platform | None = None,
                  device_label: str = '') -> None:
         # Per-device child logger — tags every record with device identity
         self.log: logging.Logger = tagged_logger(__name__, device_label)
@@ -917,7 +918,7 @@ class DisplayService:
 
     # -- Theme save (delegates to ThemePersistence) ------------------------
 
-    def save_theme(self, name: str) -> Tuple[bool, str]:
+    def save_theme(self, name: str) -> tuple[bool, str]:
         """Save current config as a custom theme.
 
         Custom themes always go to user_content_dir (~/.trcc-user/data/) so they
@@ -944,14 +945,14 @@ class DisplayService:
             self.current_theme_path = data_dir / theme_dir_name(self.lcd_width, self.lcd_height) / safe_name
         return ok, msg
 
-    def export_config(self, export_path: Path) -> Tuple[bool, str]:
+    def export_config(self, export_path: Path) -> tuple[bool, str]:
         """Export current theme as .tr or JSON file."""
         return self._persistence.export_config(
             export_path, self.current_theme_path,
             self.lcd_width, self.lcd_height,
         )
 
-    def import_config(self, import_path: Path, data_dir: Path) -> Tuple[bool, str]:
+    def import_config(self, import_path: Path, data_dir: Path) -> tuple[bool, str]:
         """Import theme from .tr or JSON file."""
         # Fall back to user-writable dir on system-wide installs (#51)
         if not os.access(data_dir, os.W_OK) and self._path_resolver:

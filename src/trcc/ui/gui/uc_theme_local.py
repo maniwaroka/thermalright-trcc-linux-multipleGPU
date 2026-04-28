@@ -274,9 +274,7 @@ class UCThemeLocal(BaseThemeBrowser):
             if not self._slideshow:
                 # Windows: MODE_ALL/DEFAULT shows delete only on index >= 5
                 # MODE_USER shows delete on ALL themes
-                if self.filter_mode == self.MODE_USER:
-                    widget.set_deletable(True)
-                elif idx >= 5:
+                if self.filter_mode == self.MODE_USER or idx >= 5:
                     widget.set_deletable(True)
                 else:
                     widget.set_deletable(False)

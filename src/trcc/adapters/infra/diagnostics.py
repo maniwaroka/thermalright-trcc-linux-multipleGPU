@@ -28,9 +28,10 @@ import shutil
 import subprocess
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from trcc.core.ports import DoctorPlatformConfig, ReportPlatformConfig
@@ -558,7 +559,7 @@ def get_module_version(import_name: str) -> str | None:
         return None
 
 
-def get_setup_info(doctor_config: 'DoctorPlatformConfig | None' = None) -> SetupInfo:
+def get_setup_info(doctor_config: DoctorPlatformConfig | None = None) -> SetupInfo:
     """Get system info for setup wizard."""
     if doctor_config is None:
         from trcc.core.builder import ControllerBuilder
@@ -573,7 +574,7 @@ def get_setup_info(doctor_config: 'DoctorPlatformConfig | None' = None) -> Setup
 
 def check_system_deps(
     pm: str | None = None,
-    doctor_config: 'DoctorPlatformConfig | None' = None,
+    doctor_config: DoctorPlatformConfig | None = None,
 ) -> list[DepResult]:
     """Check all dependencies and return structured results."""
     if doctor_config is None:
@@ -654,7 +655,7 @@ def check_gpu() -> list[GpuResult]:
             continue
         try:
             pci_class = class_path.read_text().strip()
-            if pci_class.startswith('0x0300') or pci_class.startswith('0x0302'):
+            if pci_class.startswith(('0x0300', '0x0302')):
                 vendors.add(vendor_path.read_text().strip().removeprefix('0x'))
         except OSError:
             continue
@@ -753,10 +754,7 @@ def _selinux_usb_access_allowed() -> bool:
         )
         if r.returncode != 0:
             return False
-        for perm in ('ioctl', 'open', 'read', 'write'):
-            if perm not in r.stdout:
-                return False
-        return True
+        return all(perm in r.stdout for perm in ('ioctl', 'open', 'read', 'write'))
     except (FileNotFoundError, Exception):
         return False
 
@@ -799,7 +797,7 @@ def check_desktop_entry() -> bool:
     return (Path.home() / '.local' / 'share' / 'applications' / 'trcc-linux.desktop').exists()
 
 
-def run_doctor(doctor_config: 'DoctorPlatformConfig | None' = None) -> int:
+def run_doctor(doctor_config: DoctorPlatformConfig | None = None) -> int:
     """Run dependency health check. Returns 0 if all required deps pass."""
     if doctor_config is None:
         from trcc.core.builder import ControllerBuilder
@@ -1143,7 +1141,7 @@ def _debug_ly_interactive(dev: Any, test_frame: bool = False) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def device_debug(
-    detect_fn: Optional[Callable[[], list[Any]]] = None,
+    detect_fn: Callable[[], list[Any]] | None = None,
     test_frame: bool = False,
 ) -> int:
     """Interactive handshake diagnostic for all connected devices.
@@ -1285,15 +1283,15 @@ class DebugReport:
 
     def __init__(
         self,
-        report_config: 'ReportPlatformConfig | None' = None,
-        detect_fn: Optional[Callable[[], list[Any]]] = None,
+        report_config: ReportPlatformConfig | None = None,
+        detect_fn: Callable[[], list[Any]] | None = None,
     ) -> None:
         self._sections: list[_Section] = []
         self._detected_devices: list[Any] = []
         self._config = report_config
         self._detect_fn = detect_fn
 
-    def _get_config(self) -> 'ReportPlatformConfig':
+    def _get_config(self) -> ReportPlatformConfig:
         if self._config is None:
             from trcc.core.builder import ControllerBuilder
             self._config = ControllerBuilder.for_current_os().os.report_config()
@@ -1601,9 +1599,7 @@ class DebugReport:
                     f"    PM={pm}, SUB={sub}, model={model}{style_info}")
                 sec.lines.append(f"    (via {kind} instance)")
 
-            if not lcd.get("connected") and not led.get("connected"):
-                return False
-            return True
+            return not (not lcd.get("connected") and not led.get("connected"))
         except Exception:
             return False  # IPC failed — fall back to direct handshake
 

@@ -26,9 +26,9 @@ from PySide6.QtWidgets import QStackedWidget
 
 from ...core.models import OverlayElementConfig, OverlayMode
 from .base import BasePanel
-from .color_and_add_panels import AddElementPanel, ColorPickerPanel  # noqa: F401
+from .color_and_add_panels import AddElementPanel, ColorPickerPanel
 from .constants import Layout, Sizes
-from .display_mode_panels import (  # noqa: F401
+from .display_mode_panels import (
     DataTablePanel,
     DisplayModePanel,
     MaskPanel,
@@ -48,7 +48,7 @@ from .overlay_element import (  # noqa: F401
     TIME_FORMATS,
     OverlayElementWidget,
 )
-from .overlay_grid import OverlayGridPanel  # noqa: F401
+from .overlay_grid import OverlayGridPanel
 
 log = logging.getLogger(__name__)
 

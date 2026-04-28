@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional, Tuple
 
 import psutil  # pyright: ignore[reportMissingImports]
 
@@ -42,49 +41,49 @@ class PsutilCpu(CpuSource):
     def name(self) -> str:
         return self._name
 
-    def temp(self) -> Optional[float]:
+    def temp(self) -> float | None:
         return None
 
-    def usage(self) -> Optional[float]:
+    def usage(self) -> float | None:
         # First call needs an interval to bootstrap the delta
         if not self._warm:
             self._warm = True
             return float(psutil.cpu_percent(interval=0.08))
         return float(psutil.cpu_percent(interval=None))
 
-    def freq(self) -> Optional[float]:
+    def freq(self) -> float | None:
         try:
             freq = psutil.cpu_freq()
             return float(freq.current) if freq else None
         except Exception:
             return None
 
-    def power(self) -> Optional[float]:
+    def power(self) -> float | None:
         return None
 
 
 class PsutilMemory(MemorySource):
     """RAM metrics from psutil.  Works on every OS."""
 
-    def used(self) -> Optional[float]:
+    def used(self) -> float | None:
         try:
             return psutil.virtual_memory().used / (1024 * 1024)
         except Exception:
             return None
 
-    def available(self) -> Optional[float]:
+    def available(self) -> float | None:
         try:
             return psutil.virtual_memory().available / (1024 * 1024)
         except Exception:
             return None
 
-    def total(self) -> Optional[float]:
+    def total(self) -> float | None:
         try:
             return psutil.virtual_memory().total / (1024 * 1024)
         except Exception:
             return None
 
-    def percent(self) -> Optional[float]:
+    def percent(self) -> float | None:
         try:
             return float(psutil.virtual_memory().percent)
         except Exception:
@@ -102,8 +101,8 @@ class ComputedIo:
     """
 
     def __init__(self) -> None:
-        self._disk_prev: Optional[Tuple] = None
-        self._net_prev: Optional[Tuple] = None
+        self._disk_prev: tuple | None = None
+        self._net_prev: tuple | None = None
 
     def poll(self, readings: dict[str, float]) -> None:
         now = time.monotonic()

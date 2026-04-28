@@ -16,7 +16,6 @@ import struct
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
 
 from ...core.errors import HandshakeError, TransportError, UnsupportedOperationError
 from ...core.models import HandshakeResult, LedHandshakeResult, ProductInfo
@@ -57,8 +56,8 @@ class LedPayload:
     global_on:  master switch; False turns every LED off.
     brightness: 0-100 multiplier applied before the FormLED 0.4x scale.
     """
-    colors: List[Tuple[int, int, int]]
-    is_on: Optional[List[bool]] = None
+    colors: list[tuple[int, int, int]]
+    is_on: list[bool] | None = None
     global_on: bool = True
     brightness: int = 100
 
@@ -74,14 +73,14 @@ class Led(Device[BulkTransport]):
         self._send_lock = threading.Lock()
         self._pm: int = 0
         self._sub: int = 0
-        self._led_handshake: Optional[LedHandshakeResult] = None
+        self._led_handshake: LedHandshakeResult | None = None
 
     @property
     def is_led(self) -> bool:
         return True
 
     @property
-    def led_handshake(self) -> Optional[LedHandshakeResult]:
+    def led_handshake(self) -> LedHandshakeResult | None:
         """LED-specific handshake info (pm, sub_type, style)."""
         return self._led_handshake
 
@@ -91,7 +90,7 @@ class Led(Device[BulkTransport]):
         if not self._transport.open():
             raise HandshakeError(f"Failed to open USB transport for {self.info.key}")
 
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         init_pkt = self._build_init_packet()
 
         for attempt in range(1, _HANDSHAKE_MAX_RETRIES + 1):

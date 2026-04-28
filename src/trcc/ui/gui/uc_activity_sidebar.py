@@ -12,8 +12,8 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ...core.models import (
-    SENSOR_TO_OVERLAY,  # noqa: F401  (re-exported for backwards compat)
-    SENSORS,  # noqa: F401  (re-exported for backwards compat)
+    SENSOR_TO_OVERLAY,
+    SENSORS,
     OverlayElementConfig,
     OverlayMode,
 )

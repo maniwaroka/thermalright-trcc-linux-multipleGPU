@@ -13,7 +13,6 @@ FormLED.cs which is one form for all LED device types.
 """
 
 import logging
-from typing import Dict, List, Tuple
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIntValidator, QPainter, QPalette, QPixmap
@@ -328,7 +327,7 @@ class UCLedControl(QWidget):
 
         # -- Mode buttons (text rendered via i18n, not baked into PNG) --
         from ...conf import settings
-        self._mode_buttons: List[QPushButton] = []
+        self._mode_buttons: list[QPushButton] = []
         for i, label_key in enumerate(MODE_LABELS):
             label = tr(label_key, settings.lang)
             btn = QPushButton(label, self)
@@ -353,9 +352,9 @@ class UCLedControl(QWidget):
 
         # -- RGB Controls (C# ucScrollAR/G/B + textBoxR/G/B) --
         # Background PNG provides R/G/B letter labels — no Qt labels needed.
-        self._rgb_sliders: List[QSlider] = []
-        self._rgb_spinboxes: List[QSpinBox] = []
-        self._rgb_labels: List[QLabel] = []  # kept empty for compat
+        self._rgb_sliders: list[QSlider] = []
+        self._rgb_spinboxes: list[QSpinBox] = []
+        self._rgb_labels: list[QLabel] = []  # kept empty for compat
         rgb_colors = ["#ff4444", "#44ff44", "#4444ff"]
 
         for i, color in enumerate(rgb_colors):
@@ -397,7 +396,7 @@ class UCLedControl(QWidget):
         self._color_swatch.setVisible(False)
 
         # -- Preset color buttons (C# buttonC1-C8 with D3* image assets) --
-        self._preset_buttons: List[QPushButton] = []
+        self._preset_buttons: list[QPushButton] = []
         for i, (r, g, b) in enumerate(PRESET_COLORS):
             btn = QPushButton(self)
             x = PRESET_X_POSITIONS[i]
@@ -493,7 +492,7 @@ class UCLedControl(QWidget):
         self._test_cb.setVisible(False)  # C# checkBox1.Visible = false
 
         # -- Zone buttons (C# button1-4/5-6/N1-4 — images swapped per style) --
-        self._zone_buttons: List[QPushButton] = []
+        self._zone_buttons: list[QPushButton] = []
         for i in range(4):
             btn = QPushButton(self)
             x = ZONE_X_POSITIONS[i] if i < len(ZONE_X_POSITIONS) else 590
@@ -622,7 +621,7 @@ class UCLedControl(QWidget):
             (5, "gpu_clock", 2),  # M5 GPU Clock
             (6, "gpu_usage", 1),  # M6 GPU Usage
         ]
-        self._info_images: Dict[str, UCInfoImage] = {}
+        self._info_images: dict[str, UCInfoImage] = {}
         for idx, (img_num, key, mode) in enumerate(INFO_DEFS):
             col = idx // 3
             row = idx % 3
@@ -674,7 +673,7 @@ class UCLedControl(QWidget):
         # label1=temp  label2=clock(MHz)  label2_1=clock(MT/s)
         # label3=used(GB)  label4=ratio(X)
         # label5-10=timings (tCAS/tRCD/tRP/tRAS/tRC/tRFC)
-        self._mem_labels: Dict[str, QLabel] = {}
+        self._mem_labels: dict[str, QLabel] = {}
         _mem_layout = [
             ("mem_temp",    136, 15, 166, 23),
             ("mem_clock",   136, 35, 166, 23),
@@ -727,7 +726,7 @@ class UCLedControl(QWidget):
 
         # C# label positions: internal (x, y) → absolute (13+x, 656+y)
         # label1=temp  label2=health%  label3=read  label4=write
-        self._disk_labels: Dict[str, QLabel] = {}
+        self._disk_labels: dict[str, QLabel] = {}
         _disk_layout = [
             ("lf11_disk_temp",  170, 21, 166, 23),
             ("lf11_disk_usage", 170, 43, 166, 23),
@@ -791,7 +790,7 @@ class UCLedControl(QWidget):
         # fall back to style default (Windows: FormLEDInit per-NO)
         preview_name = style.preview_image
         if model:
-            for pm, entry in PmRegistry._REGISTRY.items():
+            for _pm, entry in PmRegistry._REGISTRY.items():
                 if entry.model_name == model and entry.preview_image:
                     preview_name = entry.preview_image
                     break
@@ -846,7 +845,7 @@ class UCLedControl(QWidget):
         elif is_lf11:
             self._populate_disk_identity()
 
-    def set_led_colors(self, colors: List[Tuple[int, int, int]]) -> None:
+    def set_led_colors(self, colors: list[tuple[int, int, int]]) -> None:
         """Update LED preview from controller tick."""
         self._preview.set_colors(colors)
 

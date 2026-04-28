@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 log = logging.getLogger(__name__)
 
@@ -60,10 +59,10 @@ class KvmChannelState:
 @dataclass
 class KvmLedState:
     """Complete KVM LED controller state (10 channels)."""
-    channels: List[KvmChannelState] = field(default_factory=lambda: [
+    channels: list[KvmChannelState] = field(default_factory=lambda: [
         KvmChannelState() for _ in range(NUM_CHANNELS)
     ])
-    channel_enables: List[int] = field(
+    channel_enables: list[int] = field(
         default_factory=lambda: list(DEFAULT_CHANNEL_ENABLES)
     )
 
@@ -195,7 +194,7 @@ class KvmProModePersistence:
         log.debug("Saved KVM LED config to %s", path)
 
     @staticmethod
-    def load(path: Path) -> Optional[KvmLedState]:
+    def load(path: Path) -> KvmLedState | None:
         """Load state from proMode.dc file. Returns None if invalid."""
         if not path.is_file():
             return None
@@ -222,7 +221,7 @@ class KvmProModePersistence:
         KvmProModePersistence.save(state, path)
 
     @staticmethod
-    def load_scene(scene: int, base_dir: Path) -> Optional[KvmLedState]:
+    def load_scene(scene: int, base_dir: Path) -> KvmLedState | None:
         """Load state from a numbered scene file."""
         path = base_dir / f"{scene}proMode.dc"
         return KvmProModePersistence.load(path)

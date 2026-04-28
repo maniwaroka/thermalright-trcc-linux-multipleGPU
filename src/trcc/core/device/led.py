@@ -89,9 +89,7 @@ class LEDDevice:
             return getattr(self._proxy, 'connected', True)
         if self._info is not None:
             return True
-        if self._led_svc is not None:
-            return True
-        return False
+        return self._led_svc is not None
 
     @property
     def device_info(self) -> Any:

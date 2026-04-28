@@ -6,7 +6,6 @@ render.  Every Command has one concrete Result type.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
 
 from .models import (
     DeviceInfo,
@@ -26,15 +25,15 @@ class Result:
 
 @dataclass(frozen=True, slots=True)
 class DiscoverResult(Result):
-    products: List[ProductInfo] = field(default_factory=list)
-    devices: List[DeviceInfo] = field(default_factory=list)
+    products: list[ProductInfo] = field(default_factory=list)
+    devices: list[DeviceInfo] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
 class ConnectResult(Result):
     key: str = ""
-    handshake: Optional[HandshakeResult] = None
-    led_handshake: Optional[LedHandshakeResult] = None
+    handshake: HandshakeResult | None = None
+    led_handshake: LedHandshakeResult | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,18 +76,18 @@ class BrightnessResult(Result):
 @dataclass(frozen=True, slots=True)
 class LedColorsResult(Result):
     key: str = ""
-    colors: List[Tuple[int, int, int]] = field(default_factory=list)
+    colors: list[tuple[int, int, int]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
 class SensorsResult(Result):
-    readings: List[SensorReading] = field(default_factory=list)
+    readings: list[SensorReading] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
 class SetupResult(Result):
     exit_code: int = 0
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,4 +106,4 @@ class PlatformInfoResult(Result):
     data_dir: str = ""
     user_content_dir: str = ""
     log_file: str = ""
-    permission_warnings: List[str] = field(default_factory=list)
+    permission_warnings: list[str] = field(default_factory=list)

@@ -14,7 +14,6 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes  # pyright: ignore[reportMissingImports]
 import logging
-from typing import Optional
 
 from trcc.adapters.device.scsi import ScsiTransport
 
@@ -103,7 +102,7 @@ class WindowsScsiTransport(ScsiTransport):
 
     def __init__(self, device_path: str) -> None:
         self._device_path = device_path
-        self._handle: Optional[int] = None
+        self._handle: int | None = None
 
     def open(self) -> bool:
         """Open the physical drive for SCSI passthrough."""

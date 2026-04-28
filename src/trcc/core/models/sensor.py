@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Tuple
 
 from .constants import (
     DATE_FORMATS,
@@ -69,7 +68,7 @@ class HardwareMetrics:
     _TEMP_FIELDS = ('cpu_temp', 'gpu_temp', 'mem_temp', 'disk_temp')
 
     @staticmethod
-    def with_temp_unit(metrics: 'HardwareMetrics', temp_unit: int) -> 'HardwareMetrics':
+    def with_temp_unit(metrics: HardwareMetrics, temp_unit: int) -> HardwareMetrics:
         """Apply temperature unit conversion in-place (0=Celsius, 1=Fahrenheit).
 
         Called once by MetricsMediator before dispatch — all downstream
@@ -85,7 +84,7 @@ class HardwareMetrics:
 # Hardware sensor ↔ metric name mapping (single source of truth).
 # Maps DC file (main_count, sub_count) → HardwareMetrics attribute name.
 # Used by dc_parser, dc_writer, dc_config, uc_sensor_picker.
-HARDWARE_METRICS: Dict[Tuple[int, int], str] = {
+HARDWARE_METRICS: dict[tuple[int, int], str] = {
     # CPU (main_count=0)
     (0, 1): 'cpu_temp',
     (0, 2): 'cpu_percent',
@@ -118,7 +117,7 @@ HARDWARE_METRICS: Dict[Tuple[int, int], str] = {
     (5, 4): 'fan_sys2',
 }
 
-METRIC_TO_IDS: Dict[str, Tuple[int, int]] = {v: k for k, v in HARDWARE_METRICS.items()}
+METRIC_TO_IDS: dict[str, tuple[int, int]] = {v: k for k, v in HARDWARE_METRICS.items()}
 
 
 # =============================================================================
@@ -267,7 +266,7 @@ def format_metric(metric: str, value: float, time_format: int = 0,
         return WEEKDAYS[now.weekday()]
     elif metric == 'day_of_week':
         return WEEKDAYS[int(value)]
-    elif metric.startswith('time_') or metric.startswith('date_'):
+    elif metric.startswith(('time_', 'date_')):
         return f"{int(value):02d}"
     elif 'temp' in metric:
         suffix = "°F" if temp_unit == 1 else "°C"
@@ -298,9 +297,17 @@ def format_metric(metric: str, value: float, time_format: int = 0,
 
 
 __all__ = [
-    'HardwareMetrics', 'HARDWARE_METRICS', 'METRIC_TO_IDS',
-    'SensorInfo', 'SensorBinding', 'PanelConfig',
-    'CATEGORY_IMAGES', 'CATEGORY_COLORS', 'CATEGORY_NAMES', 'SUB_METRICS',
-    'SENSORS', 'SENSOR_TO_OVERLAY',
+    'CATEGORY_COLORS',
+    'CATEGORY_IMAGES',
+    'CATEGORY_NAMES',
+    'HARDWARE_METRICS',
+    'METRIC_TO_IDS',
+    'SENSORS',
+    'SENSOR_TO_OVERLAY',
+    'SUB_METRICS',
+    'HardwareMetrics',
+    'PanelConfig',
+    'SensorBinding',
+    'SensorInfo',
     'format_metric',
 ]

@@ -11,8 +11,6 @@ resolution used until confirmation.
 """
 from __future__ import annotations
 
-from typing import Tuple
-
 from .models import Kind, ProductInfo, Wire
 
 # =========================================================================
@@ -20,7 +18,7 @@ from .models import Kind, ProductInfo, Wire
 # =========================================================================
 
 
-ALL_DEVICES: dict[Tuple[int, int], ProductInfo] = {
+ALL_DEVICES: dict[tuple[int, int], ProductInfo] = {
 
     # --- SCSI LCD (USB mass-storage passthrough) -----------------------
     (0x87CD, 0x70DB): ProductInfo(

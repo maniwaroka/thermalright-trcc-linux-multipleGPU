@@ -19,7 +19,6 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
 
 import trcc.conf as _conf
 from trcc.core.models import FBL_TO_RESOLUTION
@@ -63,9 +62,9 @@ def _all_resolutions() -> list[tuple[int, int]]:
     return sorted(set(FBL_TO_RESOLUTION.values()) | _EXTRA_RESOLUTIONS)
 
 
-def _build_registry() -> Dict[str, PackInfo]:
+def _build_registry() -> dict[str, PackInfo]:
     """Build theme pack registry from all known resolutions."""
-    registry: Dict[str, PackInfo] = {}
+    registry: dict[str, PackInfo] = {}
     for w, h in _all_resolutions():
         pack_id = f"themes-{w}x{h}"
         archive = f"{theme_dir_name(w, h)}.7z"
@@ -82,29 +81,29 @@ def _build_registry() -> Dict[str, PackInfo]:
     return registry
 
 
-def _build_short_aliases(registry: Dict[str, PackInfo]) -> Dict[str, str]:
+def _build_short_aliases(registry: dict[str, PackInfo]) -> dict[str, str]:
     """Build short aliases for square resolutions (themes-320 → themes-320x320)."""
-    aliases: Dict[str, str] = {}
+    aliases: dict[str, str] = {}
     for pack_id, info in registry.items():
         if info.width == info.height:
             aliases[f"themes-{info.width}"] = pack_id
     return aliases
 
 
-_THEME_REGISTRY: Dict[str, PackInfo] | None = None
-_SHORT_ALIASES: Dict[str, str] | None = None
+_THEME_REGISTRY: dict[str, PackInfo] | None = None
+_SHORT_ALIASES: dict[str, str] | None = None
 
 
-def _get_registry() -> Dict[str, PackInfo]:
+def _get_registry() -> dict[str, PackInfo]:
     """Lazy-build theme registry on first access."""
-    global _THEME_REGISTRY, _SHORT_ALIASES  # noqa: PLW0603
+    global _THEME_REGISTRY, _SHORT_ALIASES
     if _THEME_REGISTRY is None:
         _THEME_REGISTRY = _build_registry()
         _SHORT_ALIASES = _build_short_aliases(_THEME_REGISTRY)
     return _THEME_REGISTRY
 
 
-def _get_aliases() -> Dict[str, str]:
+def _get_aliases() -> dict[str, str]:
     """Lazy-build short aliases on first access."""
     _get_registry()  # ensures both are built
     return _SHORT_ALIASES  # type: ignore[return-value]

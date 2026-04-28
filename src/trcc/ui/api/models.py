@@ -153,5 +153,5 @@ class ScreencastStatusResponse(BaseModel):
     running: bool = False
     backend: str = ""
     fps: int = 0
-    region: dict = {}  # noqa: RUF012
+    region: dict = {}
     frames: int = 0

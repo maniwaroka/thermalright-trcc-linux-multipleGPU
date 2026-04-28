@@ -38,7 +38,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ def install(dry_run: bool = False) -> int:
         log.warning("macOS setup wizard is macOS-only — current platform: %s", sys.platform)
         return 0
 
-    issues: List[str] = []
+    issues: list[str] = []
     binary = Path(sys.executable).resolve()
     bundle = _enclosing_app_bundle(binary)
 
@@ -127,7 +126,7 @@ def _is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def _enclosing_app_bundle(binary: Path) -> Optional[Path]:
+def _enclosing_app_bundle(binary: Path) -> Path | None:
     """Return the ``.app`` bundle containing this binary, if any.
 
     macOS PyInstaller bundles produce ``Foo.app/Contents/MacOS/foo``,
@@ -140,7 +139,7 @@ def _enclosing_app_bundle(binary: Path) -> Optional[Path]:
     return None
 
 
-def _check_codesign(target: str) -> Optional[bool]:
+def _check_codesign(target: str) -> bool | None:
     """``codesign --verify`` — True if signed, False if not, None if tool absent."""
     try:
         result = subprocess.run(

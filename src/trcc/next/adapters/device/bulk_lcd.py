@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import struct
-from typing import Set
 
 from ...core.errors import HandshakeError, TransportError
 from ...core.models import HandshakeResult, ProductInfo
@@ -43,7 +42,7 @@ _WRITE_TIMEOUT_MS = 5000
 _WRITE_CHUNK_SIZE = 16 * 1024
 
 # PM values that use raw RGB565 (cmd=3); everything else uses JPEG (cmd=2).
-_RGB565_PMS: Set[int] = {32}
+_RGB565_PMS: set[int] = {32}
 
 
 class BulkLcd(Device[BulkTransport]):

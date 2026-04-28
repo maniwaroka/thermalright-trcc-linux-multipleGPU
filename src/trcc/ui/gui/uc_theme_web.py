@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QMovie
@@ -113,11 +113,11 @@ class UCThemeWeb(DownloadableThemeBrowser):
         self._extract_fn = extract_fn
         super().__init__(parent)
 
-    def showEvent(self, event) -> None:  # noqa: N802
+    def showEvent(self, event) -> None:
         super().showEvent(event)
         self._set_movies_running(True)
 
-    def hideEvent(self, event) -> None:  # noqa: N802
+    def hideEvent(self, event) -> None:
         super().hideEvent(event)
         self._set_movies_running(False)
 

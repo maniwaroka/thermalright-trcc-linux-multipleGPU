@@ -13,7 +13,7 @@ import datetime
 import logging
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 
@@ -81,13 +81,13 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         self._sensors: list[SensorInfo] = []
         self._readings: dict[str, float] = {}
         self._lock = threading.Lock()
-        self._poll_thread: Optional[threading.Thread] = None
+        self._poll_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._poll_interval: float = 2.0
-        self._default_map: Optional[dict[str, str]] = None
+        self._default_map: dict[str, str] | None = None
         # I/O rate tracking (delta-based)
-        self._disk_prev: Optional[tuple[Any, float]] = None
-        self._net_prev: Optional[tuple[Any, float]] = None
+        self._disk_prev: tuple[Any, float] | None = None
+        self._net_prev: tuple[Any, float] | None = None
         # cpu_percent bootstrap: first call uses short interval
         self._cpu_pct_bootstrapped: bool = False
         # nvidia handles (populated by _discover_nvidia)
@@ -114,7 +114,7 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
         with self._lock:
             return dict(self._readings)
 
-    def read_one(self, sensor_id: str) -> Optional[float]:
+    def read_one(self, sensor_id: str) -> float | None:
         with self._lock:
             return self._readings.get(sensor_id)
 
@@ -482,6 +482,6 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
             if not matched:
                 unmatched.append(sensor)
         empty_keys = [k for k, _ in _fan_slots if k not in fan_mapped]
-        for sensor, key in zip(unmatched, empty_keys):
+        for sensor, key in zip(unmatched, empty_keys, strict=False):
             fan_mapped[key] = sensor.id
         mapping.update(fan_mapped)

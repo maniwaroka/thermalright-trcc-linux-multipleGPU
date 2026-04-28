@@ -97,9 +97,7 @@ class LCDDevice:
             return getattr(self._proxy, 'connected', True)
         if self._info is not None:
             return True
-        if self._device_svc is not None and self._device_svc.selected is not None:
-            return True
-        return False
+        return bool(self._device_svc is not None and self._device_svc.selected is not None)
 
     @property
     def device_info(self) -> Any:

@@ -11,7 +11,7 @@ Uses the Renderer port exclusively; knows nothing about Qt directly.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..core.ports import Renderer
 
@@ -27,8 +27,8 @@ class OverlayService:
     def render(
         self,
         base: Any,
-        config: Dict[str, Any],
-        sensors: Dict[str, float],
+        config: dict[str, Any],
+        sensors: dict[str, float],
     ) -> Any:
         """Render every overlay element from *config* onto *base*.
 
@@ -51,7 +51,7 @@ class OverlayService:
         width, height = self._r.surface_size(base)
         overlay = self._r.create_surface(width, height)
 
-        elements: List[Dict[str, Any]] = config.get("elements", [])
+        elements: list[dict[str, Any]] = config.get("elements", [])
         for element in elements:
             self._draw_element(overlay, element, sensors)
 
@@ -62,8 +62,8 @@ class OverlayService:
     def _draw_element(
         self,
         surface: Any,
-        element: Dict[str, Any],
-        sensors: Dict[str, float],
+        element: dict[str, Any],
+        sensors: dict[str, float],
     ) -> None:
         kind = element.get("type")
         if kind == "text":
@@ -73,7 +73,7 @@ class OverlayService:
         else:
             log.debug("Skipping unknown overlay element type: %r", kind)
 
-    def _draw_text(self, surface: Any, element: Dict[str, Any]) -> None:
+    def _draw_text(self, surface: Any, element: dict[str, Any]) -> None:
         self._r.draw_text(
             surface,
             x=int(element.get("x", 0)),
@@ -88,11 +88,11 @@ class OverlayService:
     def _draw_metric(
         self,
         surface: Any,
-        element: Dict[str, Any],
-        sensors: Dict[str, float],
+        element: dict[str, Any],
+        sensors: dict[str, float],
     ) -> None:
         metric_id = str(element.get("metric", ""))
-        value: Optional[float] = sensors.get(metric_id)
+        value: float | None = sensors.get(metric_id)
         if value is None:
             log.debug("Metric %r has no sensor reading; skipping", metric_id)
             return

@@ -22,7 +22,7 @@ import logging
 import struct
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 import usb.core
 import usb.util
@@ -184,7 +184,7 @@ class HidDevice(FrameDevice):
     def __init__(self, transport: UsbTransport):
         self.transport = transport
         self._initialized = False
-        self.device_info: Optional[HidHandshakeInfo] = None
+        self.device_info: HidHandshakeInfo | None = None
 
     @staticmethod
     @abstractmethod
@@ -213,7 +213,7 @@ class HidDevice(FrameDevice):
         retries at 200ms → 3s intervals).
         """
         init_pkt = self.build_init_packet()
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
 
         for attempt in range(1, HANDSHAKE_MAX_RETRIES + 1):
             try:
@@ -599,8 +599,8 @@ class PyUsbTransport(UsbTransport):
 
     def __init__(
         self, vid: int, pid: int,
-        serial: Optional[str] = None,
-        *, addr: Optional[UsbAddress] = None,
+        serial: str | None = None,
+        *, addr: UsbAddress | None = None,
     ):
         self._vid = vid
         self._pid = pid
@@ -609,8 +609,8 @@ class PyUsbTransport(UsbTransport):
         self._device = None
         self._is_open = False
         # Auto-detected endpoints (populated on open)
-        self._ep_out: Optional[int] = None
-        self._ep_in: Optional[int] = None
+        self._ep_out: int | None = None
+        self._ep_in: int | None = None
 
     def open(self) -> None:
         """Find USB device, claim interface, and auto-detect endpoints.
@@ -734,12 +734,12 @@ class PyUsbTransport(UsbTransport):
         return self._is_open
 
     @property
-    def ep_out(self) -> Optional[int]:
+    def ep_out(self) -> int | None:
         """Auto-detected OUT endpoint address, or None."""
         return self._ep_out
 
     @property
-    def ep_in(self) -> Optional[int]:
+    def ep_in(self) -> int | None:
         """Auto-detected IN endpoint address, or None."""
         return self._ep_in
 
@@ -780,8 +780,8 @@ class HidApiTransport(UsbTransport):
 
     def __init__(
         self, vid: int, pid: int,
-        serial: Optional[str] = None,
-        *, addr: Optional[UsbAddress] = None,
+        serial: str | None = None,
+        *, addr: UsbAddress | None = None,
     ):
         if not HIDAPI_AVAILABLE:
             raise ImportError(

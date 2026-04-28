@@ -9,7 +9,8 @@ save_led_config / load_led_config: bulk serialization functions.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 from ..core.models import LEDMode, LEDState
 from ..core.ports import DeviceConfigService
@@ -18,7 +19,7 @@ log = logging.getLogger(__name__)
 
 # Config persistence field map: config_key → LEDState attribute.
 # One map drives both save and load — add a field here once.
-_PERSIST_FIELDS: Dict[str, str] = {
+_PERSIST_FIELDS: dict[str, str] = {
     'mode': 'mode',
     'color': 'color',
     'brightness': 'brightness',
@@ -35,7 +36,7 @@ _PERSIST_FIELDS: Dict[str, str] = {
 }
 
 # Backward-compat aliases (v5.0.x config keys → current keys)
-_ALIASES: Dict[str, str] = {
+_ALIASES: dict[str, str] = {
     'zone_carousel': 'zone_sync',
     'zone_carousel_zones': 'zone_sync_zones',
     'zone_carousel_interval': 'zone_sync_interval',
@@ -58,7 +59,7 @@ def save_led_config(
 ) -> None:
     """Serialize LEDState to config file."""
     try:
-        config: Dict[str, Any] = {
+        config: dict[str, Any] = {
             ck: _serialize(getattr(state, sa))
             for ck, sa in _PERSIST_FIELDS.items()
         }

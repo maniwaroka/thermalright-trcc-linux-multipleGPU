@@ -20,8 +20,9 @@ Usage::
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, ClassVar, Dict, Optional
+from typing import ClassVar
 
 from trcc.core.models import (
     DEVICE_TYPE_NAMES,
@@ -40,7 +41,7 @@ _ERRNO_EBUSY = 16   # Device claimed by another process (e.g. GUI).
 
 def _has_usb_errno(exc: Exception, errno_val: int) -> bool:
     """Check if exception chain contains a USB error with the given errno."""
-    cur: Optional[BaseException] = exc
+    cur: BaseException | None = exc
     while cur is not None:
         if getattr(cur, "errno", None) == errno_val:
             return True
@@ -76,12 +77,12 @@ class DeviceProtocol(ABC):
 
     def __init__(self):
         # Observer callbacks
-        self.on_send_complete: Optional[Callable[[bool], None]] = None
-        self.on_error: Optional[Callable[[str], None]] = None
-        self.on_state_changed: Optional[Callable[[str, object], None]] = None
+        self.on_send_complete: Callable[[bool], None] | None = None
+        self.on_error: Callable[[str], None] | None = None
+        self.on_state_changed: Callable[[str, object], None] | None = None
         # Handshake state — common to all protocols
-        self._handshake_result: Optional[HandshakeResult] = None
-        self._last_error: Optional[Exception] = None
+        self._handshake_result: HandshakeResult | None = None
+        self._last_error: Exception | None = None
 
     @abstractmethod
     def send_data(self, image_data: bytes, width: int, height: int) -> bool:
@@ -114,7 +115,7 @@ class DeviceProtocol(ABC):
     def is_available(self) -> bool:
         """Whether the required backend (sg_raw / pyusb / hidapi) is installed."""
 
-    def handshake(self) -> Optional[HandshakeResult]:
+    def handshake(self) -> HandshakeResult | None:
         """Template Method: perform handshake, cache result, handle errors.
 
         Subclasses implement _do_handshake() with protocol-specific logic.
@@ -141,7 +142,7 @@ class DeviceProtocol(ABC):
             return None
 
     @abstractmethod
-    def _do_handshake(self) -> Optional[HandshakeResult]:
+    def _do_handshake(self) -> HandshakeResult | None:
         """Protocol-specific handshake logic. Called by handshake()."""
 
     @property
@@ -150,12 +151,12 @@ class DeviceProtocol(ABC):
         return self.protocol_name
 
     @property
-    def handshake_info(self) -> Optional[HandshakeResult]:
+    def handshake_info(self) -> HandshakeResult | None:
         """Cached handshake result (None if not yet handshaked)."""
         return self._handshake_result
 
     @property
-    def last_error(self) -> Optional[Exception]:
+    def last_error(self) -> Exception | None:
         """Last exception from handshake."""
         return self._last_error
 
@@ -248,7 +249,7 @@ class UsbProtocol(DeviceProtocol):
 
     def __init__(
         self, vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ):
         super().__init__()
         self._vid = vid
@@ -311,13 +312,13 @@ class DeviceProtocolFactory:
         DeviceProtocolFactory.close_all()
     """
 
-    _protocols: Dict[str, DeviceProtocol] = {}
-    _scsi_transport_fn: ClassVar[Optional[Callable]] = None
+    _protocols: dict[str, DeviceProtocol] = {}
+    _scsi_transport_fn: ClassVar[Callable | None] = None
 
     # Registry map: protocol name → factory function.
     # Populated at module bottom after concrete Protocol classes import —
     # avoids the circular (factory ⇄ protocol files) at class-body time.
-    _PROTOCOL_REGISTRY: ClassVar[Dict[str, Callable[..., DeviceProtocol]]] = {}
+    _PROTOCOL_REGISTRY: ClassVar[dict[str, Callable[..., DeviceProtocol]]] = {}
 
     @classmethod
     def set_scsi_transport(cls, fn: Callable) -> None:
@@ -416,7 +417,7 @@ class DeviceProtocolFactory:
     @staticmethod
     def create_usb_transport(
         vid: int, pid: int,
-        *, addr: Optional[UsbAddress] = None,
+        *, addr: UsbAddress | None = None,
     ):
         """Create the best available USB transport (pyusb preferred, hidapi fallback).
 
@@ -438,7 +439,7 @@ class DeviceProtocolFactory:
             )
 
     @staticmethod
-    def _get_hid_backends() -> Dict[str, bool]:
+    def _get_hid_backends() -> dict[str, bool]:
         """Check HID backend availability."""
         try:
             from .hid import HIDAPI_AVAILABLE, PYUSB_AVAILABLE
@@ -447,7 +448,7 @@ class DeviceProtocolFactory:
             return {"pyusb": False, "hidapi": False}
 
     @classmethod
-    def get_backend_availability(cls) -> Dict[str, bool]:
+    def get_backend_availability(cls) -> dict[str, bool]:
         """Check which USB/SCSI backends are installed.
 
         Returns dict with keys: sg_raw, pyusb, hidapi — each True/False.
@@ -537,7 +538,7 @@ class ProtocolInfo:
     protocol_display: str = ""
     device_type_display: str = ""
     active_backend: str = ""
-    backends: Dict[str, bool] = field(default_factory=dict)
+    backends: dict[str, bool] = field(default_factory=dict)
     transport_open: bool = False
 
     @property

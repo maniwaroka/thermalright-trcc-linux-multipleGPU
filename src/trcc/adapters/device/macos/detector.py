@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from typing import Any, List
+from typing import Any
 
 from trcc.core.models import DetectedDevice
 
@@ -21,7 +21,7 @@ class MacOSDeviceDetector:
     """Detect Thermalright USB devices on macOS."""
 
     @staticmethod
-    def detect() -> List[DetectedDevice]:
+    def detect() -> list[DetectedDevice]:
         """Scan for Thermalright USB devices.
 
         Strategy:
@@ -32,7 +32,7 @@ class MacOSDeviceDetector:
         Returns:
             List of DetectedDevice, same contract as Linux DeviceDetector.detect()
         """
-        devices: List[DetectedDevice] = []
+        devices: list[DetectedDevice] = []
 
         try:
             import usb.core  # pyright: ignore[reportMissingImports]

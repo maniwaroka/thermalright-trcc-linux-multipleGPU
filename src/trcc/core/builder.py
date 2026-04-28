@@ -51,7 +51,7 @@ class ControllerBuilder:
     }
 
     @classmethod
-    def for_current_os(cls) -> 'ControllerBuilder':
+    def for_current_os(cls) -> ControllerBuilder:
         """Create a builder with the OS-appropriate Platform.
 
         Dict lookup — OS is data, not a branch.
@@ -123,7 +123,7 @@ class ControllerBuilder:
 
     # ── Build methods ──────────────────────────────────────────────
 
-    def build_device(self, detected: Any = None) -> 'Device':
+    def build_device(self, detected: Any = None) -> Device:
         """Build a Device from detected hardware or config.
 
         ProtocolTraits.is_led drives what services get injected.
@@ -210,7 +210,7 @@ class ControllerBuilder:
         """Return platform-specific (get_memory_info, get_disk_info) callables."""
         return self._os.get_memory_info, self._os.get_disk_info
 
-    def device_from_service(self, device_svc) -> 'LCDDevice':
+    def device_from_service(self, device_svc) -> LCDDevice:
         """Build an LCDDevice from an existing DeviceService (API standalone)."""
         from .device.lcd import LCDDevice
         build_fn = self._make_build_services_fn()

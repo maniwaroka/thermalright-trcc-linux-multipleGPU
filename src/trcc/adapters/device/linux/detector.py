@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional
 
 log = logging.getLogger(__name__)
 
 
-def linux_scsi_resolver(vid: int, pid: int) -> Optional[str]:
+def linux_scsi_resolver(vid: int, pid: int) -> str | None:
     """Map a VID:PID to its /dev/sg* or /dev/sd* path via sysfs.
 
     Walks /sys/class/scsi_generic/ to find the SCSI generic device whose
@@ -42,7 +41,7 @@ def linux_scsi_resolver(vid: int, pid: int) -> Optional[str]:
     return None
 
 
-def _resolve_vid_pid(sysfs_base: str) -> Optional[tuple[int, int]]:
+def _resolve_vid_pid(sysfs_base: str) -> tuple[int, int] | None:
     """Walk sysfs parents to find the VID:PID for a SCSI device."""
     try:
         device_path = os.path.realpath(sysfs_base)
@@ -56,7 +55,7 @@ def _resolve_vid_pid(sysfs_base: str) -> Optional[tuple[int, int]]:
                 with open(pid_path) as pf:
                     p = int(pf.read().strip(), 16)
                 return v, p
-    except (IOError, OSError, ValueError):
+    except (OSError, ValueError):
         pass
     log.warning("sysfs VID/PID walk failed for %s — skipping device", sysfs_base)
     return None
@@ -66,7 +65,7 @@ def _resolve_vid_pid(sysfs_base: str) -> Optional[tuple[int, int]]:
 # find_lcd_devices — enriched device list for the GUI
 # ---------------------------------------------------------------------------
 
-def find_lcd_devices(detect_fn=None) -> List[Dict]:
+def find_lcd_devices(detect_fn=None) -> list[dict]:
     """Detect connected LCD devices and enrich with saved identity + LED probe.
 
     Args:

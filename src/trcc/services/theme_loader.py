@@ -99,10 +99,7 @@ class ThemeLoader:
             if not bg_path.exists() and td.bg.exists():
                 bg_path = td.bg
             if bg_path.exists():
-                if bg_path.suffix in ('.mp4', '.avi', '.mkv', '.webm', '.zt'):
-                    self._load_and_play_video(bg_path)
-                    result['is_animated'] = True
-                elif bg_path.suffix == '.gif' and self._is_animated_gif(bg_path):
+                if bg_path.suffix in ('.mp4', '.avi', '.mkv', '.webm', '.zt') or (bg_path.suffix == '.gif' and self._is_animated_gif(bg_path)):
                     self._load_and_play_video(bg_path)
                     result['is_animated'] = True
                 else:

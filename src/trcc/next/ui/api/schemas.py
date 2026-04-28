@@ -5,8 +5,6 @@ not domain concerns.  Core ports stay framework-blind.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 from pydantic import BaseModel, Field
 
 # =========================================================================
@@ -23,18 +21,18 @@ class ProductSchema(BaseModel):
     product: str
     wire: str
     kind: str
-    native_resolution: Tuple[int, int]
-    orientations: Tuple[int, ...]
+    native_resolution: tuple[int, int]
+    orientations: tuple[int, ...]
     native_orientation: str
 
 
 class HandshakeSchema(BaseModel):
-    resolution: Tuple[int, int]
+    resolution: tuple[int, int]
     model_id: int
     serial: str = ""
     pm_byte: int = 0
     sub_byte: int = 0
-    fbl: Optional[int] = None
+    fbl: int | None = None
 
 
 class ResultBase(BaseModel):
@@ -43,12 +41,12 @@ class ResultBase(BaseModel):
 
 
 class DiscoverResponse(ResultBase):
-    products: List[ProductSchema] = []
+    products: list[ProductSchema] = []
 
 
 class ConnectResponse(ResultBase):
     key: str = ""
-    handshake: Optional[HandshakeSchema] = None
+    handshake: HandshakeSchema | None = None
 
 
 class DisconnectResponse(ResultBase):
@@ -78,7 +76,7 @@ class RenderResponse(ResultBase):
 
 class LedColorsResponse(ResultBase):
     key: str = ""
-    colors: List[Tuple[int, int, int]] = []
+    colors: list[tuple[int, int, int]] = []
 
 
 class SensorReadingSchema(BaseModel):
@@ -90,12 +88,12 @@ class SensorReadingSchema(BaseModel):
 
 
 class SensorsResponse(ResultBase):
-    readings: List[SensorReadingSchema] = []
+    readings: list[SensorReadingSchema] = []
 
 
 class SetupResponse(ResultBase):
     exit_code: int = 0
-    warnings: List[str] = []
+    warnings: list[str] = []
 
 
 # =========================================================================
@@ -116,6 +114,6 @@ class ThemeRequest(BaseModel):
 
 
 class LedColorsRequest(BaseModel):
-    colors: List[Tuple[int, int, int]] = Field(..., min_length=1)
+    colors: list[tuple[int, int, int]] = Field(..., min_length=1)
     global_on: bool = True
     brightness: int = Field(100, ge=0, le=100)

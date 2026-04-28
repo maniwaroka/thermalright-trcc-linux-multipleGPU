@@ -69,7 +69,7 @@ _current_image = None  # QImage | None
 
 def set_current_image(img) -> None:
     """Update the tracked LCD frame (called by display/theme endpoints)."""
-    global _current_image  # noqa: PLW0603
+    global _current_image
     _current_image = img
 
 
@@ -79,7 +79,7 @@ def configure_app() -> None:
     Called once by CLI serve command before uvicorn starts. Not called at
     import time so tests can import the module without triggering side effects.
     """
-    global _system_svc  # noqa: PLW0603
+    global _system_svc
     from trcc.adapters.render.qt import QtRenderer
     from trcc.core.app import AppEvent, AppObserver, TrccApp
     from trcc.services.system import set_instance
@@ -112,7 +112,7 @@ def start_video_playback(
     Uses MediaService to decode frames, DeviceService to send to LCD,
     and set_current_image() to feed the WebSocket preview stream.
     """
-    global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
+    global _media_service, _video_thread, _video_stop_event
 
     stop_video_playback()
     stop_screencast()
@@ -153,7 +153,7 @@ def start_video_playback(
 
 def stop_video_playback() -> None:
     """Stop background video playback if running."""
-    global _media_service, _video_thread, _video_stop_event  # noqa: PLW0603
+    global _media_service, _video_thread, _video_stop_event
 
     if _video_stop_event:
         _video_stop_event.set()
@@ -187,7 +187,7 @@ def start_overlay_loop(
     For static themes with config1.dc overlay configs. Updates _current_image
     so the WebSocket preview stream shows live metrics.
     """
-    global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
+    global _overlay_svc, _overlay_thread, _overlay_stop_event
 
     stop_overlay_loop()
     stop_screencast()
@@ -228,7 +228,7 @@ def start_overlay_loop(
 
 def stop_overlay_loop() -> None:
     """Stop background overlay rendering if running."""
-    global _overlay_svc, _overlay_thread, _overlay_stop_event  # noqa: PLW0603
+    global _overlay_svc, _overlay_thread, _overlay_stop_event
 
     if _overlay_stop_event:
         _overlay_stop_event.set()
@@ -247,7 +247,7 @@ _keepalive_stop_event: threading.Event | None = None
 
 def start_keepalive_loop(image, width: int, height: int) -> bool:
     """Re-send a static frame every 150 ms to keep bulk/LY displays alive."""
-    global _keepalive_thread, _keepalive_stop_event  # noqa: PLW0603
+    global _keepalive_thread, _keepalive_stop_event
 
     stop_keepalive_loop()
 
@@ -269,7 +269,7 @@ def start_keepalive_loop(image, width: int, height: int) -> bool:
 
 def stop_keepalive_loop() -> None:
     """Stop background frame keepalive if running."""
-    global _keepalive_thread, _keepalive_stop_event  # noqa: PLW0603
+    global _keepalive_thread, _keepalive_stop_event
 
     if _keepalive_stop_event:
         _keepalive_stop_event.set()
@@ -301,9 +301,9 @@ def start_screencast(
 
     Auto-detects backend: ffmpeg x11grab on X11, PipeWire on Wayland.
     """
-    global _screencast_thread, _screencast_stop_event  # noqa: PLW0603
-    global _screencast_proc, _screencast_cast  # noqa: PLW0603
-    global _screencast_frames, _screencast_params  # noqa: PLW0603
+    global _screencast_thread, _screencast_stop_event
+    global _screencast_proc, _screencast_cast
+    global _screencast_frames, _screencast_params
 
     # Boundary validation — all values are integers from Pydantic,
     # but clamp explicitly so static analysis can verify safety.
@@ -360,7 +360,7 @@ def start_screencast(
         _screencast_proc = proc
 
         def _x11_pump() -> None:
-            global _screencast_frames  # noqa: PLW0603
+            global _screencast_frames
             from PySide6.QtGui import QImage
             frame_size = lcd_w * lcd_h * 3
             assert proc.stdout is not None
@@ -393,7 +393,7 @@ def start_screencast(
         _screencast_cast = cast
 
         def _pipewire_pump() -> None:
-            global _screencast_frames  # noqa: PLW0603
+            global _screencast_frames
             from PySide6.QtGui import QImage
             if not cast.start(timeout=30):
                 log.error("PipeWire screencast failed to start")
@@ -427,9 +427,9 @@ def start_screencast(
 
 def stop_screencast() -> None:
     """Stop background screencast if running."""
-    global _screencast_thread, _screencast_stop_event  # noqa: PLW0603
-    global _screencast_proc, _screencast_cast  # noqa: PLW0603
-    global _screencast_frames, _screencast_params  # noqa: PLW0603
+    global _screencast_thread, _screencast_stop_event
+    global _screencast_proc, _screencast_cast
+    global _screencast_frames, _screencast_params
 
     if _screencast_stop_event:
         _screencast_stop_event.set()
@@ -528,13 +528,13 @@ _pairing_code: str | None = None  # Ephemeral 6-char code, shown in terminal
 
 def configure_auth(token: str | None) -> None:
     """Set the API token. Called by CLI serve command."""
-    global _api_token  # noqa: PLW0603
+    global _api_token
     _api_token = token
 
 
 def set_pairing_code(code: str) -> None:
     """Set the ephemeral pairing code (displayed in terminal)."""
-    global _pairing_code  # noqa: PLW0603
+    global _pairing_code
     _pairing_code = code
 
 

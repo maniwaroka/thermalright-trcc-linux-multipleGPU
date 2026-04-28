@@ -28,7 +28,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
 
 from ...core.models import Wire
 from ...core.registry import ALL_DEVICES
@@ -176,7 +175,7 @@ def _sudo_reexec() -> int:
         "from trcc.next.adapters.system._udev import install; "
         "import sys; sys.exit(install())"
     )
-    cmd: List[str] = ["sudo", sys.executable, "-c", code]
+    cmd: list[str] = ["sudo", sys.executable, "-c", code]
     log.info("Re-running as root via sudo to install udev rules")
     try:
         result = subprocess.run(cmd, check=False)

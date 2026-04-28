@@ -25,7 +25,7 @@ setup = run_setup
 
 def _sudo_run(cmd):
     """Run a command with sudo prepended. Returns subprocess.CompletedProcess."""
-    return subprocess.run(["sudo"] + cmd)
+    return subprocess.run(["sudo", *cmd])
 
 
 def show_info(builder=None, *, preview: bool = False, metric: str | None = None):
@@ -119,7 +119,7 @@ def uninstall(*, yes: bool = False):
     root_exists = [p for p in root_files if os.path.exists(p)]
     if root_exists and not is_root():
         print("Root files found — requesting sudo to remove...")
-        result = _sudo_run(["rm", "-f"] + root_exists)
+        result = _sudo_run(["rm", "-f", *root_exists])
         if result.returncode == 0:
             removed.extend(root_exists)
             _sudo_run(["udevadm", "control", "--reload-rules"])

@@ -18,7 +18,6 @@ import struct
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 from ..core.errors import ThemeError
 from ..core.models import RawFrame
@@ -46,15 +45,15 @@ class VideoDecoder:
     def __init__(self, path: Path, size: tuple[int, int],
                  fps: int = _DEFAULT_FPS,
                  rotation_degrees: int = 0,
-                 duration_s: Optional[float] = None) -> None:
+                 duration_s: float | None = None) -> None:
         self.path = path
         self.size = size
         self.fps = fps
         self.rotation_degrees = rotation_degrees
         self.duration_s = duration_s
-        self.frames: List[RawFrame] = []
+        self.frames: list[RawFrame] = []
 
-    def decode(self) -> List[RawFrame]:
+    def decode(self) -> list[RawFrame]:
         """Run ffmpeg, return the decoded frames."""
         if not self.path.exists():
             raise ThemeError(f"Video path does not exist: {self.path}")
@@ -147,12 +146,12 @@ class ZtDecoder:
     def __init__(self, path: Path, size: tuple[int, int]) -> None:
         self.path = path
         self.size = size
-        self.frames: List[RawFrame] = []
-        self.timestamps: List[int] = []
-        self.delays: List[int] = []
+        self.frames: list[RawFrame] = []
+        self.timestamps: list[int] = []
+        self.delays: list[int] = []
         self.fps: int = _DEFAULT_FPS
 
-    def decode(self) -> List[RawFrame]:
+    def decode(self) -> list[RawFrame]:
         """Read header + JPEG payloads, decode each, return frames."""
         if not self.path.exists():
             raise ThemeError(f".zt path does not exist: {self.path}")
@@ -213,7 +212,7 @@ class ZtDecoder:
             self.delays.append(max(1, nxt - ts))
 
         avg_delay = sum(self.delays) / len(self.delays) if self.delays else 42
-        self.fps = max(1, int(round(1000.0 / avg_delay))) if avg_delay > 0 else _DEFAULT_FPS
+        self.fps = max(1, round(1000.0 / avg_delay)) if avg_delay > 0 else _DEFAULT_FPS
 
         log.info(
             "ZtDecoder: decoded %d frame(s) at %dx%d fps=%d from %s",
@@ -258,7 +257,7 @@ class ZtDecoder:
 @dataclass
 class Playback:
     """Current playback cursor for a video-backed theme."""
-    frames: List[RawFrame]
+    frames: list[RawFrame]
     fps: int = _DEFAULT_FPS
     cursor: int = 0
 
@@ -267,10 +266,10 @@ class Playback:
         return len(self.frames)
 
     @property
-    def current(self) -> Optional[RawFrame]:
+    def current(self) -> RawFrame | None:
         return self.frames[self.cursor] if self.frames else None
 
-    def advance(self) -> Optional[RawFrame]:
+    def advance(self) -> RawFrame | None:
         """Return the current frame and advance the cursor (wraps)."""
         if not self.frames:
             return None
@@ -297,7 +296,7 @@ class MediaService:
                    size: tuple[int, int],
                    fps: int = _DEFAULT_FPS,
                    rotation_degrees: int = 0,
-                   duration_s: Optional[float] = None) -> Playback:
+                   duration_s: float | None = None) -> Playback:
         """Decode a video / .zt animation for a device, replacing any previous playback.
 
         Dispatches by suffix: ``.zt`` → :class:`ZtDecoder`, anything else
@@ -321,7 +320,7 @@ class MediaService:
         self._playbacks[device_key] = playback
         return playback
 
-    def playback(self, device_key: str) -> Optional[Playback]:
+    def playback(self, device_key: str) -> Playback | None:
         return self._playbacks.get(device_key)
 
     def unload(self, device_key: str) -> None:

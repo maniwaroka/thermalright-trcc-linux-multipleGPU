@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional, Tuple
+from typing import Literal
 
 # =========================================================================
 # Wire protocols and device kinds
@@ -82,11 +82,11 @@ class ProductInfo:
     wire: Wire
     kind: Kind
     device_type: int = 1
-    fbl: Optional[int] = None
-    native_resolution: Tuple[int, int] = (0, 0)
-    orientations: Tuple[int, ...] = (0,)
+    fbl: int | None = None
+    native_resolution: tuple[int, int] = (0, 0)
+    orientations: tuple[int, ...] = (0,)
     native_orientation: NativeOrientation = "landscape"
-    led_style: Optional[LedStyle] = None
+    led_style: LedStyle | None = None
 
     @property
     def key(self) -> str:
@@ -107,8 +107,8 @@ class DeviceInfo:
     """
     vid: int
     pid: int
-    path: Optional[str] = None
-    serial: Optional[str] = None
+    path: str | None = None
+    serial: str | None = None
 
     @property
     def key(self) -> str:
@@ -123,12 +123,12 @@ class DeviceInfo:
 @dataclass(frozen=True, slots=True)
 class HandshakeResult:
     """Result of Device.connect() — the raw device-reported state."""
-    resolution: Tuple[int, int]
+    resolution: tuple[int, int]
     model_id: int
     serial: str = ""
     pm_byte: int = 0
     sub_byte: int = 0
-    fbl: Optional[int] = None
+    fbl: int | None = None
     raw_response: bytes = b""
 
 
@@ -137,7 +137,7 @@ class LedHandshakeResult:
     """LED handshake — style + model identifier."""
     pm: int
     sub_type: int
-    style: Optional[LedStyle] = None
+    style: LedStyle | None = None
     model_name: str = ""
     style_sub: int = 0
     raw_response: bytes = b""
@@ -161,7 +161,7 @@ class Theme:
     """A theme loaded from disk — path + config blob."""
     path: Path
     name: str
-    resolution: Tuple[int, int]
+    resolution: tuple[int, int]
     config: dict = field(default_factory=dict)
 
 
@@ -190,10 +190,10 @@ class DeviceSettings:
     """User prefs for one device.  Persisted to config.json."""
     orientation: int = 0
     brightness: int = 100
-    current_theme: Optional[str] = None
+    current_theme: str | None = None
     time_format: Literal["12h", "24h"] = "24h"
     date_format: str = "yyyy/MM/dd"
     temp_unit: TempUnit = "C"
     overlay_enabled: bool = True
-    mask_position: Optional[Tuple[int, int]] = None
+    mask_position: tuple[int, int] | None = None
     fit_mode: FitMode = FitMode.WIDTH

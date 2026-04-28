@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, NamedTuple, Optional, Tuple
+from typing import NamedTuple
 
 from .protocol import HandshakeResult
 
@@ -30,7 +30,7 @@ class LEDZoneState:
     From FormLED.cs: myLedMode1-4, rgbR1_1-4, myBrightness1-4, myOnOff1-4.
     """
     mode: LEDMode = LEDMode.STATIC
-    color: Tuple[int, int, int] = (255, 0, 0)
+    color: tuple[int, int, int] = (255, 0, 0)
     brightness: int = 65   # 0-100 (C# default: 65)
     on: bool = True
 
@@ -50,15 +50,15 @@ class LEDState:
 
     # Global state
     mode: LEDMode = LEDMode.STATIC    # myLedMode
-    color: Tuple[int, int, int] = (255, 0, 0)  # rgbR1, rgbG1, rgbB1
+    color: tuple[int, int, int] = (255, 0, 0)  # rgbR1, rgbG1, rgbB1
     brightness: int = 65        # myBrightness (0-100, C# default: 65)
     global_on: bool = True      # myOnOff
 
     # Per-segment on/off (ucScreenLED1.isOn[] per logical segment)
-    segment_on: List[bool] = field(default_factory=list)
+    segment_on: list[bool] = field(default_factory=list)
 
     # Multi-zone states (styles with zone_count > 1)
-    zones: List[LEDZoneState] = field(default_factory=list)
+    zones: list[LEDZoneState] = field(default_factory=list)
 
     # Animation counters (transient, not persisted)
     rgb_timer: int = 0          # rgbTimer for breathing/gradient/rainbow
@@ -86,7 +86,7 @@ class LEDState:
     #   Other styles: "Circulate" — timer-rotate through enabled zones
     selected_zone: int = 0               # Currently selected zone (UI)
     zone_sync: bool = False              # isLunBo: checkbox state
-    zone_sync_zones: List[bool] = field(default_factory=list)  # LunBo1-4
+    zone_sync_zones: list[bool] = field(default_factory=list)  # LunBo1-4
     zone_sync_current: int = 0           # nowLunbo: current active zone
     zone_sync_ticks: int = 0             # ValCount: tick counter
     zone_sync_interval: int = 13         # round(2s * 1000 / 150ms tick)
@@ -209,7 +209,7 @@ class LedHandshakeInfo(HandshakeResult):
     """LED-specific handshake info (extends HandshakeResult)."""
     pm: int = 0
     sub_type: int = 0
-    style: Optional[LedDeviceStyle] = None
+    style: LedDeviceStyle | None = None
     model_name: str = ""
     style_sub: int = 0  # C# nowLedStyleSub — wire remap variant
 
@@ -318,7 +318,7 @@ PmRegistry = _PmRegistryType()
 
 
 # Preset colors from FormLED.cs ucColor1_ChangeColor handlers
-PRESET_COLORS: List[Tuple[int, int, int]] = [
+PRESET_COLORS: list[tuple[int, int, int]] = [
     (255, 0, 42),     # C1: Red-pink
     (255, 110, 0),    # C2: Orange
     (255, 255, 0),    # C3: Yellow
@@ -511,10 +511,10 @@ LED_DEFAULT_OFF: dict[int, frozenset[int]] = {
 
 
 def remap_led_colors(
-    colors: List[Tuple[int, int, int]],
+    colors: list[tuple[int, int, int]],
     style_id: int,
     style_sub: int = 0,
-) -> List[Tuple[int, int, int]]:
+) -> list[tuple[int, int, int]]:
     """Remap LED colors from logical to physical wire order."""
     table = LED_REMAP_SUB_TABLES.get((style_id, style_sub))
     if table is None:
@@ -565,12 +565,20 @@ _ZONE_STYLE_ASSETS: dict[int, list[tuple[str, str]]] = {
 
 
 __all__ = [
-    'LEDMode', 'LEDZoneState', 'LEDState',
-    'LedDeviceStyle', 'LED_STYLES', 'LED_SELECT_ALL_STYLES',
-    'LedHandshakeInfo',
-    'PmEntry', 'PmRegistry',
+    'LED_DEFAULT_OFF',
+    'LED_MODE_LABELS',
+    'LED_PRESET_ASSETS',
+    'LED_REMAP_SUB_TABLES',
+    'LED_REMAP_TABLES',
+    'LED_SELECT_ALL_STYLES',
+    'LED_STYLES',
     'PRESET_COLORS',
-    'LED_REMAP_TABLES', 'LED_REMAP_SUB_TABLES', 'LED_DEFAULT_OFF',
+    'LEDMode',
+    'LEDState',
+    'LEDZoneState',
+    'LedDeviceStyle',
+    'LedHandshakeInfo',
+    'PmEntry',
+    'PmRegistry',
     'remap_led_colors',
-    'LED_PRESET_ASSETS', 'LED_MODE_LABELS',
 ]

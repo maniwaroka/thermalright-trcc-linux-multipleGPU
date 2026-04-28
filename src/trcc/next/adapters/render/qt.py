@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import (
@@ -30,7 +30,7 @@ from ...core.ports import Renderer
 log = logging.getLogger(__name__)
 
 
-_FONT_CACHE: Dict[Tuple[int, bool, bool, str], QFont] = {}
+_FONT_CACHE: dict[tuple[int, bool, bool, str], QFont] = {}
 
 
 def _ensure_qt_app() -> None:
@@ -47,7 +47,7 @@ def _ensure_qt_app() -> None:
         QGuiApplication(sys.argv)
 
 
-def _rgb_tuple_to_qcolor(color: Tuple[int, ...]) -> QColor:
+def _rgb_tuple_to_qcolor(color: tuple[int, ...]) -> QColor:
     """(r, g, b) or (r, g, b, a) → QColor."""
     if len(color) == 3:
         return QColor(color[0], color[1], color[2])
@@ -71,7 +71,7 @@ class QtRenderer(Renderer):
     # ── Surfaces ──────────────────────────────────────────────────────
 
     def create_surface(self, width: int, height: int,
-                       color: Optional[Tuple[int, ...]] = None) -> Any:
+                       color: tuple[int, ...] | None = None) -> Any:
         img = QImage(width, height, QImage.Format.Format_ARGB32)
         if color is None:
             img.fill(Qt.GlobalColor.transparent)
@@ -87,13 +87,13 @@ class QtRenderer(Renderer):
             img = img.convertToFormat(QImage.Format.Format_ARGB32)
         return img
 
-    def surface_size(self, surface: Any) -> Tuple[int, int]:
+    def surface_size(self, surface: Any) -> tuple[int, int]:
         return (surface.width(), surface.height())
 
     # ── Compositing ───────────────────────────────────────────────────
 
     def composite(self, base: Any, overlay: Any,
-                  position: Tuple[int, int],
+                  position: tuple[int, int],
                   mask: Any | None = None) -> Any:
         result = QImage(base)
         painter = QPainter(result)
@@ -215,7 +215,7 @@ class QtRenderer(Renderer):
 
     # ── Legacy boundary (raw RGB24 video frame → QImage) ──────────────
 
-    def from_raw_rgb24(self, frame: "RawFrame") -> Any:
+    def from_raw_rgb24(self, frame: RawFrame) -> Any:
         qimg = QImage(
             frame.data, frame.width, frame.height,
             frame.width * 3,
