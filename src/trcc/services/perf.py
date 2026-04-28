@@ -9,7 +9,8 @@ import gc
 import logging
 import time
 import tracemalloc
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock
 
 from ..core.models import FBL_PROFILES, HardwareMetrics, LEDMode, LEDState, PlaybackState
@@ -169,7 +170,7 @@ def run_benchmarks() -> PerfReport:
         state.led_count = 64
         state.mode = mode
         svc = LEDService(state=state)
-        avg = _cpu_per_iter(lambda: svc.tick(), iterations=500)
+        avg = _cpu_per_iter(svc.tick, iterations=500)
         report.record_cpu(f"LED tick {mode_name} (64 seg)", avg, limit)
 
     # LED 128 segments
@@ -247,7 +248,7 @@ def run_benchmarks() -> PerfReport:
         st.led_count = n
         st.mode = LEDMode.RAINBOW
         sv = LEDService(state=st)
-        times[n] = _cpu_per_iter(lambda: sv.tick(), iterations=500)
+        times[n] = _cpu_per_iter(sv.tick, iterations=500)
 
     ratio = times[128] / max(times[32], 1e-9)
     report.record_scale("LED tick 128/32 seg ratio", ratio, 8.0)
