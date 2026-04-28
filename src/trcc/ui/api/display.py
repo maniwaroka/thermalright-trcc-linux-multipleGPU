@@ -370,7 +370,7 @@ async def create_theme(
         try:
             overlay_config = json.loads(await overlay.read())
         except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid overlay JSON: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid overlay JSON: {e}") from e
     elif metric:
         try:
             overlay_config = build_overlay_config(
@@ -384,7 +384,7 @@ async def create_theme(
                 date_format=date_format,
             )
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     if animated:
         ok = api.start_video_playback(str(bg_path), w, h, loop=loop)
@@ -530,7 +530,7 @@ def display_preview() -> Response:
         data = _encode_frame(frame, fmt='PNG')
     except Exception:
         log.warning("Preview encode failed (frame type: %s)", type(frame).__name__, exc_info=True)
-        raise HTTPException(status_code=503, detail="Frame encode failed")
+        raise HTTPException(status_code=503, detail="Frame encode failed") from None
     if data is None:
         raise HTTPException(status_code=503, detail="Frame encode failed")
     return Response(content=data, media_type="image/png")
@@ -593,7 +593,7 @@ async def preview_stream(websocket: WebSocket):
                     None, _fetch_ipc_frame,
                 )
             else:
-                from trcc.ui.api import _current_image  # noqa: F811
+                from trcc.ui.api import _current_image
 
                 frame = _current_image
 

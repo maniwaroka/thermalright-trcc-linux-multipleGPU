@@ -29,7 +29,7 @@ def _parse_resolution(resolution: str) -> tuple[int, int]:
         parts = resolution.split("x")
         w, h = int(parts[0]), int(parts[1])
     except (ValueError, IndexError):
-        raise HTTPException(status_code=400, detail="Invalid resolution format (use WxH)")
+        raise HTTPException(status_code=400, detail="Invalid resolution format (use WxH)") from None
     if not (100 <= w <= 4096 and 100 <= h <= 4096):
         raise HTTPException(status_code=400, detail="Resolution out of range (100-4096)")
     return w, h
@@ -469,6 +469,6 @@ async def import_theme(file: UploadFile) -> dict:
         raise
     except Exception:
         log.exception("Theme import error")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
     finally:
         Path(tmp_path).unlink(missing_ok=True)
