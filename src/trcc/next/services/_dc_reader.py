@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 
 _MAGIC_DC = 0xDC   # standard theme format
-_MAGIC_DD = 0xDD   # cloud-theme variant (unsupported for now)
+_MAGIC_DD = 0xDD   # cloud-theme variant (variable-length element list)
 _FONT_SLOTS = 13
 _ELEMENT_SLOTS = 13
 
@@ -52,6 +52,50 @@ _SLOT_MAP: List[Tuple[str, Optional[str], str, str]] = [
     ("gpu_usage",         "gpu:primary:usage","GPU",   "{value:.0f}%"),
     ("gpu_usage_label",   None,               "%",     ""),
 ]
+
+
+# 0xDD HARDWARE element (main_count, sub_count) → (sensor_id, format).
+# Mirrors legacy core/models/sensor.py::HARDWARE_METRICS but emits
+# next/-shape sensor IDs directly.
+_HW_TO_SENSOR: Dict[Tuple[int, int], Tuple[str, str]] = {
+    # CPU (main=0)
+    (0, 1): ("cpu:temp",            "{value:.0f}°C"),
+    (0, 2): ("cpu:usage",           "{value:.0f}%"),
+    (0, 3): ("cpu:freq",            "{value:.0f} MHz"),
+    (0, 4): ("cpu:power",           "{value:.0f} W"),
+    # GPU (main=1)
+    (1, 1): ("gpu:primary:temp",    "{value:.0f}°C"),
+    (1, 2): ("gpu:primary:usage",   "{value:.0f}%"),
+    (1, 3): ("gpu:primary:clock",   "{value:.0f} MHz"),
+    (1, 4): ("gpu:primary:power",   "{value:.0f} W"),
+    # MEM (main=2)
+    (2, 1): ("memory:percent",      "{value:.0f}%"),
+    (2, 2): ("memory:clock",        "{value:.0f} MHz"),
+    (2, 3): ("memory:available",    "{value:.0f} MB"),
+    (2, 4): ("memory:temp",         "{value:.0f}°C"),
+    # HDD (main=3)
+    (3, 1): ("disk:0:read",         "{value:.0f} MB/s"),
+    (3, 2): ("disk:0:write",        "{value:.0f} MB/s"),
+    (3, 3): ("disk:0:activity",     "{value:.0f}%"),
+    (3, 4): ("disk:0:temp",         "{value:.0f}°C"),
+    # NET (main=4)
+    (4, 1): ("net:down",            "{value:.0f} KB/s"),
+    (4, 2): ("net:up",              "{value:.0f} KB/s"),
+    (4, 3): ("net:total_down",      "{value:.0f} MB"),
+    (4, 4): ("net:total_up",        "{value:.0f} MB"),
+    # FAN (main=5)
+    (5, 1): ("fan:cpu",             "{value:.0f} RPM"),
+    (5, 2): ("fan:gpu",             "{value:.0f} RPM"),
+    (5, 3): ("fan:ssd",             "{value:.0f} RPM"),
+    (5, 4): ("fan:sys2",            "{value:.0f} RPM"),
+}
+
+# 0xDD element mode field (matches legacy OverlayMode IntEnum).
+_MODE_HARDWARE = 0
+_MODE_TIME = 1
+_MODE_WEEKDAY = 2
+_MODE_DATE = 3
+_MODE_CUSTOM = 4
 
 
 def load_dc_as_theme_config(path: Path) -> Dict[str, Any]:
@@ -82,13 +126,9 @@ def load_dc_as_theme_config(path: Path) -> Dict[str, Any]:
         raise ThemeError(
             f"Not a DC file (magic byte 0x{magic:02x}): {path}"
         )
-    if magic == _MAGIC_DD:
-        raise ThemeError(
-            "Cloud-theme (0xDD) DC format not yet supported; "
-            "load the decompressed theme from its source."
-        )
-
     try:
+        if magic == _MAGIC_DD:
+            return _parse_dd(data, path.parent.name)
         return _parse_dc(data, path.parent.name)
     except (struct.error, IndexError, UnicodeDecodeError) as e:
         raise ThemeError(f"Invalid DC file {path}: {e}") from e
@@ -265,3 +305,128 @@ def _clamp_font_size(raw: float, default: float = 24.0) -> float:
     if 0 < raw < 100:
         return max(8.0, min(72.0, raw))
     return default
+
+
+# ── 0xDD format (cloud themes) ───────────────────────────────────────
+
+
+def _parse_dd(data: bytes, theme_name: str) -> Dict[str, Any]:
+    """Walk a 0xDD-format (cloud-theme) DC buffer.
+
+    Layout differs from 0xDC: instead of fixed slots, 0xDD carries a
+    variable-length list of typed elements (HARDWARE / TIME / WEEKDAY /
+    DATE / CUSTOM).  Trailer block (display options + mask settings) is
+    optional.
+
+    Time / weekday / date elements emit `type: "text"` placeholders for
+    now — next/'s OverlayService doesn't render dynamic clocks yet, so
+    we surface the position+font and let a later pass wire the live
+    text.  Hardware and custom elements render correctly today.
+    """
+    r = _Reader(data, start=1)   # skip magic
+    r.read_bool()                # system_info flag (unused in next/)
+
+    count = r.read_int32()
+    if count < 0 or count > 100:
+        raise ThemeError(
+            f"0xDD element count out of range: {count}",
+        )
+
+    elements: List[Dict[str, Any]] = []
+    for _ in range(count):
+        mode = r.read_int32()
+        mode_sub = r.read_int32()
+        x = r.read_int32()
+        y = r.read_int32()
+        main_count = r.read_int32()
+        sub_count = r.read_int32()
+        font = _read_dd_font(r)
+        custom_text = r.read_string()
+
+        if (element := _build_dd_element(
+            mode, mode_sub, x, y, main_count, sub_count, font, custom_text,
+        )) is not None:
+            elements.append(element)
+
+    # Optional trailer — bail gracefully if file truncates here.
+    background_display = True
+    transparent_display = False
+    rotation = 0
+    overlay_enabled = True
+    try:
+        background_display = r.read_bool()
+        transparent_display = r.read_bool()
+        rotation = r.read_int32()
+        r.read_int32()                              # ui_mode
+        r.read_int32()                              # mode
+        overlay_enabled = r.read_bool()
+        for _ in range(4):
+            r.read_int32()                          # overlay rect: x, y, w, h
+        r.read_bool()                               # mask_enabled
+        for _ in range(2):
+            r.read_int32()                          # mask position: x, y
+    except (struct.error, IndexError):
+        pass
+
+    return {
+        "name": theme_name,
+        "overlay_enabled": overlay_enabled,
+        "rotation": rotation,
+        "background_display": background_display,
+        "transparent_display": transparent_display,
+        "elements": elements,
+    }
+
+
+def _read_dd_font(r: _Reader) -> Dict[str, Any]:
+    """Read the font/color record that follows every 0xDD element."""
+    r.read_string()                                 # font_name (unused)
+    size = _clamp_font_size(r.read_float())
+    style = r.read_byte()                           # bit0=bold, bit1=italic
+    r.read_byte()                                   # font_unit
+    r.read_byte()                                   # font_charset
+    alpha = r.read_byte()
+    red = r.read_byte()
+    green = r.read_byte()
+    blue = r.read_byte()
+    return {
+        "size": size,
+        "bold": bool(style & 0x01),
+        "italic": bool(style & 0x02),
+        "color": f"#{red:02x}{green:02x}{blue:02x}" if alpha else "#ffffff",
+    }
+
+
+def _build_dd_element(
+    mode: int,
+    mode_sub: int,
+    x: int,
+    y: int,
+    main_count: int,
+    sub_count: int,
+    font: Dict[str, Any],
+    custom_text: str,
+) -> Optional[Dict[str, Any]]:
+    """Translate one parsed 0xDD element into next/'s overlay-element dict."""
+    base: Dict[str, Any] = {"x": x, "y": y, **font}
+    match mode:
+        case 0:  # HARDWARE
+            entry = _HW_TO_SENSOR.get((main_count, sub_count))
+            if entry is None:
+                log.debug(
+                    "0xDD HARDWARE element (%d, %d) has no sensor mapping; skipping",
+                    main_count, sub_count,
+                )
+                return None
+            sensor_id, fmt = entry
+            return {**base, "type": "metric", "metric": sensor_id, "format": fmt}
+        case 4:  # CUSTOM
+            if not custom_text:
+                return None
+            return {**base, "type": "text", "text": custom_text}
+        case 1 | 2 | 3:  # TIME / WEEKDAY / DATE — placeholder text for now
+            placeholder = {1: "{time}", 2: "{weekday}", 3: "{date}"}[mode]
+            return {**base, "type": "text", "text": placeholder}
+        case _:
+            log.debug("0xDD: unknown element mode %d; skipping", mode)
+            return None

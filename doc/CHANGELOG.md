@@ -1,5 +1,10 @@
 # Changelog
 
+## v9.4.13
+
+### Added
+- **`next/` cloud-theme `0xDD` parser** (Phase A6): `next/services/_dc_reader.py` previously raised `ThemeError` on the cloud-theme variant of the DC config format. Now handles 0xDD's variable-length element list, translates the `(main_count, sub_count)` HARDWARE pairs straight to next/-shape sensor IDs (`cpu:temp`, `gpu:primary:usage`, etc.), surfaces CUSTOM elements as text, and emits `{time}`/`{weekday}`/`{date}` placeholders for the dynamic clock elements. Verified against 5 real cloud-theme `config1.dc` files — every element decoded with correct position, font, and color. No legacy or shipping behaviour changed; this only fills a gap in the experimental `TRCC_NEXT=1` build.
+
 ## v9.4.12
 
 ### Added
