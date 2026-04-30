@@ -1,5 +1,31 @@
 # Changelog
 
+## v9.5.1
+
+### User-facing fixes
+- **Bulk / HID / LY / LED handshake on every non-SCSI device fixed** (#131, #132, #133): the v9.5.0 multi-device refactor threaded `addr: UsbAddress | None` through every USB transport but missed adding the field to `DeviceInfo` itself. The factory's bulk/hid/ly/led lambdas read `di.addr` and raised `AttributeError`, caught silently in `services/device.py:_discover_resolution` and surfaced as "Resolution discovery failed" + LCD-stays-black on Windows. Every Bulk (`87AD:70DB`), HID Type 2 (`0416:5302`), HID Type 3 (`0418:5303/5304`), LY (`0416:5408/5409`), and LED (`0416:8001`) device on v9.5.0 hit this. The fix is one field on `DeviceInfo` plus a copy in `from_detected`. Regression coverage: parametrized over every entry in `ALL_DEVICES` (10 devices × 2 invariants), proves the addr survives DTO copy and the factory dispatch.
+- **AMD GPU detection on Windows** (#131): users running AMD GPUs on Windows without LibreHardwareMonitor saw "No GPUs detected" — `pynvml` is NVIDIA-only, and we had no AMD path. v9.5.1 adds a `Win32_VideoController` WMI fallback covering every video controller Windows knows about. Sensor data (temp/load/power) still requires LHM or future ADLX integration; this layer adds detection so the card appears in `trcc gpus` for selection. 10 unit tests with mocked `Win32_VideoController` cover the conversion (reporter's exact card, multi-GPU ordering, ghost-controller skip, package-missing, COM-init failure, fallback ordering).
+- **API `/devices/{id}/select` 404 fixed** (regression-as-side-effect): the endpoint queried `_device_svc.devices` which was never populated in the API flow — silently broken since the Trcc facade landed. `api/devices.py` rewritten to read the device list from Trcc directly, which fixes the lookup and removes a redundant module-level service.
+
+### Architecture (paving for v9.6)
+- **`make_platform()`** in `adapters/system/__init__.py` is the single OS-detection chokepoint. Honors `TRCC_MOCK=1` and `TRCC_MOCK=path.json`. Both `Trcc.for_current_os()` and `ControllerBuilder.for_current_os()` route through it — TRCC_MOCK propagates everywhere automatically without per-site env checks.
+- **`for_current_os()` runtime calls collapsed from 22+ to 1**: only the legitimate composition entry in `cli/__init__.py:main()` remains. Adapter-infra layer (diagnostics × 6, data_repository, install/gui), CLI command stragglers, and the public `detect_devices()` library API all route through `make_platform()`.
+- **TrccApp composes Trcc internally**: `TrccApp.__init__` builds `self._trcc = Trcc(builder.os)`; `scan()` populates BOTH the legacy `_devices: dict[str, Device]` AND the inner `_trcc._lcd_devices`/`_led_devices` lists. `_boot.trcc()` returns `TrccApp._instance._trcc` when TrccApp is initialised — single source of truth for connected devices, no more parallel registries.
+- **Pythonic Trcc**: `__slots__` (no per-instance `__dict__`, ~40% smaller, faster attribute access), container protocol (`__iter__`/`__len__`/`__bool__`), context manager (`__enter__`/`__exit__` → `cleanup()`), and read-only `os`/`lcd_device`/`led_device`/`lcd_devices`/`led_devices`/`has_lcd`/`has_led` properties (tuple returns for immutability).
+- **CLI consumer cleanup**: 12+ sites moved off `TrccApp.get()` to `_boot.trcc()` — `i18n`, `_system.setup`, all of `_theme` (load/save/import), `_display` (test/screencast/render_overlay/play_video), and `__init__.py` (gpu-list/set, test_led/lcd, show_info, resume, render). 8 sites moved off `ControllerBuilder.for_current_os()` to `_boot.trcc().os` or `make_platform()`. `_ensure_system()` self-resolves when called argless.
+- **Boot fns DI**: `_boot.trcc(platform=None)` and `_boot.get_trcc(platform=None)` accept an optional `Platform` for explicit injection — clean DI for tests and the dev/mock_* scripts.
+- **dev/mock_*.py drop the `ControllerBuilder.for_current_os = classmethod(...)` monkey-patch entirely**: pure DI via `_boot.trcc(platform)` / `_boot.get_trcc(platform)` after the bootstrap returns MockPlatform. `_mock_bootstrap.py` adds the repo root to `sys.path` so `tests.mock_platform` resolves consistently across pytest/dev/prod contexts (single MockPlatform module identity for `isinstance` checks).
+
+### Maintainer-facing
+- **Eager module-level `_device_svc = DeviceService(...)`** deleted from `api/__init__.py`. API endpoint state lives where FastAPI expects it now.
+
+### Issues this likely closes after reporter retest
+- #131 — addr error fixed; AMD GPU now detected via WMI (sensor data still needs LHM, tracked separately for v9.6.x); Bug B (`ValueError: I/O operation on closed file`) and Bug D (LCD black on Windows) are cascade-of-A — should resolve with the addr fix.
+- #132 — same addr cascade for HID 0418:5303 (Trofeo Vision).
+- #133 — same addr fix; the explicit AttributeError reporter saw is gone.
+
+What's pending in v9.5.x: GUI off `TrccApp.init()`, full `TrccApp` deletion, composition root in `__main__.py`, test fixture rewrite. These are the remaining ~5% of the architectural cleanup, scheduled for a focused session.
+
 ## v9.5.0
 
 Milestone release rolling up the v9.4.8 → v9.4.15 patch series — every fix from those releases is included here, distilled into one tag for the people whose package manager wakes up once a week.
