@@ -166,6 +166,7 @@ class DeviceInfo:
     model: str | None = None
     vid: int = 0
     pid: int = 0
+    addr: UsbAddress | None = None  # Physical USB (bus, address) for non-SCSI; None for SCSI
     device_index: int = 0  # 0-based ordinal among detected devices
     fbl_code: int | None = None  # Resolution identifier
     protocol: str = "scsi"  # "scsi" or "hid"
@@ -194,6 +195,7 @@ class DeviceInfo:
             model=d.get('model'),
             vid=d.get('vid', 0),
             pid=d.get('pid', 0),
+            addr=UsbAddress.parse(d.get('path', '')),
             device_index=d.get('device_index', 0),
             protocol=d.get('protocol', 'scsi'),
             device_type=d.get('device_type', 1),
@@ -213,6 +215,7 @@ class DeviceInfo:
             model=d.model,
             vid=d.vid,
             pid=d.pid,
+            addr=d.addr,
             device_index=device_index,
             protocol=d.protocol,
             device_type=d.device_type,

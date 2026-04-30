@@ -894,3 +894,97 @@ class TestWindowsScsiProtocolHandshake:
         proto = WindowsScsiProtocol(r"\\.\PhysicalDrive3")
         assert proto._vid == 0
         assert proto._pid == 0
+
+
+# =========================================================================
+# Integration: real factory lambdas + real DeviceInfo (no fakes, no hardware)
+# =========================================================================
+# Uses the production DeviceInfo class so attribute-threading bugs surface.
+# FakeDeviceInfo above can't catch these — it's a different class with
+# different fields. Each protocol's __init__ is lazy (no transport open
+# until handshake/send), so no hardware is required.
+#
+# Regression for #133 / #131: every non-SCSI lambda reads `di.addr`;
+# DeviceInfo had no `addr` field; AttributeError was caught and swallowed
+# at services/device.py:198, masking the failure as "Resolution discovery
+# failed".
+
+from trcc.adapters.device.factory import (  # noqa: E402
+    BulkProtocol,
+    LedProtocol,
+    LyProtocol,
+)
+from trcc.core.models import (  # noqa: E402
+    ALL_DEVICES,
+    DetectedDevice,
+    DeviceInfo,
+    UsbAddress,
+)
+
+_PROTOCOL_CLASS = {
+    "scsi": ScsiProtocol,
+    "hid":  HidProtocol,
+    "bulk": BulkProtocol,
+    "ly":   LyProtocol,
+    "led":  LedProtocol,
+}
+
+_REGISTRY_PARAMS = [
+    pytest.param(vid, pid, entry,
+                 id=f"{entry.protocol}-{vid:04x}_{pid:04x}-{entry.model}")
+    for (vid, pid), entry in ALL_DEVICES.items()
+]
+
+
+@pytest.mark.parametrize("vid,pid,entry", _REGISTRY_PARAMS)
+def test_factory_constructs_protocol_for_every_registry_entry(vid, pid, entry):
+    """Every (vid, pid) in ALL_DEVICES must construct cleanly via its real
+    factory lambda — no AttributeError on DeviceInfo, no transport open.
+
+    Catches #133/#131-class bugs: any field a lambda reads from DeviceInfo
+    must actually exist there.
+    """
+    detected = DetectedDevice(
+        vid=vid, pid=pid,
+        vendor_name=entry.vendor, product_name=entry.product,
+        usb_path="usb:1:5",
+        scsi_device="/dev/sg0" if entry.protocol == "scsi" else None,
+        protocol=entry.protocol, device_type=entry.device_type,
+        implementation=entry.implementation,
+        button_image=entry.button_image, model=entry.model,
+    )
+    info = DeviceInfo.from_detected(detected)
+
+    protocol = DeviceProtocolFactory.create_protocol(info)
+
+    assert isinstance(protocol, _PROTOCOL_CLASS[entry.protocol])
+    assert protocol.protocol_name == entry.protocol
+
+
+@pytest.mark.parametrize("vid,pid,entry", _REGISTRY_PARAMS)
+def test_factory_threads_addr_to_usb_protocols(vid, pid, entry):
+    """For non-SCSI protocols, the factory must thread DeviceInfo.addr
+    into the protocol's stored addr — proving the bus/address survives
+    DTO copy → factory dispatch → protocol __init__. Without this, dual
+    same-VID:PID coolers (#128) silently bind to the wrong device."""
+    detected = DetectedDevice(
+        vid=vid, pid=pid,
+        vendor_name=entry.vendor, product_name=entry.product,
+        usb_path="usb:7:42",
+        scsi_device="/dev/sg0" if entry.protocol == "scsi" else None,
+        protocol=entry.protocol, device_type=entry.device_type,
+        implementation=entry.implementation,
+        button_image=entry.button_image, model=entry.model,
+    )
+    info = DeviceInfo.from_detected(detected)
+    protocol = DeviceProtocolFactory.create_protocol(info)
+
+    if entry.protocol == "scsi":
+        # SCSI doesn't bind by USB addr — uses /dev/sgN
+        return
+
+    expected = UsbAddress(7, 42)
+    assert protocol._addr == expected, (
+        f"{entry.protocol} protocol for {vid:04x}:{pid:04x} did not receive "
+        f"addr — got {protocol._addr!r}, expected {expected!r}"
+    )
