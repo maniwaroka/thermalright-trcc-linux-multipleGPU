@@ -1,5 +1,13 @@
 # Changelog
 
+## v9.5.2
+
+PyPI re-release of v9.5.1 — original v9.5.1 hit PyPI's per-project 10 GB
+storage cap on upload (older release artifacts accumulated). Freed space
+on PyPI side and re-tagged. **Same content as v9.5.1** — no source
+changes. Use this version for `pip install --upgrade trcc-linux`; v9.5.1
+GitHub-only artifacts still work for distro/manual installs.
+
 ## v9.5.1
 
 ### User-facing fixes
