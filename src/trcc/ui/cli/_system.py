@@ -15,8 +15,8 @@ log = logging.getLogger(__name__)
 
 def run_setup(auto_yes: bool = False) -> int:
     """Run interactive platform setup. OS handles everything."""
-    from trcc.core.app import TrccApp
-    return TrccApp.get().setup(auto_yes=auto_yes)
+    from trcc.ui.cli._boot import trcc as _trcc
+    return _trcc().os.run_setup(auto_yes=auto_yes)
 
 
 # Backward-compat alias — _system.setup() call sites in cli/__init__.py
@@ -35,8 +35,7 @@ def show_info(builder=None, *, preview: bool = False, metric: str | None = None)
         from trcc.ui.cli import _ensure_system
 
         log.debug("show_info preview=%s metric=%s", preview, metric)
-        if builder is not None:
-            _ensure_system(builder)
+        _ensure_system(builder)
         metrics = get_all_metrics()
 
         if preview:
@@ -101,8 +100,8 @@ def uninstall(*, yes: bool = False):
     home = Path.home()
 
     # Files that require root to remove (platform-specific)
-    from trcc.core.builder import ControllerBuilder
-    root_files = ControllerBuilder.for_current_os().os.get_system_files()
+    from trcc.ui.cli._boot import trcc as _trcc
+    root_files = _trcc().os.get_system_files()
 
     # User files/dirs to remove
     user_items = [
@@ -130,8 +129,8 @@ def uninstall(*, yes: bool = False):
             removed.append(path_str)
 
     # Disable autostart before shutting down logging
-    from trcc.core.builder import ControllerBuilder
-    platform = ControllerBuilder.for_current_os().os
+    from trcc.ui.cli._boot import trcc as _trcc
+    platform = _trcc().os
     if platform.autostart_enabled():
         platform.autostart_disable()
         removed.append("autostart entry")

@@ -81,15 +81,17 @@ def list_masks(*, lcd: int = 0, source: str = 'all') -> int:
 @_cli_handler
 def load_theme(builder, name, *, device=None, preview=False):
     """Load a theme by name and send to LCD."""
-    from trcc.core.app import TrccApp
     from trcc.services import ImageService
+    from trcc.ui.cli._boot import trcc as _trcc
     from trcc.ui.cli._display import _connect_or_fail
 
     log.debug("load_theme name=%s device=%s", name, device)
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().lcd
+    if (lcd := _trcc().lcd_device) is None:
+        print("Error: No LCD device connected.")
+        return 1
     result = lcd.load_theme_by_name(name)
 
     if not result.get("success"):
@@ -195,14 +197,16 @@ def save_theme(name, *, device=None, video=None, background=None,
     """Save current display state as a custom theme."""
     from pathlib import Path
 
-    from trcc.core.app import TrccApp
+    from trcc.ui.cli._boot import trcc as _trcc
     from trcc.ui.cli._display import _connect_or_fail
 
     log.debug("save_theme name=%s device=%s background=%s", name, device, background)
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().lcd
+    if (lcd := _trcc().lcd_device) is None:
+        print("Error: No LCD device connected.")
+        return 1
 
     # --background / --video → load into DisplayService state
     if (bg_source := background or video):
@@ -310,15 +314,17 @@ def import_theme(file_path, *, device=None):
     from trcc.adapters.infra.dc_parser import load_config_json
     from trcc.adapters.infra.dc_writer import import_theme as _import_fn
     from trcc.conf import settings as _settings
-    from trcc.core.app import TrccApp
     from trcc.services import ThemeService
+    from trcc.ui.cli._boot import trcc as _trcc
     from trcc.ui.cli._display import _connect_or_fail
 
     log.debug("import_theme path=%s device=%s", file_path, device)
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().lcd
+    if (lcd := _trcc().lcd_device) is None:
+        print("Error: No LCD device connected.")
+        return 1
     w, h = lcd.lcd_size
     data_dir = _settings.user_data_dir
 

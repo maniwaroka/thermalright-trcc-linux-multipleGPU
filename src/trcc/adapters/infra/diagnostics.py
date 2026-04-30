@@ -562,8 +562,8 @@ def get_module_version(import_name: str) -> str | None:
 def get_setup_info(doctor_config: DoctorPlatformConfig | None = None) -> SetupInfo:
     """Get system info for setup wizard."""
     if doctor_config is None:
-        from trcc.core.builder import ControllerBuilder
-        doctor_config = ControllerBuilder.for_current_os().os.doctor_config()
+        from trcc.adapters.system import make_platform
+        doctor_config = make_platform().doctor_config()
     v = sys.version_info
     return SetupInfo(
         distro=doctor_config.distro_name,
@@ -578,8 +578,8 @@ def check_system_deps(
 ) -> list[DepResult]:
     """Check all dependencies and return structured results."""
     if doctor_config is None:
-        from trcc.core.builder import ControllerBuilder
-        doctor_config = ControllerBuilder.for_current_os().os.doctor_config()
+        from trcc.adapters.system import make_platform
+        doctor_config = make_platform().doctor_config()
     if pm is None:
         pm = doctor_config.pkg_manager
     results: list[DepResult] = []
@@ -800,8 +800,8 @@ def check_desktop_entry() -> bool:
 def run_doctor(doctor_config: DoctorPlatformConfig | None = None) -> int:
     """Run dependency health check. Returns 0 if all required deps pass."""
     if doctor_config is None:
-        from trcc.core.builder import ControllerBuilder
-        doctor_config = ControllerBuilder.for_current_os().os.doctor_config()
+        from trcc.adapters.system import make_platform
+        doctor_config = make_platform().doctor_config()
 
     if doctor_config.enable_ansi:
         _enable_ansi_windows()
@@ -1151,8 +1151,9 @@ def device_debug(
     """
     try:
         if detect_fn is None:
+            from trcc.adapters.system import make_platform
             from trcc.core.builder import ControllerBuilder
-            detect_fn = ControllerBuilder.for_current_os().build_detect_fn()
+            detect_fn = ControllerBuilder(make_platform()).build_detect_fn()
 
         print("Device Debug — Handshake Diagnostic")
         print("=" * _WIDTH)
@@ -1293,14 +1294,15 @@ class DebugReport:
 
     def _get_config(self) -> ReportPlatformConfig:
         if self._config is None:
-            from trcc.core.builder import ControllerBuilder
-            self._config = ControllerBuilder.for_current_os().os.report_config()
+            from trcc.adapters.system import make_platform
+            self._config = make_platform().report_config()
         return self._config
 
     def _get_detect_fn(self) -> Callable[[], list[Any]]:
         if self._detect_fn is None:
+            from trcc.adapters.system import make_platform
             from trcc.core.builder import ControllerBuilder
-            self._detect_fn = ControllerBuilder.for_current_os().build_detect_fn()
+            self._detect_fn = ControllerBuilder(make_platform()).build_detect_fn()
         return self._detect_fn
 
     # ── Public API ───────────────────────────────────────────────────────────

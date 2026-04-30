@@ -35,9 +35,18 @@ __author__ = "TRCC Linux Contributors"
 
 
 def detect_devices():
-    """Detect connected TRCC LCD devices (platform-aware)."""
+    """Detect connected TRCC LCD devices (platform-aware).
+
+    Convenience for library users — wraps a one-shot platform build +
+    detect. For sustained use, build a Trcc explicitly:
+        from trcc.core.trcc import Trcc
+        from trcc.adapters.system import make_platform
+        trcc = Trcc(make_platform())
+        trcc.discover()
+    """
+    from trcc.adapters.system import make_platform
     from trcc.core.builder import ControllerBuilder
-    return ControllerBuilder.for_current_os().build_detect_fn()()
+    return ControllerBuilder(make_platform()).build_detect_fn()()
 
 
 __all__ = [

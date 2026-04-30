@@ -1,12 +1,24 @@
-"""Device detection, selection, and image send endpoints."""
+"""Device detection, selection, and image send endpoints — Trcc-native.
+
+Selection state lives in this module (`_selected_index`) since FastAPI
+endpoints are stateless and mock_api needs the selection to survive
+between requests. The Trcc itself is the device registry — this module
+just owns the per-process "currently selected" pointer.
+"""
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, UploadFile
 
 from trcc.services import ImageService
 from trcc.ui.api.models import DeviceResponse
+
+if TYPE_CHECKING:
+    from trcc.core.device.lcd import LCDDevice
+    from trcc.core.device.led import LEDDevice
+    from trcc.core.models import DeviceInfo
 
 log = logging.getLogger(__name__)
 
@@ -14,47 +26,51 @@ router = APIRouter()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Per-process selection pointer. Endpoints look up the active device by
+# index from Trcc; this just remembers which one is "current".
+_selected_index: int | None = None
+
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
-def _device_to_response(idx: int, dev) -> DeviceResponse:
+def _device_to_response(idx: int, info: DeviceInfo) -> DeviceResponse:
     return DeviceResponse(
         id=idx,
-        name=dev.name,
-        vid=dev.vid,
-        pid=dev.pid,
-        protocol=dev.protocol or "scsi",
-        resolution=dev.resolution or (0, 0),
-        path=dev.path or "",
+        name=info.name,
+        vid=info.vid,
+        pid=info.pid,
+        protocol=info.protocol or "scsi",
+        resolution=info.resolution or (0, 0),
+        path=info.path or "",
     )
 
 
-def _get_device_by_id(device_id: int):
-    """Look up device by index, raise 404 if not found."""
-    from trcc.ui.api import _device_svc
+def _all_devices() -> list[LCDDevice | LEDDevice]:
+    """All connected devices via Trcc — LCDs first, then LEDs (stable
+    indexing for /devices/{id})."""
+    from trcc.ui.api._boot import get_trcc
+    return list(get_trcc())
 
-    devices = _device_svc.devices
-    if device_id < 0 or device_id >= len(devices):
-        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
-    return devices[device_id]
+
+def _get_device_by_id(device_id: int) -> LCDDevice | LEDDevice:
+    """Look up Device by index in Trcc, raise 404 if out of range."""
+    devs = _all_devices()
+    if device_id < 0 or device_id >= len(devs):
+        raise HTTPException(
+            status_code=404, detail=f"Device {device_id} not found")
+    return devs[device_id]
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────
 
-def _all_devices_via_trcc():
-    """Return discovered devices via Trcc (LCDs first, then LEDs)."""
-    from trcc.ui.api._boot import get_trcc
-    t = get_trcc()
-    # pylint: disable=protected-access
-    return list(t._lcd_devices) + list(t._led_devices)
-
 
 @router.get("/devices")
 def list_devices() -> list[DeviceResponse]:
-    """List currently discovered devices (via Trcc)."""
-    devs = _all_devices_via_trcc()
-    return [_device_to_response(i, d.device_info) for i, d in enumerate(devs)
-            if d.device_info is not None]
+    """List currently discovered devices."""
+    return [
+        _device_to_response(i, d.device_info) for i, d in enumerate(_all_devices())
+        if d.device_info is not None
+    ]
 
 
 @router.post("/devices/detect")
@@ -67,95 +83,74 @@ def detect_devices() -> list[DeviceResponse]:
 
 @router.post("/devices/{device_id}/select")
 def select_device(device_id: int) -> dict:
-    """Select a device by index. Initializes the appropriate dispatcher."""
+    """Select a device by index. Initializes the dispatcher and restores
+    last theme + device settings."""
+    global _selected_index
     import trcc.ui.api as api
-    from trcc.ui.api import _device_svc
 
-    dev = _get_device_by_id(device_id)
+    device = _get_device_by_id(device_id)  # raises 404 if invalid
+    info = device.device_info
 
-    # Skip teardown if re-selecting the same device that's already active
-    already_active = (
-        _device_svc.selected is not None
-        and _device_svc.selected is dev
-        and api._device_dispatcher
-    )
-    if already_active:
-        return {"selected": dev.name, "resolution": dev.resolution}
+    # Skip teardown when re-selecting the same device that's already active
+    if _selected_index == device_id and api._device_dispatcher is not None:
+        return {
+            "selected": info.name if info else "",
+            "resolution": info.resolution if info else (0, 0),
+        }
 
-    _device_svc.select(dev)
+    _selected_index = device_id
 
-    # Stop any running background threads from previous device
+    # Stop any background tasks from a previous device
     api.stop_video_playback()
     api.stop_overlay_loop()
 
-    # Check if another instance (GUI) already owns the device
+    # If a GUI/CLI instance is already attached to this device, route via IPC
     from trcc.core.instance import find_active
     from trcc.ipc import create_device_proxy
-
-    active = find_active()
-
-    if active is not None:
+    if (active := find_active()) is not None:
         proxy = create_device_proxy(active)
         api._device_dispatcher = proxy
-
-        # Active instance already discovered resolution — sync to DeviceInfo
-        proxy_res = proxy.resolution
-        if proxy_res != (0, 0):
-            dev.resolution = proxy_res
-
-        log.info("Using %s instance for device %s", active.value, dev.name)
+        if info is not None and (proxy_res := proxy.resolution) != (0, 0):
+            info.resolution = proxy_res
+        log.info("Using %s instance for device %s",
+                 active.value, info.name if info else "?")
     else:
-        # Standalone mode — API manages device directly
-        _device_svc.on_frame_sent = api.set_current_image
-
-        from trcc.core.app import TrccApp
-        app = TrccApp.get()
-        app.discover(path=getattr(dev, 'path', None))
-
-        device = None
-        if app.devices:
-            device = app.device(0)
-            api._device_dispatcher = device
-        elif getattr(dev, 'protocol', '') != 'led':
-            # LCD fallback — build from DeviceService when scan missed it
-            _device_svc._discover_resolution(dev)
-            device = app.device_from_service(_device_svc)
-            if device and device.connected:
-                api._device_dispatcher = device
-
-        if device is None or not getattr(device, 'connected', False):
-            return {"selected": dev.name, "resolution": dev.resolution}
+        # Standalone — API drives the device directly via the Trcc-built object.
+        api._device_dispatcher = device
 
         from trcc.core.device.lcd import LCDDevice
-        if isinstance(device, LCDDevice):
-            w_res, h_res = dev.resolution or (0, 0)
+        if isinstance(device, LCDDevice) and info is not None:
+            w, h = info.resolution or (0, 0)
 
-            # Download/extract theme data for this resolution in background
-            if w_res and h_res:
-                app._ensure_data_background(device, w_res, h_res)
+            # Background-prefetch theme assets for this resolution
+            if w and h:
+                from trcc.core.app import TrccApp
+                trcc_app = TrccApp.get()
+                trcc_app._ensure_data_background(device, w, h)
 
-            api.set_current_image(ImageService.solid_color(0, 0, 0, w_res, h_res))
+            api.set_current_image(ImageService.solid_color(0, 0, 0, w, h))
 
             device.restore_device_settings()
-            result = device.restore_last_theme()
-            if result.get("image"):
+            if (result := device.restore_last_theme()) and result.get("image"):
                 api.set_current_image(result["image"])
                 log.info("Restored last theme for preview")
 
-    # Mount static file directories for this device's resolution
-    w, h = dev.resolution or (0, 0)
-    if w and h:
-        api.mount_static_dirs(w, h)
-
-    return {"selected": dev.name, "resolution": dev.resolution}
-
+    if info is not None:
+        w, h = info.resolution or (0, 0)
+        if w and h:
+            api.mount_static_dirs(w, h)
+        return {"selected": info.name, "resolution": info.resolution}
+    return {"selected": "", "resolution": (0, 0)}
 
 
 @router.get("/devices/{device_id}")
 def get_device(device_id: int) -> DeviceResponse:
     """Get details for a specific device."""
-    dev = _get_device_by_id(device_id)
-    return _device_to_response(device_id, dev)
+    device = _get_device_by_id(device_id)
+    if device.device_info is None:
+        raise HTTPException(
+            status_code=404, detail=f"Device {device_id} has no info")
+    return _device_to_response(device_id, device.device_info)
 
 
 @router.post("/devices/{device_id}/send")

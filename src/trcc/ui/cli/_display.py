@@ -54,14 +54,14 @@ def test(device=None, loop=False, preview=False):
     try:
         import time
 
-        from trcc.core.app import TrccApp
         from trcc.services import ImageService
+        from trcc.ui.cli._boot import trcc as _trcc
 
         log.debug("test display device=%s loop=%s", device, loop)
         if (rc := _connect_or_fail(device)):
             return rc
 
-        lcd = TrccApp.get().lcd
+        lcd = _trcc().lcd_device
         assert lcd is not None
         if lcd.device_path and 'led' in lcd.device_path:
             print("LED controller with segment display — use 'trcc led' commands.")
@@ -102,7 +102,7 @@ def test(device=None, loop=False, preview=False):
         return 1
 
 
-def play_video(builder, video_path, *, device=None, loop=True, duration=0,
+def play_video(builder=None, video_path=None, *, device=None, loop=True, duration=0,
                preview=False, metrics=None, mask=None,
                font_size=14, color='ffffff', font='Microsoft YaHei',
                font_style='regular', temp_unit=0, time_format=0,
@@ -143,7 +143,7 @@ def play_video(builder, video_path, *, device=None, loop=True, duration=0,
             try:
                 from trcc.core.builder import ControllerBuilder
                 from trcc.ui.cli import _ensure_system
-                _ensure_system(ControllerBuilder.for_current_os())
+                _ensure_system(ControllerBuilder(trcc().os))
             except Exception:
                 pass
             metrics_fn = get_all_metrics
@@ -205,24 +205,25 @@ def play_video(builder, video_path, *, device=None, loop=True, duration=0,
         return 1
 
 
-def screencast(builder, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=False):
+def screencast(builder=None, *, device=None, x=0, y=0, w=0, h=0, fps=10, preview=False):
     """Stream screen region to LCD via ffmpeg. Ctrl+C to stop."""
     import subprocess
 
     from PySide6.QtGui import QImage
 
-    from trcc.core.app import TrccApp
     from trcc.services import ImageService
+    from trcc.ui.cli._boot import trcc as _trcc
 
     log.debug("screencast device=%s region=(%d,%d,%d,%d) fps=%d", device, x, y, w, h, fps)
     if (rc := _connect_or_fail(device)):
         return rc
 
-    lcd = TrccApp.get().lcd
+    app = _trcc()
+    lcd = app.lcd_device
     assert lcd is not None
     lcd_w, lcd_h = lcd.lcd_size
 
-    capture = builder.os.screen_capture_params(x, y, w, h)
+    capture = app.os.screen_capture_params(x, y, w, h)
     if capture is None:
         print("Error: Screencast not supported on this platform.")
         return 1
@@ -331,14 +332,17 @@ def load_mask(mask_path, *, lcd: int = 0, device=None, preview=False):
 def render_overlay(builder, dc_path, *, device=None, send=False, output=None,
                    preview=False):
     """Render overlay from DC config file."""
-    from trcc.core.app import TrccApp
     from trcc.services.system import get_all_metrics
     from trcc.ui.cli import _ensure_system
+    from trcc.ui.cli._boot import trcc as _trcc
 
     if (rc := _connect_or_fail(device)):
         return rc
     _ensure_system(builder)
-    result = TrccApp.get().lcd.render_overlay_from_dc(
+    if (lcd := _trcc().lcd_device) is None:
+        print("Error: No LCD device connected.")
+        return 1
+    result = lcd.render_overlay_from_dc(
         dc_path, send=send, output=output or None,
         metrics=get_all_metrics(),
     )
@@ -444,7 +448,7 @@ def video_status():
 
 
 @_cli_handler
-def resume(builder):
+def resume(builder=None):
     """Send last-used theme to each detected device (headless, no GUI)."""
     import time
 

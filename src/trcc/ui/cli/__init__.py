@@ -53,15 +53,21 @@ def _make_cli_renderer():
     return QtRenderer()
 
 
-def _ensure_system(builder) -> None:
+def _ensure_system(builder=None) -> None:
     """Initialize and start SystemService for CLI commands that need sensor metrics.
 
     Lazy — only called by commands that use metrics (overlay, LED mode, etc.).
-    Builder is injected by the calling command (from ctx.obj at the boundary).
+    Resolves internally via `_boot.trcc()` when no builder is passed; the
+    `builder` parameter is kept for legacy callers (any object with
+    ``.build_system()`` works) and will be removed once they migrate.
     """
     global _system_svc
     if _system_svc is None:
         from trcc.services.system import set_instance
+        if builder is None:
+            from trcc.core.builder import ControllerBuilder
+            from trcc.ui.cli._boot import trcc as _trcc
+            builder = ControllerBuilder(_trcc().os)
         svc = builder.build_system()
         set_instance(svc)
         _system_svc = svc
@@ -555,9 +561,8 @@ def _cmd_video(
     )] = False,
 ) -> int:
     """Play video/GIF on LCD. For overlays, use 'trcc theme' instead."""
-    from trcc.core.app import TrccApp
     return _display.play_video(
-        TrccApp.get(), path, device=device, loop=not no_loop,
+        video_path=path, device=device, loop=not no_loop,
         duration=duration, preview=preview)
 
 
@@ -611,8 +616,6 @@ def _cmd_theme(
     )] = None,
 ) -> int:
     """Play background with mask + metrics overlay. Use --save to persist."""
-    from trcc.core.app import TrccApp
-    builder = TrccApp.get()
     if save:
         return _theme.save_theme(
             save, device=device, background=background,
@@ -620,7 +623,7 @@ def _cmd_theme(
             font=font, font_style=font_style, temp_unit=temp_unit,
             time_format=time_format, date_format=date_format)
     return _display.play_video(
-        builder, background, device=device, loop=not no_loop, duration=duration,
+        video_path=background, device=device, loop=not no_loop, duration=duration,
         preview=preview, metrics=metric, mask=mask,
         font_size=font_size, color=color, font=font,
         font_style=font_style, temp_unit=temp_unit,
@@ -664,8 +667,7 @@ def _cmd_screencast(
     )] = False,
 ) -> int:
     """Stream screen region to LCD."""
-    from trcc.core.app import TrccApp
-    return _display.screencast(TrccApp.get(), device=device,
+    return _display.screencast(device=device,
                                x=x, y=y, w=w, h=h, fps=fps, preview=preview)
 
 
@@ -710,9 +712,8 @@ def _cmd_overlay(
     )] = False,
 ) -> int:
     """Render overlay from DC config."""
-    from trcc.core.app import TrccApp
     return _display.render_overlay(
-        TrccApp.get(), dc_path,
+        None, dc_path,
         device=device, send=send, output=output, preview=preview)
 
 
@@ -766,8 +767,7 @@ def _cmd_theme_load(
     )] = False,
 ) -> int:
     """Load a theme and send to LCD."""
-    from trcc.core.app import TrccApp
-    return _theme.load_theme(TrccApp.get(), name, device=device, preview=preview)
+    return _theme.load_theme(None, name, device=device, preview=preview)
 
 
 @app.command("led-color", rich_help_panel="LED")
@@ -1005,8 +1005,8 @@ def _cmd_led_select_zone(
 def _cmd_gpu_list() -> int:
     """List available GPUs."""
     from trcc.core.builder import ControllerBuilder
-    builder = ControllerBuilder.for_current_os()
-    svc = builder.build_system()
+    from trcc.ui.cli._boot import trcc as _trcc
+    svc = ControllerBuilder(_trcc().os).build_system()
     gpu_list = svc.enumerator.get_gpu_list()
     if not gpu_list:
         print("No GPUs detected.")
@@ -1029,8 +1029,8 @@ def _cmd_gpu_set(
     """Set the active GPU for metrics."""
     from trcc.conf import settings
     from trcc.core.builder import ControllerBuilder
-    builder = ControllerBuilder.for_current_os()
-    svc = builder.build_system()
+    from trcc.ui.cli._boot import trcc as _trcc
+    svc = ControllerBuilder(_trcc().os).build_system()
     valid_keys = [k for k, _ in svc.enumerator.get_gpu_list()]
     if gpu_key not in valid_keys:
         print(f"Unknown GPU '{gpu_key}'. Available: {', '.join(valid_keys)}")
@@ -1089,8 +1089,7 @@ def _cmd_test_led(
     )] = 0,
 ) -> int:
     """Test LED ANSI preview with real metrics. No device needed."""
-    from trcc.core.app import TrccApp
-    return _led.test_led(TrccApp.get(), mode=mode, segments=segments, duration=duration)
+    return _led.test_led(mode=mode, segments=segments, duration=duration)
 
 
 @app.command("test-lcd", rich_help_panel="Diagnostics")
@@ -1100,8 +1099,7 @@ def _cmd_test_lcd(
     )] = 60,
 ) -> int:
     """Test LCD ANSI preview with real metrics. No device needed."""
-    from trcc.core.app import TrccApp
-    return _led.test_lcd(TrccApp.get(), cols=cols)
+    return _led.test_lcd(cols=cols)
 
 
 @app.command("theme-save", deprecated=True, rich_help_panel="Themes")
@@ -1182,8 +1180,7 @@ def _cmd_info(
     )] = None,
 ) -> int:
     """Show system metrics."""
-    from trcc.core.app import TrccApp
-    return _system.show_info(TrccApp.get(), preview=preview, metric=metric)
+    return _system.show_info(preview=preview, metric=metric)
 
 
 @app.command("reset", rich_help_panel="LCD Display")
@@ -1203,8 +1200,7 @@ def _cmd_reset(
 @app.command("resume", rich_help_panel="LCD Display")
 def _cmd_resume() -> int:
     """Send last-used theme to each detected device (headless)."""
-    from trcc.core.app import TrccApp
-    return _display.resume(TrccApp.get())
+    return _display.resume()
 
 
 @app.command("uninstall", rich_help_panel="System")

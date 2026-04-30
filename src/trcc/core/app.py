@@ -71,7 +71,14 @@ class TrccApp:
 
     def __init__(self, builder: ControllerBuilder) -> None:
         self._builder = builder
-        # path → Device (LCDDevice or LEDDevice, keyed by USB path)
+        # Composed Trcc — shares the same Platform, command facade, EventBus.
+        # `scan()` populates this so callers using `_boot.trcc()` see the
+        # same devices as `TrccApp.get()` (single source of truth).
+        from .trcc import Trcc
+        self._trcc: Trcc = Trcc(builder.os)
+        # path → Device (LCDDevice or LEDDevice, keyed by USB path).
+        # Mirrors self._trcc._lcd_devices + self._trcc._led_devices but
+        # keyed by USB path for legacy callers that look devices up by path.
         self._devices: dict[str, Device] = {}
         self._observers: list[AppObserver] = []
         self._system_svc: SystemService | None = None
@@ -99,8 +106,10 @@ class TrccApp:
         """Create the singleton. Intentionally minimal — composition roots
         call bootstrap() or scan() after this."""
         if cls._instance is None:
+            from trcc.adapters.system import make_platform
+
             from .builder import ControllerBuilder
-            builder = ControllerBuilder.for_current_os()
+            builder = ControllerBuilder(make_platform())
             cls._instance = cls(builder)
             cls._instance._ensure_data_fn = builder.build_ensure_data_fn()
             dl_pack, dl_list = builder.build_download_fns()
@@ -129,6 +138,8 @@ class TrccApp:
 
         Detection is sequential (single USB enumerate call), then one thread
         per device for connect + _wire_device (USB handshakes run concurrently).
+        Also mirrors connected devices into ``self._trcc`` so callers using
+        ``_boot.trcc()`` see the same instances.
         """
         detect_fn = self._builder.build_detect_fn()
         found: list[DetectedDevice] = detect_fn()
@@ -136,9 +147,14 @@ class TrccApp:
                  ", ".join(f"{d.path} ({d.protocol})" for d in found) or "(none)")
 
         self._devices = {}
+        # Clear the inner Trcc so re-scans don't accumulate stale devices
+        self._trcc._lcd_devices.clear()
+        self._trcc._led_devices.clear()
         lock = threading.Lock()
 
         def _connect_one(detected: DetectedDevice) -> None:
+            from .device.lcd import LCDDevice
+            from .device.led import LEDDevice
             device = self._builder.build_device(detected)
             try:
                 device.connect(detected)
@@ -150,6 +166,11 @@ class TrccApp:
             log.info("scan: connected %s %dx%d", detected.path, *res)
             with lock:
                 self._devices[detected.path] = device
+                # Mirror into the inner Trcc — single source of truth.
+                if isinstance(device, LCDDevice):
+                    self._trcc._lcd_devices.append(device)
+                elif isinstance(device, LEDDevice):
+                    self._trcc._led_devices.append(device)
                 self._wire_device(device)
 
         threads = [

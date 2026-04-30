@@ -54,20 +54,12 @@ class ControllerBuilder:
     def for_current_os(cls) -> ControllerBuilder:
         """Create a builder with the OS-appropriate Platform.
 
-        Dict lookup — OS is data, not a branch.
+        Delegates to ``make_platform()`` — the single OS-detection
+        chokepoint. Honors ``TRCC_MOCK`` so test/dev runs get
+        ``MockPlatform`` without the caller knowing or caring.
         """
-        import sys
-        from importlib import import_module
-
-        key = sys.platform
-        if 'bsd' in key:
-            key = 'bsd'
-        if key not in cls._OS_PLATFORMS:
-            key = 'linux'
-
-        mod, cls_name = cls._OS_PLATFORMS[key]
-        platform_cls = getattr(import_module(mod), cls_name)
-        return cls(platform_cls())
+        from trcc.adapters.system import make_platform
+        return cls(make_platform())
 
     def bootstrap(self, verbosity: int = 0) -> None:
         """Bootstrap the platform: logging → OS setup → settings.

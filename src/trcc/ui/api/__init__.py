@@ -34,12 +34,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from trcc.__version__ import __version__
-from trcc.adapters.device.detector import DeviceDetector
-from trcc.adapters.device.factory import DeviceProtocolFactory
-from trcc.adapters.device.led import probe_led_model
 from trcc.adapters.infra.dc_config import DcConfig
 from trcc.adapters.infra.dc_parser import load_config_json
-from trcc.services import DeviceService, MediaService, OverlayService
+from trcc.services import MediaService, OverlayService
 from trcc.services.system import SystemService
 
 log = logging.getLogger(__name__)
@@ -50,12 +47,9 @@ app = FastAPI(title="TRCC Linux", version=__version__)
 
 # ── Shared state ───────────────────────────────────────────────────────
 
-_device_svc = DeviceService(
-    detect_fn=DeviceDetector.detect,
-    probe_led_fn=probe_led_model,
-    get_protocol=DeviceProtocolFactory.get_protocol,
-    get_protocol_info=DeviceProtocolFactory.get_protocol_info,
-)
+# Device registry now lives on the Trcc singleton (api._boot.get_trcc()).
+# Endpoints look up devices via Trcc; this module owns only the
+# in-flight per-process state below.
 
 # System service — None until configure_app() is called by trcc serve
 _system_svc: SystemService | None = None
@@ -335,8 +329,8 @@ def start_screencast(
         if not shutil.which('ffmpeg'):
             return {"success": False, "error": "ffmpeg not found"}
 
-        from trcc.core.app import TrccApp
-        capture = TrccApp.get().os.screen_capture_params(x, y, w, h)
+        from trcc.ui.api._boot import get_trcc
+        capture = get_trcc().os.screen_capture_params(x, y, w, h)
         if capture is None:
             return {"success": False, "error": "Screencast not supported on this platform"}
         fmt, inp, region_args = capture

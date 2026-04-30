@@ -171,7 +171,7 @@ def select_zone(zone: int, *, led: int = 0) -> int:
 # Developer test commands (no device needed) — unchanged
 # =========================================================================
 
-def test_led(builder, *, mode: str | None = None, segments: int = 64,
+def test_led(builder=None, *, mode: str | None = None, segments: int = 64,
              duration: int = 0):
     """Test LED ANSI preview with real system metrics. No device needed."""
     import time
@@ -249,7 +249,7 @@ def test_led(builder, *, mode: str | None = None, segments: int = 64,
         return 1
 
 
-def test_lcd(builder, *, cols: int = 60):
+def test_lcd(builder=None, *, cols: int = 60):
     """Test LCD ANSI preview with real system metrics. No device needed."""
     from trcc.services.image import ImageService
     from trcc.services.system import get_instance

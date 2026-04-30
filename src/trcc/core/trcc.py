@@ -38,11 +38,19 @@ log = logging.getLogger(__name__)
 
 
 class Trcc:
-    """Universal command facade.
+    """Universal command facade and process context.
 
-    Construction is explicit (takes Platform). Use `for_current_os()` for
-    the normal entry point.
+    Construction is explicit (takes Platform). One Trcc per process —
+    composition root builds it, UI adapters consume it.
+
+    Slotted: no per-instance __dict__, ~40% smaller footprint, faster
+    attribute access (direct offset, no dict lookup).
     """
+
+    __slots__ = (
+        '_lcd_devices', '_led_devices', '_platform', '_renderer',
+        'control_center', 'events', 'lcd', 'led',
+    )
 
     def __init__(
         self,
@@ -67,13 +75,12 @@ class Trcc:
     def for_current_os(cls) -> Trcc:
         """Build a Trcc wired with the OS-appropriate Platform.
 
-        Low-level factory. UI adapters (CLI, API, GUI) extend this with
-        their own bootstrap flow — see `cli/_boot.py`, `api/_boot.py`,
-        and `Trcc.for_gui`.
+        Delegates OS detection to ``make_platform()`` — the single
+        chokepoint. Honors ``TRCC_MOCK`` so test/dev runs get
+        ``MockPlatform`` automatically.
         """
-        from .builder import ControllerBuilder
-        builder = ControllerBuilder.for_current_os()
-        return cls(builder.os)
+        from trcc.adapters.system import make_platform
+        return cls(make_platform())
 
     @classmethod
     def for_gui(cls, renderer: Renderer) -> Trcc:
@@ -100,6 +107,47 @@ class Trcc:
         """Set the renderer used when building LCD devices during discover()."""
         self._renderer = renderer
         return self
+
+    @property
+    def os(self) -> Platform:
+        """The Platform this Trcc is bound to. Read-only — composition is final."""
+        return self._platform
+
+    # ── Convenience accessors — first-of-kind devices ───────────────────
+
+    @property
+    def lcd_device(self) -> LCDDevice | None:
+        """First connected LCD device, or None.
+
+        For sustained use access devices via iteration (`for d in trcc:`)
+        or the typed lists (``lcd_devices``, ``led_devices``).
+        """
+        return self._lcd_devices[0] if self._lcd_devices else None
+
+    @property
+    def led_device(self) -> LEDDevice | None:
+        """First connected LED device, or None."""
+        return self._led_devices[0] if self._led_devices else None
+
+    @property
+    def lcd_devices(self) -> tuple[LCDDevice, ...]:
+        """All connected LCD devices, in detection order. Tuple — caller can't mutate."""
+        return tuple(self._lcd_devices)
+
+    @property
+    def led_devices(self) -> tuple[LEDDevice, ...]:
+        """All connected LED devices, in detection order."""
+        return tuple(self._led_devices)
+
+    @property
+    def has_lcd(self) -> bool:
+        """True iff at least one LCD device is connected."""
+        return bool(self._lcd_devices)
+
+    @property
+    def has_led(self) -> bool:
+        """True iff at least one LED device is connected."""
+        return bool(self._led_devices)
 
     def register_lcd(self, device: LCDDevice) -> int:
         """Register an already-built+connected LCD device with the command layer.
@@ -199,3 +247,14 @@ class Trcc:
 
     def __len__(self) -> int:
         return len(self._lcd_devices) + len(self._led_devices)
+
+    def __bool__(self) -> bool:
+        return bool(self._lcd_devices) or bool(self._led_devices)
+
+    # ── Context manager — deterministic cleanup on `with` exit ─────────
+
+    def __enter__(self) -> Trcc:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.cleanup()
