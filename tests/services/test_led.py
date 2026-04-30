@@ -859,7 +859,7 @@ class TestUCInfoImageWidget:
     def test_bar_width_calculation_temp(self):
         """Progress bar width for temp/percent mode: value*2, max 200."""
         # Test the formula directly (value * 2, capped at 200)
-        assert max(0, min(200, int(50 * 2))) == 100
+        assert max(0, min(200, (50 * 2))) == 100
 
     def test_bar_width_calculation_mhz(self):
         """Progress bar width for MHz mode: value/25, max 200."""

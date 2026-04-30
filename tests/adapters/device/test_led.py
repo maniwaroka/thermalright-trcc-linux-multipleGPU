@@ -1291,7 +1291,7 @@ class TestLedConstants:
         assert LED_PID == 0x8001
 
     def test_led_magic(self):
-        assert LED_MAGIC == bytes([0xDA, 0xDB, 0xDC, 0xDD])
+        assert bytes([0xDA, 0xDB, 0xDC, 0xDD]) == LED_MAGIC
 
     def test_led_header_size(self):
         assert LED_HEADER_SIZE == 20

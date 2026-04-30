@@ -979,7 +979,7 @@ class TestLF12Display:
             assert mask[idx] is True
 
     def test_decoration_range_is_93_to_123(self) -> None:
-        assert self.d.DECORATION == tuple(range(93, 124))
+        assert tuple(range(93, 124)) == self.d.DECORATION
 
     def test_digit_region_matches_lf8(self) -> None:
         """First 93 LEDs should be identical to LF8 encoding."""
@@ -1046,7 +1046,7 @@ class TestLF10Display:
             assert mask[idx] is True
 
     def test_decoration_range(self) -> None:
-        assert self.d.DECORATION == tuple(range(84, 116))
+        assert tuple(range(84, 116)) == self.d.DECORATION
 
     def test_13seg_digit_groups_have_13_leds_each(self) -> None:
         for digit in self.d.DIGIT_LEDS_13:

@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication
 
 _qapp = QApplication.instance() or QApplication([])
 
@@ -349,7 +349,7 @@ class TestBrightnessRotation(unittest.TestCase):
 
     def test_apply_rotation_90(self):
         """90° rotation swaps dimensions correctly."""
-        from PySide6.QtGui import QColor  # noqa: I001
+        from PySide6.QtGui import QColor
 
         from trcc.services import ImageService
 
@@ -366,7 +366,7 @@ class TestBrightnessRotation(unittest.TestCase):
 
     def test_apply_rotation_0_noop(self):
         """0° rotation returns identical image."""
-        from PySide6.QtGui import QColor  # noqa: I001
+        from PySide6.QtGui import QColor
 
         from trcc.services import ImageService
 

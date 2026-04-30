@@ -373,7 +373,7 @@ class TestVideoCutConstants:
         assert EXPORT_FPS == 24
 
     def test_frame_interval(self):
-        assert FRAME_INTERVAL_MS == pytest.approx(1000.0 / 24)
+        assert pytest.approx(1000.0 / 24) == FRAME_INTERVAL_MS
 
 
 class TestExportWorker:

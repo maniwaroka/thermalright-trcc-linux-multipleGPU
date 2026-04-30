@@ -45,7 +45,7 @@ class TestOverlayPathTraversal(_ApiSecurityBase):
         self.assertIn("Invalid", resp.json()["detail"])
 
     def test_relative_traversal(self):
-        traversal = f"{str(_conf.settings.user_data_dir)}/../../etc/shadow"
+        traversal = f"{_conf.settings.user_data_dir!s}/../../etc/shadow"
         resp = self.client.post(f"/display/overlay?dc_path={traversal}")
         self.assertEqual(resp.status_code, 400)
 
@@ -54,13 +54,13 @@ class TestOverlayPathTraversal(_ApiSecurityBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_null_byte_injection(self):
-        resp = self.client.post(f"/display/overlay?dc_path={str(_conf.settings.user_data_dir)}/theme%00.dc")
+        resp = self.client.post(f"/display/overlay?dc_path={_conf.settings.user_data_dir!s}/theme%00.dc")
         self.assertEqual(resp.status_code, 400)
 
     def test_valid_data_dir_path_passes_validation(self):
         """A path within str(_conf.settings.user_data_dir) should pass validation (may fail later
         on missing file or no device, but NOT with 'Invalid overlay path')."""
-        safe_path = f"{str(_conf.settings.user_data_dir)}/test_theme/config1.dc"
+        safe_path = f"{_conf.settings.user_data_dir!s}/test_theme/config1.dc"
         resp = self.client.post(f"/display/overlay?dc_path={safe_path}")
         # Should be 409 (no device) or 404 (no file), NOT 400 (invalid path)
         self.assertNotEqual(resp.status_code, 400)

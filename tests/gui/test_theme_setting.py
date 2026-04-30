@@ -24,20 +24,20 @@ from unittest.mock import patch
 # Must set before ANY Qt import
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-import pytest  # noqa: E402
-from PySide6.QtCore import QEvent, Qt  # noqa: E402
-from PySide6.QtGui import QMouseEvent, QPixmap  # noqa: E402
+import pytest
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QMouseEvent, QPixmap
 
-from trcc.core.models import (  # noqa: E402
+from trcc.core.models import (
     LocalThemeItem,
     OverlayElementConfig,
     OverlayMode,
 )
-from trcc.ui.gui.uc_theme_local import (  # noqa: E402
+from trcc.ui.gui.uc_theme_local import (
     ThemeThumbnail,
     UCThemeLocal,
 )
-from trcc.ui.gui.uc_theme_setting import (  # noqa: E402
+from trcc.ui.gui.uc_theme_setting import (
     CATEGORY_COLORS,
     CATEGORY_NAMES,
     SUB_METRICS,

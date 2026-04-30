@@ -185,6 +185,21 @@ ignore = [
 "src/trcc/__init__.py" = ["PTH", "SIM115", "SIM117"]
 "src/trcc/__main__.py" = ["PTH", "SIM115", "SIM117"]
 "src/trcc/__version__.py" = ["PTH", "SIM115", "SIM117"]
+# Tests — same rationale as legacy src; the d4e1b287 ruff expansion
+# (UP/B/SIM/PIE/RUF/FA/PTH) and 8ef3264c PEP 585/604 sweep didn't touch
+# tests/.  Soft-gate covers the families that fire there:
+#   PTH  — os.path style throughout test setup/teardown
+#   UP   — Optional[X] / List[X] / typing.X patterns
+#   SIM115/117 — context-managed open + with-statement chaining
+#   PIE807/808 — minor stylistic
+#   RUF013/015/043/059 — implicit-optional, micro-iteration, pytest patterns
+#   B007/018/023 — unused loop vars + assertion-style expressions in tests
+"tests/**/*.py" = [
+    "PTH", "UP", "SIM115", "SIM117",
+    "PIE807", "PIE808",
+    "RUF013", "RUF015", "RUF043", "RUF059",
+    "B007", "B018", "B023",
+]
 "src/trcc/_entry.py" = ["PTH", "SIM115", "SIM117"]
 "src/trcc/conf.py" = ["PTH", "SIM115", "SIM117"]
 "src/trcc/ipc.py" = ["PTH", "SIM115", "SIM117"]

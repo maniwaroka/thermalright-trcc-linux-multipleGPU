@@ -494,7 +494,7 @@ class TestSMCParsing:
         from trcc.adapters.system.macos_platform import _parse_smc_bytes
         dt = struct.unpack('>I', b'fpe2')[0]
         raw = (ctypes.c_uint8 * 32)()
-        val = struct.pack('>H', int(1200 * 4))
+        val = struct.pack('>H', (1200 * 4))
         raw[0], raw[1] = val[0], val[1]
         result = _parse_smc_bytes(dt, raw, 2)
         assert result == 1200.0
