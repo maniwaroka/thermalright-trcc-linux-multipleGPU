@@ -298,6 +298,18 @@ class SensorEnumerator(SensorEnumeratorBase):
             readings[f'lhm:{hw_key}:{s_name}'] = float(val)
 
     def get_gpu_list(self) -> list[tuple[str, str]]:
+        """Enumerate GPUs on Windows.
+
+        Order of preference:
+            1. **LibreHardwareMonitor** — covers NVIDIA/AMD/Intel WITH sensor
+               metrics (temp, usage, clock, power). Best UX when present.
+            2. **pynvml** — NVIDIA-only, no LHM dependency.
+            3. **WMI Win32_VideoController** — universal fallback. Detects
+               every GPU Windows knows about (AMD/Intel/NVIDIA, integrated +
+               discrete) but offers NO sensor data. The user can still
+               select the GPU; metrics show as ``--`` until LHM is added.
+               Closes #131 for AMD-on-Windows users without LHM running.
+        """
         gpus: list[tuple[str, str]] = []
         if self._lhm_computer is not None:
             try:
@@ -310,7 +322,33 @@ class SensorEnumerator(SensorEnumeratorBase):
                 log.debug("LHM GPU enumeration failed")
         if not gpus:
             gpus = super().get_gpu_list()
+        if not gpus:
+            gpus = self._wmi_get_gpu_list()
         return gpus
+
+    @staticmethod
+    def _wmi_get_gpu_list() -> list[tuple[str, str]]:
+        """Enumerate every video controller via ``Win32_VideoController``.
+
+        Microsoft's Win32_VideoController.AdapterRAM is a 32-bit unsigned
+        int — it caps at 4 GiB on cards with more VRAM (a known WMI
+        limitation, not a code bug). We accept that and just show the
+        name; sensor data lives in LHM/ADLX, not here.
+        """
+        try:
+            import wmi  # pyright: ignore[reportMissingImports]
+            w = wmi.WMI()
+            return [
+                (f'wmi:{i}', str(vc.Name).strip() or f'GPU {i}')
+                for i, vc in enumerate(w.Win32_VideoController())
+                if vc.Name
+            ]
+        except ImportError:
+            log.debug("wmi package unavailable — no WMI GPU enumeration")
+            return []
+        except Exception:
+            log.exception("WMI Win32_VideoController query failed")
+            return []
 
     def _build_mapping(self) -> dict[str, str]:
         sensors = self._sensors

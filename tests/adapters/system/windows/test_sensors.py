@@ -307,3 +307,140 @@ class TestLhmTypeMap:
     def test_unknown_type_not_mapped(self):
         from trcc.adapters.system.windows_platform import _LHM_TYPE_MAP
         assert 'Warp' not in _LHM_TYPE_MAP
+
+
+# ── WMI GPU fallback (issue #131) ────────────────────────────────────
+#
+# AMD-on-Windows users without LibreHardwareMonitor running used to see
+# "No GPUs detected" because `pynvml` is NVIDIA-only. v9.6.0 adds a
+# `Win32_VideoController` fallback that detects every GPU Windows knows
+# about — temperature/usage data still requires LHM/ADLX, but at least
+# the card appears in `trcc gpus` for selection.
+
+
+def _mock_wmi_video(name: str = 'AMD Radeon RX 9070 XT') -> MagicMock:
+    """Build a mock Win32_VideoController instance with the given name."""
+    vc = MagicMock()
+    vc.Name = name
+    return vc
+
+
+class TestWmiGpuFallback:
+    """Verifies the WMI Win32_VideoController fallback path used when
+    neither LHM nor pynvml returned any GPUs."""
+
+    def _patch_wmi(self, controllers: list[MagicMock]):
+        """Install a mock `wmi` module returning the given controllers."""
+        mock_wmi_mod = MagicMock()
+        mock_wmi_instance = MagicMock()
+        mock_wmi_instance.Win32_VideoController.return_value = controllers
+        mock_wmi_mod.WMI.return_value = mock_wmi_instance
+        return patch.dict('sys.modules', {'wmi': mock_wmi_mod})
+
+    def test_returns_amd_gpu(self):
+        """The reporter's exact card (RX 9070 XT) appears in the list."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        with self._patch_wmi([_mock_wmi_video('AMD Radeon RX 9070 XT')]):
+            result = SensorEnumerator._wmi_get_gpu_list()
+        assert result == [('wmi:0', 'AMD Radeon RX 9070 XT')]
+
+    def test_returns_multiple_gpus_in_order(self):
+        """Integrated + discrete are both listed, indexed in detection order."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        controllers = [
+            _mock_wmi_video('AMD Radeon Graphics'),     # integrated
+            _mock_wmi_video('AMD Radeon RX 9070 XT'),   # discrete
+        ]
+        with self._patch_wmi(controllers):
+            result = SensorEnumerator._wmi_get_gpu_list()
+        assert result == [
+            ('wmi:0', 'AMD Radeon Graphics'),
+            ('wmi:1', 'AMD Radeon RX 9070 XT'),
+        ]
+
+    def test_strips_whitespace_in_name(self):
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        with self._patch_wmi([_mock_wmi_video('  AMD Radeon  ')]):
+            result = SensorEnumerator._wmi_get_gpu_list()
+        assert result == [('wmi:0', 'AMD Radeon')]
+
+    def test_skips_controllers_with_no_name(self):
+        """WMI sometimes returns ghost controllers (Name=None). Skip them."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        ghost = MagicMock()
+        ghost.Name = None
+        controllers = [ghost, _mock_wmi_video('Real GPU')]
+        with self._patch_wmi(controllers):
+            result = SensorEnumerator._wmi_get_gpu_list()
+        assert result == [('wmi:1', 'Real GPU')]
+
+    def test_returns_empty_when_wmi_pkg_missing(self):
+        """No `wmi` package on path (e.g. running on Linux): empty list, no crash."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        with patch.dict('sys.modules', {'wmi': None}):
+            # `import wmi` with sys.modules[wmi]=None raises ImportError
+            result = SensorEnumerator._wmi_get_gpu_list()
+        assert result == []
+
+    def test_returns_empty_on_wmi_exception(self):
+        """WMI subsystem can raise (e.g. COM init failure). Don't propagate."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        mock_wmi_mod = MagicMock()
+        mock_wmi_mod.WMI.side_effect = RuntimeError('COM not initialised')
+        with patch.dict('sys.modules', {'wmi': mock_wmi_mod}):
+            result = SensorEnumerator._wmi_get_gpu_list()
+        assert result == []
+
+
+class TestGetGpuListFallbackOrder:
+    """get_gpu_list() preference: LHM → pynvml (NVIDIA) → WMI (universal)."""
+
+    def test_wmi_only_fires_when_lhm_and_pynvml_empty(self):
+        """Reporter scenario: AMD GPU, no LHM, no NVIDIA. WMI fallback fires."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        e = SensorEnumerator()
+        e._lhm_computer = None  # No LHM
+        # Patch base get_gpu_list (pynvml NVIDIA path) to return empty
+        with patch.object(
+            SensorEnumerator.__bases__[0], 'get_gpu_list', return_value=[],
+        ), patch.object(
+            SensorEnumerator, '_wmi_get_gpu_list',
+            return_value=[('wmi:0', 'AMD Radeon RX 9070 XT')],
+        ):
+            result = e.get_gpu_list()
+        assert result == [('wmi:0', 'AMD Radeon RX 9070 XT')]
+
+    def test_wmi_skipped_when_lhm_returns_gpus(self):
+        """LHM is preferred when running — its results include sensor data."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        e = SensorEnumerator()
+        # Mock LHM with one GPU
+        lhm_gpu = MagicMock()
+        lhm_gpu.HardwareType = 'GpuAmd'
+        lhm_gpu.Name = 'AMD Radeon RX 9070 XT'
+        e._lhm_computer = MagicMock()
+        e._lhm_computer.Hardware = [lhm_gpu]
+        with patch.object(
+            SensorEnumerator, '_wmi_get_gpu_list',
+            return_value=[('wmi:0', 'should not see this')],
+        ) as wmi_mock:
+            result = e.get_gpu_list()
+        wmi_mock.assert_not_called()
+        assert any('amd_radeon_rx_9070_xt'.startswith(key.split(':')[1])
+                   or 'amd_radeon_rx_9070' in key for key, _ in result)
+
+    def test_wmi_skipped_when_pynvml_returns_gpus(self):
+        """pynvml NVIDIA path takes precedence over WMI when present."""
+        from trcc.adapters.system.windows_platform import SensorEnumerator
+        e = SensorEnumerator()
+        e._lhm_computer = None
+        with patch.object(
+            SensorEnumerator.__bases__[0], 'get_gpu_list',
+            return_value=[('nvidia:0', 'RTX 4090 (24576 MB)')],
+        ), patch.object(
+            SensorEnumerator, '_wmi_get_gpu_list',
+            return_value=[('wmi:0', 'should not see this')],
+        ) as wmi_mock:
+            result = e.get_gpu_list()
+        wmi_mock.assert_not_called()
+        assert result == [('nvidia:0', 'RTX 4090 (24576 MB)')]
