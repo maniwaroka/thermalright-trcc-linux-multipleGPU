@@ -200,6 +200,10 @@ ignore = [
     "RUF013", "RUF015", "RUF043", "RUF059",
     "B007", "B018", "B023",
 ]
+# CI helper scripts (.github/scripts/) — tooling that runs in workflows,
+# not production code.  Same legacy rationale as tests/ — keeping them
+# strict-PTH-clean isn't worth blocking releases over.
+".github/scripts/**/*.py" = ["PTH", "SIM115"]
 "src/trcc/_entry.py" = ["PTH", "SIM115", "SIM117"]
 "src/trcc/conf.py" = ["PTH", "SIM115", "SIM117"]
 "src/trcc/ipc.py" = ["PTH", "SIM115", "SIM117"]
