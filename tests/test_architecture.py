@@ -371,9 +371,11 @@ class TestSensorEnumeratorABC(unittest.TestCase):
         self.assertTrue(issubclass(SensorEnumerator, ABC))
 
     def test_macos_implements_abc(self):
-        from trcc.adapters.system.macos_platform import SensorEnumerator
+        # Native sensor enumeration was extracted from macos_platform.py
+        # into the multi-module macos/ package (PR #117 — jaminmc).
+        from trcc.adapters.system.macos.sensors import MacOSSensorEnumerator
         from trcc.core.ports import SensorEnumerator as ABC
-        self.assertTrue(issubclass(SensorEnumerator, ABC))
+        self.assertTrue(issubclass(MacOSSensorEnumerator, ABC))
 
     def test_bsd_implements_abc(self):
         from trcc.adapters.system.bsd_platform import SensorEnumerator
