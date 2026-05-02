@@ -101,9 +101,15 @@ class OverlayElementWidget(QWidget):
         """Update card with live system metrics (Windows UCXiTongXianShiSubTimer)."""
         if not self.config or self.config.mode != OverlayMode.HARDWARE:
             return
-        metric_key = HARDWARE_METRICS.get((self.config.main_count, self.config.sub_count))
-        if not metric_key:
+        gpu_idx = getattr(self.config, 'gpu_index', 0)
+        base_metric = HARDWARE_METRICS.get((self.config.main_count, self.config.sub_count))
+        if not base_metric:
             return
+        if gpu_idx > 0:
+            suffix = base_metric.removeprefix('gpu_')
+            metric_key = f'gpu_{gpu_idx}_{suffix}'
+        else:
+            metric_key = base_metric
         raw = getattr(metrics, metric_key, None)
         if raw is None:
             return

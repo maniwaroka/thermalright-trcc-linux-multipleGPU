@@ -371,16 +371,19 @@ class SensorEnumerator(SensorEnumeratorBase):
         if lhm_gpu_temp:
             mapping['gpu_temp'] = lhm_gpu_temp
             mapping['gpu_usage'] = _ff(sensors, source='lhm', name_contains='GPU', category='usage')
+            mapping['gpu_vram_used'] = _ff(sensors, source='lhm', name_contains='GPU', category='memory')
             mapping['gpu_clock'] = _ff(sensors, source='lhm', name_contains='GPU', category='clock')
             mapping['gpu_power'] = _ff(sensors, source='lhm', name_contains='GPU', category='power')
         elif nvidia_gpu_temp:
             mapping['gpu_temp'] = nvidia_gpu_temp
             mapping['gpu_usage'] = _ff(sensors, source='nvidia', category='gpu_busy')
+            mapping['gpu_vram_used'] = _ff(sensors, source='nvidia', category='gpu_memory')
             mapping['gpu_clock'] = _ff(sensors, source='nvidia', category='clock')
             mapping['gpu_power'] = _ff(sensors, source='nvidia', category='power')
         else:
             mapping['gpu_temp'] = ''
             mapping['gpu_usage'] = ''
+            mapping['gpu_vram_used'] = ''
             mapping['gpu_clock'] = ''
             mapping['gpu_power'] = ''
 

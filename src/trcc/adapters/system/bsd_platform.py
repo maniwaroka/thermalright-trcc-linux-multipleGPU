@@ -284,6 +284,7 @@ class SensorEnumerator(SensorEnumeratorBase):
 
         mapping['gpu_temp'] = _ff(sensors, source='nvidia', category='temperature')
         mapping['gpu_usage'] = _ff(sensors, source='nvidia', category='gpu_busy')
+        mapping['gpu_vram_used'] = _ff(sensors, source='nvidia', category='gpu_memory')
         mapping['gpu_power'] = _ff(sensors, source='nvidia', category='power')
 
         mapping['mem_temp'] = ''

@@ -254,11 +254,18 @@ class OverlayGridPanel(QFrame):
                 entry['text'] = cfg.text
                 key = f'custom_{i}'
             elif cfg.mode == OverlayMode.HARDWARE:
-                entry['metric'] = HARDWARE_METRICS.get(
+                base_metric = HARDWARE_METRICS.get(
                     (cfg.main_count, cfg.sub_count),
                     f'hw_{cfg.main_count}_{cfg.sub_count}')
+                if cfg.gpu_index > 0:
+                    # Strip 'gpu_' prefix from base_metric for indexed name
+                    suffix = base_metric.removeprefix('gpu_')
+                    entry['metric'] = f'gpu_{cfg.gpu_index}_{suffix}'
+                else:
+                    entry['metric'] = base_metric
+                entry['gpu_index'] = cfg.gpu_index
                 entry['temp_unit'] = cfg.mode_sub
-                key = f'hw_{cfg.main_count}_{cfg.sub_count}_{i}'
+                key = f'hw_{cfg.main_count}_{cfg.sub_count}_{cfg.gpu_index}_{i}'
             else:
                 continue
 
@@ -278,6 +285,26 @@ class OverlayGridPanel(QFrame):
             font_style = (1 if font.get('style') == 'bold' else 0) if isinstance(font, dict) else 0
             font_name = font.get('name', 'Microsoft YaHei') if isinstance(font, dict) else 'Microsoft YaHei'
 
+            # Extract gpu_index from config dict or parse from metric name
+            metric = cfg.get('metric', '')
+            if 'gpu_index' in cfg:
+                gpu_idx = cfg['gpu_index']
+            elif metric.startswith('gpu_') and '_' in metric[4:]:
+                try:
+                    idx_str = metric[4:metric.index('_', 4)]
+                    gpu_idx = int(idx_str)
+                    # Map indexed metric back to base metric for METRIC_TO_IDS lookup
+                    suffix = metric[4 + len(idx_str) + 1:]  # after 'gpu_N_'
+                    # Find the original metric key (e.g., 'gpu_temp') from HARDWARE_METRICS
+                    for mk, mv in HARDWARE_METRICS.items():
+                        if mv == f'gpu_{suffix}':
+                            metric = mv
+                            break
+                except (ValueError, IndexError):
+                    gpu_idx = 0
+            else:
+                gpu_idx = 0
+
             elem = OverlayElementConfig(
                 x=cfg.get('x', 100),
                 y=cfg.get('y', 100),
@@ -285,9 +312,9 @@ class OverlayGridPanel(QFrame):
                 font_size=font_size,
                 font_style=font_style,
                 font_name=font_name,
+                gpu_index=gpu_idx,
             )
 
-            metric = cfg.get('metric', '')
             if metric == 'time':
                 elem.mode = OverlayMode.TIME
                 elem.mode_sub = cfg.get('time_format', 0)
@@ -305,6 +332,18 @@ class OverlayGridPanel(QFrame):
                 elem.main_count = mc
                 elem.sub_count = sc
                 elem.mode_sub = cfg.get('temp_unit', 0)
+            elif metric.startswith('gpu_') and '_' in metric[4:]:
+                # Indexed GPU metric (gpu_N_suffix) → look up base metric
+                suffix = metric[metric.index('_', 4) + 1:]
+                base_metric = f'gpu_{suffix}'
+                if base_metric in METRIC_TO_IDS:
+                    mc, sc = METRIC_TO_IDS[base_metric]
+                    elem.mode = OverlayMode.HARDWARE
+                    elem.main_count = mc
+                    elem.sub_count = sc
+                    elem.mode_sub = cfg.get('temp_unit', 0)
+                else:
+                    continue
             else:
                 continue
             configs.append(elem)

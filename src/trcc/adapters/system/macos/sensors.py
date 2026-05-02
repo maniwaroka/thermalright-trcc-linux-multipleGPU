@@ -617,6 +617,10 @@ class MacOSSensorEnumerator(SensorEnumeratorBase):
             _ff(sensors, source='nvidia', category='gpu_busy')
             or _ff(sensors, source='iokit', category='gpu_busy')
         )
+        mapping['gpu_vram_used'] = (
+            _ff(sensors, source='nvidia', category='gpu_memory')
+            or _ff(sensors, source='iokit', category='memory')
+        )
         mapping['gpu_clock'] = _ff(sensors, source='iokit', category='clock')
         mapping['gpu_power'] = (
             _ff(sensors, source='nvidia', category='power')

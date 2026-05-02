@@ -692,6 +692,7 @@ class SensorEnumerator(SensorEnumeratorBase):
             for metric, name, cat, unit in [
                 ('temp', f'{label} / Temperature', 'temperature', '°C'),
                 ('gpu_util', f'{label} / GPU Utilization', 'usage', '%'),
+                ('gpu_busy', f'{label} / GPU Busy', 'usage', '%'),
                 ('mem_util', f'{label} / Memory Utilization', 'usage', '%'),
                 ('clock', f'{label} / Graphics Clock', 'clock', 'MHz'),
                 ('mem_clock', f'{label} / Memory Clock', 'clock', 'MHz'),
@@ -884,6 +885,7 @@ class SensorEnumerator(SensorEnumeratorBase):
             try:
                 util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                 readings[f"{prefix}:gpu_util"] = float(util.gpu)
+                readings[f"{prefix}:gpu_busy"] = float(util.gpu)
                 readings[f"{prefix}:mem_util"] = float(util.memory)
             except Exception:
                 pass
@@ -975,6 +977,8 @@ class SensorEnumerator(SensorEnumeratorBase):
             prefix = f"nvidia:{gpu['nvidia_idx']}"
             mapping['gpu_temp'] = f"{prefix}:temp"
             mapping['gpu_usage'] = f"{prefix}:gpu_util"
+            mapping['gpu_vram_used'] = f"{prefix}:vram_used"
+            mapping['gpu_vram_total'] = f"{prefix}:vram_total"
             mapping['gpu_clock'] = f"{prefix}:clock"
             mapping['gpu_power'] = f"{prefix}:power"
         elif gpu.get('vendor') == 'amd':
@@ -987,11 +991,13 @@ class SensorEnumerator(SensorEnumeratorBase):
         elif _GPU_VENDOR_INTEL in _detect_gpu_vendors():
             mapping['gpu_temp'] = _ff(sensors, source='hwmon', name_contains='i915', category='temperature')
             mapping['gpu_usage'] = ''
+            mapping['gpu_memory'] = ''
             mapping['gpu_clock'] = _ff(sensors, source='drm', category='clock')
             mapping['gpu_power'] = _ff(sensors, source='hwmon', name_contains='i915', category='power')
         else:
             mapping['gpu_temp'] = ''
             mapping['gpu_usage'] = ''
+            mapping['gpu_memory'] = ''
             mapping['gpu_clock'] = ''
             mapping['gpu_power'] = ''
 

@@ -26,11 +26,62 @@ class HardwareMetrics:
     cpu_percent: float = 0.0
     cpu_freq: float = 0.0
     cpu_power: float = 0.0
-    # GPU
+    # GPU (legacy — single GPU, main_count=1)
     gpu_temp: float = 0.0
     gpu_usage: float = 0.0
     gpu_clock: float = 0.0
     gpu_power: float = 0.0
+    gpu_vram_used: float = 0.0
+    gpu_vram_total: float = 0.0
+    # GPU indexed (gpu_0_* ~ gpu_7_* — multi-GPU support)
+    gpu_0_temp: float = 0.0
+    gpu_0_usage: float = 0.0
+    gpu_0_clock: float = 0.0
+    gpu_0_power: float = 0.0
+    gpu_1_temp: float = 0.0
+    gpu_1_usage: float = 0.0
+    gpu_1_clock: float = 0.0
+    gpu_1_power: float = 0.0
+    gpu_2_temp: float = 0.0
+    gpu_2_usage: float = 0.0
+    gpu_2_clock: float = 0.0
+    gpu_2_power: float = 0.0
+    gpu_3_temp: float = 0.0
+    gpu_3_usage: float = 0.0
+    gpu_3_clock: float = 0.0
+    gpu_3_power: float = 0.0
+    gpu_4_temp: float = 0.0
+    gpu_4_usage: float = 0.0
+    gpu_4_clock: float = 0.0
+    gpu_4_power: float = 0.0
+    gpu_5_temp: float = 0.0
+    gpu_5_usage: float = 0.0
+    gpu_5_clock: float = 0.0
+    gpu_5_power: float = 0.0
+    gpu_6_temp: float = 0.0
+    gpu_6_usage: float = 0.0
+    gpu_6_clock: float = 0.0
+    gpu_6_power: float = 0.0
+    gpu_7_temp: float = 0.0
+    gpu_7_usage: float = 0.0
+    gpu_7_clock: float = 0.0
+    gpu_7_power: float = 0.0
+    gpu_0_vram_used: float = 0.0
+    gpu_0_vram_total: float = 0.0
+    gpu_1_vram_used: float = 0.0
+    gpu_1_vram_total: float = 0.0
+    gpu_2_vram_used: float = 0.0
+    gpu_2_vram_total: float = 0.0
+    gpu_3_vram_used: float = 0.0
+    gpu_3_vram_total: float = 0.0
+    gpu_4_vram_used: float = 0.0
+    gpu_4_vram_total: float = 0.0
+    gpu_5_vram_used: float = 0.0
+    gpu_5_vram_total: float = 0.0
+    gpu_6_vram_used: float = 0.0
+    gpu_6_vram_total: float = 0.0
+    gpu_7_vram_used: float = 0.0
+    gpu_7_vram_total: float = 0.0
     # Memory
     mem_temp: float = 0.0
     mem_percent: float = 0.0
@@ -65,7 +116,11 @@ class HardwareMetrics:
 
     _populated: set[str] = field(default_factory=set, repr=False, compare=False)
 
-    _TEMP_FIELDS = ('cpu_temp', 'gpu_temp', 'mem_temp', 'disk_temp')
+    _TEMP_FIELDS = (
+        'cpu_temp', 'gpu_temp', 'mem_temp', 'disk_temp',
+        'gpu_0_temp', 'gpu_1_temp', 'gpu_2_temp', 'gpu_3_temp',
+        'gpu_4_temp', 'gpu_5_temp', 'gpu_6_temp', 'gpu_7_temp',
+    )
 
     @staticmethod
     def with_temp_unit(metrics: HardwareMetrics, temp_unit: int) -> HardwareMetrics:
@@ -95,6 +150,8 @@ HARDWARE_METRICS: dict[tuple[int, int], str] = {
     (1, 2): 'gpu_usage',
     (1, 3): 'gpu_clock',
     (1, 4): 'gpu_power',
+    (1, 5): 'gpu_vram_used',
+    (1, 6): 'gpu_vram_total',
     # MEM (main_count=2)
     (2, 1): 'mem_percent',
     (2, 2): 'mem_clock',
@@ -194,7 +251,7 @@ CATEGORY_NAMES: dict[int, str] = {
 # {category_id: {sub_count: label}}
 SUB_METRICS: dict[int, dict[int, str]] = {
     0: {1: 'Temp', 2: 'Usage', 3: 'Freq',     4: 'Power'},
-    1: {1: 'Temp', 2: 'Usage', 3: 'Clock',    4: 'Power'},
+    1: {1: 'Temp', 2: 'Usage', 3: 'Clock',    4: 'Power', 5: 'VRAM Used', 6: 'VRAM Total'},
     2: {1: 'Used%', 2: 'Clock', 3: 'Used',    4: 'Free'},
     3: {1: 'Read', 2: 'Write', 3: 'Activity', 4: 'Temp'},
     4: {1: 'Down', 2: 'Up',    3: 'Total',    4: 'Ping'},
@@ -207,10 +264,59 @@ SENSORS: dict[str, list[tuple[str, str, str, str]]] = {
                 ('usage',      'Usage',     '%',    'cpu_percent'),
                 ('clock',      'Clock',     'MHz',  'cpu_freq'),
                 ('power',      'Power',     'W',    'cpu_power')],
-    'gpu':     [('temp',       'TEMP',      '°C',   'gpu_temp'),
-                ('usage',      'Usage',     '%',    'gpu_usage'),
-                ('clock',      'Clock',     'MHz',  'gpu_clock'),
-                ('power',      'Power',     'W',    'gpu_power')],
+    'gpu':     [('gpu_0_temp',   'GPU0 TEMP',  '°C',   'gpu_0_temp'),
+                ('gpu_1_temp',   'GPU1 TEMP',  '°C',   'gpu_1_temp'),
+                ('gpu_2_temp',   'GPU2 TEMP',  '°C',   'gpu_2_temp'),
+                ('gpu_3_temp',   'GPU3 TEMP',  '°C',   'gpu_3_temp'),
+                ('gpu_4_temp',   'GPU4 TEMP',  '°C',   'gpu_4_temp'),
+                ('gpu_5_temp',   'GPU5 TEMP',  '°C',   'gpu_5_temp'),
+                ('gpu_6_temp',   'GPU6 TEMP',  '°C',   'gpu_6_temp'),
+                ('gpu_7_temp',   'GPU7 TEMP',  '°C',   'gpu_7_temp'),
+                ('gpu_0_usage',  'GPU0 Usage', '%',    'gpu_0_usage'),
+                ('gpu_1_usage',  'GPU1 Usage', '%',    'gpu_1_usage'),
+                ('gpu_2_usage',  'GPU2 Usage', '%',    'gpu_2_usage'),
+                ('gpu_3_usage',  'GPU3 Usage', '%',    'gpu_3_usage'),
+                ('gpu_4_usage',  'GPU4 Usage', '%',    'gpu_4_usage'),
+                ('gpu_5_usage',  'GPU5 Usage', '%',    'gpu_5_usage'),
+                ('gpu_6_usage',  'GPU6 Usage', '%',    'gpu_6_usage'),
+                ('gpu_7_usage',  'GPU7 Usage', '%',    'gpu_7_usage'),
+                ('gpu_0_clock',  'GPU0 Clock', 'MHz',  'gpu_0_clock'),
+                ('gpu_1_clock',  'GPU1 Clock', 'MHz',  'gpu_1_clock'),
+                ('gpu_2_clock',  'GPU2 Clock', 'MHz',  'gpu_2_clock'),
+                ('gpu_3_clock',  'GPU3 Clock', 'MHz',  'gpu_3_clock'),
+                ('gpu_4_clock',  'GPU4 Clock', 'MHz',  'gpu_4_clock'),
+                ('gpu_5_clock',  'GPU5 Clock', 'MHz',  'gpu_5_clock'),
+                ('gpu_6_clock',  'GPU6 Clock', 'MHz',  'gpu_6_clock'),
+                ('gpu_7_clock',  'GPU7 Clock', 'MHz',  'gpu_7_clock'),
+                ('gpu_0_power',  'GPU0 Power', 'W',    'gpu_0_power'),
+                ('gpu_1_power',  'GPU1 Power', 'W',    'gpu_1_power'),
+                ('gpu_2_power',  'GPU2 Power', 'W',    'gpu_2_power'),
+                ('gpu_3_power',  'GPU3 Power', 'W',    'gpu_3_power'),
+                ('gpu_4_power',  'GPU4 Power', 'W',    'gpu_4_power'),
+                ('gpu_5_power',  'GPU5 Power', 'W',    'gpu_5_power'),
+                ('gpu_6_power',  'GPU6 Power', 'W',    'gpu_6_power'),
+                ('gpu_7_power',  'GPU7 Power', 'W',    'gpu_7_power'),
+                ('gpu_0_vram_used',  'GPU0 VRAM Used',  'MB',   'gpu_0_vram_used'),
+                ('gpu_1_vram_used',  'GPU1 VRAM Used',  'MB',   'gpu_1_vram_used'),
+                ('gpu_2_vram_used',  'GPU2 VRAM Used',  'MB',   'gpu_2_vram_used'),
+                ('gpu_3_vram_used',  'GPU3 VRAM Used',  'MB',   'gpu_3_vram_used'),
+                ('gpu_4_vram_used',  'GPU4 VRAM Used',  'MB',   'gpu_4_vram_used'),
+                ('gpu_5_vram_used',  'GPU5 VRAM Used',  'MB',   'gpu_5_vram_used'),
+                ('gpu_6_vram_used',  'GPU6 VRAM Used',  'MB',   'gpu_6_vram_used'),
+                ('gpu_7_vram_used',  'GPU7 VRAM Used',  'MB',   'gpu_7_vram_used'),
+                ('gpu_0_vram_total', 'GPU0 VRAM Total', 'MB',   'gpu_0_vram_total'),
+                ('gpu_1_vram_total', 'GPU1 VRAM Total', 'MB',   'gpu_1_vram_total'),
+                ('gpu_2_vram_total', 'GPU2 VRAM Total', 'MB',   'gpu_2_vram_total'),
+                ('gpu_3_vram_total', 'GPU3 VRAM Total', 'MB',   'gpu_3_vram_total'),
+                ('gpu_4_vram_total', 'GPU4 VRAM Total', 'MB',   'gpu_4_vram_total'),
+                ('gpu_5_vram_total', 'GPU5 VRAM Total', 'MB',   'gpu_5_vram_total'),
+                ('gpu_6_vram_total', 'GPU6 VRAM Total', 'MB',   'gpu_6_vram_total'),
+                ('gpu_7_vram_total', 'GPU7 VRAM Total', 'MB',   'gpu_7_vram_total'),
+                # Legacy single-GPU entries (backward compat)
+                ('temp',         'TEMP',      '°C',   'gpu_temp'),
+                ('usage',        'Usage',     '%',    'gpu_usage'),
+                ('clock',        'Clock',     'MHz',  'gpu_clock'),
+                ('power',        'Power',     'W',    'gpu_power')],
     'memory':  [('temp',       'TEMP',      '°C',   'mem_temp'),
                 ('usage',      'Usage',     '%',    'mem_percent'),
                 ('clock',      'Clock',     'MHz',  'mem_clock'),
@@ -233,6 +339,7 @@ SENSORS: dict[str, list[tuple[str, str, str, str]]] = {
 SENSOR_TO_OVERLAY: dict[str, tuple[int, int]] = {
     'cpu_temp': (0, 1),     'cpu_usage': (0, 2),     'cpu_clock': (0, 3),     'cpu_power': (0, 4),
     'gpu_temp': (1, 1),     'gpu_usage': (1, 2),     'gpu_clock': (1, 3),     'gpu_power': (1, 4),
+    'gpu_vram_used': (1, 5),  'gpu_vram_total': (1, 6),
     'memory_temp': (2, 1),  'memory_usage': (2, 2),  'memory_clock': (2, 3),  'memory_available': (2, 4),
     'hdd_temp': (3, 1),     'hdd_activity': (3, 2),  'hdd_read': (3, 3),      'hdd_write': (3, 4),
     'network_upload': (4, 1), 'network_download': (4, 2), 'network_total_up': (4, 3), 'network_total_dl': (4, 4),
@@ -292,6 +399,8 @@ def format_metric(metric: str, value: float, time_format: int = 0,
     elif metric == 'mem_available':
         if value >= 1024:
             return f"{value/1024:.1f}GB"
+        return f"{value:.0f}MB"
+    elif 'vram' in metric:
         return f"{value:.0f}MB"
     return f"{value:.1f}"
 

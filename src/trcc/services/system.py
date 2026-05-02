@@ -236,6 +236,11 @@ class SystemService:
                 setattr(m, attr_name, value)
                 m._populated.add(attr_name)
 
+        # Populate indexed GPU fields (gpu_X_temp, gpu_X_usage, …) from
+        # nvidia sensor readings.  Scans readings for 'nvidia:{idx}:metric'
+        # keys and maps them to HardwareMetrics indexed attributes.
+        self._populate_gpu_indexed(readings, m)
+
         # Fallback values for metrics the enumerator couldn't provide.
         # Computed once (may call subprocess), then cached for future calls.
         self._ensure_fallbacks(m._populated)
@@ -284,6 +289,47 @@ class SystemService:
                     log.debug("Fallback for %s failed: %s", key, e)
         with self._fallback_lock:
             self._fallback_cache = cache
+
+    # ── Indexed GPU fields ────────────────────────────────────────────
+
+    _GPU_NVMETRIC_SUFFIX: tuple[tuple[str, str], ...] = (
+        ('temp', 'temp'),
+        ('gpu_busy', 'usage'),
+        ('gpu_util', 'usage'),
+        ('clock', 'clock'),
+        ('power', 'power'),
+        ('vram_used', 'vram_used'),
+        ('vram_total', 'vram_total'),
+    )
+
+    def _populate_gpu_indexed(
+        self, readings: dict[str, float], m: HardwareMetrics,
+    ) -> None:
+        """Scan readings for nvidia:{idx}:metric keys and populate
+        gpu_{idx}_{field} attributes on *m*."""
+        for sensor_id in readings:
+            if not sensor_id.startswith('nvidia:'):
+                continue
+            try:
+                parts = sensor_id.split(':')
+                if len(parts) != 3:
+                    continue
+                idx = int(parts[1])
+                nv_metric = parts[2]
+            except (ValueError, IndexError):
+                continue
+            if idx < 0 or idx > 7:
+                continue
+            for _nv_key, suffix in self._GPU_NVMETRIC_SUFFIX:
+                if _nv_key == nv_metric:
+                    attr_name = f'gpu_{idx}_{suffix}'
+                    if hasattr(m, attr_name):
+                        value = readings[sensor_id]
+                        if attr_name not in _FLOAT_FIELDS:
+                            value = int(value)
+                        setattr(m, attr_name, value)
+                        m._populated.add(attr_name)
+                    break
 
     # ── Formatting ────────────────────────────────────────────────────
 

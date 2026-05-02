@@ -459,6 +459,7 @@ class OverlayService:
             if not isinstance(cfg, dict) or 'metric' not in cfg:
                 continue
             metric_name = cfg['metric']
+            gpu_idx = cfg.get('gpu_index', 0)
             match metric_name:
                 case 'time':
                     has_time = True
@@ -472,6 +473,7 @@ class OverlayService:
                             metric_name, val, time_fmt, date_fmt, self.temp_unit))
                     else:
                         vals.append(None)
+            vals.append(gpu_idx)
         # Time/date use datetime.now() in render — include in hash
         if has_time or has_date:
             from datetime import datetime

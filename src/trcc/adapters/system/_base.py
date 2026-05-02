@@ -296,8 +296,8 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
                     SensorInfo(f'{prefix}:clock', f'{label} Clock', 'clock', 'MHz', 'nvidia'),
                     SensorInfo(f'{prefix}:power', f'{label} Power', 'power', 'W', 'nvidia'),
                     SensorInfo(f'{prefix}:fan', f'{label} Fan', 'fan', '%', 'nvidia'),
-                    SensorInfo(f'{prefix}:mem_used', f'{label} VRAM Used', 'gpu_memory', 'MB', 'nvidia'),
-                    SensorInfo(f'{prefix}:mem_total', f'{label} VRAM Total', 'gpu_memory', 'MB', 'nvidia'),
+                    SensorInfo(f'{prefix}:vram_used', f'{label} VRAM Used', 'gpu_memory', 'MB', 'nvidia'),
+                    SensorInfo(f'{prefix}:vram_total', f'{label} VRAM Total', 'gpu_memory', 'MB', 'nvidia'),
                 ])
         except Exception:
             log.debug("NVIDIA GPU discovery failed")
@@ -365,8 +365,8 @@ class SensorEnumeratorBase(SensorEnumeratorABC):
                 pass
             try:
                 mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                readings[f'{prefix}:mem_used'] = float(mem.used) / (1024 * 1024)
-                readings[f'{prefix}:mem_total'] = float(mem.total) / (1024 * 1024)
+                readings[f'{prefix}:vram_used'] = float(mem.used) / (1024 * 1024)
+                readings[f'{prefix}:vram_total'] = float(mem.total) / (1024 * 1024)
             except Exception:
                 pass
 

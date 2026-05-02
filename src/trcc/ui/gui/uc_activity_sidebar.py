@@ -44,6 +44,15 @@ class SensorItem(QFrame):
         self.unit = unit
         self.color = color
 
+        # Extract GPU index from key_suffix (e.g. 'gpu_0_temp' \u2192 0)
+        self._gpu_index = 0
+        if key_suffix.startswith('gpu_') and '_' in key_suffix[4:]:
+            try:
+                idx_str = key_suffix[4:key_suffix.index('_', 4)]
+                self._gpu_index = int(idx_str)
+            except (ValueError, IndexError):
+                pass
+
         self.setFixedHeight(22)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -73,12 +82,23 @@ class SensorItem(QFrame):
         layout.addWidget(self.value_label)
 
         # Overlay config for click-to-add
-        sensor_key = f"{category}_{key_suffix}"
-        main_count, sub_count = SENSOR_TO_OVERLAY.get(sensor_key, (0, 1))
+        # Use metric_key directly (e.g. 'gpu_0_temp') instead of
+        # constructing 'gpu_gpu_0_temp' which doesn't exist in SENSOR_TO_OVERLAY.
+        # For indexed GPU metrics not in the mapping, derive from base metric.
+        pair = SENSOR_TO_OVERLAY.get(self.metric_key)
+        if pair is None:
+            # Indexed GPU metric (e.g. 'gpu_0_temp') → strip index
+            if self.metric_key.startswith('gpu_') and '_' in self.metric_key[4:]:
+                base = 'gpu_' + self.metric_key[self.metric_key.index('_', 4) + 1:]
+                pair = SENSOR_TO_OVERLAY.get(base, (0, 1))
+            else:
+                pair = (0, 1)
+        main_count, sub_count = pair
         self._overlay_config = OverlayElementConfig(
             mode=OverlayMode.HARDWARE,
             main_count=main_count,
             sub_count=sub_count,
+            gpu_index=self._gpu_index,
             color=color,
         )
 

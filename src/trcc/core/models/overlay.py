@@ -141,6 +141,7 @@ class OverlayElementConfig:
     y: int = 100
     main_count: int = 0
     sub_count: int = 1
+    gpu_index: int = 0     # 0 = legacy single-GPU, 1-7 = indexed GPU
     color: str = '#FFFFFF'
     font_name: str = 'Microsoft YaHei'
     font_size: int = 36
@@ -153,8 +154,14 @@ class OverlayElementConfig:
 # =============================================================================
 
 # Valid metric keys for overlay elements (hardware sensors + time/date/weekday).
+_BASE_OVERLAY_KEYS = set(HARDWARE_METRICS.values()) | {'time', 'date', 'weekday'}
+# Add indexed GPU metrics (gpu_0_* ~ gpu_7_*) for multi-GPU support.
+_GPU_BASE_METRICS = ('temp', 'usage', 'clock', 'power', 'vram_used', 'vram_total')
+_INDEXED_GPU_KEYS: set[str] = {
+    f'gpu_{i}_{m}' for i in range(8) for m in _GPU_BASE_METRICS
+}
 VALID_OVERLAY_KEYS: frozenset[str] = frozenset(
-    set(HARDWARE_METRICS.values()) | {'time', 'date', 'weekday'}
+    _BASE_OVERLAY_KEYS | _INDEXED_GPU_KEYS
 )
 
 
