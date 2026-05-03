@@ -15,6 +15,7 @@ Split into submodules by command group:
 import functools
 import logging
 import logging.handlers
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -178,9 +179,19 @@ def gui(verbose=0, decorated=False, start_hidden=False):
 
     try:
         # Clear offscreen platform set by _ensure_qt() for CLI commands —
-        # the GUI needs the real windowed platform.
+        # only if a display is actually available; otherwise keep offscreen
+        # so launch() can run the metrics loop headlessly.
         import os
-        os.environ.pop('QT_QPA_PLATFORM', None)
+        _display = os.environ.get("DISPLAY")
+        _has_display = (
+            _display is not None
+            and subprocess.run(
+                ["xdpyinfo"], capture_output=True,
+                env={**os.environ, "DISPLAY": _display},
+            ).returncode == 0
+        )
+        if _has_display:
+            os.environ.pop('QT_QPA_PLATFORM', None)
 
         from trcc.ui.gui import launch
         print("[TRCC] Starting LCD Control Center...")

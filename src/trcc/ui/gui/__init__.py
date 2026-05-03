@@ -41,6 +41,9 @@ def launch(verbosity: int = 0, decorated: bool = False,
            start_hidden: bool = False) -> int:
     """Bootstrap and run the GUI application.
 
+    In offscreen mode (QT_QPA_PLATFORM=offscreen), skips GUI window creation
+    but still runs the full metrics loop for live sensor rendering to LCD.
+
     Returns the Qt exit code.
     """
     from trcc.core.app import AppEvent, TrccApp
@@ -61,7 +64,11 @@ def launch(verbosity: int = 0, decorated: bool = False,
 
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.services=false")
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
-    os.environ.pop("QT_QPA_PLATFORM", None)  # clear offscreen set by CLI
+    # Only clear offscreen for actual GUI; keep it for headless metrics loop.
+    if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+        os.environ.pop("QT_QPA_PLATFORM", None)
+
+    is_offscreen = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
 
     platform.configure_dpi()
 
@@ -79,15 +86,49 @@ def launch(verbosity: int = 0, decorated: bool = False,
         font = QFont("Sans Serif", 10)
     qapp.setFont(font)
 
-    # ── Bootstrap — platform init + device scan, with splash progress ────
+    # ── Bootstrap — platform init + device scan ───────────────────────────
     from trcc.adapters.render.qt import QtRenderer
-    from trcc.ui.gui.splash import run_bootstrap_with_splash
-    if not run_bootstrap_with_splash(app, QtRenderer):
-        return 1
+    if is_offscreen:
+        # Headless: no splash window — run bootstrap directly.
+        try:
+            app.bootstrap(renderer_factory=QtRenderer)
+        except Exception:
+            log.exception("Bootstrap failed")
+            return 1
+    else:
+        # Normal: splash screen with progress.
+        from trcc.ui.gui.splash import run_bootstrap_with_splash
+        if not run_bootstrap_with_splash(app, QtRenderer):
+            return 1
 
     # ── System service (OS-specific sensors) ──────────────────────────────
     system_svc = app.build_system()
     app.set_system(system_svc)
+
+    if is_offscreen:
+        # Headless mode: create TRCCApp but hide it — keeps all handler logic
+        # (device handlers, metrics loop, theme loading) while staying invisible.
+        log.info("No display available — running headless metrics loop")
+        from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
+        window = _TRCCApp(
+            system_svc=system_svc,
+            platform=platform,
+            decorated=False,
+        )
+
+        # ── IPC server (still needed for multi-instance / CLI control) ────
+        from trcc.ipc import IPCServer
+        ipc_server = IPCServer()
+        ipc_server.start()
+        window._ipc_server = ipc_server
+
+        # ── Register window, replay scan results, start metrics ──
+        app.register(window)  # type: ignore[arg-type]
+        app._notify(AppEvent.DEVICES_CHANGED, list(app._devices.values()))
+        app.start_metrics_loop()
+
+        signal.signal(signal.SIGINT, lambda *_: qapp.quit())
+        return qapp.exec()
 
     # ── GUI adapter — receives everything injected, knows nothing of TrccApp ─
     from trcc.ui.gui.trcc_app import TRCCApp as _TRCCApp
