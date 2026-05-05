@@ -55,6 +55,12 @@ Native Linux port of the Thermalright LCD Control Center (Windows TRCC 2.1.2). C
 
 > Unofficial community project, not affiliated with Thermalright. Built with [Claude](https://claude.ai) (AI) for protocol reverse engineering and code generation, guided by human architecture decisions and logical assessment.
 
+## Recent Highlights
+
+- **Multi-GPU indexed support** — Track up to 8 GPUs individually (`gpu_0_*` ~ `gpu_7_*`) with temp, usage, clock, power, and VRAM metrics. VRAM usage/total now appear on the Activity sidebar and in overlays. Fixes NVIDIA NVML key mismatch and legacy `gpu_memory` → `gpu_vram_used` mapping.
+- **Headless mode + systemd service** — Run TRCC on servers without a display. `trcc gui` auto-detects `QT_QPA_PLATFORM=offscreen`, skips the window but keeps the full metrics loop, device handling, theme loading, and video playback. See [Headless Deployment Guide](doc/DEPLOY_HEADLESS_SERVICE.md) for the systemd user service setup.
+- **macOS native SMC + Apple Silicon sensors** — Real hardware readings on Apple Silicon via IOKit SMC keys, HID sensor hub, and `powermetrics` (CPU/GPU/ANE power, residency, clock). Privilege-separated C helper installed via launchd for root-only sensor access.
+
 ## Install
 
 ### Native packages (recommended)
@@ -188,6 +194,20 @@ curl -X POST http://localhost:9876/led/color \
   -d '{"color": "#ff0000"}'                    # Set LED color
 ```
 
+### Headless (no display)
+
+```bash
+# Auto-detects offscreen mode — no DISPLAY needed
+trcc gui
+
+# Or explicitly set it
+QT_QPA_PLATFORM=offscreen trcc gui
+
+# Deploy as a systemd user service — see [Headless Deployment Guide](doc/DEPLOY_HEADLESS_SERVICE.md)
+```
+
+The app runs the full metrics loop, device handling, theme loading, and video playback without a GUI window. Ideal for servers or headless rigs with a Thermalright LCD device.
+
 ### Tips
 
 **Mounting your device vertically?**
@@ -207,6 +227,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | [Supported Devices](doc/REFERENCE_DEVICES.md) | Full device list with USB IDs and protocols |
 | [Testers Wanted](doc/TESTERS_WANTED.md) | Devices that need hardware validation |
 | [Device Testing Guide](doc/GUIDE_DEVICE_TESTING.md) | How to test and report device compatibility |
+| [Headless Deployment](doc/DEPLOY_HEADLESS_SERVICE.md) | systemd user service setup for headless servers |
 | [Architecture](doc/ARCHITECTURE.md) | Project layout and design |
 | [Technical Reference](doc/REFERENCE_TECHNICAL.md) | SCSI protocol and file formats |
 
@@ -228,7 +249,8 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 | **Themes** | Local, cloud, and masks — carousel mode, export/import as `.tr` files, custom mask upload with X/Y positioning, 5 starters + 120 masks per resolution |
 | **Media** | Video/GIF playback on LCD, video trimmer, image cropper, screen cast (X11 + Wayland), mic audio visualization |
 | **Overlay Editor** | Text, sensors, date/time overlays — font picker, dynamic scaling, color picker |
-| **Hardware Sensors** | 77+ sensors — CPU/GPU temp, fan speed, power, usage — customizable dashboard |
+| **Hardware Sensors** | 77+ sensors — CPU/GPU temp, fan speed, power, usage, VRAM — up to 8 indexed GPUs with per-GPU metrics |
+| **Headless Mode** | Run without a display — full metrics loop, device handling, video playback via `QT_QPA_PLATFORM=offscreen` + systemd |
 | **LED Control** | 12 LED styles, zone carousel, breathing/rainbow/static/wave modes, per-zone color |
 | **Display** | 16 resolutions (240x240 to 1920x462), 0/90/180/270 rotation, 3 brightness levels |
 | **Multi-device** | Per-device config, auto-detect, multi-device with device selection |
@@ -246,6 +268,7 @@ Set the angle to **90°** (or 270°) in the GUI, then open **Cloud Themes** — 
 - **Screencast on Wayland** — Windows can't do that either
 - **Audio visualization** — mic spectrum analyzer on screencast. Windows doesn't have this
 - **Hexagonal architecture** — GUI, CLI, and API share the same core. No feature lag between interfaces
+- **Headless mode** — run the full app on a headless server via systemd, no display needed
 
 ### 38-Language GUI (i18n)
 

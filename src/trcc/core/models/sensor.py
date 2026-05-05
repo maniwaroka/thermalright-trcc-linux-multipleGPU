@@ -402,6 +402,8 @@ def format_metric(metric: str, value: float, time_format: int = 0,
         return f"{value:.0f}MB"
     elif 'vram' in metric:
         return f"{value:.0f}MB"
+    elif 'power' in metric:
+        return f"{value:.0f}W"
     return f"{value:.1f}"
 
 
